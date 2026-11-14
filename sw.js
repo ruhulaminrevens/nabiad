@@ -1,6 +1,6 @@
 /* Nabiad service worker: network-first for app files, cache-first for vendor libraries */
-const C = "nabiad-v2";
-const CORE = ["./", "index.html", "style.css?v=2", "app.js?v=2", "config.js?v=2", "vendor/supabase.js", "icon.svg", "manifest.json"];
+const C = "nabiad-v3";
+const CORE = ["./", "index.html", "style.css?v=3", "app.js?v=3", "config.js?v=3", "i18n.js?v=3", "vendor/supabase.js", "icon.svg", "manifest.json"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(C).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", e => {
