@@ -381,3 +381,9 @@ tr.tot td{font-weight:800;background:linear-gradient(90deg,#fff7d6,#fff2c2)!impo
   .rep-t tr{break-inside:avoid}
 }
 .login .card .brand span{color:var(--mut)}
+/* online / offline sync chip */
+.sync{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 12px;border-radius:11px;border:1px solid var(--line);background:var(--surface);font-size:12.5px;font-weight:700;cursor:pointer;color:var(--gr);white-space:nowrap;transition:.2s var(--ease)}
+.sync i{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 4px color-mix(in srgb,currentColor 18%,transparent)}
+.sync.wait{color:var(--am);background:var(--am-soft)} .sync.wait i{animation:pulse 1.2s infinite}
+.sync.off{color:#fff;background:var(--g-red);border-color:transparent}
+@media (max-width:900px){.sync span{display:none}.sync{width:38px;padding:0;justify-content:center}.sync.wait span,.sync.off span{display:inline;font-size:11px}.sync.wait,.sync.off{width:auto;padding:0 9px}}

@@ -92,6 +92,14 @@ const I18N = {
   "(ডাটাবেস নিজেই আটকায়)।": "(enforced by the database).", "শুধু দেখতে ও এনকোয়ারি/রিপোর্ট নিতে পারে।": "can only view, enquire and take reports.",
   "ভুল স্ট্যাটাস দিলে নতুন স্ট্যাটাস দিন — ইতিহাস থেকে যাবে।": "If a status is wrong, add a new one — the history is kept.",
   "নতুন চেক বই যোগ করলে": "When a new cheque book is added, the", "পাতায় মিসিং পাতা নিজে থেকে ধরা পড়বে।": "page flags missing leaves automatically.",
+  "অফলাইন": "Offline", "অনলাইন": "Online", "সিঙ্ক বাকি": "Sync pending", "সিঙ্ক হচ্ছে…": "Syncing…", "⏳ সিঙ্ক বাকি": "⏳ Sync pending", "সার্ভারে যাওয়া বাকি": "Not yet on the server",
+  "ইন্টারনেট নেই — এন্ট্রি এই ডিভাইসে জমা থাকবে, নেট এলে নিজে থেকে সিঙ্ক হবে": "No internet — entries are kept on this device and sync automatically when online",
+  "এন্ট্রি সার্ভারে যাওয়া বাকি — চাপলে এখনই সিঙ্ক": "entries waiting for the server — click to sync now", "সব ডাটা সার্ভারে সেভ আছে": "All data is saved on the server",
+  "ইন্টারনেট ফিরে এসেছে — সিঙ্ক হচ্ছে": "Back online — syncing", "ইন্টারনেট নেই — অফলাইনে এন্ট্রি চালিয়ে যান, পরে নিজে সিঙ্ক হবে": "No internet — keep entering offline; it will sync automatically",
+  "ইন্টারনেট নেই — নেট এলে নিজে থেকে সিঙ্ক হবে": "No internet — will sync automatically when online", "অফলাইন এন্ট্রি সিঙ্ক হয়েছে": "offline entries synced",
+  "সিঙ্ক হয়নি:": "Sync failed:", "— আগেই অন্য কেউ এন্ট্রি করেছে": "— already entered by someone else", "ব্যালেন্স — আগেই সেভ করা আছে": "balances — already saved",
+  "✔ অফলাইনে জমা হয়েছে:": "✔ Saved offline:", "— নেট এলে সিঙ্ক হবে": "— will sync when online", "✔ অফলাইনে জমা হয়েছে — নেট এলে সিঙ্ক হবে": "✔ Saved offline — will sync when online",
+  "ইন্টারনেট নেই এবং আগের দিনের ব্যালেন্স এই ডিভাইসে জমা নেই। একবার অনলাইনে ক্লোজিং পাতা খুললে পরে অফলাইনেও চলবে।": "No internet and the previous day's balances are not stored on this device. Open the closing page once while online and it will work offline afterwards.",
   "রিফ্রেশ ব্যর্থ:": "Refresh failed:", "ত্রুটি:": "Error:", "যোগ": "Add"
 };
 const I18N_KEYS = Object.keys(I18N).filter(k => k.length >= 6).sort((a, b) => b.length - a.length);
