@@ -1,5 +1,5 @@
 -- Nabiad Cheque & Bank System — Supabase schema
--- Run once in Supabase → SQL Editor. Then run seed_accounts.sql.
+-- Run once in Supabase → SQL Editor. Accounts are added from the app (Admin).
 
 create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -104,3 +104,8 @@ create policy p_cs_d   on cheque_status for delete to authenticated using (my_ro
 create policy p_bal_w  on balances for update to authenticated using (my_role()='admin') with check (my_role()='admin');
 create policy p_bal_d  on balances for delete to authenticated using (my_role()='admin');
 create policy p_bk_w   on books for all to authenticated using (my_role()='admin') with check (my_role()='admin');
+
+-- encryption key for data files kept in the public repo (history.enc); readable only by active users
+create table if not exists app_secrets (k text primary key, v text);
+alter table app_secrets enable row level security;
+create policy p_sec_read on app_secrets for select to authenticated using (my_role() is not null);

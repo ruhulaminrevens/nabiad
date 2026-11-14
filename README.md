@@ -5,7 +5,7 @@
 ## ১. Supabase সেটআপ (একবার, ~১০ মিনিট)
 1. https://supabase.com → New project (Region: Singapore)। Database password লিখে রাখুন।
 2. **SQL Editor** → New query → `schema.sql` এর পুরো লেখা paste → Run।
-3. আবার New query → `seed_accounts.sql` paste → Run (৬৫টি অ্যাকাউন্ট ঢুকবে)।
+3. অ্যাকাউন্টগুলো ডাটাবেসে আগেই তোলা আছে; নতুন অ্যাকাউন্ট অ্যাপের Admin থেকে যোগ করুন।
 4. **Authentication → Providers → Email**: "Allow new users to sign up" **বন্ধ** করুন (বাইরের কেউ যেন একাউন্ট খুলতে না পারে)।
 5. **Authentication → Users → Add user → Create new user**: ইমেইল + পাসওয়ার্ড দিন, "Auto Confirm User" টিক দিন।
    - `ruhulaminrevens@gmail.com` → নিজে Admin হবে। `nabiadoffice@gmail.com` → Boss (শুধু দেখা)।
@@ -35,4 +35,4 @@ HTTPS থাকতে হবে (এই সব সার্ভিসে নি�
 `config.js` এ URL খালি থাকলে অ্যাপ DEMO মোডে চলে (ডাটা শুধু ওই ব্রাউজারে, পুরনো ব্যালেন্স আগে থেকে লোড)। `python -m http.server` দিয়ে লোকালে চালিয়ে ঘুরে দেখা যায়।
 
 ## ফাইল
-`index.html, style.css, app.js, config.js` — অ্যাপ | `accounts.json, history.json` — অ্যাকাউন্ট ও পুরনো ব্যালেন্স | `vendor/` — Supabase, Excel, ছবি লাইব্রেরি (অফলাইন-নির্ভর নয়) | `schema.sql, seed_accounts.sql` — ডাটাবেস
+`index.html, style.css, app.js, config.js, sw.js, manifest.json` — অ্যাপ | `history.enc` — পুরনো ব্যালেন্স (এনক্রিপ্টেড; কী ডাটাবেসে) | `vendor/` — Supabase, Excel, ছবি লাইব্রেরি | `schema.sql` — ডাটাবেস
