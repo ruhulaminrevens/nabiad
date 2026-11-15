@@ -979,13 +979,13 @@ function shareAccounts(list, startMode) {
   const withPh = () => list.filter(a => a.book_photo);
   const getBlobs = async () => blobs || (blobs = await Promise.all(withPh().map(async a => ({ a, blob: await bookBlob(a) }))));
   const cardHtml = () => `<div class="shc" id="sh-card">${list.map(a => { const b = brandOf(a); return `<div class="shc-i" style="--b1:${b.c1};--b2:${b.c2}"><div class="shc-h"><span class="blogo">${esc(b.s)}</span><b>${esc(a.bank || "")}</b></div><div class="shc-b"><div class="shc-n">${esc(a.holder || "")}</div><div class="shc-a">${esc(fmtAcno(a.acno) || "—")}</div><div class="shc-m">${[a.branch, a.routing && "Routing " + a.routing].filter(Boolean).map(esc).join(" · ")}</div></div></div>`; }).join("")}<div class="shc-f">NABIAD GROUP</div></div>`;
-  modal(`<h2>${ico("share")} ব্যাংক তথ্য শেয়ার <span class="tag">${list.length}</span></h2>
+  modal(`<h2>${ico("share")} ব্যাংক তথ্য শেয়ার <span class="tag">${list.length}</span><button class="shclose" id="sh-x" type="button">✕ বন্ধ</button></h2>
    <div class="seg" id="sh-mode" style="margin-bottom:10px"><span class="chip" data-m="full">সব তথ্য</span><span class="chip" data-m="chq">A/C with Cheque</span></div>
    <label class="f">যা পাঠানো হবে <span class="mut">(চাইলে বদলাতে পারেন)</span></label><textarea class="in" id="sh-t" rows="${Math.min(14, list.length * 6 + 1)}" style="height:auto;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.5"></textarea>
    <div id="sh-ph"></div><div id="sh-warn"></div>
    <div class="shgrid" id="sh-btns"></div>
    <div id="sh-prev" style="position:absolute;left:-9999px;top:0"></div>
-   <div class="shfoot"><button class="btn shclose" id="sh-x">✕ বন্ধ</button></div>`, (root, close) => {
+   `, (root, close) => {
     const ta = $("#sh-t", root), btns = $("#sh-btns", root);
     const warn = () => {
       const miss = list.filter(a => accMissing(a).some(m => ["bank", "acno", "holder"].includes(m.k) || (mode === "full" && ["branch", "routing"].includes(m.k))));

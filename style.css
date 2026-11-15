@@ -738,3 +738,8 @@ details summary{cursor:pointer;list-style:none} details summary::-webkit-details
 .shclose{background:#ef4444;border:0;color:#fff;height:42px;padding:0 22px;border-radius:12px;font-weight:600;box-shadow:0 6px 14px -6px rgba(239,68,68,.7)}
 .shclose:hover{background:#dc2626}.shclose svg{width:16px;height:16px}
 [data-theme=dark] .shgrid .sh-cp,[data-theme=dark] .shgrid .sh-im,[data-theme=dark] .shgrid .sh-ot,[data-theme=dark] .shgrid .sh-ml{background:rgba(255,255,255,.06)}
+
+/* v6.12 close button in header */
+.modal h2:has(.shclose){display:flex;align-items:center;gap:8px}
+.shclose{margin-left:auto;height:34px;padding:0 14px;font-size:13px;box-shadow:0 4px 10px -4px rgba(239,68,68,.8);cursor:pointer}
+.shfoot{display:none}
