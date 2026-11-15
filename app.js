@@ -2114,7 +2114,7 @@ Object.assign(ICON, {
   xmark: '<path d="M6 6l12 12M18 6L6 18"/>'
 });
 const DC_ST = { pending: "Pending", approved: "Approved", hold: "Hold", cancelled: "Cancelled" };
-const DC_EXTRA = ["Cash", "bKash", "Nagad", "Priyo Agro", "Unknown"];
+const DC_EXTRA = ["Cash", "Priyo Agro", "Unknown"];
 const DP_KEY = "nabiad_dparty_v1";
 const dcErr = e => /relation|does not exist|schema cache|not find|dist_/i.test(e.message || "") && !/permission|policy/i.test(e.message || "") ? "কালেকশন টেবিল নেই — Supabase-এ schema_v6.sql চালাতে হবে" : isNetErr(e) ? "ইন্টারনেট নেই" : (e.message || String(e));
 const dcRow = r => ({ id: r.id, date: r.date, party_id: r.party_id || null, party: r.party, asm: r.asm || "", account: r.account || "", amount: Number(r.amount), status: r.status || "pending", remarks: r.remarks || "", decided_by: r.decided_by || null, decided_at: r.decided_at || null, decision_note: r.decision_note || "", entered_by: r.entered_by || "", created_at: r.created_at || "" });
