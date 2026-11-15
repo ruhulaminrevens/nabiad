@@ -722,3 +722,19 @@ details summary{cursor:pointer;list-style:none} details summary::-webkit-details
 .phstrip.one .phi{flex:none;width:100%;cursor:zoom-in}
 .phstrip.one .phi img{width:100%;height:auto;aspect-ratio:1600/680;object-fit:contain;background:var(--surface2)}
 .phstrip:not(.one) .phi{flex:0 0 168px;cursor:zoom-in}.phstrip:not(.one) .phi img{width:168px;height:71px;object-fit:contain}
+
+/* v6.11 share buttons */
+.shgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+@media(min-width:560px){.shgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.shgrid .btn{height:46px;border-radius:12px;font-weight:600;border:1.5px solid transparent}
+.shgrid .btn.pri{grid-column:1/-1;height:50px;font-size:15px;box-shadow:0 6px 16px -6px rgba(99,102,241,.6)}
+.shgrid .sh-cp{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}
+.shgrid .sh-im{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
+.shgrid .sh-ot{background:#ecfeff;color:#0e7490;border-color:#a5f3fc}
+.shgrid .sh-ml{background:#fff7ed;color:#c2410c;border-color:#fed7aa}
+.shgrid .btn.wa{color:#fff}
+.shgrid .btn:last-child:nth-child(odd){grid-column:auto}
+.shfoot{display:flex;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.shclose{background:#ef4444;border:0;color:#fff;height:42px;padding:0 22px;border-radius:12px;font-weight:600;box-shadow:0 6px 14px -6px rgba(239,68,68,.7)}
+.shclose:hover{background:#dc2626}.shclose svg{width:16px;height:16px}
+[data-theme=dark] .shgrid .sh-cp,[data-theme=dark] .shgrid .sh-im,[data-theme=dark] .shgrid .sh-ot,[data-theme=dark] .shgrid .sh-ml{background:rgba(255,255,255,.06)}

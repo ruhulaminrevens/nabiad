@@ -985,7 +985,7 @@ function shareAccounts(list, startMode) {
    <div id="sh-ph"></div><div id="sh-warn"></div>
    <div class="shgrid" id="sh-btns"></div>
    <div id="sh-prev" style="position:absolute;left:-9999px;top:0"></div>
-   <div class="row" style="margin-top:12px"><button class="btn fix" id="sh-x">বন্ধ</button></div>`, (root, close) => {
+   <div class="shfoot"><button class="btn shclose" id="sh-x">✕ বন্ধ</button></div>`, (root, close) => {
     const ta = $("#sh-t", root), btns = $("#sh-btns", root);
     const warn = () => {
       const miss = list.filter(a => accMissing(a).some(m => ["bank", "acno", "holder"].includes(m.k) || (mode === "full" && ["branch", "routing"].includes(m.k))));
@@ -1002,12 +1002,12 @@ function shareAccounts(list, startMode) {
       $$("#sh-mode .chip", root).forEach(x => x.classList.toggle("on", x.dataset.m === mode));
       ta.value = accText(list, { cheque: mode === "chq" }); ta.rows = Math.max(4, Math.min(14, list.length * (mode === "chq" ? 5 : 6) - 1));
       const chq = mode === "chq", hasPh = withPh().length > 0;
-      btns.innerHTML = `<button class="btn" data-s="copy">${ico("copy")} কপি</button>` +
-        (chq && hasPh ? `<button class="btn pri" data-s="withph">${ico("share")} ছবিসহ শেয়ার</button>` : "") +
+      btns.innerHTML = (chq && hasPh ? `<button class="btn pri" data-s="withph">${ico("share")} ছবিসহ শেয়ার</button>` : "") +
+        `<button class="btn sh-cp" data-s="copy">${ico("copy")} কপি</button>` +
         `<button class="btn wa" data-s="wa">${ico("share")} WhatsApp</button>` +
-        (chq && hasPh ? `<button class="btn" data-s="cpimg">${ico("img")} ছবি কপি</button><button class="btn" data-s="dlimg">${ico("img")} ছবি ডাউনলোড</button>` : "") +
-        (!chq && navigator.share ? `<button class="btn" data-s="native">${ico("share")} অন্য অ্যাপে</button>` : "") +
-        `<button class="btn" data-s="mail">${ico("mail")} ইমেইল</button>` + (!chq ? `<button class="btn" data-s="img">${ico("img")} কার্ড ছবি</button>` : "");
+        (chq && hasPh ? `<button class="btn sh-im" data-s="cpimg">${ico("img")} ছবি কপি</button><button class="btn sh-im" data-s="dlimg">${ico("img")} ছবি ডাউনলোড</button>` : "") +
+        (!chq && navigator.share ? `<button class="btn sh-ot" data-s="native">${ico("share")} অন্য অ্যাপে</button>` : "") +
+        `<button class="btn sh-ml" data-s="mail">${ico("mail")} ইমেইল</button>` + (!chq ? `<button class="btn sh-im" data-s="img">${ico("img")} কার্ড ছবি</button>` : "");
       warn(); phStrip();
     };
     draw();
