@@ -152,6 +152,53 @@ const I18N = {
   "Audit log · এডিট ইতিহাস": "Audit log · change history", "খুঁজুন (কে, A/C, চেক নং, তারিখ)": "Search (who, A/C, cheque no, date)", "কোথায়": "Where", "কাজ": "Action", "কে": "Who", "কী": "What", "পরিবর্তন": "Change",
   "যোগ": "Added", "বদল": "Changed", "মুছে ফেলা": "Deleted", "টি পরিবর্তন": " changes", "এই সময়ে কোনো পরিবর্তন নেই": "No changes in this period", "(সর্বশেষ ৫০০টি — তারিখ ছোট করুন)": "(latest 500 — narrow the dates)",
   "Audit log টেবিল নেই — Supabase-এ schema_v2.sql চালাতে হবে": "Audit log table missing — run schema_v2.sql in Supabase", "ব্যালেন্স": "Balance", "ব্যবহারকারী": "Users",
+  // ---- v6
+  "ক্যাশ": "Cash", "ব্যাংক": "Bank", "হোম": "Home", "দৈনিক ক্যাশ রেকর্ড": "Daily Cash Record", "ক্যাশ সামারি": "Cash Summary", "ক্যাশ রিপোর্ট": "Cash Reports", "ক্যাশ রেজিস্টার": "Cash Register", "সেটিংস": "Settings", "Audit ও Security": "Audit & Security",
+  "ক্যাশ সামারি ও ইতিহাস": "Cash Summary & History", "ব্যাংক রিপোর্ট": "Bank report", "শুভ সকাল": "Good morning", "শুভ দুপুর": "Good afternoon", "শুভ সন্ধ্যা": "Good evening", "· শুক্রবার (সাপ্তাহিক বন্ধ)": "· Friday (weekly off)",
+  "দৈনিক ব্যাংক ক্লোজিং": "Daily Bank Closing", "ব্যাংক ক্লোজিং": "Bank closing", "ক্যাশ রেকর্ড": "Cash record", "আজ সেভ হয়েছে": "Saved today", "শেষ:": "Last:", "এখনো নেই": "None yet", "টি সময় হয়েছে": " due", "টি আসছে": " upcoming", "দেখা হচ্ছে…": "Checking…",
+  "ব্যাংক ব্যালেন্স": "Bank balance", "ব্যবহারযোগ্য (Usable)": "Usable", "ক্যাশ ক্লোজিং": "Cash closing", "চেক · এই মাস": "Cheques · this month", "ব্যাংক ব্যালেন্স ট্রেন্ড": "Bank balance trend", "৩০ দিন": "30 days", "১৪ দিন": "14 days", "রিপোর্ট →": "Report →", "সামারি →": "Summary →",
+  "ক্যাশ: আয় বনাম ব্যয়": "Cash: receipts vs payments", "ট্রেন্ড দেখাতে আরও ডাটা লাগবে": "More data needed for a trend", "এই সময়ে কোনো রেকর্ড নেই": "No records in this period", "— আগের মতো": "— unchanged",
+  "সর্বশেষ চেক এন্ট্রি": "Latest cheque entries", "সব →": "All →", "আসন্ন রিমাইন্ডার": "Upcoming reminders", "কোনো রিমাইন্ডার নেই": "No reminders", "রিমাইন্ডার দিন": "Add reminder", "পুরনো Pending চেক": "Old pending cheques", "প্রথম চেক এন্ট্রি": "First cheque entry",
+  "এখনো কোনো ক্যাশ রেকর্ড নেই": "No cash record yet", "হাতে ক্যাশ": "cash in hand", "SQL v3 চালানো বাকি": "SQL v3 not run yet", "সেটআপ বাকি": "Setup pending", "এখনো হয়নি": "Not yet",
+  "🏦 ব্যাংক ব্যালেন্স": "🏦 Bank balance", "🧾 চেক": "🧾 Cheques", "৭ দিন": "7 days", "ক্লোজিং ব্যালেন্স": "Closing balance", "এই সময়ে পরিবর্তন": "Change in period", "সর্বোচ্চ / সর্বনিম্ন": "Highest / lowest", "দৈনিক মোট ব্যালেন্স": "Daily total balance",
+  "ব্যাংক অনুযায়ী (ক্লোজিং)": "By bank (closing)", "হোল্ডার অনুযায়ী (ক্লোজিং)": "By holder (closing)", "সবচেয়ে বেশি পরিবর্তন": "Biggest changes", "সব অ্যাকাউন্ট": "All accounts", "শুরু": "Opening", "শেষ": "Closing", "এই সময়ে কোনো ব্যালেন্স সেভ নেই": "No balances saved in this period",
+  "ইন্টারনেট নেই — ব্যাংক রিপোর্টের জন্য অনলাইন থাকতে হবে": "No internet — bank report needs to be online", "এই সময়ে কোনো চেক এন্ট্রি নেই।": "No cheque entries in this period.", "খাত অনুযায়ী": "By purpose", "কে তুলেছে (ক্যাশ)": "Cash taken by", "ব্যাংক অনুযায়ী": "By bank", "অ্যাকাউন্ট অনুযায়ী": "By account", "দিন অনুযায়ী": "By day", "মাস অনুযায়ী": "By month",
+  "From তারিখ To-এর পরে হতে পারে না": "From date cannot be after To", "দিন": "days",
+  // entry
+  "চেকের ছবি": "Cheque photo", "নোট / মন্তব্য / সাপ্লায়ার / অন্যান্য": "Note / Remarks / Supplier / Others", "যেমন: সাপ্লায়ারের নাম — বিলের বিবরণ": "e.g. supplier name — bill details",
+  // cash
+  "আজকের রেকর্ড": "Today's record", "সামারি": "Summary", "ক্যাশ টেবিল নেই — Supabase-এ schema_v3.sql চালাতে হবে": "Cash table missing — run schema_v3.sql in Supabase",
+  "🔒 এই তারিখের ক্যাশ রেকর্ড ফাইনাল সেভ হয়েছে।": "🔒 This date's cash record is final-saved.", "⚠ ফাইনাল সেভ করা আছে — Admin হিসেবে বদলাতে পারবেন।": "⚠ Final-saved — you can change it as Admin.", "ড্রাফট লোড হয়েছে": "Draft loaded",
+  "Opening নেওয়া হয়েছে": "Opening taken from", "-এর ক্লোজিং থেকে": " closing", "কর্মদিবসের রেকর্ড নেই": "working days without a record", "এটা প্রথম রেকর্ড — Opening Cash ও Bank নিজে লিখুন।": "This is the first record — enter Opening Cash and Bank yourself.",
+  "এই তারিখের ড্রাফট মুছবেন?": "Delete this date's draft?", "নোট": "Note", "একাধিক অংক যোগ করতে + লিখুন, যেমন 5000+12000+800": "To add several amounts type +, e.g. 5000+12000+800",
+  "(গুনে লিখুন)": "(count and enter)", "হাতে নগদ": "Cash in hand", "(Closing − Cash)": "(Closing − Cash)", "ক্যাশ ফাইনাল সেভ": "cash final save", "ভুল অংক:": "Invalid amount:", "— শুধু সংখ্যা আর + / − লিখুন": "— use only digits and + / −",
+  "Cash in hand লিখুন (হাতে কত নগদ আছে)": "Enter Cash in hand", "✔ ক্যাশ রেকর্ড ফাইনাল সেভ হয়েছে": "✔ Cash record final-saved", "ইন্টারনেট নেই — এই ডিভাইসে জমা আছে, নেট এলে আবার সেভ করুন": "No internet — kept on this device, save again when online",
+  "দিনের ফাইনাল রেকর্ড": "days of final records", "টি ড্রাফট": " drafts", "মোট Receipt": "Total receipt", "মোট Payment": "Total payment", "দৈনিক গড়": "Daily avg", "নিট (Receipt − Payment)": "Net (Receipt − Payment)", "সর্বশেষ Closing": "Latest closing", "রেকর্ড নেই": "No record",
+  "দৈনিক Receipt বনাম Payment": "Daily receipt vs payment", "Closing ও হাতে নগদ": "Closing & cash in hand", "দৈনিক ইতিহাস": "Daily history", "অবস্থা": "Status", "ফাইনাল": "Final", "ড্রাফট": "Draft",
+  "এই সময়ে কোনো ক্যাশ রেকর্ড নেই": "No cash records in this period", "ক্যাশ রেকর্ড শুরু করুন": "Start a cash record", "এই সময়ে কোনো ফাইনাল ক্যাশ রেকর্ড নেই": "No final cash records in this period",
+  "Receipt — খাত অনুযায়ী": "Receipts by category", "Payment — খাত অনুযায়ী": "Payments by category", "নিট": "Net", "খুঁজুন (নোট, খাত, অংক)": "Search (note, category, amount)", "ধরন": "Type", "টি লাইন": " lines", "৩০ দিন ": "30 days ",
+  // reminders
+  "যেমন: পার্টির চেক জমা দিন / পাস হয়েছে কিনা দেখুন": "e.g. deposit party cheque / check if cleared", "বিস্তারিত (পার্টি, টাকা, ব্যাংক…)": "Details (party, amount, bank…)", "চেক / কাগজের ছবি": "Cheque / document photo",
+  "ছবি আছে — নতুন দিলে বদলাবে": "Has photo — a new one will replace it", "কত দিন পরে (Pick days)": "In how many days (Pick days)", "আমাদের চেকের সাথে যুক্ত করুন": "Link to one of our cheques", "A/C বা চেক নং লিখুন": "Type A/C or cheque no",
+  "ছবি সেভ করতে ইন্টারনেট লাগবে": "Internet needed to save a photo", "✔ রিমাইন্ডার:": "✔ Reminder:", "নোটিফিকেশন চালু করলে সময় হলে ফোনে জানাবে।": "Turn on notifications to be alerted on your phone.", "চালু করুন": "Turn on",
+  "টির সময় হয়েছে": " due now", "পার্টির চেক, পেমেন্ট, অডিট বা যেকোনো কাজ — ছবি ও দিন বেছে দিন": "Party cheque, payment, audit or any task — add a photo and pick days",
+  "কোনো সম্পন্ন রিমাইন্ডার নেই": "No completed reminders", "এখনো কোনো রিমাইন্ডার নেই — উপরের \"নতুন রিমাইন্ডার\" চাপুন।": "No reminders yet — press \"New reminder\" above.", "খুলুন →": "Open →",
+  "আজকের দৈনিক ক্যাশ রেকর্ড এখনো সেভ হয়নি": "Today's daily cash record is not saved yet",
+  // settings
+  "👤 প্রোফাইল": "👤 Profile", "আপনার নাম": "Your name", "(চেক/ক্লোজিং-এ \"কে এন্ট্রি করেছে\" হিসেবে বসে)": "(shown as \"entered by\")", "নতুন পাসওয়ার্ড": "New password", "কমপক্ষে ৮ অক্ষর": "At least 8 characters", "বদলান": "Change",
+  "🎨 দেখতে কেমন": "🎨 Appearance", "লাইট": "Light", "ডার্ক": "Dark", "লেখার আকার": "Text size", "ছোট": "Small", "স্বাভাবিক": "Normal", "বড়": "Large", "টেবিল": "Tables", "আরামদায়ক": "Comfortable", "ঘন (বেশি সারি)": "Compact (more rows)", "অ্যাপ খুললে কোন পাতা": "Start page",
+  "🔔 রিমাইন্ডার ও সতর্কতা": "🔔 Reminders & alerts", "ব্যাংক ক্লোজিং বাকি থাকলে সতর্কতা": "Alert if bank closing pending at", "ক্যাশ রেকর্ড বাকি থাকলে সতর্কতা": "Alert if cash record pending at", "কত দিন Pending হলে সতর্কতা": "Pending alert after", "শব্দ": "Sound", "বন্ধ": "Off",
+  "শুক্রবার": "Friday", "বন্ধ দিন (আগের/পরের বাটনে বাদ)": "Day off (skipped by prev/next)", "কর্মদিবস": "Working day", "✓ নোটিফিকেশন চালু আছে": "✓ Notifications on", "নোটিফিকেশন ব্রাউজারে বন্ধ": "Blocked in browser", "নোটিফিকেশন চালু করুন": "Enable notifications", "পরীক্ষা করুন": "Test",
+  "📱 অ্যাপ ও ডাটা": "📱 App & data", "সংস্করণ": "Version", "ইন্টারনেট": "Internet", "অনলাইন": "Online", "অফলাইন": "Offline", "সিঙ্ক বাকি": "Pending sync", "এই ডিভাইসে জমা ডাটা": "Data stored on this device", "এখনই সিঙ্ক": "Sync now", "↻ আপডেট দেখুন": "↻ Check for update", "⬇ অ্যাপ ইনস্টল": "⬇ Install app", "ক্যাশ মুছে রিলোড": "Clear cache & reload",
+  "\"ক্যাশ মুছে রিলোড\" শুধু এই ডিভাইসের জমা কপি মোছে — সার্ভারের ডাটা ঠিক থাকে। সিঙ্ক বাকি থাকলে আগে সিঙ্ক করুন।": "\"Clear cache\" only removes this device's copy — server data is safe. Sync first if anything is pending.",
+  "🛡 Admin শর্টকাট": "🛡 Admin shortcuts", "ব্যবহারকারী ও অ্যাকাউন্ট": "Users & accounts", "Audit ও Backup": "Audit & Backup", "✔ নাম সেভ হয়েছে": "✔ Name saved", "✔ পাসওয়ার্ড বদলানো হয়েছে": "✔ Password changed", "পাসওয়ার্ড কমপক্ষে ৮ অক্ষর": "Password must be at least 8 characters",
+  "✔ সিঙ্ক ও রিফ্রেশ হয়েছে": "✔ Synced and refreshed", "নতুন সংস্করণ থাকলে রিলোড হচ্ছে…": "Reloading if a new version exists…", "পরীক্ষার নোটিফিকেশন পাঠানো হয়েছে": "Test notification sent",
+  // backup / security
+  "এখনই Backup": "Backup now", "পুরো ডাটা ডাউনলোড (Excel)": "Download all data (Excel)", "Backup তালিকা": "Backup list", "শেষ স্বয়ংক্রিয়:": "Last automatic:", "এখনো হয়নি — আজ রাত ১২টায় প্রথমটি হবে": "None yet — the first runs tonight at 12 AM",
+  "স্বয়ংক্রিয়": "Automatic", "হাতে": "Manual", "রেকর্ড": "Records", "এখনো কোনো Backup নেই": "No backups yet", "✔ Backup নেওয়া হয়েছে": "✔ Backup taken", "Backup টেবিল নেই — Supabase-এ schema_v3.sql চালাতে হবে": "Backup table missing — run schema_v3.sql in Supabase",
+  "ডাটা আনা হচ্ছে… (ব্যালেন্স ইতিহাস বড়, একটু সময় লাগবে)": "Fetching data… (balance history is large, please wait)", "🔐 নিরাপত্তা ব্যবস্থা": "🔐 Security measures", "💻 এই সেশন": "💻 This session", "লগইন": "Signed in", "ডিভাইস": "Device",
+  "অন্য সব ডিভাইস থেকে লগআউট": "Sign out all other devices", "👥 ব্যবহারকারী": "👥 Users", "সক্রিয়": "Active", "নিষ্ক্রিয়": "Inactive", "ব্যবহারকারী বদলাতে Admin →": "Manage users in Admin →", "✔ অন্য ডিভাইস থেকে লগআউট হয়েছে": "✔ Signed out other devices",
+  "💡 অ্যাপ পুরো বন্ধ থাকলেও অ্যালার্ম চাইলে": "💡 For an alarm even when the app is closed, press", "বাটন চাপুন — ফোনের ক্যালেন্ডারে অ্যালার্মসহ যোগ হবে।": "— it is added to your phone calendar with an alarm.", "শেষ:": "Last:", "আজ": "Today",
 };
 const I18N_KEYS = Object.keys(I18N).filter(k => k.length >= 6).sort((a, b) => b.length - a.length);
 const BN_DIG = { "০": "0", "১": "1", "২": "2", "৩": "3", "৪": "4", "৫": "5", "৬": "6", "৭": "7", "৮": "8", "৯": "9" };
