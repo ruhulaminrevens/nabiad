@@ -345,7 +345,7 @@ function suggest(input, getItems, onPick) {
     const q = norm(input.value);
     items = getItems().map(it => ({ it, s: norm(it.value + " " + it.label + " " + (it.sub || "")) })).filter(x => !q || x.s.includes(q))
       .sort((a, b) => (norm(a.it.value).startsWith(q) ? 0 : 1) - (norm(b.it.value).startsWith(q) ? 0 : 1)).slice(0, 40).map(x => x.it);
-    idx = 0; list.innerHTML = items.map((it, i) => `<div data-i="${i}" class="${i === 0 ? "on" : ""}"><span><b>${esc(it.value)}</b> ${esc(it.label)}</span><small>${esc(it.sub || "")}</small></div>`).join("") || `<div class="mut">কিছু পাওয়া যায়নি</div>`;
+    idx = 0; list.innerHTML = items.map((it, i) => `<div data-i="${i}" class="${i === 0 ? "on" : ""}">${it.html || `<span><b>${esc(it.value)}</b> ${esc(it.label)}</span>`}<small>${esc(it.sub || "")}</small></div>`).join("") || `<div class="mut">কিছু পাওয়া যায়নি</div>`;
     list.classList.toggle("hide", !items.length && !input.value);
   };
   const pick = it => { picked = it; input.value = `${it.value} (${it.label})`; list.classList.add("hide"); onPick && onPick(it); };
@@ -2270,18 +2270,19 @@ async function vDcol(v) {
   let date = sessionStorage.getItem("nabiad_dc_date") || today(); sessionStorage.removeItem("nabiad_dc_date");
   const F = { st: "", ac: "", q: "" }; let rows = [], sel = new Set(), busy = false;
   v.innerHTML = head("দৈনিক কালেকশন", `<a class="btn" href="#/dsum">${ico("clock")} সামারি</a><a class="btn" href="#/drep">${ico("chart")} রিপোর্ট</a>`) + `
-   <div class="card navcard" style="margin-bottom:14px">${dateNav("dc", date)}</div>
-   <div class="card" style="margin-bottom:14px"><div class="fgrid">
-     <div class="s2"><label class="f">পার্টি * <span class="mut">(টাইপ করুন, লিস্ট থেকে বাছুন)</span></label><div><input class="in big" id="dc-pty" autocomplete="off" placeholder="পার্টির নাম…"></div><div class="hint" id="dc-ph"></div></div>
-     <div class="s1"><label class="f">ASM / Salesman</label><input class="in" id="dc-a" list="dc-dl-a" autocomplete="off"></div>
-     <div class="s1"><label class="f">Account *</label><input class="in" id="dc-c" list="dc-dl-c" autocomplete="off" placeholder="DBBL-17"></div>
-     <div class="s1"><label class="f">টাকা * <span class="mut">(50000+300 চলবে)</span></label><input class="in big num" id="dc-m" inputmode="decimal" autocomplete="off"><div class="hint num" id="dc-mh"></div></div>
-     <div class="s2"><label class="f">মন্তব্য <span class="mut">(ঐচ্ছিক)</span></label><input class="in" id="dc-r" autocomplete="off" placeholder="স্লিপ নং / নোট"></div>
-     <div class="s1"><label class="f">&nbsp;</label><button class="btn pri big" id="dc-add" style="width:100%">${ico("plus")} যোগ করুন</button></div>
-    </div><div class="hint rd" id="dc-err" style="margin-top:6px"></div><datalist id="dc-dl-a"></datalist><datalist id="dc-dl-c"></datalist></div>
-   <div id="dc-kpi"></div>
-   <div class="card flush" style="margin-top:14px"><div class="ch"><h3>আজকের কালেকশন লিস্ট</h3><span class="tag" id="dc-cnt">0</span></div>
-    <div class="noprint" style="padding:0 16px 12px"><div class="chips" id="dc-sc"></div><div class="chips" id="dc-ac" style="margin-top:8px"></div>${searchBox("dc-q", "খুঁজুন — পার্টি, ASM, Account, টাকা, মন্তব্য…")}</div>
+   <div class="card dcx-bar"><div class="dcx-date">${dateNav("dc", date)}</div><div class="dcx-stats" id="dc-kpi"></div></div>
+   <div class="card dcx-entry"><div class="dcx-et"><h3>${ico("plus")} নতুন এন্ট্রি</h3><span class="mut xs">Enter চাপলেই যোগ হবে · টাকার ঘরে <b>50000+300</b> লেখা যায়</span></div>
+    <div class="dcx-grid">
+     <div class="dcx-p"><label class="f">পার্টি *</label><div><input class="in big" id="dc-pty" autocomplete="off" placeholder="পার্টির নাম লিখুন…"></div><div class="dcx-h" id="dc-ph"></div></div>
+     <div class="dcx-a"><label class="f">ASM / Salesman</label><input class="in" id="dc-a" list="dc-dl-a" autocomplete="off" placeholder="অটো বসবে"></div>
+     <div class="dcx-c"><label class="f">Account *</label><input class="in" id="dc-c" list="dc-dl-c" autocomplete="off" placeholder="DBBL-17"><div class="dcx-qa" id="dc-qa"></div></div>
+     <div class="dcx-m"><label class="f">টাকা *</label><input class="in big num" id="dc-m" inputmode="decimal" autocomplete="off" placeholder="0"><div class="dcx-h num" id="dc-mh"></div></div>
+     <div class="dcx-r"><label class="f">মন্তব্য <span class="mut">(ঐচ্ছিক)</span></label><input class="in big" id="dc-r" autocomplete="off" placeholder="স্লিপ নং / নোট"></div>
+     <div class="dcx-b"><button class="btn pri big" id="dc-add">${ico("plus")} যোগ করুন</button></div>
+    </div><div class="hint rd" id="dc-err" style="min-height:0;margin-top:8px"></div><datalist id="dc-dl-a"></datalist><datalist id="dc-dl-c"></datalist></div>
+   <div class="card flush dcx-list"><div class="ch"><h3>এই তারিখের কালেকশন</h3><span class="tag" id="dc-cnt">0</span></div>
+    <div class="noprint dcx-tools"><div class="chips dcx-tabs" id="dc-sc"></div>${searchBox("dc-q", "খুঁজুন — পার্টি, ASM, Account, টাকা…")}</div>
+    <div class="chips dcx-acc noprint" id="dc-ac"></div>
     <div id="dc-list"></div></div><div id="dc-selbar" class="selbar hide"></div>`;
   const list = $("#dc-list", v), err = m => $("#dc-err", v).textContent = m || "";
   let parties = [];
@@ -2289,8 +2290,20 @@ async function vDcol(v) {
   $("#dc-dl-a", v).innerHTML = dcAsms().map(a => `<option value="${esc(a)}">`).join(""); $("#dc-dl-c", v).innerHTML = dcAccounts().map(a => `<option value="${esc(a)}">`).join("");
   const pIn = $("#dc-pty", v), aIn = $("#dc-a", v), cIn = $("#dc-c", v), mIn = $("#dc-m", v), rIn = $("#dc-r", v);
   const byName = n => parties.find(p => norm(p.name) === norm(n));
-  const fill = p => { aIn.value = p?.asm || ""; if (p?.account) cIn.value = p.account; $("#dc-ph", v).innerHTML = p ? `<span class="gr">✔ ${esc(p.asm || "ASM নেই")}</span>${p.note ? ` · <span class="mut">${esc(p.note)}</span>` : ""}` : ""; };
-  const picker = suggest(pIn, () => parties.filter(p => p.active).map(p => ({ value: p.name, label: p.asm || "", sub: p.account || "" })), it => { if (it) { fill(byName(it.value)); } else $("#dc-ph", v).innerHTML = ""; });
+  const geoTxt = p => [p?.district, p?.division && p.division !== p.district ? p.division : ""].filter(Boolean).join(", ");
+  const info = p => {
+    if (!p) return ""; const td = rows.filter(r => r.party_id === p.id && r.status !== "cancelled");
+    return `<div class="dcx-info"><span class="tg v">${ico("users")} ${esc(p.asm || "ASM নেই")}</span>${geoTxt(p) ? `<span class="tg">${ico("map")} ${esc(geoTxt(p))}</span>` : ""}${p.account ? `<button type="button" class="tg use" data-use="${esc(p.account)}"><i class="bdot" style="background:${dcBrand(p.account)}"></i>সাধারণত ${esc(p.account)}</button>` : ""}${td.length ? `<span class="tg w">এই তারিখে আগেই ${td.length}টি · ৳ ${money0(dcSum(td))}</span>` : ""}${p.note ? `<span class="mut xs">${esc(p.note)}</span>` : ""}</div>`;
+  };
+  const qa = () => {
+    const el = $("#dc-qa", v), p = picker?.get() ? byName(picker.get().value) : null, seen = new Set(), out = [];
+    [p?.account, ...dcGroup(rows.filter(r => r.status !== "cancelled"), r => r.account).map(x => x.k)].forEach(a => { if (a && !seen.has(a) && out.length < 5) { seen.add(a); out.push(a); } });
+    el.innerHTML = out.map(a => `<button type="button" class="qa ${cIn.value.trim() === a ? "on" : ""}" data-qa="${esc(a)}"><i class="bdot" style="background:${dcBrand(a)}"></i>${esc(a)}</button>`).join("");
+    $$("[data-qa]", el).forEach(b => b.onclick = () => { cIn.value = b.dataset.qa; qa(); mIn.focus(); });
+  };
+  cIn.addEventListener("input", () => qa());
+  const fill = p => { aIn.value = p?.asm || ""; if (p?.account) cIn.value = p.account; $("#dc-ph", v).innerHTML = info(p); $$("[data-use]", $("#dc-ph", v)).forEach(b => b.onclick = () => { cIn.value = b.dataset.use; qa(); mIn.focus(); }); qa(); };
+  const picker = suggest(pIn, () => parties.filter(p => p.active).map(p => ({ value: p.name, label: p.asm || "", sub: p.account || "", html: `<span class="sgn"><b>${esc(p.name)}</b><em>${esc([p.asm, p.district].filter(Boolean).join(" · "))}</em></span>` })), it => { if (it) { fill(byName(it.value)); } else { $("#dc-ph", v).innerHTML = ""; } });
   pIn.addEventListener("picked", () => mIn.focus());
   const newBtn = () => { const t = pIn.value.trim(); $("#dc-ph", v).innerHTML = t && !picker.get() && !byName(t) ? `<a href="#" id="dc-new" class="rd">+ "${esc(t.slice(0, 30))}" নতুন পার্টি তৈরি করুন</a>` : ($("#dc-ph", v).innerHTML && picker.get() ? $("#dc-ph", v).innerHTML : ""); const a = $("#dc-new", v); if (a) a.onclick = e => { e.preventDefault(); createParty(t); }; };
   pIn.addEventListener("input", newBtn);
@@ -2311,7 +2324,7 @@ async function vDcol(v) {
     busy = true;
     try {
       const r = await API.dcolAdd({ date: d, party_id: party.id, party: party.name, asm: aIn.value.trim(), account, amount, remarks: rIn.value.trim() });
-      rows.push(r); toast(`✔ ${party.name} — ৳ ${money0(amount)} যোগ হয়েছে`); picker.set(null); pIn.value = ""; aIn.value = ""; cIn.value = ""; mIn.value = ""; rIn.value = ""; $("#dc-mh", v).textContent = ""; $("#dc-ph", v).innerHTML = "";
+      rows.push(r); toast(`✔ ${party.name} — ৳ ${money0(amount)} যোগ হয়েছে`); picker.set(null); pIn.value = ""; aIn.value = ""; cIn.value = ""; mIn.value = ""; rIn.value = ""; $("#dc-mh", v).textContent = ""; $("#dc-ph", v).innerHTML = ""; qa();
       DCACHE.dcol = null; draw(); pIn.focus();
     } catch (e) { err(dcErr(e)); } finally { busy = false; }
   }
@@ -2330,26 +2343,25 @@ async function vDcol(v) {
   }
   function draw() {
     const live = rows.filter(r => r.status !== "cancelled"), by = s => rows.filter(r => r.status === s);
-    $("#dc-kpi", v).innerHTML = `<div class="grid g4"><div class="kpi card k-vi"><div class="l">মোট কালেকশন<span class="ki">${ico("wallet")}</span></div><div class="v num">৳ ${money0(dcSum(live))}</div><div class="s">${live.length}টি এন্ট্রি${by("cancelled").length ? ` · ${by("cancelled").length}টি Cancelled` : ""}</div></div>
-     <div class="kpi card k-gr"><div class="l">Approved<span class="ki">${ico("check")}</span></div><div class="v num">৳ ${money0(dcSum(by("approved")))}</div><div class="s">${by("approved").length}টি</div></div>
-     <div class="kpi card k-am"><div class="l">Pending (স্টেটমেন্ট মেলানো বাকি)<span class="ki">${ico("clock")}</span></div><div class="v num">৳ ${money0(dcSum(by("pending")))}</div><div class="s">${by("pending").length}টি</div></div>
-     <div class="kpi card"><div class="l">Hold<span class="ki">${ico("pause")}</span></div><div class="v num">৳ ${money0(dcSum(by("hold")))}</div><div class="s">${by("hold").length}টি</div></div></div>`;
-    $("#dc-sc", v).innerHTML = [["", "সব"], ...Object.entries(DC_ST)].map(([k, l]) => `<span class="chip ${F.st === k ? "on" : ""}" data-s="${k}">${l} <span class="mut">${k ? by(k).length : rows.length}</span></span>`).join("");
-    const acs = dcGroup(live, r => r.account); $("#dc-ac", v).innerHTML = acs.length ? `<span class="mut xs" style="align-self:center">Account:</span>` + acs.map(a => `<span class="chip ${F.ac === a.k ? "on" : ""}" data-a="${esc(a.k)}"><i class="bdot" style="background:${dcBrand(a.k)}"></i>${esc(a.k)} · ${money0(a.amt)} <span class="mut">(${a.n})</span></span>`).join("") : "";
+    const stat = (k, cls, ic, lab, arr) => `<button type="button" class="dcx-stat ${cls} ${F.st === k && k ? "on" : ""}" data-k="${k}"><span class="si">${ico(ic)}</span><span class="tx"><small>${lab}</small><b class="num">৳ ${money0(dcSum(arr))}</b><i>${arr.length}টি</i></span></button>`;
+    $("#dc-kpi", v).innerHTML = stat("", "t", "wallet", "মোট" + (by("cancelled").length ? ` · ${by("cancelled").length} Cancelled বাদে` : ""), live) + stat("approved", "a", "check", "Approved", by("approved")) + stat("pending", "p", "clock", "Pending", by("pending")) + stat("hold", "h", "pause", "Hold", by("hold"));
+    $$("#dc-kpi [data-k]", v).forEach(b => b.onclick = () => { F.st = F.st === b.dataset.k ? "" : b.dataset.k; draw(); });
+    $("#dc-sc", v).innerHTML = [["", "সব"], ...Object.entries(DC_ST)].map(([k, l]) => `<span class="chip ${F.st === k ? "on" : ""}" data-s="${k}">${k ? `<i class="sdot ${k}"></i>` : ""}${l} <span class="cnt">${k ? by(k).length : rows.length}</span></span>`).join("");
+    const acs = dcGroup(live, r => r.account); $("#dc-ac", v).innerHTML = acs.length ? `<span class="mut xs lbl">Account:</span>` + acs.map(a => `<span class="chip ${F.ac === a.k ? "on" : ""}" data-a="${esc(a.k)}"><i class="bdot" style="background:${dcBrand(a.k)}"></i>${esc(a.k)} · ${money0(a.amt)} <span class="mut">(${a.n})</span></span>`).join("") : "";
     $$("#dc-sc [data-s]", v).forEach(c => c.onclick = () => { F.st = c.dataset.s; draw(); }); $$("#dc-ac [data-a]", v).forEach(c => c.onclick = () => { F.ac = F.ac === c.dataset.a ? "" : c.dataset.a; draw(); });
     const vis = visible(); $("#dc-cnt", v).textContent = vis.length;
-    const actionable = vis.filter(r => ["approved", "hold", "cancelled"].some(s => dcCan(r, s)));
+    const actionable = vis.filter(r => ["approved", "hold", "cancelled"].some(s => dcCan(r, s))), gm = dpGeoMap();
     list.innerHTML = vis.length ? `<div class="tw cards"><table><thead><tr><th style="width:34px">${actionable.length ? `<input type="checkbox" id="dc-all" title="সব বাছুন">` : ""}</th><th class="r">#</th><th>পার্টি</th><th>Account</th><th class="r">টাকা</th><th>অবস্থা</th><th>মন্তব্য</th><th class="r noprint">কাজ</th></tr></thead><tbody>${vis.map((r, i) => {
       const acts = [["approved", "check", "gr", "Approve (ঠিক আছে)"], ["hold", "pause", "am", "Hold"], ["cancelled", "xmark", "rd", "Cancel"]].filter(([s]) => dcCan(r, s)).map(([s, ic, c, t]) => `<button class="iconbtn sm dca ${c}" data-st="${s}" data-id="${r.id}" title="${t}">${ico(ic)}</button>`).join("") + (r.status !== "pending" && dcCan(r, "pending") ? `<button class="btn sm" data-st="pending" data-id="${r.id}" title="Pending-এ ফেরত">↺</button>` : "");
-      return `<tr class="dcr ${r.status}"><td>${dcCan(r, "approved") || dcCan(r, "hold") || dcCan(r, "cancelled") ? `<input type="checkbox" data-sel="${r.id}" ${sel.has(r.id) ? "checked" : ""}>` : ""}</td><td class="r mut">${i + 1}</td><td><b>${esc(r.party)}</b><div class="mut xs">${esc(r.asm || "—")}</div></td><td class="b"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account || "—")}</td><td class="r num b">${money0(r.amount)}</td><td>${dcStTag(r)}${r.decided_by ? `<div class="mut xs">${esc(r.decided_by)}${r.decision_note ? " · " + esc(r.decision_note) : ""}</div>` : ""}</td><td class="sm">${esc(r.remarks)}</td><td class="r noprint"><div class="dcacts">${acts}${dcCanEdit(r) ? `<button class="iconbtn sm" data-ed="${r.id}" title="এডিট">${ico("edit")}</button>` : ""}${S.me.role === "admin" && !r.pending_sync ? `<button class="iconbtn sm rd" data-dl="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></td></tr>`;
-    }).join("")}<tr class="tot"><td></td><td></td><td colspan="2">মোট (${vis.filter(r => r.status !== "cancelled").length}টি, Cancelled বাদে)</td><td class="r num">${money0(dcSum(vis.filter(r => r.status !== "cancelled")))}</td><td colspan="3"></td></tr></tbody></table></div>` : `<div class="empty">${rows.length ? "খোঁজার সাথে কিছু মেলেনি" : "এই তারিখে এখনো কোনো কালেকশন এন্ট্রি নেই — উপরের ফর্ম থেকে যোগ করুন"}</div>`;
-    labelTables(list);
+      return `<tr class="dcr ${r.status}"><td>${dcCan(r, "approved") || dcCan(r, "hold") || dcCan(r, "cancelled") ? `<input type="checkbox" data-sel="${r.id}" ${sel.has(r.id) ? "checked" : ""}>` : ""}</td><td class="r mut">${i + 1}</td><td><b>${esc(r.party)}</b><div class="mut xs">${esc([r.asm || "—", dpGeoOf(gm, r).district].filter(Boolean).join(" · "))}</div></td><td class="b"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account || "—")}</td><td class="r num b">${money0(r.amount)}</td><td>${dcStTag(r)}${r.decided_by ? `<div class="mut xs">${esc(r.decided_by)}${r.decision_note ? " · " + esc(r.decision_note) : ""}</div>` : ""}</td><td class="sm">${esc(r.remarks)}</td><td class="r noprint"><div class="dcacts">${acts}${dcCanEdit(r) ? `<button class="iconbtn sm" data-ed="${r.id}" title="এডিট">${ico("edit")}</button>` : ""}${S.me.role === "admin" && !r.pending_sync ? `<button class="iconbtn sm rd" data-dl="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></td></tr>`;
+    }).join("")}<tr class="tot"><td></td><td></td><td colspan="2">মোট (${vis.filter(r => r.status !== "cancelled").length}টি, Cancelled বাদে)</td><td class="r num">${money0(dcSum(vis.filter(r => r.status !== "cancelled")))}</td><td colspan="3"></td></tr></tbody></table></div>` : `<div class="dcx-empty"><span class="ei">${ico("wallet")}</span><b>${rows.length ? "খোঁজার সাথে কিছু মেলেনি" : "এই তারিখে এখনো কোনো এন্ট্রি নেই"}</b><span class="mut">${rows.length ? "ফিল্টার বা সার্চ বদলে দেখুন" : "উপরের ফর্ম থেকে প্রথম কালেকশনটি যোগ করুন"}</span>${rows.length ? `<button class="btn sm" id="dc-clr">ফিল্টার মুছুন</button>` : ""}</div>`;
+    labelTables(list); const cl = $("#dc-clr", list); if (cl) cl.onclick = () => { F.st = ""; F.ac = ""; F.q = ""; $("#dc-q", v).value = ""; draw(); };
     $$("[data-sel]", list).forEach(x => x.onchange = () => { x.checked ? sel.add(x.dataset.sel) : sel.delete(x.dataset.sel); selbar(); });
     const all = $("#dc-all", list); if (all) all.onchange = () => { actionable.forEach(r => all.checked ? sel.add(r.id) : sel.delete(r.id)); $$("[data-sel]", list).forEach(x => x.checked = all.checked); selbar(); };
     $$("[data-st]", list).forEach(b => b.onclick = () => dcDecide([b.dataset.id], b.dataset.st, load));
     $$("[data-ed]", list).forEach(b => b.onclick = () => dcEditModal(rows.find(r => r.id === b.dataset.ed), load));
     $$("[data-dl]", list).forEach(b => b.onclick = async () => { const r = rows.find(x => x.id === b.dataset.dl); if (!ask(`"${r.party}" — ৳ ${money0(r.amount)} মুছে ফেলবেন?`)) return; try { await API.dcolDelete(r.id); DCACHE.dcol = null; toast("✔ মুছে ফেলা হয়েছে"); load(); } catch (e) { toast(dcErr(e), "err"); } });
-    selbar();
+    selbar(); qa();
   }
   $("#dc-q", v).oninput = e => { F.q = e.target.value; draw(); };
   bindDateNav(v, "dc", load);
@@ -2364,6 +2376,7 @@ function dcPeriodBar(id, F) {
    <div class="row ${F.p === "day" ? "" : "hide"}" id="${id}-day" style="margin-top:8px">${dateNav(id + "x", F.d)}</div>
    <div class="row ${F.p === "custom" ? "" : "hide"}" id="${id}-cu" style="margin-top:8px"><div><label class="f">From</label><input class="in" type="date" id="${id}-f" value="${F.f}"></div><div><label class="f">To</label><input class="in" type="date" id="${id}-t" value="${F.t}"></div></div>`;
 }
+const dcEmptyPeriod = msg => `<div class="dcx-empty big"><span class="ei">${ico("chart")}</span><b>${msg}</b><span class="mut">অন্য সময় বেছে দেখুন</span><div class="chips" style="justify-content:center"><span class="chip" data-qp="month">এই মাস</span><span class="chip" data-qp="last">গত মাস</span><span class="chip" data-qp="custom">যেকোনো তারিখ</span></div></div>`;
 function dcRange(F) { if (F.p === "today") return [today(), today()]; if (F.p === "day") return [F.d, F.d]; if (F.p === "custom") return [F.f <= F.t ? F.f : F.t, F.f <= F.t ? F.t : F.f]; return periodRange(F.p); }
 function dcBindPeriod(v, id, F, draw) {
   $$(`#${id} .chip`, v).forEach(c => c.onclick = () => { F.p = c.dataset.p; $$(`#${id} .chip`, v).forEach(x => x.classList.toggle("on", x === c)); $(`#${id}-day`, v).classList.toggle("hide", F.p !== "day"); $(`#${id}-cu`, v).classList.toggle("hide", F.p !== "custom"); draw(); });
@@ -2389,7 +2402,7 @@ const dcFoot = () => `<div class="rep-ft"><span>Generated ${new Date().toLocaleS
 async function vDsum(v) {
   const F = { p: "today", d: today(), f: addDays(today(), -6), t: today(), s: "approved", all: false }; let cur = null;
   v.innerHTML = head("কালেকশন সামারি", `<button class="btn" id="ds-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="ds-pdf">${ico("print")} PDF</button>${navigator.share ? `<button class="btn" id="ds-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
-   <div class="card noprint" style="margin-bottom:14px">${dcPeriodBar("ds", F)}<div class="row" style="margin-top:10px"><div><label class="f">কোন Status ধরব</label><select class="in" id="ds-s">${dcStatOpts(F.s)}</select></div><div style="align-self:end"><label class="keep"><input type="checkbox" id="ds-z"> ০ টাকার Account/ASM-ও দেখাও</label></div></div></div>
+   <div class="card noprint dcx-filt">${dcPeriodBar("ds", F)}<div class="dcx-frow"><div class="dcx-fs"><label class="f">কোন Status ধরব</label><select class="in" id="ds-s">${dcStatOpts(F.s)}</select></div><label class="keep dcx-keep"><input type="checkbox" id="ds-z"> ০ টাকার Account/ASM-ও দেখাও</label><span class="dcx-per mut" id="ds-per"></span></div></div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="ds-out"></div></div></div>`;
   async function draw() {
     const [f, t] = dcRange(F), out = $("#ds-out", v); out.innerHTML = `<div class="skel" style="height:160px"></div>`; let all;
@@ -2407,7 +2420,9 @@ async function vDsum(v) {
       <div class="dcs-two">${tbl("Per Bank", banks, "Bank / Account")}${tbl("Per Salesman / ASM", asms, "Salesman / ASM")}</div>
       <div class="dcs-two">${tbl("Per Division", divs, "Division")}${tbl(`Per District${dists.length >= 25 ? " (Top 25)" : ""}`, dists, "District")}</div>
       ${days.length ? `<div class="dcs-box" style="margin:0 16px 12px"><div class="dcs-t">Per Day</div><table class="rep-t"><thead><tr><th>Date</th><th class="r">Entry</th><th class="r">Amount</th><th style="width:50%"></th></tr></thead><tbody>${days.map(x => `<tr><td class="cd">${dcShort(x.k)}</td><td class="r num">${x.n}</td><td class="r num us">${money0(x.amt)}</td><td><div class="dcbar"><i style="width:${(x.amt / mx(days) * 100).toFixed(1)}%"></i></div></td></tr>`).join("")}</tbody></table></div>` : ""}
-      ${others.length ? `<div class="dcs-note">Note: এই তারিখে আরও ${others.length}টি এন্ট্রি (৳ ${money0(dcSum(others))}) অন্য Status-এ আছে — এখানে ধরা হয়নি।</div>` : ""}${dcFoot()}</div>` : `<div class="empty">এই সময়ে ${esc(dcStatLabel(F.s))} কোনো কালেকশন নেই</div>`;
+      ${others.length ? `<div class="dcs-note">Note: এই তারিখে আরও ${others.length}টি এন্ট্রি (৳ ${money0(dcSum(others))}) অন্য Status-এ আছে — এখানে ধরা হয়নি।</div>` : ""}${dcFoot()}</div>` : dcEmptyPeriod(`এই সময়ে ${esc(dcStatLabel(F.s))} কোনো কালেকশন নেই`);
+    $$("[data-qp]", out).forEach(b => b.onclick = () => $(`#ds [data-p="${b.dataset.qp}"]`, v).click());
+    const pe = $("#ds-per", v); if (pe) pe.textContent = dcRangeLabel(f, t);
     dcFit(v, "ds-in");
   }
   dcBindPeriod(v, "ds", F, draw);
@@ -2423,9 +2438,9 @@ async function vDsum(v) {
 async function vDrep(v) {
   const F = { p: "today", d: today(), f: addDays(today(), -6), t: today(), s: "approved", asm: "", ac: "", dv: "", ds: "", q: "", ca: false, cd: false, cs: false, sub: true }; let cur = null, all = [];
   v.innerHTML = head("কালেকশন রিপোর্ট", `<button class="btn" id="dr-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="dr-pdf">${ico("print")} PDF</button><button class="btn" id="dr-xl">${ico("dl")} Excel</button>${navigator.share ? `<button class="btn" id="dr-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
-   <div class="card noprint" style="margin-bottom:14px">${dcPeriodBar("dr", F)}
-    <div class="row" style="margin-top:10px"><div><label class="f">Status</label><select class="in" id="dr-s">${dcStatOpts(F.s)}</select></div><div><label class="f">ASM</label><select class="in" id="dr-asm"><option value="">সব ASM</option></select></div><div><label class="f">Account</label><select class="in" id="dr-ac"><option value="">সব Account</option></select></div><div><label class="f">বিভাগ</label><select class="in" id="dr-dv"><option value="">সব বিভাগ</option></select></div><div><label class="f">জেলা</label><select class="in" id="dr-ds"><option value="">সব জেলা</option></select></div><div style="flex:2 1 200px"><label class="f">পার্টি খুঁজুন</label><input class="in" id="dr-q" type="search" autocomplete="off" placeholder="পার্টির নাম / টাকা / মন্তব্য"></div></div>
-    <div class="row" style="margin-top:8px"><label class="keep"><input type="checkbox" id="dr-ca"> ASM কলাম</label><label class="keep"><input type="checkbox" id="dr-cd"> জেলা কলাম</label><label class="keep"><input type="checkbox" id="dr-cs"> Status কলাম</label><label class="keep"><input type="checkbox" id="dr-sub" checked> দিন অনুযায়ী সাবটোটাল</label></div></div>
+   <div class="card noprint dcx-filt">${dcPeriodBar("dr", F)}
+    <div class="dcx-fgrid"><div><label class="f">Status</label><select class="in" id="dr-s">${dcStatOpts(F.s)}</select></div><div><label class="f">ASM</label><select class="in" id="dr-asm"><option value="">সব ASM</option></select></div><div><label class="f">Account</label><select class="in" id="dr-ac"><option value="">সব Account</option></select></div><div><label class="f">বিভাগ</label><select class="in" id="dr-dv"><option value="">সব বিভাগ</option></select></div><div><label class="f">জেলা</label><select class="in" id="dr-ds"><option value="">সব জেলা</option></select></div><div class="dcx-q"><label class="f">পার্টি খুঁজুন</label><input class="in" id="dr-q" type="search" autocomplete="off" placeholder="পার্টির নাম / টাকা / মন্তব্য"></div></div>
+    <div class="dcx-tg"><span class="mut xs">রিপোর্টে দেখাও:</span><label class="keep"><input type="checkbox" id="dr-ca"> ASM কলাম</label><label class="keep"><input type="checkbox" id="dr-cd"> জেলা কলাম</label><label class="keep"><input type="checkbox" id="dr-cs"> Status কলাম</label><label class="keep"><input type="checkbox" id="dr-sub" checked> দিন অনুযায়ী সাবটোটাল</label></div></div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="dr-out"></div></div></div>`;
   async function load() {
     const [f, t] = dcRange(F), out = $("#dr-out", v); out.innerHTML = `<div class="skel" style="height:160px"></div>`;
@@ -2446,7 +2461,7 @@ async function vDrep(v) {
     const [f, t] = dcRange(F), out = $("#dr-out", v), q = norm(F.q);
     const gm = dpGeoMap(), gOf = r => dpGeoOf(gm, r);
     const rows = all.filter(r => dcStatPass(r, F.s) && (!F.asm || r.asm === F.asm) && (!F.ac || r.account === F.ac) && (!F.dv || gOf(r).division === F.dv) && (!F.ds || gOf(r).district === F.ds) && (!q || norm([r.party, r.amount, r.remarks, r.account].join(" ")).includes(q)));
-    cur = { f, t, rows }; if (!rows.length) { out.innerHTML = `<div class="empty">এই সময়ে কোনো এন্ট্রি নেই</div>`; return; }
+    cur = { f, t, rows }; if (!rows.length) { out.innerHTML = dcEmptyPeriod(all.length ? "ফিল্টারের সাথে কোনো এন্ট্রি মেলেনি" : "এই সময়ে কোনো এন্ট্রি নেই"); $$("[data-qp]", out).forEach(b => b.onclick = () => $(`#dr [data-p="${b.dataset.qp}"]`, v).click()); return; }
     const multi = f !== t && F.sub, cols = 4 + (F.ca ? 1 : 0) + (F.cd ? 1 : 0) + (F.cs ? 1 : 0); let n = 0, html = "", day = null, dsum = 0, dn = 0;
     const flush = () => { if (multi && day) html += `<tr class="dsub"><td></td><td colspan="${cols - 2}">${dcShort(day)} — ${dn}টি</td><td class="r num">${money0(dsum)}</td>${F.cs ? "<td></td>" : ""}</tr>`; dsum = 0; dn = 0; };
     rows.forEach(r => { if (multi && r.date !== day) { flush(); day = r.date; } n++; dsum += r.amount; dn++; html += `<tr><td class="n">${n}</td><td class="cd">${dcShort(r.date)}</td><td class="ho">${esc(r.party)}${r.remarks ? `<span class="rm"> · ${esc(r.remarks)}</span>` : ""}</td>${F.ca ? `<td class="rm">${esc(r.asm)}</td>` : ""}${F.cd ? `<td class="rm">${esc(gOf(r).district)}</td>` : ""}<td class="cd"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account)}</td><td class="r num">${money0(r.amount)}</td>${F.cs ? `<td><span class="dst ${r.status}">${DC_ST[r.status]}</span></td>` : ""}</tr>`; });
