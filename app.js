@@ -2319,7 +2319,7 @@ async function vDcol(v) {
   };
   cIn.addEventListener("input", () => qa());
   const fill = p => { aIn.value = p?.asm || ""; if (p?.account) cIn.value = p.account; $("#dc-ph", v).innerHTML = info(p); $$("[data-use]", $("#dc-ph", v)).forEach(b => b.onclick = () => { cIn.value = b.dataset.use; qa(); mIn.focus(); }); qa(); };
-  const picker = suggest(pIn, () => parties.filter(p => p.active).map(p => ({ value: p.name, label: p.asm || "", sub: p.account || "", html: `<span class="sgn"><b>${esc(p.name)}</b><em>${esc([p.asm, p.district].filter(Boolean).join(" · "))}</em></span>` })), it => { if (it) { fill(byName(it.value)); } else { $("#dc-ph", v).innerHTML = ""; } });
+  const picker = suggest(pIn, () => parties.filter(p => p.active).map(p => ({ value: p.name, label: p.asm || "", sub: "", html: `<span class="sgn"><b>${esc(p.name)}</b><em>${esc([p.asm, p.district].filter(Boolean).join(" · "))}</em></span>` })), it => { if (it) { fill(byName(it.value)); } else { $("#dc-ph", v).innerHTML = ""; } });
   pIn.addEventListener("picked", () => cIn.focus());
   const accItems = () => dcAccounts().map(c => { const a = (S.accounts || []).find(x => x.code === c); return { value: c, label: a?.holder || "", sub: a?.bank || "", html: `<span class="sgn"><b><i class="bdot" style="background:${dcBrand(c)}"></i> ${esc(c)}</b><em>${esc([a?.holder, a?.bank].filter(Boolean).join(" · "))}</em></span>` }; });
   const cPick = suggest(cIn, accItems, it => { if (it) cIn.value = it.value; qa(); });
