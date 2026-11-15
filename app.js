@@ -1043,7 +1043,7 @@ function accountModal(a, after) {
   const isNew = !a; a = { code: "", holder: "", bank: "", branch: "", acno: "", type: "", routing: "", swift: "", note: "", daily: true, status: "Active", sort: Math.max(0, ...S.accounts.map(x => x.sort || 0)) + 1, ...(a || {}) };
   const banks = [...new Set([...BANKS.map(b => b.split("|")[0]), ...S.accounts.map(x => x.bank).filter(Boolean)])].sort();
   const quickTypes = ["Current", "Savings", "SND / Short Notice", "OD", "CC / COD", "MFS"];
-  modal(`<div class="accf"><div class="accf-h"><h2 style="margin:0">${isNew ? "➕ নতুন অ্যাকাউন্ট" : "✏️ অ্যাকাউন্ট এডিট"}</h2>${isNew ? "" : `<span class="tag">${esc(a.code)}</span>`}</div>
+  modal(`<div class="accf"><h2>${isNew ? "➕ নতুন অ্যাকাউন্ট" : "✏️ অ্যাকাউন্ট এডিট"}${isNew ? "" : ` <span class="tag" style="background:rgba(255,255,255,.22);color:#fff;border-color:rgba(255,255,255,.3)">${esc(a.code)}</span>`}</h2>
    <div class="accf-g"><div class="accf-form">
     <div class="fsec"><div class="fst"><i>1</i>ব্যাংক</div>
      <div class="fr2"><div><label class="f">ব্যাংক *</label><div><input class="in" id="a-b" value="${esc(a.bank || "")}" placeholder="টাইপ করুন: brac, dbbl, pubali…" autocomplete="off"></div></div>
