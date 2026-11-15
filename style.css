@@ -911,3 +911,10 @@ tr.dim td{opacity:.55}
 .printonly{display:none}
 .rep-kpi b small{font-size:11px;font-weight:600;color:#6b7280}
 @media print{ body.print-sheet>*:not(.printonly){display:none!important} body.print-sheet .printonly{display:block!important;background:#fff!important} }
+
+/* v6.24 — cheque entry: equal Save/Clear on one line, add-purpose chip, photo buttons */
+.fb2{display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:0 1 420px;min-width:260px}
+.fb2 .btn{width:100%;justify-content:center;margin:0}
+.chip.add{border-style:dashed;color:var(--pri);background:var(--pri-soft)}
+.daterow .photo-in .btn.big{padding:0 12px}
+@media (max-width:900px){ .fb2{flex:1 1 100%} .daterow .photo-in{gap:6px} .daterow .photo-in .btn.big .lbl{font-size:13px} }

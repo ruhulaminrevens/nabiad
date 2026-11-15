@@ -3,7 +3,11 @@
 const CFG = window.NABIAD_CONFIG || {};
 const DEMO = !CFG.SUPABASE_URL;
 const STATUSES = ["Pending","Cleared","Bounced","Returned-Cash","Cancelled","Stopped"];
-const PURPOSES = ["Cash Withdrawal (ক্যাশ উত্তোলন)","Own A/C Transfer (নিজ অ্যাকাউন্টে জমা)","Supplier Payment (সাপ্লায়ার পেমেন্ট)","Salary (বেতন)","Utility/Bills (বিদ্যুৎ/গ্যাস/বিল)","Rent (ভাড়া)","Loan/EMI (লোন কিস্তি)","LC/Import (এলসি)","Tax/VAT (ট্যাক্স/ভ্যাট)","Office Expense (অফিস খরচ)","Transport/Carriage (পরিবহন খরচ)","Advance (অগ্রিম)","Inter-company (সহযোগী প্রতিষ্ঠান)","Bank Charge (ব্যাংক চার্জ)","Zakat/Donation (যাকাত/দান)","Personal (বস/পরিবার)","Cancelled/Spoiled (বাতিল/নষ্ট পাতা)","Others (অন্যান্য)"];
+const PURPOSES = ["Cash Withdrawal (ক্যাশ উত্তোলন)","Own A/C Transfer (নিজ অ্যাকাউন্টে জমা)","Supplier Payment (সাপ্লায়ার পেমেন্ট)","Rent (ভাড়া)","Loan/EMI (লোন কিস্তি)","Inter-company (সহযোগী প্রতিষ্ঠান)","Zakat/Donation (যাকাত/দান)","Cancelled/Spoiled (বাতিল/নষ্ট পাতা)"];
+/* v6.24 — user-added purposes (shared in DB table cheque_purposes, cached per device) */
+let PURP_X = []; try { PURP_X = JSON.parse(localStorage.getItem("nb_purp_x") || "[]"); } catch (e) {}
+const allPurposes = (withUsed) => { const l = [...PURPOSES, ...PURP_X.filter(x => !PURPOSES.includes(x))]; if (withUsed) (S.cheques || []).forEach(c => { if (c.purpose && !l.includes(c.purpose)) l.push(c.purpose); }); return l; };
+async function loadPurposes() { try { const x = await API.purposes(); PURP_X = x; if (!DEMO) localStorage.setItem("nb_purp_x", JSON.stringify(x)); } catch (e) {} }
 const TAKERS = ["Foysal","Sourov","Sadik","Tushar","Sohan","Omi","Aslam","Boss","Others"];
 const BN_M = ["জানু","ফেব্রু","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টে","অক্টো","নভে","ডিসে"];
 
@@ -526,17 +530,17 @@ async function vEntry(v) {
   <div class="split">
    <div class="card">
     <div class="fgrid">
-     <div class="s4 daterow"><div class="dr-d"><label class="f">চেকের তারিখ</label><input class="in big" type="date" id="e-date" value="${today()}"></div><div class="dr-p"><label class="f">চেকের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn big" for="e-ph">${ico("cam")} <span class="lbl">ছবি তুলুন / বাছুন</span></label><input type="file" id="e-ph" accept="image/*" hidden><img id="e-phv" class="hide" alt=""><button class="btn sm ghost hide" id="e-phx" title="ছবি বাদ">✕</button></div></div></div>
+     <div class="s4 daterow"><div class="dr-d"><label class="f">চেকের তারিখ</label><input class="in big" type="date" id="e-date" value="${today()}"></div><div class="dr-p"><label class="f">চেকের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn big" for="e-ph-c" title="ক্যামেরায় ছবি তুলুন">${ico("cam")} <span class="lbl">তুলুন</span></label><label class="btn big" for="e-ph" title="গ্যালারি থেকে বাছুন">${ico("img")} <span class="lbl">বাছুন</span></label><input type="file" id="e-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="e-ph" accept="image/*" hidden><img id="e-phv" class="hide" alt=""><button class="btn sm ghost hide" id="e-phx" title="ছবি বাদ">✕</button></div></div></div>
      <div class="s4"><label class="f">A/C Code <span class="mut">(টাইপ করুন: pbl, 483, nabiad…)</span></label><div><input class="in big" id="e-ac" autocomplete="off" placeholder="PBL-483" autofocus></div><div class="hint" id="e-achint"></div></div>
      <div class="s2"><label class="f">চেক নং (শুধু সংখ্যা)</label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off"><div class="hint" id="e-nohint"></div></div>
      <div class="s2"><label class="f">টাকা (বাতিল পাতা হলে 0)</label><input class="in big num" id="e-amt" inputmode="decimal" autocomplete="off"><div class="hint num" id="e-amthint"></div></div>
-     <div class="s4"><label class="f">খাত</label><div class="chips" id="e-purp">${PURPOSES.map(p => `<span class="chip" data-p="${esc(p)}">${esc(p.split(" (")[0])}</span>`).join("")}</div></div>
+     <div class="s4"><label class="f">খাত</label><div class="chips" id="e-purp"></div></div>
      <div class="s2" id="x-cash" style="display:none"><label class="f">কে তুলেছে *</label><select class="in" id="e-taker"><option value=""></option>${TAKERS.map(t => `<option>${t}</option>`).join("")}</select></div>
      <div class="s2" id="x-own" style="display:none"><label class="f">কোন A/C তে জমা *</label><div><input class="in" id="e-toac" autocomplete="off" placeholder="যে অ্যাকাউন্টে টাকা গেছে"></div></div>
      <div class="s4"><label class="f">নোট / মন্তব্য / সাপ্লায়ার / অন্যান্য</label><input class="in" id="e-rem" autocomplete="off" list="dl-rem" placeholder="যেমন: সাপ্লায়ারের নাম — বিলের বিবরণ"></div>
      <div class="s4" id="e-sum" style="display:none"></div>
     </div>${datalist("dl-rem", [...S.cheques.map(c => c.remarks), ...S.cheques.map(c => c.party)])}
-    <div class="fbar"><button class="btn pri lg" id="e-save">${ico("save")} সেভ করুন <kbd style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.35)">Enter</kbd></button><button class="btn lg" id="e-clear">পরিষ্কার</button><div class="hint rd" id="e-err" style="margin:0"></div><div class="sp"></div><label class="keep"><input type="checkbox" id="keep" checked> A/C ও খাত ধরে রাখুন</label></div>
+    <div class="fbar"><div class="fb2"><button class="btn pri lg" id="e-save">${ico("save")} সেভ করুন</button><button class="btn lg" id="e-clear">পরিষ্কার</button></div><div class="hint rd" id="e-err" style="margin:0"></div><div class="sp"></div><label class="keep"><input type="checkbox" id="keep" checked> A/C ও খাত ধরে রাখুন</label></div>
    </div>
    <div class="card flush"><div class="ch"><h3>আজকের এন্ট্রি</h3><span class="tag" id="e-cnt"></span></div><div id="e-list"></div></div>
   </div>`;
@@ -547,12 +551,23 @@ async function vEntry(v) {
     sum();
   });
   const toac = suggest($e("e-toac"), () => acItems(true), () => sum());
-  const clearPhoto = photoPicker(v, st, { inp: "e-ph", img: "e-phv", x: "e-phx" });
+  const clearPhoto = photoPicker(v, st, { inp: "e-ph", cam: "e-ph-c", img: "e-phv", x: "e-phx" });
   const purpKey = () => st.purpose ? purposeKey(st.purpose) : "";
+  function drawPurp() {
+    $e("e-purp").innerHTML = allPurposes().map(p => `<span class="chip" data-p="${esc(p)}">${esc(p.split(" (")[0])}</span>`).join("") + `<span class="chip add" id="e-padd" title="নতুন খাত যোগ করুন">＋ নতুন</span>`;
+    $$(".chip[data-p]", v).forEach(c => c.onclick = () => { st.purpose = c.dataset.p; applyPurpose(); if (purpKey() === "cash") $e("e-taker").focus(); else if (purpKey() === "own") $e("e-toac").focus(); else $e("e-rem").focus(); });
+    $e("e-padd").onclick = () => askText("নতুন খাত (Purpose)", "খাতের নাম লিখুন (যেমন: Salary)", "", async n => {
+      if (allPurposes(true).some(p => p.split(" (")[0].trim().toLowerCase() === n.split(" (")[0].trim().toLowerCase())) throw new Error("এই খাত আগেই আছে");
+      await API.purposeAdd(n); PURP_X = [...PURP_X, n]; if (!DEMO) localStorage.setItem("nb_purp_x", JSON.stringify(PURP_X));
+      st.purpose = n; drawPurp(); applyPurpose(); toast("✔ নতুন খাত যোগ হয়েছে");
+    });
+    applyPurpose();
+  }
   function applyPurpose() {
     $$(".chip[data-p]", v).forEach(c => c.classList.toggle("on", c.dataset.p === st.purpose));
     const k = purpKey(); $e("x-cash").style.display = k === "cash" ? "" : "none"; $e("x-own").style.display = k === "own" ? "" : "none"; sum();
   }
+  drawPurp(); loadPurposes().then(() => { if (v.isConnected) drawPurp(); });
   function sum() {
     const code = ac.get()?.value, no = $e("e-no").value, amt = num($e("e-amt").value);
     $e("e-amthint").textContent = amt ? "৳ " + money(amt) : ""; const el = $e("e-sum");
@@ -681,7 +696,7 @@ function editChequeModal(c, after) {
   modal(`<h2>এডিট (Admin): ${esc(c.code)} · ${c.no}</h2><div class="grid" style="gap:10px">
    <div class="row"><div><label class="f">তারিখ</label><input class="in" type="date" id="x-d" value="${c.date}"></div><div><label class="f">A/C Code</label><select class="in" id="x-c">${S.accounts.map(a => `<option ${a.code === c.code ? "selected" : ""}>${esc(a.code)}</option>`).join("")}</select></div></div>
    <div class="row"><div><label class="f">চেক নং</label><input class="in" id="x-n" value="${c.no}"></div><div><label class="f">টাকা</label><input class="in" id="x-a" value="${c.amount}"></div></div>
-   <div><label class="f">খাত</label><select class="in" id="x-p">${PURPOSES.map(p => `<option ${p === c.purpose ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></div>
+   <div><label class="f">খাত</label><select class="in" id="x-p">${allPurposes(true).map(p => `<option ${p === c.purpose ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></div>
    <div class="row"><div><label class="f">কে তুলেছে</label><input class="in" id="x-t" value="${esc(c.taker || "")}"></div><div><label class="f">To A/C</label><input class="in" id="x-o" value="${esc(c.toac || "")}"></div></div>
    <div class="row"><div><label class="f">পার্টি</label><input class="in" id="x-y" value="${esc(c.party || "")}"></div><div><label class="f">মন্তব্য</label><input class="in" id="x-r" value="${esc(c.remarks || "")}"></div></div>
    <div class="row"><button class="btn pri" id="x-ok">সেভ</button><button class="btn" id="x-x">বাতিল</button></div></div>`, (root, close) => {
@@ -697,7 +712,7 @@ async function vCheques(v) {
    <div><label class="f">From</label><input class="in" type="date" id="k-f"></div><div><label class="f">To</label><input class="in" type="date" id="k-t"></div>
    <div><label class="f">A/C</label><select class="in" id="k-c"><option value="">সব</option>${S.accounts.map(a => `<option>${esc(a.code)}</option>`).join("")}</select></div>
    <div><label class="f">স্ট্যাটাস</label><select class="in" id="k-s"><option value="">সব</option>${STATUSES.map(s => `<option>${s}</option>`).join("")}</select></div>
-   <div><label class="f">খাত</label><select class="in" id="k-u"><option value="">সব</option>${PURPOSES.map(p => `<option value="${esc(p)}">${esc(p.split(" (")[0])}</option>`).join("")}</select></div></div></div>
+   <div><label class="f">খাত</label><select class="in" id="k-u"><option value="">সব</option>${allPurposes(true).map(p => `<option value="${esc(p)}">${esc(p.split(" (")[0])}</option>`).join("")}</select></div></div></div>
    <div id="k-sum" class="mut sm" style="margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center"></div><div class="card flush"><div id="k-tab"></div></div><div id="k-pg" class="row noprint" style="margin-top:10px;justify-content:center"></div>`;
   const filt = () => { const t = norm(F.q), raw = F.q.trim(); return S.cheques.filter(c => (!F.from || c.date >= F.from) && (!F.to || c.date <= F.to) && (!F.code || c.code === F.code) && (!F.status || c.status === F.status) && (!F.purpose || c.purpose === F.purpose) && (!t || norm(c.code + c.no + (c.party || "") + (c.remarks || "") + (c.taker || "") + (c.toac || "")).includes(t) || String(c.amount) === raw.replace(/,/g, ""))).sort((a, b) => b.date.localeCompare(a.date) || b.no - a.no); };
   const draw = () => {
@@ -1344,15 +1359,16 @@ async function showPhoto(el, c) {
 }
 function photoPicker(root, st, ids) {
   const inp = $("#" + ids.inp, root), img = $("#" + ids.img, root), x = $("#" + ids.x, root);
-  inp.onchange = async () => { const f = inp.files[0]; if (!f) return; try { st.photo = await compressImage(f); img.src = URL.createObjectURL(st.photo); img.classList.remove("hide"); x.classList.remove("hide"); } catch (e) { toast(e.message, "err"); } inp.value = ""; };
+  const onPick = async function () { const f = this.files[0]; if (!f) return; try { st.photo = await compressImage(f); img.src = URL.createObjectURL(st.photo); img.classList.remove("hide"); x.classList.remove("hide"); } catch (e) { toast(e.message, "err"); } this.value = ""; };
+  inp.onchange = onPick; const cam = ids.cam && $("#" + ids.cam, root); if (cam) cam.onchange = onPick;
   x.onclick = e => { e.preventDefault(); st.photo = null; img.classList.add("hide"); x.classList.add("hide"); img.removeAttribute("src"); };
   return () => x.onclick(new Event("click"));
 }
 function addPhotoModal(c, after) {
   const st = { photo: null };
-  modal(`<h2>📷 চেকের ছবি · ${esc(c.code)} · ${c.no}</h2><div class="photo-in"><label class="btn" for="p-in">${ico("cam")} ছবি তুলুন / বাছুন</label><input type="file" id="p-in" accept="image/*" hidden><img id="p-img" class="hide"><button class="btn sm ghost hide" id="p-x">✕</button></div>
+  modal(`<h2>📷 চেকের ছবি · ${esc(c.code)} · ${c.no}</h2><div class="photo-in"><label class="btn" for="p-in-c">${ico("cam")} ছবি তুলুন</label><label class="btn" for="p-in">${ico("img")} গ্যালারি</label><input type="file" id="p-in-c" accept="image/*" capture="environment" hidden><input type="file" id="p-in" accept="image/*" hidden><img id="p-img" class="hide"><button class="btn sm ghost hide" id="p-x">✕</button></div>
    <div class="row" style="margin-top:16px"><button class="btn pri" id="p-ok">${ico("save")} সেভ</button><button class="btn" id="p-c">বাতিল</button></div>`, (root, close) => {
-    photoPicker(root, st, { inp: "p-in", img: "p-img", x: "p-x" }); $("#p-c", root).onclick = close;
+    photoPicker(root, st, { inp: "p-in", cam: "p-in-c", img: "p-img", x: "p-x" }); $("#p-c", root).onclick = close;
     $("#p-ok", root).onclick = async () => {
       if (!st.photo) return toast("ছবি বাছুন", "err"); const b = $("#p-ok", root); b.disabled = true;
       try { const p = photoPath(c.id, c.code, c.no, c.date); await API.uploadPhoto(p, st.photo); await API.setPhoto(c.id, p); c.photo = p; saveCache(); close(); toast("✔ ছবি সেভ হয়েছে"); after && after(); }
@@ -1840,7 +1856,7 @@ function reminderModal(r, opts = {}, after) {
   modal(`<h2>${isNew ? "⏰ নতুন রিমাইন্ডার" : "রিমাইন্ডার এডিট"}</h2><div class="grid" style="gap:12px">
    <div><label class="f">কী মনে করাবে *</label><input class="in" id="m-t" value="${esc(r.title)}" placeholder="যেমন: পার্টির চেক জমা দিন / পাস হয়েছে কিনা দেখুন" autocomplete="off"></div>
    <div><label class="f">বিস্তারিত (পার্টি, টাকা, ব্যাংক…)</label><input class="in" id="m-n" value="${esc(r.note || "")}" autocomplete="off"></div>
-   ${canPhoto ? `<div><label class="f">চেক / কাগজের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn" for="m-ph">${ico("cam")} ছবি তুলুন / বাছুন</label><input type="file" id="m-ph" accept="image/*" hidden><img id="m-phv" class="hide" alt=""><button class="btn sm ghost hide" id="m-phx">✕</button>${r.photo ? `<span class="mut sm">ছবি আছে — নতুন দিলে বদলাবে</span>` : ""}</div></div>` : ""}
+   ${canPhoto ? `<div><label class="f">চেক / কাগজের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn" for="m-ph-c">${ico("cam")} ছবি তুলুন</label><label class="btn" for="m-ph">${ico("img")} গ্যালারি</label><input type="file" id="m-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="m-ph" accept="image/*" hidden><img id="m-phv" class="hide" alt=""><button class="btn sm ghost hide" id="m-phx">✕</button>${r.photo ? `<span class="mut sm">ছবি আছে — নতুন দিলে বদলাবে</span>` : ""}</div></div>` : ""}
    <div><label class="f">কত দিন পরে (Pick days)</label><div class="chips" id="m-pd">${PICK_DAYS.map(n => `<span class="chip" data-pd="${n}">${n} দিন</span>`).join("")}</div></div>
    <div class="row"><div><label class="f">তারিখ</label><input class="in" type="date" id="m-d" value="${d0}"></div><div><label class="f">সময়</label><input class="in" type="time" id="m-tm" value="${t0}"></div></div>
    <div class="row"><div><label class="f">পুনরাবৃত্তি</label><select class="in" id="m-r">${Object.entries(REPEATS).map(([k, l]) => `<option value="${k}" ${k === r.repeat ? "selected" : ""}>${l}</option>`).join("")}</select></div>
@@ -1848,7 +1864,7 @@ function reminderModal(r, opts = {}, after) {
    <div><label class="f">আমাদের চেকের সাথে যুক্ত করুন <span class="mut">(ঐচ্ছিক)</span></label><div><input class="in" id="m-c" placeholder="A/C বা চেক নং লিখুন" autocomplete="off"></div></div>
    <div class="row"><button class="btn pri fix" id="m-ok">${ico("save")} সেভ</button><button class="btn fix" id="m-x">বাতিল</button></div></div>`, (root, close) => {
     const g = id => $("#" + id, root);
-    if (canPhoto) photoPicker(root, st, { inp: "m-ph", img: "m-phv", x: "m-phx" });
+    if (canPhoto) photoPicker(root, st, { inp: "m-ph", cam: "m-ph-c", img: "m-phv", x: "m-phx" });
     const cs = suggest(g("m-c"), () => [...S.cheques].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 400).map(c => ({ value: `${c.code} · ${c.no}`, label: `৳ ${money0(c.amount)}`, sub: `${dmy(c.date)} · ${c.status}`, id: c.id })), () => { });
     if (chq) cs.setSilent({ value: `${chq.code} · ${chq.no}`, label: `৳ ${money0(chq.amount)}`, id: chq.id });
     $$("[data-pd]", root).forEach(c => c.onclick = () => { $$("[data-pd]", root).forEach(x => x.classList.toggle("on", x === c)); const d = new Date(); d.setDate(d.getDate() + +c.dataset.pd); g("m-d").value = iso(d); if (!g("m-tm").value || isNew) g("m-tm").value = "10:00"; });
@@ -2129,6 +2145,8 @@ Object.assign(SbAPI, {
   async dpartyUsage(id) { const { count, error } = await sb.from("dist_collections").select("id", { count: "exact", head: true }).eq("party_id", id); if (error) throw error; return count || 0; },
   async asmUsage(name) { const { count, error } = await sb.from("dist_collections").select("id", { count: "exact", head: true }).eq("asm", name); if (error) throw error; return count || 0; },
   async asms() { try { return (await fetchAll("dist_asms", "name")).map(a => ({ id: a.id, name: a.name, active: a.active !== false })); } catch (e) { if (/dist_asms|relation|schema cache/i.test(e.message || "")) return []; throw e; } },
+  async purposes() { try { return (await fetchAll("cheque_purposes", "name")).map(a => a.name); } catch (e) { if (/cheque_purposes|relation|schema cache/i.test(e.message || "")) return PURP_X; throw e; } },
+  async purposeAdd(name) { const { error } = await sb.from("cheque_purposes").insert({ name, entered_by: S.me.name }); if (error) throw error.code === "23505" ? new Error("এই খাত আগেই আছে") : /cheque_purposes|relation|schema cache/i.test(error.message || "") ? new Error("Supabase-এ schema_v6.sql-এর v6.24 অংশ run করা হয়নি") : error; },
   async asmAdd(name) { const { data, error } = await sb.from("dist_asms").insert({ name, entered_by: S.me.name }).select().single(); if (error) throw error.code === "23505" ? new Error("এই নামে ASM আগেই আছে") : error; return { id: data.id, name: data.name, active: true }; },
   async asmRename(a, to) { if (a.id) { const { error } = await sb.from("dist_asms").update({ name: to }).eq("id", a.id); if (error) throw error.code === "23505" ? new Error("এই নামে ASM আগেই আছে") : error; } await this.dpartyRenameAsm(a.name, to); },
   async asmActive(id, on) { const { error } = await sb.from("dist_asms").update({ active: on }).eq("id", id); if (error) throw error; },
@@ -2169,6 +2187,8 @@ Object.assign(DemoAPI, {
   async dpartyUsage(id) { await this.dparties(); return demoStore.dcols.filter(r => r.party_id === id).length; },
   async asmUsage(name) { await this.dparties(); return demoStore.dcols.filter(r => r.asm === name).length; },
   async asms() { await this.dparties(); if (!demoStore.dasms) { demoStore.dasms = [...new Set(demoStore.dparties.map(p => p.asm).filter(Boolean))].map(n => ({ id: crypto.randomUUID(), name: n, active: true })); this.save(); } return demoStore.dasms.map(a => ({ ...a })); },
+  async purposes() { return [...(demoStore.purposes || [])]; },
+  async purposeAdd(name) { demoStore.purposes = [...(demoStore.purposes || []), name]; this.save(); },
   async asmAdd(name) { await this.asms(); if (demoStore.dasms.some(a => norm(a.name) === norm(name))) throw new Error("এই নামে ASM আগেই আছে"); const a = { id: crypto.randomUUID(), name, active: true }; demoStore.dasms.push(a); this.save(); return { ...a }; },
   async asmRename(a, to) { await this.asms(); if (demoStore.dasms.some(x => x.id !== a.id && norm(x.name) === norm(to))) throw new Error("এই নামে ASM আগেই আছে"); const o = demoStore.dasms.find(x => x.id === a.id); if (o) o.name = to; await this.dpartyRenameAsm(a.name, to); },
   async asmActive(id, on) { await this.asms(); const o = demoStore.dasms.find(x => x.id === id); if (o) o.active = on; this.save(); },

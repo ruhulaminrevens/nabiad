@@ -211,3 +211,20 @@ create trigger audit_dasm after insert or update or delete on dist_asms for each
 insert into dist_asms (name, entered_by)
   select distinct on (lower(btrim(asm))) btrim(asm), 'Old file (Foysal)' from dist_parties where btrim(coalesce(asm, '')) <> ''
   on conflict do nothing;
+
+-- v6.24 — user-added cheque purposes (shared by all users)
+create table if not exists cheque_purposes (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  entered_by text,
+  user_id uuid default auth.uid(),
+  created_at timestamptz default now()
+);
+create unique index if not exists cheque_purposes_name_uq on cheque_purposes (lower(btrim(name)));
+alter table cheque_purposes enable row level security;
+drop policy if exists p_cpur_read on cheque_purposes;
+drop policy if exists p_cpur_ins on cheque_purposes;
+drop policy if exists p_cpur_del on cheque_purposes;
+create policy p_cpur_read on cheque_purposes for select to authenticated using (my_role() is not null);
+create policy p_cpur_ins  on cheque_purposes for insert to authenticated with check (my_role() in ('admin','staff'));
+create policy p_cpur_del  on cheque_purposes for delete to authenticated using (my_role() = 'admin');
