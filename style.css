@@ -869,3 +869,15 @@ tr.dim td{opacity:.55}
 @media (max-width:760px){
   .tw.cards tr:not(.dcr):not(.tot) td:first-child{font-weight:600}
 }
+
+/* v6.20 — desktop: entry form left, day list right */
+@media (min-width:1480px){
+  .dcx-split{display:grid;grid-template-columns:minmax(420px,5fr) minmax(0,8fr);gap:14px;align-items:start}
+  .dcx-split>.dcx-entry,.dcx-split>.dcx-list{margin-bottom:14px}
+  .dcx-split>.dcx-entry{position:sticky;top:12px}
+  .dcx-split .dcx-p,.dcx-split .dcx-b{grid-column:1/-1}
+  .dcx-split .dcx-a{grid-column:span 5} .dcx-split .dcx-c{grid-column:span 7}
+  .dcx-split .dcx-m{grid-column:span 5} .dcx-split .dcx-r{grid-column:span 7}
+  .dcx-split .dcx-et{flex-wrap:wrap;gap:4px}
+  .dcx-split .dcx-list th,.dcx-split .dcx-list td{padding-left:8px;padding-right:8px}
+}

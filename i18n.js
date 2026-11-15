@@ -237,6 +237,9 @@ const I18N = {
 };
 Object.assign(I18N, {
   // v6.19 — party record, ASM master, delete protection
+  "শুধু Enter চাপুন: পার্টি → Account → টাকা → যোগ হবে · টাকার ঘরে <b>50000+300</b> লেখা যায়": "Just press Enter: Party → Account → Amount → added · amount box accepts <b>50000+300</b>",
+  "Account খুঁজুন — DBBL-17": "Search account — DBBL-17",
+  "Account লিখুন বা বাছুন": "Type or pick an account",
   "— বাছুন —": "— Select —", "＋ নতুন ASM যোগ করুন…": "＋ Add new ASM…", "নতুন ASM-এর নাম": "New ASM name", "নতুন ASM": "New ASM", "নতুন ASM / Salesman": "New ASM / Salesman",
   "নাম লিখুন (যেমন: Rahim-ASM-Bogura)": "Enter name (e.g. Rahim-ASM-Bogura)", "নাম লিখুন": "Enter a name", "নতুন নাম": "New name", "ASM-এর নাম বদলান": "Rename ASM",
   "(বন্ধ করলে নতুন এন্ট্রির সাজেশনে আসবে না; আগের রেকর্ড যেমন আছে থাকবে)": "(if off, not suggested in new entries; earlier records stay as they are)",

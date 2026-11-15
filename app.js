@@ -2286,23 +2286,24 @@ async function vDcol(v) {
   const F = { st: "", ac: "", q: "" }; let rows = [], sel = new Set(), busy = false;
   v.innerHTML = head("দৈনিক কালেকশন", `<a class="btn" href="#/dsum">${ico("clock")} সামারি</a><a class="btn" href="#/drep">${ico("chart")} রিপোর্ট</a>`) + `
    <div class="card dcx-bar"><div class="dcx-date">${dateNav("dc", date)}</div><div class="dcx-stats" id="dc-kpi"></div></div>
-   <div class="card dcx-entry"><div class="dcx-et"><h3>${ico("plus")} নতুন এন্ট্রি</h3><span class="mut xs">Enter চাপলেই যোগ হবে · টাকার ঘরে <b>50000+300</b> লেখা যায়</span></div>
+   <div class="dcx-split">
+   <div class="card dcx-entry"><div class="dcx-et"><h3>${ico("plus")} নতুন এন্ট্রি</h3><span class="mut xs">শুধু Enter চাপুন: পার্টি → Account → টাকা → যোগ হবে · টাকার ঘরে <b>50000+300</b> লেখা যায়</span></div>
     <div class="dcx-grid">
      <div class="dcx-p"><label class="f">পার্টি *</label><div><input class="in big" id="dc-pty" autocomplete="off" placeholder="পার্টির নাম লিখুন…"></div><div class="dcx-h" id="dc-ph"></div></div>
      <div class="dcx-a"><label class="f">ASM / Salesman</label><input class="in" id="dc-a" list="dc-dl-a" autocomplete="off" placeholder="অটো বসবে"></div>
-     <div class="dcx-c"><label class="f">Account *</label><input class="in" id="dc-c" list="dc-dl-c" autocomplete="off" placeholder="DBBL-17"><div class="dcx-qa" id="dc-qa"></div></div>
+     <div class="dcx-c"><label class="f">Account *</label><div><input class="in" id="dc-c" autocomplete="off" placeholder="Account খুঁজুন — DBBL-17"></div><div class="dcx-qa" id="dc-qa"></div></div>
      <div class="dcx-m"><label class="f">টাকা *</label><input class="in big num" id="dc-m" inputmode="decimal" autocomplete="off" placeholder="0"><div class="dcx-h num" id="dc-mh"></div></div>
      <div class="dcx-r"><label class="f">মন্তব্য <span class="mut">(ঐচ্ছিক)</span></label><input class="in big" id="dc-r" autocomplete="off" placeholder="স্লিপ নং / নোট"></div>
      <div class="dcx-b"><button class="btn pri big" id="dc-add">${ico("plus")} যোগ করুন</button></div>
-    </div><div class="hint rd" id="dc-err" style="min-height:0;margin-top:8px"></div><datalist id="dc-dl-a"></datalist><datalist id="dc-dl-c"></datalist></div>
+    </div><div class="hint rd" id="dc-err" style="min-height:0;margin-top:8px"></div><datalist id="dc-dl-a"></datalist></div>
    <div class="card flush dcx-list"><div class="ch"><h3>এই তারিখের কালেকশন</h3><span class="tag" id="dc-cnt">0</span></div>
     <div class="noprint dcx-tools"><div class="chips dcx-tabs" id="dc-sc"></div>${searchBox("dc-q", "খুঁজুন — পার্টি, ASM, Account, টাকা…")}</div>
     <div class="chips dcx-acc noprint" id="dc-ac"></div>
-    <div id="dc-list"></div></div><div id="dc-selbar" class="selbar hide"></div>`;
+    <div id="dc-list"></div></div></div><div id="dc-selbar" class="selbar hide"></div>`;
   const list = $("#dc-list", v), err = m => $("#dc-err", v).textContent = m || "";
   let parties = [];
   try { parties = await dpLoad(); } catch (e) { $("#dc-list", v).innerHTML = `<div class="alert rd" style="margin:12px">${esc(dcErr(e))}</div>`; }
-  $("#dc-dl-a", v).innerHTML = dcAsms().map(a => `<option value="${esc(a)}">`).join(""); $("#dc-dl-c", v).innerHTML = dcAccounts().map(a => `<option value="${esc(a)}">`).join("");
+  $("#dc-dl-a", v).innerHTML = dcAsms().map(a => `<option value="${esc(a)}">`).join("");
   const pIn = $("#dc-pty", v), aIn = $("#dc-a", v), cIn = $("#dc-c", v), mIn = $("#dc-m", v), rIn = $("#dc-r", v);
   const byName = n => parties.find(p => norm(p.name) === norm(n));
   const geoTxt = p => [p?.district, p?.division && p.division !== p.district ? p.division : ""].filter(Boolean).join(", ");
@@ -2319,11 +2320,16 @@ async function vDcol(v) {
   cIn.addEventListener("input", () => qa());
   const fill = p => { aIn.value = p?.asm || ""; if (p?.account) cIn.value = p.account; $("#dc-ph", v).innerHTML = info(p); $$("[data-use]", $("#dc-ph", v)).forEach(b => b.onclick = () => { cIn.value = b.dataset.use; qa(); mIn.focus(); }); qa(); };
   const picker = suggest(pIn, () => parties.filter(p => p.active).map(p => ({ value: p.name, label: p.asm || "", sub: p.account || "", html: `<span class="sgn"><b>${esc(p.name)}</b><em>${esc([p.asm, p.district].filter(Boolean).join(" · "))}</em></span>` })), it => { if (it) { fill(byName(it.value)); } else { $("#dc-ph", v).innerHTML = ""; } });
-  pIn.addEventListener("picked", () => mIn.focus());
+  pIn.addEventListener("picked", () => cIn.focus());
+  const accItems = () => dcAccounts().map(c => { const a = (S.accounts || []).find(x => x.code === c); return { value: c, label: a?.holder || "", sub: a?.bank || "", html: `<span class="sgn"><b><i class="bdot" style="background:${dcBrand(c)}"></i> ${esc(c)}</b><em>${esc([a?.holder, a?.bank].filter(Boolean).join(" · "))}</em></span>` }; });
+  const cPick = suggest(cIn, accItems, it => { if (it) cIn.value = it.value; qa(); });
+  cIn.addEventListener("picked", () => mIn.focus());
+  cIn.addEventListener("keydown", e => { if (e.key === "Enter" && !e.defaultPrevented) { e.preventDefault(); if (cIn.value.trim()) mIn.focus(); else err("Account লিখুন বা বাছুন"); } });
+  aIn.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); cIn.focus(); } });
   const newBtn = () => { const t = pIn.value.trim(); $("#dc-ph", v).innerHTML = t && !picker.get() && !byName(t) ? `<a href="#" id="dc-new" class="rd">+ "${esc(t.slice(0, 30))}" নতুন পার্টি তৈরি করুন</a>` : ($("#dc-ph", v).innerHTML && picker.get() ? $("#dc-ph", v).innerHTML : ""); const a = $("#dc-new", v); if (a) a.onclick = e => { e.preventDefault(); createParty(t); }; };
   pIn.addEventListener("input", newBtn);
   mIn.addEventListener("input", () => { const n = evalAmt(mIn.value); $("#dc-mh", v).textContent = mIn.value && !isNaN(n) && /[+-]/.test(mIn.value.replace(/^[-+]/, "")) ? "= " + money0(n) : isNaN(n) ? "অংক ঠিক নেই" : ""; });
-  [mIn, rIn, cIn, aIn].forEach(x => x.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); add(); } }));
+  [mIn, rIn].forEach(x => x.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); add(); } }));
   $("#dc-add", v).onclick = add;
   function createParty(name) { dpartyModal({ name, asm: aIn.value, account: cIn.value }, saved => { if (!saved) return; parties = DPARTY; picker.set({ value: saved.name, label: saved.asm || "", sub: saved.account || "" }); fill(saved); mIn.focus(); }); }
   async function add() {
@@ -2339,7 +2345,7 @@ async function vDcol(v) {
     busy = true;
     try {
       const r = await API.dcolAdd({ date: d, party_id: party.id, party: party.name, asm: aIn.value.trim(), account, amount, remarks: rIn.value.trim() });
-      rows.push(r); toast(`✔ ${party.name} — ৳ ${money0(amount)} যোগ হয়েছে`); picker.set(null); pIn.value = ""; aIn.value = ""; cIn.value = ""; mIn.value = ""; rIn.value = ""; $("#dc-mh", v).textContent = ""; $("#dc-ph", v).innerHTML = ""; qa();
+      rows.push(r); toast(`✔ ${party.name} — ৳ ${money0(amount)} যোগ হয়েছে`); picker.set(null); cPick.set(null); pIn.value = ""; aIn.value = ""; cIn.value = ""; mIn.value = ""; rIn.value = ""; $("#dc-mh", v).textContent = ""; $("#dc-ph", v).innerHTML = ""; qa();
       DCACHE.dcol = null; draw(); pIn.focus();
     } catch (e) { err(dcErr(e)); } finally { busy = false; }
   }
