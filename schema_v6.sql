@@ -19,6 +19,9 @@ create table if not exists dist_parties (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+alter table dist_parties add column if not exists district text;
+alter table dist_parties add column if not exists division text;
+create index if not exists dist_parties_dist_ix on dist_parties (district);
 create unique index if not exists dist_parties_name_uq on dist_parties (lower(btrim(name)));
 create index if not exists dist_parties_asm_ix on dist_parties (asm);
 

@@ -2083,6 +2083,7 @@ Object.assign(DemoAPI, {
 Object.assign(ICON, {
   users: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0M16 5.2a3.2 3.2 0 0 1 0 5.6M18 14.5a6 6 0 0 1 3 5.5"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  map: '<path d="M9 4L3 6.5v13L9 17l6 3 6-2.5v-13L15 7 9 4zM9 4v13M15 7v13"/>',
   pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
   xmark: '<path d="M6 6l12 12M18 6L6 18"/>'
 });
@@ -2091,14 +2092,26 @@ const DC_EXTRA = ["Cash", "bKash", "Nagad", "Priyo Agro", "Unknown"];
 const DP_KEY = "nabiad_dparty_v1";
 const dcErr = e => /relation|does not exist|schema cache|not find|dist_/i.test(e.message || "") && !/permission|policy/i.test(e.message || "") ? "কালেকশন টেবিল নেই — Supabase-এ schema_v6.sql চালাতে হবে" : isNetErr(e) ? "ইন্টারনেট নেই" : (e.message || String(e));
 const dcRow = r => ({ id: r.id, date: r.date, party_id: r.party_id || null, party: r.party, asm: r.asm || "", account: r.account || "", amount: Number(r.amount), status: r.status || "pending", remarks: r.remarks || "", decided_by: r.decided_by || null, decided_at: r.decided_at || null, decision_note: r.decision_note || "", entered_by: r.entered_by || "", created_at: r.created_at || "" });
-const dpRow = p => ({ id: p.id, name: p.name, asm: p.asm || "", account: p.account || "", phone: p.phone || "", note: p.note || "", active: p.active !== false });
+const BD_DIV = {"Bagerhat":"Khulna","Bandarban":"Chattogram","Barguna":"Barishal","Barishal":"Barishal","Bhola":"Barishal","Bogura":"Rajshahi","Brahmanbaria":"Chattogram","Chandpur":"Chattogram","Chapai Nawabganj":"Rajshahi","Chattogram":"Chattogram","Chuadanga":"Khulna","Cox's Bazar":"Chattogram","Cumilla":"Chattogram","Dhaka":"Dhaka","Dinajpur":"Rangpur","Faridpur":"Dhaka","Feni":"Chattogram","Gaibandha":"Rangpur","Gazipur":"Dhaka","Gopalganj":"Dhaka","Habiganj":"Sylhet","Jamalpur":"Mymensingh","Jashore":"Khulna","Jhalokati":"Barishal","Jhenaidah":"Khulna","Joypurhat":"Rajshahi","Khagrachhari":"Chattogram","Khulna":"Khulna","Kishoreganj":"Dhaka","Kurigram":"Rangpur","Kushtia":"Khulna","Lakshmipur":"Chattogram","Lalmonirhat":"Rangpur","Madaripur":"Dhaka","Magura":"Khulna","Manikganj":"Dhaka","Meherpur":"Khulna","Moulvibazar":"Sylhet","Munshiganj":"Dhaka","Mymensingh":"Mymensingh","Naogaon":"Rajshahi","Narail":"Khulna","Narayanganj":"Dhaka","Narsingdi":"Dhaka","Natore":"Rajshahi","Netrakona":"Mymensingh","Nilphamari":"Rangpur","Noakhali":"Chattogram","Pabna":"Rajshahi","Panchagarh":"Rangpur","Patuakhali":"Barishal","Pirojpur":"Barishal","Rajbari":"Dhaka","Rajshahi":"Rajshahi","Rangamati":"Chattogram","Rangpur":"Rangpur","Satkhira":"Khulna","Shariatpur":"Dhaka","Sherpur":"Mymensingh","Sirajganj":"Rajshahi","Sunamganj":"Sylhet","Sylhet":"Sylhet","Tangail":"Dhaka","Thakurgaon":"Rangpur"};
+const BD_AL = {"bogra":"Bogura","comilla":"Cumilla","chittagong":"Chattogram","ctg":"Chattogram","chattagram":"Chattogram","barisal":"Barishal","jessore":"Jashore","narayangonj":"Narayanganj","ngonj":"Narayanganj","bbaria":"Brahmanbaria","coxbazar":"Cox's Bazar","nawabganj":"Chapai Nawabganj","jaipurhat":"Joypurhat","jhalokathi":"Jhalokati","maulvibazar":"Moulvibazar","netrokona":"Netrakona","panchogor":"Panchagarh","thakurgoan":"Thakurgaon","munshigonj":"Munshiganj","manikgonj":"Manikganj","narshingdi":"Narsingdi","gopalgonj":"Gopalganj","kishorgonj":"Kishoreganj","hobiganj":"Habiganj","sunamgonj":"Sunamganj","khagrachari":"Khagrachhari","laxmipur":"Lakshmipur","jenaidah":"Jhenaidah","sirajgonj":"Sirajganj"};
+const BD_DIST = Object.keys(BD_DIV).sort(), BD_DIVS = [...new Set(Object.values(BD_DIV))].sort();
+const bdKey = {}; BD_DIST.forEach(d => bdKey[d.toLowerCase().replace(/[^a-z]/g, "")] = d); Object.assign(bdKey, BD_AL);
+function bdGuess(name) {   // "Name-Upazila, District" → district (exact/alias match on the location part, last words first)
+  const parts = String(name || "").split(/\s*[-,\/()&]\s*/).slice(1).reverse();
+  for (const s of parts) { const k = s.toLowerCase().replace(/[^a-z]/g, ""); if (bdKey[k]) return bdKey[k]; }
+  for (const s of parts) for (const w of s.split(/\s+/).reverse()) { const k = w.toLowerCase().replace(/[^a-z]/g, ""); if (k.length > 2 && bdKey[k]) return bdKey[k]; }
+  return "";
+}
+const dpGeoMap = () => { const m = new Map(); (DPARTY || []).forEach(p => { m.set(p.id, p); m.set("n:" + norm(p.name), p); }); return m; };
+const dpGeoOf = (m, r) => { const p = m.get(r.party_id) || m.get("n:" + norm(r.party)); return { district: p?.district || "", division: p?.division || "" }; };
+const dpRow = p => ({ id: p.id, name: p.name, asm: p.asm || "", account: p.account || "", phone: p.phone || "", district: p.district || "", division: p.district ? (BD_DIV[p.district] || p.division || "") : "", note: p.note || "", active: p.active !== false });
 const dcDup = e => e && e.code === "23505" ? new Error("এই নামে পার্টি আগেই আছে") : e;
 const dcShort = d => d ? `${d.slice(8, 10)}-${d.slice(5, 7)}-${d.slice(2, 4)}` : "";
 
 Object.assign(SbAPI, {
   async dparties() { return (await fetchAll("dist_parties", "name")).map(dpRow); },
   async dpartySave(p) {
-    const row = { name: p.name, asm: p.asm || null, account: p.account || null, phone: p.phone || null, note: p.note || null, active: p.active !== false };
+    const row = { name: p.name, asm: p.asm || null, account: p.account || null, phone: p.phone || null, district: p.district || null, division: p.district ? (BD_DIV[p.district] || null) : null, note: p.note || null, active: p.active !== false };
     if (p.id) { const { data, error } = await sb.from("dist_parties").update(row).eq("id", p.id).select().single(); if (error) throw dcDup(error); return dpRow(data); }
     row.entered_by = S.me.name; const { data, error } = await sb.from("dist_parties").insert(row).select().single(); if (error) throw dcDup(error); return dpRow(data);
   },
@@ -2132,7 +2145,7 @@ Object.assign(DemoAPI, {
   async dpartySave(p) {
     await this.dparties(); const list = demoStore.dparties, nm = norm(p.name);
     if (list.some(x => x.id !== p.id && norm(x.name) === nm)) throw new Error("এই নামে পার্টি আগেই আছে");
-    const row = { name: p.name, asm: p.asm || "", account: p.account || "", phone: p.phone || "", note: p.note || "", active: p.active !== false };
+    const row = { name: p.name, asm: p.asm || "", account: p.account || "", phone: p.phone || "", district: p.district || "", division: p.district ? (BD_DIV[p.district] || "") : "", note: p.note || "", active: p.active !== false };
     if (p.id) { const o = list.find(x => x.id === p.id); this.aud("dist_parties", "update", "Party " + o.name, { ...o }, { ...o, ...row }); Object.assign(o, row); this.save(); return dpRow(o); }
     const n = { id: crypto.randomUUID(), ...row }; list.push(n); this.aud("dist_parties", "insert", "Party " + n.name, null, n); this.save(); return dpRow(n);
   },
@@ -2204,17 +2217,23 @@ function dpartyModal(p, after) {
    <div class="s4"><label class="f">পার্টির নাম * <span class="mut">(নাম-এলাকা, যেমন: Alam Store-Nawabagonj, Dinajpur)</span></label><input class="in" id="dp-n" autocomplete="off" value="${esc(p.name || "")}"></div>
    <div class="s2"><label class="f">ASM / Salesman</label><input class="in" id="dp-a" list="dp-dl-a" autocomplete="off" value="${esc(p.asm || "")}"></div>
    <div class="s2"><label class="f">সাধারণত যে Account-এ জমা দেয়</label><input class="in" id="dp-c" list="dp-dl-c" autocomplete="off" value="${esc(p.account || "")}"></div>
+   <div class="s2"><label class="f">জেলা <span class="mut">(নাম থেকে নিজে বসে)</span></label><input class="in" id="dp-d" list="dp-dl-d" autocomplete="off" value="${esc(p.district || "")}"></div>
+   <div class="s2"><label class="f">বিভাগ</label><input class="in" id="dp-v" readonly tabindex="-1" value="${esc(p.district ? BD_DIV[p.district] || "" : "")}"></div>
    <div class="s2"><label class="f">ফোন</label><input class="in" id="dp-p" inputmode="tel" autocomplete="off" value="${esc(p.phone || "")}"></div>
    <div class="s2"><label class="f">নোট</label><input class="in" id="dp-t" autocomplete="off" value="${esc(p.note || "")}"></div>
    ${isNew ? "" : `<div class="s4"><label class="keep"><input type="checkbox" id="dp-act" ${p.active !== false ? "checked" : ""}> সক্রিয় পার্টি <span class="mut">(বন্ধ করলে এন্ট্রির সাজেশনে আসবে না)</span></label></div>`}
-  </div>${datalist("dp-dl-a", dcAsms())}${datalist("dp-dl-c", dcAccounts())}<div class="hint rd" id="dp-err"></div>
+  </div>${datalist("dp-dl-a", dcAsms())}${datalist("dp-dl-c", dcAccounts())}${datalist("dp-dl-d", BD_DIST)}<div class="hint rd" id="dp-err"></div>
   <div class="row" style="margin-top:14px"><button class="btn pri" id="dp-ok">${ico("save")} সেভ</button><button class="btn" id="dp-x">বন্ধ</button>${!isNew && admin ? `<button class="btn dg" id="dp-del" style="margin-left:auto">${ico("trash")} মুছুন</button>` : ""}</div>`, (root, close) => {
     const err = m => $("#dp-err", root).textContent = m || ""; $("#dp-n", root).focus();
     $("#dp-x", root).onclick = close;
+    const dI = $("#dp-d", root), vI = $("#dp-v", root), syncV = () => { const d = BD_DIST.find(x => x.toLowerCase() === dI.value.trim().toLowerCase()); if (d) dI.value = d; vI.value = BD_DIV[dI.value] || ""; };
+    dI.oninput = syncV; dI.onchange = syncV;
+    $("#dp-n", root).onblur = () => { if (!dI.value.trim()) { dI.value = bdGuess($("#dp-n", root).value); syncV(); } };
     $("#dp-ok", root).onclick = async () => {
       const name = $("#dp-n", root).value.replace(/\s+/g, " ").trim(); if (name.length < 2) return err("পার্টির নাম লিখুন");
+      syncV(); const dist = dI.value.trim(); if (dist && !BD_DIV[dist]) return err("জেলার নাম লিস্ট থেকে বাছুন");
       try {
-        const saved = await API.dpartySave({ id: p.id, name, asm: $("#dp-a", root).value.trim(), account: $("#dp-c", root).value.trim(), phone: $("#dp-p", root).value.trim(), note: $("#dp-t", root).value.trim(), active: isNew ? true : $("#dp-act", root).checked });
+        const saved = await API.dpartySave({ id: p.id, name, asm: $("#dp-a", root).value.trim(), account: $("#dp-c", root).value.trim(), phone: $("#dp-p", root).value.trim(), district: dist, note: $("#dp-t", root).value.trim(), active: isNew ? true : $("#dp-act", root).checked });
         await dpLoad(true); close(); toast("✔ পার্টি সেভ হয়েছে"); after && after(saved);
       } catch (e) { err(dcErr(e)); }
     };
@@ -2380,11 +2399,13 @@ async function vDsum(v) {
     if (F.all) { dcAccounts().forEach(a => { if (!banks.some(x => x.k === a)) banks.push({ k: a, n: 0, amt: 0 }); }); dcAsms().forEach(a => { if (!asms.some(x => x.k === a)) asms.push({ k: a, n: 0, amt: 0 }); }); }
     const days = t > f ? dcGroup(rows, r => r.date).sort((a, b) => a.k.localeCompare(b.k)) : [];
     const mx = a => Math.max(1, ...a.map(x => x.amt)), others = all.filter(r => !dcStatPass(r, F.s) && r.status !== "cancelled");
+    const gm = dpGeoMap(), divs = dcGroup(rows, r => dpGeoOf(gm, r).division || "(No Division)"), dists = dcGroup(rows, r => dpGeoOf(gm, r).district || "(No District)").slice(0, 25);
     const tbl = (title, arr, nm) => `<div class="dcs-box"><div class="dcs-t">${title}</div><table class="rep-t"><thead><tr><th>${nm}</th><th class="r">Entry</th><th class="r">Amount</th></tr></thead><tbody>${arr.map(x => `<tr><td class="${nm === "Bank / Account" ? "cd" : "ho"}">${nm === "Bank / Account" ? `<i class="bdot" style="background:${dcBrand(x.k)}"></i>` : ""}${esc(x.k)}</td><td class="r num ${x.n ? "" : "z"}">${x.n || "—"}</td><td class="r num ${x.amt ? "us" : "z"}">${x.amt ? money0(x.amt) : "0"}</td></tr>`).join("") || `<tr><td colspan="3" class="z" style="text-align:center">কিছু নেই</td></tr>`}<tr class="tot"><td>TOTAL</td><td class="r num">${arr.reduce((s, x) => s + x.n, 0)}</td><td class="r num">${money0(arr.reduce((s, x) => s + x.amt, 0))}</td></tr></tbody></table></div>`;
     cur = { f, t, rows, tot, banks, asms };
     out.innerHTML = rows.length || F.all ? `<div class="rep" id="ds-in">${dcHead("Distribution Collection Summary · কালেকশন সামারি", f, t)}
       <div class="rep-kpi"><div class="k1"><span>Total ${esc(dcStatLabel(F.s).split(" ")[0])}</span><b>৳ ${money0(tot)}</b></div><div><span>Entries</span><b>${rows.length}</b></div><div><span>Parties</span><b>${new Set(rows.map(r => r.party)).size}</b></div><div class="k3"><span>Accounts · ASM</span><b>${banks.filter(b => b.amt).length} · ${asms.filter(b => b.amt).length}</b></div></div>
       <div class="dcs-two">${tbl("Per Bank", banks, "Bank / Account")}${tbl("Per Salesman / ASM", asms, "Salesman / ASM")}</div>
+      <div class="dcs-two">${tbl("Per Division", divs, "Division")}${tbl(`Per District${dists.length >= 25 ? " (Top 25)" : ""}`, dists, "District")}</div>
       ${days.length ? `<div class="dcs-box" style="margin:0 16px 12px"><div class="dcs-t">Per Day</div><table class="rep-t"><thead><tr><th>Date</th><th class="r">Entry</th><th class="r">Amount</th><th style="width:50%"></th></tr></thead><tbody>${days.map(x => `<tr><td class="cd">${dcShort(x.k)}</td><td class="r num">${x.n}</td><td class="r num us">${money0(x.amt)}</td><td><div class="dcbar"><i style="width:${(x.amt / mx(days) * 100).toFixed(1)}%"></i></div></td></tr>`).join("")}</tbody></table></div>` : ""}
       ${others.length ? `<div class="dcs-note">Note: এই তারিখে আরও ${others.length}টি এন্ট্রি (৳ ${money0(dcSum(others))}) অন্য Status-এ আছে — এখানে ধরা হয়নি।</div>` : ""}${dcFoot()}</div>` : `<div class="empty">এই সময়ে ${esc(dcStatLabel(F.s))} কোনো কালেকশন নেই</div>`;
     dcFit(v, "ds-in");
@@ -2400,11 +2421,11 @@ async function vDsum(v) {
 
 /* =================== Collection Report (screenshot / Excel) =================== */
 async function vDrep(v) {
-  const F = { p: "today", d: today(), f: addDays(today(), -6), t: today(), s: "approved", asm: "", ac: "", q: "", ca: false, cs: false, sub: true }; let cur = null, all = [];
+  const F = { p: "today", d: today(), f: addDays(today(), -6), t: today(), s: "approved", asm: "", ac: "", dv: "", ds: "", q: "", ca: false, cd: false, cs: false, sub: true }; let cur = null, all = [];
   v.innerHTML = head("কালেকশন রিপোর্ট", `<button class="btn" id="dr-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="dr-pdf">${ico("print")} PDF</button><button class="btn" id="dr-xl">${ico("dl")} Excel</button>${navigator.share ? `<button class="btn" id="dr-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
    <div class="card noprint" style="margin-bottom:14px">${dcPeriodBar("dr", F)}
-    <div class="row" style="margin-top:10px"><div><label class="f">Status</label><select class="in" id="dr-s">${dcStatOpts(F.s)}</select></div><div><label class="f">ASM</label><select class="in" id="dr-asm"><option value="">সব ASM</option></select></div><div><label class="f">Account</label><select class="in" id="dr-ac"><option value="">সব Account</option></select></div><div style="flex:2 1 200px"><label class="f">পার্টি খুঁজুন</label><input class="in" id="dr-q" type="search" autocomplete="off" placeholder="পার্টির নাম / টাকা / মন্তব্য"></div></div>
-    <div class="row" style="margin-top:8px"><label class="keep"><input type="checkbox" id="dr-ca"> ASM কলাম</label><label class="keep"><input type="checkbox" id="dr-cs"> Status কলাম</label><label class="keep"><input type="checkbox" id="dr-sub" checked> দিন অনুযায়ী সাবটোটাল</label></div></div>
+    <div class="row" style="margin-top:10px"><div><label class="f">Status</label><select class="in" id="dr-s">${dcStatOpts(F.s)}</select></div><div><label class="f">ASM</label><select class="in" id="dr-asm"><option value="">সব ASM</option></select></div><div><label class="f">Account</label><select class="in" id="dr-ac"><option value="">সব Account</option></select></div><div><label class="f">বিভাগ</label><select class="in" id="dr-dv"><option value="">সব বিভাগ</option></select></div><div><label class="f">জেলা</label><select class="in" id="dr-ds"><option value="">সব জেলা</option></select></div><div style="flex:2 1 200px"><label class="f">পার্টি খুঁজুন</label><input class="in" id="dr-q" type="search" autocomplete="off" placeholder="পার্টির নাম / টাকা / মন্তব্য"></div></div>
+    <div class="row" style="margin-top:8px"><label class="keep"><input type="checkbox" id="dr-ca"> ASM কলাম</label><label class="keep"><input type="checkbox" id="dr-cd"> জেলা কলাম</label><label class="keep"><input type="checkbox" id="dr-cs"> Status কলাম</label><label class="keep"><input type="checkbox" id="dr-sub" checked> দিন অনুযায়ী সাবটোটাল</label></div></div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="dr-out"></div></div></div>`;
   async function load() {
     const [f, t] = dcRange(F), out = $("#dr-out", v); out.innerHTML = `<div class="skel" style="height:160px"></div>`;
@@ -2412,61 +2433,76 @@ async function vDrep(v) {
     const asmSel = $("#dr-asm", v), acSel = $("#dr-ac", v), a0 = asmSel.value, c0 = acSel.value;
     asmSel.innerHTML = `<option value="">সব ASM</option>` + [...new Set(all.map(r => r.asm).filter(Boolean))].sort().map(a => `<option ${a === a0 ? "selected" : ""}>${esc(a)}</option>`).join("");
     acSel.innerHTML = `<option value="">সব Account</option>` + [...new Set(all.map(r => r.account).filter(Boolean))].sort().map(a => `<option ${a === c0 ? "selected" : ""}>${esc(a)}</option>`).join("");
-    F.asm = asmSel.value; F.ac = acSel.value; draw();
+    F.asm = asmSel.value; F.ac = acSel.value; geoSel(); draw();
+  }
+  function geoSel() {
+    const gm = dpGeoMap(), dvS = $("#dr-dv", v), dsS = $("#dr-ds", v), g = all.map(r => dpGeoOf(gm, r));
+    dvS.innerHTML = `<option value="">সব বিভাগ</option>` + [...new Set(g.map(x => x.division).filter(Boolean))].sort().map(a => `<option ${a === F.dv ? "selected" : ""}>${esc(a)}</option>`).join("");
+    const ds = [...new Set(g.filter(x => x.district && (!dvS.value || x.division === dvS.value)).map(x => x.district))].sort();
+    dsS.innerHTML = `<option value="">সব জেলা</option>` + ds.map(a => `<option ${a === F.ds ? "selected" : ""}>${esc(a)}</option>`).join("");
+    F.dv = dvS.value; F.ds = dsS.value;
   }
   function draw() {
     const [f, t] = dcRange(F), out = $("#dr-out", v), q = norm(F.q);
-    const rows = all.filter(r => dcStatPass(r, F.s) && (!F.asm || r.asm === F.asm) && (!F.ac || r.account === F.ac) && (!q || norm([r.party, r.amount, r.remarks, r.account].join(" ")).includes(q)));
+    const gm = dpGeoMap(), gOf = r => dpGeoOf(gm, r);
+    const rows = all.filter(r => dcStatPass(r, F.s) && (!F.asm || r.asm === F.asm) && (!F.ac || r.account === F.ac) && (!F.dv || gOf(r).division === F.dv) && (!F.ds || gOf(r).district === F.ds) && (!q || norm([r.party, r.amount, r.remarks, r.account].join(" ")).includes(q)));
     cur = { f, t, rows }; if (!rows.length) { out.innerHTML = `<div class="empty">এই সময়ে কোনো এন্ট্রি নেই</div>`; return; }
-    const multi = f !== t && F.sub, cols = 4 + (F.ca ? 1 : 0) + (F.cs ? 1 : 0); let n = 0, html = "", day = null, dsum = 0, dn = 0;
+    const multi = f !== t && F.sub, cols = 4 + (F.ca ? 1 : 0) + (F.cd ? 1 : 0) + (F.cs ? 1 : 0); let n = 0, html = "", day = null, dsum = 0, dn = 0;
     const flush = () => { if (multi && day) html += `<tr class="dsub"><td></td><td colspan="${cols - 2}">${dcShort(day)} — ${dn}টি</td><td class="r num">${money0(dsum)}</td>${F.cs ? "<td></td>" : ""}</tr>`; dsum = 0; dn = 0; };
-    rows.forEach(r => { if (multi && r.date !== day) { flush(); day = r.date; } n++; dsum += r.amount; dn++; html += `<tr><td class="n">${n}</td><td class="cd">${dcShort(r.date)}</td><td class="ho">${esc(r.party)}${r.remarks ? `<span class="rm"> · ${esc(r.remarks)}</span>` : ""}</td>${F.ca ? `<td class="rm">${esc(r.asm)}</td>` : ""}<td class="cd"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account)}</td><td class="r num">${money0(r.amount)}</td>${F.cs ? `<td><span class="dst ${r.status}">${DC_ST[r.status]}</span></td>` : ""}</tr>`; });
+    rows.forEach(r => { if (multi && r.date !== day) { flush(); day = r.date; } n++; dsum += r.amount; dn++; html += `<tr><td class="n">${n}</td><td class="cd">${dcShort(r.date)}</td><td class="ho">${esc(r.party)}${r.remarks ? `<span class="rm"> · ${esc(r.remarks)}</span>` : ""}</td>${F.ca ? `<td class="rm">${esc(r.asm)}</td>` : ""}${F.cd ? `<td class="rm">${esc(gOf(r).district)}</td>` : ""}<td class="cd"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account)}</td><td class="r num">${money0(r.amount)}</td>${F.cs ? `<td><span class="dst ${r.status}">${DC_ST[r.status]}</span></td>` : ""}</tr>`; });
     flush(); const tot = dcSum(rows);
-    out.innerHTML = `<div class="rep" id="dr-in">${dcHead(`Distribution Collection Report · ${esc(dcStatLabel(F.s))}${F.asm ? " · " + esc(F.asm) : ""}${F.ac ? " · " + esc(F.ac) : ""}`, f, t)}
+    out.innerHTML = `<div class="rep" id="dr-in">${dcHead(`Distribution Collection Report · ${esc(dcStatLabel(F.s))}${F.asm ? " · " + esc(F.asm) : ""}${F.ac ? " · " + esc(F.ac) : ""}${F.ds ? " · " + esc(F.ds) : F.dv ? " · " + esc(F.dv) : ""}`, f, t)}
      <div class="rep-kpi" style="grid-template-columns:repeat(3,1fr)"><div class="k1"><span>Total</span><b>৳ ${money0(tot)}</b></div><div><span>Entries</span><b>${rows.length}</b></div><div class="k3"><span>Parties</span><b>${new Set(rows.map(r => r.party)).size}</b></div></div>
-     <table class="rep-t"><thead><tr><th class="r">#</th><th>TxnDate</th><th>Party</th>${F.ca ? "<th>ASM</th>" : ""}<th>Bank</th><th class="r">Amount</th>${F.cs ? "<th>Status</th>" : ""}</tr></thead><tbody>${html}<tr class="tot"><td></td><td colspan="${cols - 2}">GRAND TOTAL</td><td class="r num">${money0(tot)}</td>${F.cs ? "<td></td>" : ""}</tr></tbody></table>${dcFoot()}</div>`;
+     <table class="rep-t"><thead><tr><th class="r">#</th><th>TxnDate</th><th>Party</th>${F.ca ? "<th>ASM</th>" : ""}${F.cd ? "<th>District</th>" : ""}<th>Bank</th><th class="r">Amount</th>${F.cs ? "<th>Status</th>" : ""}</tr></thead><tbody>${html}<tr class="tot"><td></td><td colspan="${cols - 2}">GRAND TOTAL</td><td class="r num">${money0(tot)}</td>${F.cs ? "<td></td>" : ""}</tr></tbody></table>${dcFoot()}</div>`;
     dcFit(v, "dr-in");
   }
   dcBindPeriod(v, "dr", F, load);
   $("#dr-s", v).onchange = e => { F.s = e.target.value; draw(); }; $("#dr-asm", v).onchange = e => { F.asm = e.target.value; draw(); }; $("#dr-ac", v).onchange = e => { F.ac = e.target.value; draw(); };
+  $("#dr-dv", v).onchange = e => { F.dv = e.target.value; F.ds = ""; geoSel(); draw(); }; $("#dr-ds", v).onchange = e => { F.ds = e.target.value; draw(); };
   $("#dr-q", v).oninput = e => { F.q = e.target.value; draw(); };
-  [["ca", "dr-ca"], ["cs", "dr-cs"], ["sub", "dr-sub"]].forEach(([k, id]) => $("#" + id, v).onchange = e => { F[k] = e.target.checked; draw(); });
+  [["ca", "dr-ca"], ["cd", "dr-cd"], ["cs", "dr-cs"], ["sub", "dr-sub"]].forEach(([k, id]) => $("#" + id, v).onchange = e => { F[k] = e.target.checked; draw(); });
   const nm = () => `Collection_Report_${cur ? cur.f + (cur.t !== cur.f ? "_" + cur.t : "") : today()}`;
   $("#dr-png", v).onclick = () => dcPng($("#dr-in", v), nm()); $("#dr-pdf", v).onclick = () => dcPdf($("#dr-in", v), nm());
   $("#dr-sh", v) && ($("#dr-sh", v).onclick = () => dcShare($("#dr-in", v), nm(), cur?.rows.length ? `Collection ${dcRangeLabel(cur.f, cur.t)} — ${cur.rows.length} entries · ৳ ${money0(dcSum(cur.rows))}` : ""));
-  $("#dr-xl", v).onclick = () => cur?.rows.length ? exportXlsx({ Collection: [["TxnDate", "Party", "ASM", "Bank", "Amount", "Status", "Remarks", "Entered By", "Decided By"], ...cur.rows.map(r => [dmy(r.date), r.party, r.asm, r.account, r.amount, DC_ST[r.status], r.remarks, r.entered_by, r.decided_by || ""])], "By Bank": [["Bank", "Entries", "Amount"], ...dcGroup(cur.rows, r => r.account || "(No account)").map(x => [x.k, x.n, x.amt])], "By ASM": [["ASM", "Entries", "Amount"], ...dcGroup(cur.rows, r => r.asm || "(No ASM)").map(x => [x.k, x.n, x.amt])] }, nm() + ".xlsx") : toast("ডাটা নেই", "err");
+  $("#dr-xl", v).onclick = () => cur?.rows.length ? exportXlsx({ Collection: [["TxnDate", "Party", "ASM", "District", "Division", "Bank", "Amount", "Status", "Remarks", "Entered By", "Decided By"], ...cur.rows.map(r => [dmy(r.date), r.party, r.asm, dpGeoOf(dpGeoMap(), r).district, dpGeoOf(dpGeoMap(), r).division, r.account, r.amount, DC_ST[r.status], r.remarks, r.entered_by, r.decided_by || ""])], "By Bank": [["Bank", "Entries", "Amount"], ...dcGroup(cur.rows, r => r.account || "(No account)").map(x => [x.k, x.n, x.amt])], "By ASM": [["ASM", "Entries", "Amount"], ...dcGroup(cur.rows, r => r.asm || "(No ASM)").map(x => [x.k, x.n, x.amt])], "By Division": [["Division", "Entries", "Amount"], ...dcGroup(cur.rows, r => dpGeoOf(dpGeoMap(), r).division || "(No Division)").map(x => [x.k, x.n, x.amt])], "By District": [["District", "Entries", "Amount"], ...dcGroup(cur.rows, r => dpGeoOf(dpGeoMap(), r).district || "(No District)").map(x => [x.k, x.n, x.amt])] }, nm() + ".xlsx") : toast("ডাটা নেই", "err");
   const onRs = () => dcFit(v, "dr-in"); window.addEventListener("resize", onRs);
   await load(); return () => window.removeEventListener("resize", onRs);
 }
 
 /* =================== Distribution Party (master list) =================== */
 async function vDparty(v) {
-  const admin = S.me.role === "admin", canAdd = S.me.role !== "boss"; const F = { q: "", asm: "", ac: "", act: "1", lim: 200 }; let list = [];
-  v.innerHTML = head("ডিস্ট্রিবিউশন পার্টি", `<button class="btn" id="dp-asm">${ico("users")} ASM তালিকা</button><button class="btn" id="dp-xl">${ico("dl")} Excel</button>${canAdd ? `<button class="btn pri" id="dp-new">${ico("plus")} নতুন পার্টি</button>` : ""}`) + `<div id="dp-kpi"></div>
-   <div class="card noprint" style="margin:14px 0"><div class="row"><div style="flex:2 1 240px"><label class="f">খুঁজুন</label><input class="in" id="dp-q" type="search" autocomplete="off" placeholder="পার্টি, ASM, Account, ফোন…"></div><div><label class="f">ASM</label><select class="in" id="dp-fa"></select></div><div><label class="f">Account</label><select class="in" id="dp-fc"></select></div><div><label class="f">অবস্থা</label><select class="in" id="dp-fs"><option value="1">সক্রিয়</option><option value="0">নিষ্ক্রিয়</option><option value="">সব</option></select></div></div></div>
+  const admin = S.me.role === "admin", canAdd = S.me.role !== "boss"; const F = { q: "", asm: "", dv: "", ds: "", act: "1", lim: 200 }; let list = [];
+  v.innerHTML = head("ডিস্ট্রিবিউশন পার্টি", `<button class="btn" id="dp-asm">${ico("users")} ASM তালিকা</button><button class="btn" id="dp-geo">${ico("map")} এলাকা অনুযায়ী</button><button class="btn" id="dp-xl">${ico("dl")} Excel</button>${canAdd ? `<button class="btn pri" id="dp-new">${ico("plus")} নতুন পার্টি</button>` : ""}`) + `<div id="dp-kpi"></div>
+   <div class="card noprint" style="margin:14px 0"><div class="row"><div style="flex:2 1 240px"><label class="f">খুঁজুন</label><input class="in" id="dp-q" type="search" autocomplete="off" placeholder="পার্টি, ASM, জেলা, বিভাগ…"></div><div><label class="f">ASM</label><select class="in" id="dp-fa"></select></div><div><label class="f">বিভাগ</label><select class="in" id="dp-fv"></select></div><div><label class="f">জেলা</label><select class="in" id="dp-fd"></select></div><div><label class="f">অবস্থা</label><select class="in" id="dp-fs"><option value="1">সক্রিয়</option><option value="0">নিষ্ক্রিয়</option><option value="">সব</option></select></div></div></div>
    <div class="card flush"><div class="ch"><h3>পার্টি তালিকা</h3><span class="tag" id="dp-cnt">0</span></div><div id="dp-out"></div></div>`;
   const out = $("#dp-out", v);
   try { list = await dpLoad(true); } catch (e) { out.innerHTML = `<div class="alert rd" style="margin:12px">${esc(dcErr(e))}</div>`; return; }
   function filters() {
-    const fa = $("#dp-fa", v), fc = $("#dp-fc", v), a0 = F.asm, c0 = F.ac;
+    const fa = $("#dp-fa", v), fv = $("#dp-fv", v), fd = $("#dp-fd", v), a0 = F.asm;
     fa.innerHTML = `<option value="">সব ASM</option><option value="__none" ${a0 === "__none" ? "selected" : ""}>ASM নেই</option>` + dcAsms().map(a => `<option ${a === a0 ? "selected" : ""}>${esc(a)}</option>`).join("");
-    fc.innerHTML = `<option value="">সব Account</option>` + [...new Set(list.map(p => p.account).filter(Boolean))].sort().map(a => `<option ${a === c0 ? "selected" : ""}>${esc(a)}</option>`).join("");
+    fv.innerHTML = `<option value="">সব বিভাগ</option><option value="__none" ${F.dv === "__none" ? "selected" : ""}>বিভাগ নেই</option>` + BD_DIVS.map(a => `<option ${a === F.dv ? "selected" : ""}>${esc(a)}</option>`).join("");
+    const ds = [...new Set(list.filter(p => p.district && (!F.dv || F.dv === "__none" || p.division === F.dv)).map(p => p.district))].sort(); if (F.ds && !ds.includes(F.ds) && F.ds !== "__none") F.ds = "";
+    fd.innerHTML = `<option value="">সব জেলা</option><option value="__none" ${F.ds === "__none" ? "selected" : ""}>জেলা নেই</option>` + ds.map(a => `<option ${a === F.ds ? "selected" : ""}>${esc(a)}</option>`).join("");
   }
   function draw() {
     list = DPARTY || list; const q = norm(F.q);
-    const vis = list.filter(p => (F.act === "" || (F.act === "1") === p.active) && (!F.asm || (F.asm === "__none" ? !p.asm : p.asm === F.asm)) && (!F.ac || p.account === F.ac) && (!q || norm([p.name, p.asm, p.account, p.phone, p.note].join(" ")).includes(q)));
-    $("#dp-kpi", v).innerHTML = `<div class="grid g4"><div class="kpi card k-vi"><div class="l">মোট পার্টি<span class="ki">${ico("users")}</span></div><div class="v num">${list.length}</div><div class="s">সক্রিয় ${list.filter(p => p.active).length}</div></div><div class="kpi card k-gr"><div class="l">ASM / Salesman<span class="ki">${ico("users")}</span></div><div class="v num">${dcAsms().length}</div><div class="s">জন</div></div><div class="kpi card k-am"><div class="l">ASM ঠিক করা নেই<span class="ki">${ico("flag")}</span></div><div class="v num">${list.filter(p => !p.asm).length}</div><div class="s">পার্টি</div></div><div class="kpi card"><div class="l">Account ঠিক করা নেই<span class="ki">${ico("card")}</span></div><div class="v num">${list.filter(p => !p.account).length}</div><div class="s">পার্টি</div></div></div>`;
+    const vis = list.filter(p => (F.act === "" || (F.act === "1") === p.active) && (!F.asm || (F.asm === "__none" ? !p.asm : p.asm === F.asm)) && (!F.dv || (F.dv === "__none" ? !p.division : p.division === F.dv)) && (!F.ds || (F.ds === "__none" ? !p.district : p.district === F.ds)) && (!q || norm([p.name, p.asm, p.district, p.division, p.phone, p.note].join(" ")).includes(q)));
+    $("#dp-kpi", v).innerHTML = `<div class="grid g4"><div class="kpi card k-vi"><div class="l">মোট পার্টি<span class="ki">${ico("users")}</span></div><div class="v num">${list.length}</div><div class="s">সক্রিয় ${list.filter(p => p.active).length}</div></div><div class="kpi card k-gr"><div class="l">ASM / Salesman<span class="ki">${ico("users")}</span></div><div class="v num">${dcAsms().length}</div><div class="s">জন</div></div><div class="kpi card k-am"><div class="l">ASM ঠিক করা নেই<span class="ki">${ico("flag")}</span></div><div class="v num">${list.filter(p => !p.asm).length}</div><div class="s">পার্টি</div></div><div class="kpi card"><div class="l">জেলা ঠিক করা নেই<span class="ki">${ico("flag")}</span></div><div class="v num">${list.filter(p => !p.district).length}</div><div class="s">পার্টি · ${new Set(list.map(p => p.district).filter(Boolean)).size}টি জেলায় বাকিরা</div></div></div>`;
     $("#dp-cnt", v).textContent = vis.length;
-    out.innerHTML = vis.length ? `<div class="tw cards"><table><thead><tr><th class="r">#</th><th>পার্টি</th><th>ASM / Salesman</th><th>Account</th><th>ফোন</th><th>অবস্থা</th><th class="r noprint"></th></tr></thead><tbody>${vis.slice(0, F.lim).map((p, i) => `<tr class="${p.active ? "" : "dim"}"><td class="r mut">${i + 1}</td><td><b>${esc(p.name)}</b>${p.note ? `<div class="mut xs">${esc(p.note)}</div>` : ""}</td><td>${esc(p.asm) || '<span class="am">—</span>'}</td><td>${p.account ? `<i class="bdot" style="background:${dcBrand(p.account)}"></i>${esc(p.account)}` : "—"}</td><td>${esc(p.phone)}</td><td>${p.active ? '<span class="dst approved">সক্রিয়</span>' : '<span class="dst cancelled">নিষ্ক্রিয়</span>'}</td><td class="r noprint">${admin ? `<button class="iconbtn sm" data-ed="${p.id}" title="এডিট">${ico("edit")}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${vis.length > F.lim ? `<div style="padding:12px;text-align:center"><button class="btn" id="dp-more">আরও ${Math.min(200, vis.length - F.lim)}টি দেখান (মোট ${vis.length})</button></div>` : ""}` : `<div class="empty">কোনো পার্টি পাওয়া যায়নি</div>`;
+    out.innerHTML = vis.length ? `<div class="tw cards"><table><thead><tr><th class="r">#</th><th>পার্টি</th><th>ASM / Salesman</th><th>জেলা</th><th>বিভাগ</th><th>অবস্থা</th><th class="r noprint"></th></tr></thead><tbody>${vis.slice(0, F.lim).map((p, i) => `<tr class="${p.active ? "" : "dim"}"><td class="r mut">${i + 1}</td><td><b>${esc(p.name)}</b>${p.note ? `<div class="mut xs">${esc(p.note)}</div>` : ""}</td><td>${esc(p.asm) || '<span class="am">—</span>'}</td><td>${p.district ? esc(p.district) : '<span class="am">—</span>'}</td><td>${p.division ? esc(p.division) : '<span class="am">—</span>'}</td><td>${p.active ? '<span class="dst approved">সক্রিয়</span>' : '<span class="dst cancelled">নিষ্ক্রিয়</span>'}</td><td class="r noprint">${admin ? `<button class="iconbtn sm" data-ed="${p.id}" title="এডিট">${ico("edit")}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${vis.length > F.lim ? `<div style="padding:12px;text-align:center"><button class="btn" id="dp-more">আরও ${Math.min(200, vis.length - F.lim)}টি দেখান (মোট ${vis.length})</button></div>` : ""}` : `<div class="empty">কোনো পার্টি পাওয়া যায়নি</div>`;
     labelTables(out);
     $$("[data-ed]", out).forEach(b => b.onclick = () => dpartyModal(list.find(p => p.id === b.dataset.ed), () => { filters(); draw(); }));
     const mb = $("#dp-more", out); if (mb) mb.onclick = () => { F.lim += 200; draw(); };
   }
   filters(); draw();
   $("#dp-q", v).oninput = e => { F.q = e.target.value; F.lim = 200; draw(); };
-  $("#dp-fa", v).onchange = e => { F.asm = e.target.value; F.lim = 200; draw(); }; $("#dp-fc", v).onchange = e => { F.ac = e.target.value; F.lim = 200; draw(); }; $("#dp-fs", v).onchange = e => { F.act = e.target.value; F.lim = 200; draw(); };
+  $("#dp-fa", v).onchange = e => { F.asm = e.target.value; F.lim = 200; draw(); }; $("#dp-fv", v).onchange = e => { F.dv = e.target.value; F.ds = ""; F.lim = 200; filters(); draw(); }; $("#dp-fd", v).onchange = e => { F.ds = e.target.value; F.lim = 200; draw(); }; $("#dp-fs", v).onchange = e => { F.act = e.target.value; F.lim = 200; draw(); };
   const nw = $("#dp-new", v); if (nw) nw.onclick = () => dpartyModal({}, () => { filters(); draw(); });
-  $("#dp-xl", v).onclick = () => exportXlsx({ Parties: [["Party", "ASM / Salesman", "Account", "Phone", "Note", "Active"], ...list.map(p => [p.name, p.asm, p.account, p.phone, p.note, p.active ? "Yes" : "No"])] }, `Distribution_Parties_${today()}.xlsx`);
+  $("#dp-xl", v).onclick = () => exportXlsx({ Parties: [["Party", "ASM / Salesman", "District", "Division", "Account", "Phone", "Note", "Active"], ...list.map(p => [p.name, p.asm, p.district, p.division, p.account, p.phone, p.note, p.active ? "Yes" : "No"])] }, `Distribution_Parties_${today()}.xlsx`);
+  $("#dp-geo", v).onclick = () => {
+    const dv = dcGroup(list, p => p.division || "(বিভাগ নেই)").map(x => ({ ...x, ds: dcGroup(list.filter(p => (p.division || "(বিভাগ নেই)") === x.k), p => p.district || "—") }));
+    modal(`<h2>এলাকা অনুযায়ী পার্টি</h2><div class="tw"><table><thead><tr><th>বিভাগ / জেলা</th><th class="r">পার্টি</th></tr></thead><tbody>${dv.map(x => `<tr class="dsub"><td><b>${esc(x.k)}</b></td><td class="r num"><b>${x.n}</b></td></tr>` + x.ds.map(d => `<tr><td style="padding-left:22px">${esc(d.k)}</td><td class="r num">${d.n}</td></tr>`).join("")).join("")}</tbody></table></div><div class="row" style="margin-top:14px"><button class="btn" id="gx-x">বন্ধ</button></div>`, (root, close) => { $("#gx-x", root).onclick = close; });
+  };
   $("#dp-asm", v).onclick = () => {
     const rows = dcGroup(list.filter(p => p.asm), p => p.asm).sort((a, b) => a.k.localeCompare(b.k));
     modal(`<h2>ASM / Salesman তালিকা</h2><div class="mut sm" style="margin-bottom:8px">${admin ? "নাম বদলালে ওই ASM-এর সব পার্টির ASM বদলে যাবে (আগের কালেকশন রেকর্ড আগের নামেই থাকবে)।" : ""}</div><div class="tw"><table><thead><tr><th>ASM</th><th class="r">পার্টি</th>${admin ? "<th></th>" : ""}</tr></thead><tbody>${rows.map((r, i) => `<tr><td>${esc(r.k)}</td><td class="r num">${r.n}</td>${admin ? `<td class="r"><button class="btn sm" data-rn="${i}">নাম বদলান</button></td>` : ""}</tr>`).join("")}</tbody></table></div><div class="row" style="margin-top:14px"><button class="btn" id="am-x">বন্ধ</button></div>`, (root, close) => {

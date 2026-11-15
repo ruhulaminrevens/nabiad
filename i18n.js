@@ -236,6 +236,10 @@ const I18N = {
   "A/C with Cheque": "A/C with Cheque", "ছবিসহ শেয়ার": "Share with photo", "ছবি কপি": "Copy photo", "ছবি ডাউনলোড": "Download photo", "কার্ড ছবি": "Card image", "Cheque book-এর ছবি": "Cheque book photo", "(পার্টিকে পাঠানোর জন্য)": "(to send to parties)", "ছবি ইমপোর্ট": "Import photos", "📷 ছবি নেই": "📷 No photo", "Cheque ছবি": "Cheque photo", "Cheque book ছবি ইমপোর্ট": "Import cheque book photos", "ছবি বাছুন (একাধিক)": "Choose photos (multiple)", "যাদের ছবি আছে তাদেরটাও বদলান": "Also replace existing photos", "ডুপ্লিকেট — বাদ": "Duplicate — skipped", "একাধিক মিলেছে": "Multiple matches", "অ্যাকাউন্ট মেলেনি": "No matching account", "(ছবি আছে)": "(has photo)", "আপলোড": "Upload", "হয়ে গেছে": "Done", "schema_v5.sql চালাতে হবে": "Run schema_v5.sql first", "নতুন ঘর (Routing/SWIFT/নোট/ছবি) সেভ করতে schema_v5.sql চালাতে হবে": "Run schema_v5.sql to save the new fields (Routing/SWIFT/Note/Photo)", "ছবি ডাউনলোড হয়েছে — WhatsApp-এ ছবি attach করে টেক্সট paste করুন": "Photo downloaded — attach it in WhatsApp and paste the text", "টেক্সট কপি হয়েছে": "Text copied", "ছবি কপি হয়েছে — chat-এ paste করুন": "Photo copied — paste it in the chat", "প্রথম ছবিটি কপি হয়েছে (বাকিগুলো ডাউনলোড করুন)": "First photo copied (download the rest)", "ছবি লোড হয়নি": "Photo failed to load", "অ্যাকাউন্ট এডিটে ছবি যোগ করুন": "add a photo in Edit account", "Cheque book-এর ছবি নেই": "No cheque book photo", "ফাইলের নাম": "File name", "একসাথে অনেক ছবি বাছুন": "Select many photos at once"
 };
 Object.assign(I18N, {
+  // v6.17 — district / division
+  "জেলা": "District", "বিভাগ": "Division", "সব বিভাগ": "All divisions", "সব জেলা": "All districts", "বিভাগ নেই": "No division", "জেলা নেই": "No district",
+  "জেলা কলাম": "District column", "এলাকা অনুযায়ী": "By area", "এলাকা অনুযায়ী পার্টি": "Parties by area", "বিভাগ / জেলা": "Division / District",
+  "জেলা ঠিক করা নেই": "District not set", "নাম থেকে নিজে বসে": "auto-filled from name", "জেলার নাম লিস্ট থেকে বাছুন": "Pick the district from the list",
   // v6.16 — account finder filters
   "সব ব্যাংক": "All banks", "সব হোল্ডার": "All holders",
   // v6.15 — Distribution Collection
