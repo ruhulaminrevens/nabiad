@@ -402,11 +402,11 @@ function shell() {
   const mob = (S.me.role === "boss" ? ["dash", "crep", "cashsum", "reports"] : ["dash", "entry", "closing", "cash"]).filter(k => keys.includes(k));
   const ini = (S.me.name || "?").trim().slice(0, 1).toUpperCase();
   $("#app").innerHTML = `<div class="shell">
-    <aside class="side"><div class="brand"><div class="logo">N</div><div><b>NABIAD</b><span>Cheque &amp; Bank Control</span></div></div>
+    <aside class="side"><div class="brand"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Cheque &amp; Bank Control</span></div></div>
       <nav class="nav">${nav}</nav>
       <div class="me"><div class="ava">${esc(ini)}</div><div class="who"><b>${esc(S.me.name)}</b><span class="mut">${esc(S.me.email)}</span></div><button class="iconbtn" id="logout" title="লগআউট">${ico("out")}</button></div></aside>
     <div class="mainwrap">
-      <header class="topbar"><div class="tb-brand"><div class="logo" style="width:30px;height:30px;font-size:13px">N</div>NABIAD</div><div class="crumb" id="crumb"></div><div class="sp"></div>
+      <header class="topbar"><div class="tb-brand"><div class="logo" style="width:30px;height:30px"><img src="icon.svg" alt="Nabiad"></div>NABIAD</div><div class="crumb" id="crumb"></div><div class="sp"></div>
         <button class="searchbtn" id="qs">${ico("search").replace("<svg", '<svg width="16" height="16"')}<span class="lbl">চেক / অ্যাকাউন্ট খুঁজুন…</span><kbd>Ctrl K</kbd></button>
         <button class="iconbtn bell" id="bell" title="রিমাইন্ডার ও সতর্কতা">${ico("bell")}<span class="bb"></span></button>${DEMO ? "" : `<button class="sync" id="sync"></button>`}${langToggle()}<button class="iconbtn th-ic" id="theme" title="থিম">${ico(getTheme() === "dark" ? "sun" : "moon")}</button>
         <span class="pill" style="align-self:center">${esc(S.me.role)}${DEMO ? " · demo" : ""}</span></header>
@@ -487,11 +487,11 @@ function loginView() {
   const demoBox = DEMO ? `<div class="alert am" style="margin-top:14px"><span>⚠ <b>DEMO মোড</b> — Supabase সেট করা হয়নি, ডাটা শুধু এই ব্রাউজারে থাকবে।</span></div>
     <div class="chips" style="margin-top:12px">${[["admin", "Ruhul"], ["staff", "Foysal"], ["boss", "Boss"]].map(([r, n]) => `<span class="chip" data-demo="${r}|${n}">${r} (${n})</span>`).join("")}</div>` : "";
   $("#app").innerHTML = `<div class="login"><div class="tl">${langToggle()}</div>
-    <div class="art"><div class="brand" style="padding:0"><div class="logo">N</div><div><b>NABIAD</b><span>Cheque &amp; Bank Control</span></div></div>
+    <div class="art"><div class="brand" style="padding:0"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Cheque &amp; Bank Control</span></div></div>
       <div><h1>চেক রেজিস্টার, দৈনিক ব্যাংক ক্লোজিং আর রিপোর্ট — এক জায়গায়</h1><p>প্রতিটি চেক পাতার হিসাব, মিসিং পাতা ধরা, আর Boss-এর জন্য তাৎক্ষণিক এনকোয়ারি।</p>
       <ul><li>Staff শুধু যোগ করতে পারে, বদলাতে পারে শুধু Admin</li><li>দৈনিক ক্লোজিং রিপোর্ট — ছবি, PDF, Excel, WhatsApp</li><li>মোবাইল ও কম্পিউটার দুটোতেই চলে</li></ul></div>
       <div class="sm" style="opacity:.6">© ${new Date().getFullYear()} NABIAD Group</div></div>
-    <div class="pane"><div class="card"><div class="brand" style="padding:0 0 22px"><div class="logo">N</div><div><b style="color:var(--txt)">NABIAD</b><span class="mut">Cheque &amp; Bank Control</span></div></div>
+    <div class="pane"><div class="card"><div class="brand" style="padding:0 0 22px"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b style="color:var(--txt)">NABIAD</b><span class="mut">Cheque &amp; Bank Control</span></div></div>
     <h2>লগইন করুন</h2><p class="mut">আপনার অফিস ইমেইল ও পাসওয়ার্ড দিন</p>
     ${DEMO ? "" : `<form id="lf"><label class="f">ইমেইল</label><input class="in" id="em" type="email" autocomplete="username" required>
     <label class="f" style="margin-top:14px">পাসওয়ার্ড</label><input class="in" id="pw" type="password" autocomplete="current-password" required>
@@ -868,7 +868,7 @@ async function vCrep(v) {
     const wd = new Date(date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long" }), dl = new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
     const usaN = rows.filter(r => r.total - r.block > 0).length, by = (bm[all[0]?.code] || {}).by;
     $("#crep", v).innerHTML = rows.length ? `<div class="rep" id="crep-in">
-      <div class="rep-hd"><div class="lg">N</div><div class="tt"><b>NABIAD GROUP</b><span>Daily Bank Closing Report · ব্যাংক ক্লোজিং রিপোর্ট${data.filtered ? ` · Filtered ${rows.length}/${all.length}` : ""}</span></div><div class="dt"><b>${dl}</b><span>${wd}</span></div></div>
+      <div class="rep-hd"><div class="lg"><img src="icon-192.png" alt=""></div><div class="tt"><b>NABIAD GROUP</b><span>Daily Bank Closing Report · ব্যাংক ক্লোজিং রিপোর্ট${data.filtered ? ` · Filtered ${rows.length}/${all.length}` : ""}</span></div><div class="dt"><b>${dl}</b><span>${wd}</span></div></div>
       <div class="rep-kpi"><div><span>Accounts</span><b>${rows.length}</b></div><div class="k1"><span>Total Balance</span><b>৳ ${money0(T.t)}</b></div><div class="k2"><span>Block / Lien</span><b>৳ ${money0(T.b)}</b></div><div class="k3"><span>Usable (${usaN} A/C)</span><b>৳ ${money0(T.t - T.b)}</b></div></div>
       <table class="rep-t"><thead><tr><th class="r">#</th><th>A/C Code</th><th>Account Holder</th><th class="r">Total</th><th class="r bk">Block</th><th class="r us">Usable</th><th>Remarks</th></tr></thead><tbody>
       ${rows.map(r => { const u = r.total - r.block; return `<tr><td class="n">${r.n}</td><td class="cd"><i class="bdot" style="background:${brandOf(r.a).c1}"></i>${esc(r.a.code)}</td><td class="ho">${esc(r.a.holder)}</td><td class="r num">${money0(r.total)}</td><td class="r num ${r.block ? "bk" : "z"}">${r.block ? money0(r.block) : "—"}</td><td class="r num ${u > 0 ? "us" : "z"}">${u > 0 ? money0(u) : u < 0 ? money0(u) : "0"}</td><td class="rm">${esc(r.remark)}</td></tr>`; }).join("")}
@@ -1899,7 +1899,7 @@ async function boot() {
     let mo = null;
     const start = () => { if (!location.hash && PREFS.start && PREFS.start !== "dash" && allowed().includes(PREFS.start)) location.replace("#/" + PREFS.start); shell(); route(); setTimeout(remTick, 1500); if (!mo) { let q = 0; mo = new MutationObserver(() => { if (!q) q = requestAnimationFrame(() => { q = 0; labelTables(document); }); }); mo.observe(document.body, { childList: true, subtree: true }); } };
     if (loadCache()) { start(); reload().then(() => { refreshBadges(); const k = (location.hash.match(/^#\/(\w+)/) || [])[1] || "dash"; if (["dash", "cheques", "books", "accounts"].includes(k) && !document.querySelector(".mback,.pal") && !document.activeElement?.matches("input,select,textarea")) route(); }).catch(e => { if (!isNetErr(e)) toast("রিফ্রেশ ব্যর্থ: " + (e.message || e), "err"); }); Outbox.flush(); }
-    else { $("#app").innerHTML = `<div class="boot"><div><div class="logo">N</div><div class="mut">ডাটা লোড হচ্ছে…</div></div></div>`; await reload(); start(); Outbox.flush(); }
+    else { $("#app").innerHTML = `<div class="boot"><div><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div class="mut">ডাটা লোড হচ্ছে…</div></div></div>`; await reload(); start(); Outbox.flush(); }
   } catch (e) { console.error(e); $("#app").innerHTML = `<div class="login"><div class="card"><div class="alert rd">শুরু করা যায়নি: ${esc(e.message || e)}</div><p class="mut sm">config.js এ Supabase URL ও key ঠিক আছে কি এবং schema.sql চালানো হয়েছে কি দেখুন।</p></div></div>`; }
 }
 window.addEventListener("hashchange", route);
