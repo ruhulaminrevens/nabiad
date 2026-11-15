@@ -404,7 +404,8 @@ function shell() {
   const link = k => { const r = ROUTES[k]; const n = bd[k]; return `<a href="#/${k}" data-k="${k}">${ico(r.ic)}<span>${r.t}</span>${n ? `<span class="badge">${n}</span>` : ""}</a>`; };
   let nav = "", last = "";
   keys.forEach(k => { if (ROUTES[k].sec !== last) { last = ROUTES[k].sec; if (SECS[last]) nav += `<div class="sec">${SECS[last]}</div>`; } nav += link(k); });
-  const mob = (S.me.role === "boss" ? ["dash", "crep", "cashsum", "reports"] : ["dash", "entry", "closing", "cash"]).filter(k => keys.includes(k));
+  const TABS = (S.me.role === "boss" ? [["reports", "main", "চেক"], ["crep", "bank", "ব্যাংক"], ["cashsum", "cash", "ক্যাশ"], ["dsum", "dist", "কালেকশন"]] : [["entry", "main", "চেক"], ["closing", "bank", "ব্যাংক"], ["cash", "cash", "ক্যাশ"], ["dcol", "dist", "কালেকশন"]]).filter(t => keys.includes(t[0]));
+  const mob = TABS.map(t => t[0]);
   const ini = (S.me.name || "?").trim().slice(0, 1).toUpperCase();
   $("#app").innerHTML = `<div class="shell">
     <aside class="side"><div class="brand"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Cheque &amp; Bank Control</span></div></div>
@@ -416,7 +417,7 @@ function shell() {
         <button class="iconbtn bell" id="bell" title="রিমাইন্ডার ও সতর্কতা">${ico("bell")}<span class="bb"></span></button>${DEMO ? "" : `<button class="sync" id="sync"></button>`}${langToggle()}<button class="iconbtn th-ic" id="theme" title="থিম">${ico(getTheme() === "dark" ? "sun" : "moon")}</button>
         <span class="pill" style="align-self:center">${esc(S.me.role)}${DEMO ? " · demo" : ""}</span></header>
       <main class="main"><div id="view"></div></main></div></div>
-    <nav class="mnav">${mob.map(k => `<a href="#/${k}" data-k="${k}">${ico(ROUTES[k].ic)}<span>${{ dash: "হোম", entry: "চেক", closing: "ব্যাংক", cash: "ক্যাশ", crep: "ব্যালেন্স", cashsum: "ক্যাশ", reports: "রিপোর্ট" }[k] || ROUTES[k].t.split(" ")[0]}</span>${bd[k] ? `<span class="badge">${bd[k]}</span>` : ""}</a>`).join("")}<a href="#" id="more">${ico("more")}<span>আরও</span></a></nav>`;
+    <nav class="mnav">${TABS.map(([k, sec, lab]) => `<a href="#/${k}" data-tab="${k}" data-sec="${sec}"><span class="mi">${ico(ROUTES[k].ic)}</span><span class="ml">${lab}</span>${tabBadge(sec, bd)}</a>`).join("")}<a href="#" id="more" data-sec="more"><span class="mi">${ico("more")}</span><span class="ml">আরও</span>${tabBadge("more", bd)}</a></nav>`;
   const lo = async () => { await API.logout(); try { localStorage.removeItem(CACHE_KEY); } catch { } location.hash = ""; location.reload(); };
   $("#logout").onclick = lo;
   $("#theme").onclick = () => setTheme(getTheme() === "dark" ? "light" : "dark");
@@ -426,9 +427,13 @@ function shell() {
   $("#more").onclick = e => { e.preventDefault(); openMore(keys, mob, bd, lo); };
 
 }
+const tabBadge = (sec, bd) => { const n = sec === "main" ? bd.status : sec === "more" ? (bd.books || 0) + (bd.rem || 0) : 0; return n ? `<span class="badge">${n}</span>` : ""; };
+const secOf = k => { const x = ROUTES[k]?.sec; return !x || x === "top" ? "more" : x; };
+function setTabActive(k) { $$(".mnav [data-sec]").forEach(a => a.classList.toggle("on", a.dataset.sec === secOf(k))); }
 function refreshBadges() {
   const bd = badges();
   $$("[data-k]").forEach(a => { const n = bd[a.dataset.k]; let b = $(".badge", a); if (n) { if (!b) { b = document.createElement("span"); b.className = "badge"; a.appendChild(b); } b.textContent = n; } else b && b.remove(); });
+  $$(".mnav [data-sec]").forEach(a => { const t = tabBadge(a.dataset.sec, bd); let b = $(".badge", a); if (t) { if (!b) { b = document.createElement("span"); b.className = "badge"; a.appendChild(b); } b.textContent = (t.match(/>(\d+)</) || [])[1]; } else b && b.remove(); });
 }
 /* label table cells so they can become cards on phones */
 function labelTables(root) {
@@ -442,7 +447,7 @@ async function route() {
   if (!allowed().includes(k)) k = "dash";
   CUR = k; document.body.classList.remove("print-rep");
   if (cleanup) { cleanup(); cleanup = null; }
-  $$("[data-k]").forEach(a => a.classList.toggle("on", a.dataset.k === k));
+  $$("[data-k]").forEach(a => a.classList.toggle("on", a.dataset.k === k)); setTabActive(k);
   const cr = $("#crumb"); if (cr) cr.textContent = ROUTES[k].t;
   document.title = ROUTES[k].t + " · Nabiad";
   const v = $("#view"); v.innerHTML = `<div class="card"><div class="skel" style="width:40%"></div><div class="skel" style="margin-top:12px"></div><div class="skel" style="margin-top:12px;width:70%"></div></div>`;
@@ -707,7 +712,13 @@ async function vCheques(v) {
   const pre = sessionStorage.getItem("nabiad_chq_ac"); if (pre) { sessionStorage.removeItem("nabiad_chq_ac"); F.code = pre; $("#k-c", v).value = pre; }
   bind("k-q", "q"); bind("k-f", "from"); bind("k-t", "to"); bind("k-c", "code"); bind("k-s", "status"); bind("k-u", "purpose");
   $("#k-x", v).onclick = () => exportXlsx({ Cheques: [CHQ_HEAD, ...filt().map(chqRow)] }, `Cheques_${today()}.xlsx`);
-  $("#k-p", v).onclick = () => { F.page = 0; const keep = PS; draw(); window.print(); };
+  $("#k-p", v).onclick = () => {
+    const arr = filt().sort((x, y) => x.date.localeCompare(y.date) || x.code.localeCompare(y.code)), live = arr.filter(isLive), am = accMap(); if (!arr.length) return toast("ডাটা নেই", "err");
+    const f = F.from || arr[0].date, t = F.to || arr[arr.length - 1].date, flt = [F.code, F.status, F.purpose && F.purpose.split(" (")[0], F.q && `"${esc(F.q)}"`].filter(Boolean).join(" · ");
+    printSheet(repSheet("k-sheet", "Cheque List · চেক তালিকা" + (flt ? " · " + flt : ""), f, t,
+      repKpi([[`Cheques · live`, `${live.length} <small>/ ${arr.length}</small>`, "k1"], ["Live Amount", "৳ " + money0(sumAmt(live)), "k3"], ["Pending", `${arr.filter(c => c.status === "Pending").length} · ৳ ${money0(sumAmt(arr.filter(c => c.status === "Pending")))}`, ""], ["Cleared", `${arr.filter(c => c.status === "Cleared").length} · ৳ ${money0(sumAmt(arr.filter(c => c.status === "Cleared")))}`, ""]]),
+      repOne(repBox(`Cheques (${arr.length})`, ["~Date", "~A/C · Cheque", "~Holder", "Amount", "~Purpose / Detail", "Status"], arr.map(c => `<tr><td class="cd">${dmy(c.date)}</td><td><b>${esc(c.code)}</b> #${esc(c.no)}</td><td>${esc((am[c.code] || {}).holder || "")}</td><td class="r num b">${money0(c.amount)}</td><td>${esc(c.purpose.split(" (")[0])}${c.party || c.taker || c.remarks ? `<div class="mut" style="font-size:10px">${esc([c.party, c.taker, c.remarks].filter(Boolean).join(" · "))}</div>` : ""}</td><td class="r">${esc(c.status)}</td></tr>`).join(""), `<tr class="tot"><td colspan="3">TOTAL (live)</td><td class="r num">${money0(sumAmt(live))}</td><td colspan="2"></td></tr>`))), `Cheque_List_${f}_${t}`);
+  };
   draw();
 }
 
@@ -875,15 +886,15 @@ async function vCrep(v) {
     const wd = new Date(date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long" }), dl = new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
     const usaN = rows.filter(r => r.total - r.block > 0).length, by = (bm[all[0]?.code] || {}).by;
     $("#crep", v).innerHTML = rows.length ? `<div class="rep" id="crep-in">
-      <div class="rep-hd"><div class="lg"><img src="icon-192.png" alt=""></div><div class="tt"><b>NABIAD GROUP</b><span>Daily Bank Closing Report · ব্যাংক ক্লোজিং রিপোর্ট${data.filtered ? ` · Filtered ${rows.length}/${all.length}` : ""}</span></div><div class="dt"><b>${dl}</b><span>${wd}</span></div></div>
+      ${dcHead("Daily Bank Closing Report · ব্যাংক ক্লোজিং রিপোর্ট" + (data.filtered ? ` · Filtered ${rows.length}/${all.length}` : ""), date, date)}
       <div class="rep-kpi"><div><span>Accounts</span><b>${rows.length}</b></div><div class="k1"><span>Total Balance</span><b>৳ ${money0(T.t)}</b></div><div class="k2"><span>Block / Lien</span><b>৳ ${money0(T.b)}</b></div><div class="k3"><span>Usable (${usaN} A/C)</span><b>৳ ${money0(T.t - T.b)}</b></div></div>
       <table class="rep-t"><thead><tr><th class="r">#</th><th>A/C Code</th><th>Account Holder</th><th class="r">Total</th><th class="r bk">Block</th><th class="r us">Usable</th><th>Remarks</th></tr></thead><tbody>
       ${rows.map(r => { const u = r.total - r.block; return `<tr><td class="n">${r.n}</td><td class="cd"><i class="bdot" style="background:${brandOf(r.a).c1}"></i>${esc(r.a.code)}</td><td class="ho">${esc(r.a.holder)}</td><td class="r num">${money0(r.total)}</td><td class="r num ${r.block ? "bk" : "z"}">${r.block ? money0(r.block) : "—"}</td><td class="r num ${u > 0 ? "us" : "z"}">${u > 0 ? money0(u) : u < 0 ? money0(u) : "0"}</td><td class="rm">${esc(r.remark)}</td></tr>`; }).join("")}
       <tr class="tot"><td></td><td colspan="2">GRAND TOTAL</td><td class="r num">${money0(T.t)}</td><td class="r num">${money0(T.b)}</td><td class="r num">${money0(T.t - T.b)}</td><td></td></tr></tbody></table>
-      <div class="rep-ft"><span>Generated ${new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}${by ? " · Entered by " + esc(by) : ""} · Printed by ${esc(S.me.name)}</span><span>NABIAD Cheque &amp; Bank Control</span></div></div>` : `<div class="empty">${all.length ? "খোঁজার সাথে কিছু মেলেনি" : "এই তারিখে কোনো ব্যালেন্স সেভ নেই"}</div>`;
+      ${dcFoot(by ? " · Entered by " + esc(by) : "")}</div>` : `<div class="empty">${all.length ? "খোঁজার সাথে কিছু মেলেনি" : "এই তারিখে কোনো ব্যালেন্স সেভ নেই"}</div>`;
     fitRep();
   }
-  function fitRep() { const el = $("#crep-in", v); if (!el) return; el.style.zoom = ""; const w = el.parentElement.clientWidth - 8; if (w < 1000) el.style.zoom = (w / 1000).toFixed(3); }
+  function fitRep() { const el = $("#crep-in", v); if (!el) return; el.style.zoom = ""; const w = el.parentElement.clientWidth - 8; if (w < 794) el.style.zoom = (w / 794).toFixed(3); }
   async function canvas() { const el = $("#crep-in", v); if (!el) { toast("ডাটা নেই", "err"); return null; } await loadScript("vendor/html2canvas.min.js"); const z = el.style.zoom; el.style.zoom = ""; try { return await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", width: el.offsetWidth, windowWidth: 1200 }); } finally { el.style.zoom = z; } }
   const onRs = () => fitRep(); window.addEventListener("resize", onRs);
   bindDateNav(v, "r", load); $("#r-q", v).oninput = draw;
@@ -1263,10 +1274,12 @@ let moreClose = null;
 function openMore(keys, mob, bd, lo) {
   if (moreClose) return moreClose();
   const cur = (location.hash.match(/^#\/(\w+)/) || [])[1], dark = getTheme() === "dark";
-  const groups = []; keys.filter(k => !mob.includes(k)).forEach(k => { const s = ROUTES[k].sec; let g = groups.find(x => x.s === s); if (!g) groups.push(g = { s, ks: [] }); g.ks.push(k); });
+  const groups = []; keys.filter(k => !mob.includes(k)).forEach(k => { const s = secOf(k); let g = groups.find(x => x.s === s); if (!g) groups.push(g = { s, ks: [] }); g.ks.push(k); });
+  groups.sort((a, b) => (a.s === "more" ? 0 : 1) - (b.s === "more" ? 0 : 1));
+  const MORE_ORDER = ["dash", "accounts", "books", "register", "dparty", "rem", "settings", "audit", "admin"]; const mg = groups.find(g => g.s === "more"); if (mg) mg.ks.sort((a, b) => (MORE_ORDER.indexOf(a) + 1 || 99) - (MORE_ORDER.indexOf(b) + 1 || 99));
   const el = document.createElement("div"); el.className = "sheet sheet2";
   el.innerHTML = `<div class="box"><div class="sh-hd"><div class="grab"></div><b>সব পাতা</b><button class="iconbtn sh-x" data-x="close" title="বন্ধ">✕</button></div><div class="sh-body">
-    ${groups.map(g => `<div class="sh-sec">${SECS[g.s] || "মেনু"}</div><div class="sh-grid">${g.ks.map(k => `<a href="#/${k}" class="${k === cur ? "on" : ""}"><span class="ti">${ico(ROUTES[k].ic)}${bd[k] ? `<span class="badge">${bd[k]}</span>` : ""}</span><span class="tl">${ROUTES[k].t}</span></a>`).join("")}</div>`).join("")}
+    ${groups.map(g => `<div class="sh-sec">${g.s === "more" ? "আরও" : SECS[g.s] || "মেনু"}</div><div class="sh-grid">${g.ks.map(k => `<a href="#/${k}" class="${k === cur ? "on" : ""}"><span class="ti">${ico(ROUTES[k].ic)}${bd[k] ? `<span class="badge">${bd[k]}</span>` : ""}</span><span class="tl">${k === "dash" ? "হোম" : ROUTES[k].t}</span></a>`).join("")}</div>`).join("")}
     <div class="sh-foot"><button data-x="th">${ico(dark ? "sun" : "moon")}<span>${dark ? "লাইট থিম" : "ডার্ক থিম"}</span></button><button data-x="lg">${ico("copyt")}<span>${LANG === "bn" ? "English" : "বাংলা"}</span></button><button data-x="lo" class="lo">${ico("out")}<span>লগআউট</span></button></div>
     <div class="mut xs c" style="margin-top:8px">${esc(S.me.name)} · ${esc(S.me.role)}</div></div></div>`;
   document.body.appendChild(el); document.body.classList.add("noscroll");
@@ -1578,18 +1591,18 @@ async function vDash(v) {
 /* =================== v6: bank + cheque reports =================== */
 async function vReports(v) {
   const F = { tab: sessionStorage.getItem("nabiad_rep_tab") || "bank", p: "month", from: "", to: "", holder: "" }; const holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort();
-  v.innerHTML = head("রিপোর্ট", `<button class="btn" id="p-x">${ico("dl")} Excel</button><button class="btn" id="p-p">${ico("print")} প্রিন্ট</button>`) + `
+  v.innerHTML = head("রিপোর্ট", `${repBtns("p")}<button class="btn" id="p-x">${ico("dl")} Excel</button>`) + `
    <div class="tabs noprint">${[["bank", "🏦 ব্যাংক ব্যালেন্স"], ["chq", "🧾 চেক"]].map(([k, l]) => `<span class="chip ${k === F.tab ? "on" : ""}" data-tab="${k}">${l}</span>`).join("")}</div>
    <div class="card noprint" style="margin-bottom:14px"><label class="f">সময়</label><div class="seg wrap">${[["today", "আজ"], ["week", "৭ দিন"], ["month", "এই মাস"], ["last", "গত মাস"], ["year", "এই বছর"], ["custom", "তারিখ নির্বাচন"]].map(([k, l]) => `<span class="chip ${k === F.p ? "on" : ""}" data-p="${k}">${l}</span>`).join("")}</div>
    <div class="row" style="margin-top:10px"><div class="hide" id="p-cu" style="flex:2 1 260px"><label class="f">From → To</label><div style="display:flex;gap:6px"><input class="in" type="date" id="p-f"><input class="in" type="date" id="p-t"></div></div>
-   <div style="flex:1 1 200px"><label class="f">অ্যাকাউন্ট হোল্ডার</label><select class="in" id="p-h"><option value="">সব</option>${holders.map(h => `<option>${esc(h)}</option>`).join("")}</select></div></div></div><div id="p-out"></div>`;
+   <div style="flex:1 1 200px"><label class="f">অ্যাকাউন্ট হোল্ডার</label><select class="in" id="p-h"><option value="">সব</option>${holders.map(h => `<option>${esc(h)}</option>`).join("")}</select></div></div></div><div class="card rep-wrap"><div class="rep-scroll"><div id="p-out"></div></div></div>`;
   let cur = null;
-  const tbl = (title, rows, cols, total = true, fmt = r => [r.n, money0(r.amt)]) => { const mx = Math.max(1, ...rows.map(r => Math.abs(r.amt))); const T = rows.reduce((s, r) => ({ n: s.n + (r.n || 0), a: s.a + r.amt }), { n: 0, a: 0 });
-    return `<div class="card"><h3>${title}</h3>${rows.length ? `<div class="tw"><table><thead><tr>${cols.map((c, i) => `<th class="${i ? "r" : ""}">${c}</th>`).join("")}<th style="width:26%" class="noprint"></th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.k}</td>${fmt(r).map(x => `<td class="r num">${x}</td>`).join("")}<td class="noprint"><div class="bar ${r.amt < 0 ? "neg" : ""}"><i style="width:${(Math.abs(r.amt) / mx * 100).toFixed(1)}%"></i></div></td></tr>`).join("")}${total ? `<tr class="tot"><td>মোট</td>${fmt({ n: T.n, amt: T.a }).map(x => `<td class="r num">${x}</td>`).join("")}<td class="noprint"></td></tr>` : ""}</tbody></table></div>` : `<div class="empty">ডাটা নেই</div>`}</div>`; };
+  const tbl = (title, rows, cols, total = true, fmt = r => [r.n, money0(r.amt)]) => { const T = rows.reduce((q, r) => ({ n: q.n + (r.n || 0), a: q.a + r.amt }), { n: 0, a: 0 });
+    return repBox(title, cols, rows.map(r => `<tr><td>${r.k}</td>${fmt(r).map(x => `<td class="r num">${x}</td>`).join("")}</tr>`).join(""), total && rows.length ? `<tr class="tot"><td>TOTAL</td>${fmt({ n: T.n, amt: T.a }).map(x => `<td class="r num">${x}</td>`).join("")}</tr>` : ""); };
   const range = () => { if (F.p === "custom") return [F.from || addDays(today(), -30), F.to || today()]; if (F.p === "week") return [addDays(today(), -6), today()]; return periodRange(F.p); };
   async function draw() {
     const [from, to] = range(), am = accMap(), out = $("#p-out", v); const hOk = code => !F.holder || (am[code] || {}).holder === F.holder;
-    const label = `<div class="mut sm" style="margin-bottom:10px"><b>${dmy(from)}</b> → <b>${dmy(to)}</b>${F.holder ? " · " + esc(F.holder) : ""} · <span>${daysBetween(from, to) + 1}</span> <span>দিন</span></div>`;
+    const label = "", hold = F.holder ? ` · ${esc(F.holder)}` : "";
     if (F.tab === "bank") {
       out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
       let rows; try { rows = (await cached(`br:${from}:${to}`, 120000, () => API.balancesRange(addDays(from, -10), to))).filter(r => hOk(r.code) && am[r.code]?.daily); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(isNetErr(e) ? "ইন্টারনেট নেই — ব্যাংক রিপোর্টের জন্য অনলাইন থাকতে হবে" : e.message)}</div>`; return; }
@@ -1605,15 +1618,13 @@ async function vReports(v) {
       const L = ser[ser.length - 1], To = accRows.reduce((s, r) => s + r.o, 0), mx = ser.reduce((a, b) => b.t > a.t ? b : a), mn = ser.reduce((a, b) => b.t < a.t ? b : a);
       const movers = [...accRows].filter(r => Math.abs(r.ch) >= 1).sort((a, b) => Math.abs(b.ch) - Math.abs(a.ch)).slice(0, 12);
       cur = { kind: "bank", from, to, ser, accRows, byBank, byHolder };
-      out.innerHTML = label + `<div class="grid g4">
-        <div class="kpi card k-vi"><div class="l">ক্লোজিং ব্যালেন্স<span class="ki">${ico("bank")}</span></div><div class="v num">৳ ${money0(L.t)}</div><div class="s">${dmy(lastD)} · ${L.n} A/C</div></div>
-        <div class="kpi card ${L.t - To >= 0 ? "k-gr" : "k-rd"}"><div class="l">এই সময়ে পরিবর্তন<span class="ki">${ico("chart")}</span></div><div class="v num">${L.t - To >= 0 ? "+" : "−"}${money0(Math.abs(L.t - To))}</div><div class="s">শুরু ${money0(To)} (${dmy(openD)})</div></div>
-        <div class="kpi card k-gr"><div class="l">Usable<span class="ki">${ico("wallet")}</span></div><div class="v num">৳ ${money0(L.t - L.b)}</div><div class="s">Block ${money0(L.b)}</div></div>
-        <div class="kpi card k-am"><div class="l">সর্বোচ্চ / সর্বনিম্ন<span class="ki">${ico("clock")}</span></div><div class="v num" style="font-size:18px">${money0(mx.t)}</div><div class="s">${dmy(mx.date)} · সর্বনিম্ন ${money0(mn.t)} (${dmy(mn.date)})</div></div></div>
-       <div class="card" style="margin-top:14px"><div class="ch" style="padding:0 0 8px"><h3>দৈনিক মোট ব্যালেন্স</h3><span class="mut sm">${ser.length} দিন</span></div><div class="dual">${spark(ser.map(x => x.t), "#6366f1", 110)}${spark(ser.map(x => x.t - x.b), "#10b981", 60)}</div><div class="lgd"><span><i style="background:#6366f1"></i>মোট</span><span><i style="background:#10b981"></i>Usable</span></div></div>
-       <div class="grid g2" style="margin-top:14px">${tbl("ব্যাংক অনুযায়ী (ক্লোজিং)", byBank.map(r => ({ ...r, k: esc(r.k) })), ["ব্যাংক", "A/C", "ব্যালেন্স"])}${tbl("হোল্ডার অনুযায়ী (ক্লোজিং)", byHolder.map(r => ({ ...r, k: esc(r.k) })), ["হোল্ডার", "A/C", "ব্যালেন্স"])}</div>
-       <div style="margin-top:14px">${tbl("সবচেয়ে বেশি পরিবর্তন", movers.map(r => ({ k: `<b>${esc(r.c)}</b> <span class="mut sm">${esc(r.a?.holder || "")}</span>`, n: money0(r.o), amt: r.ch, cl: r.cl })), ["অ্যাকাউন্ট", "শুরু", "শেষ", "পরিবর্তন"], false, r => [r.n, money0(r.cl), `<b class="${r.amt >= 0 ? "gr" : "rd"}">${r.amt >= 0 ? "+" : "−"}${money0(Math.abs(r.amt))}</b>`])}</div>
-       <div style="margin-top:14px">${tbl("সব অ্যাকাউন্ট", accRows.map(r => ({ k: `<i class="bdot" style="background:${brandOf(r.a).c1}"></i><b>${esc(r.c)}</b> <span class="mut sm">${esc(r.a?.holder || "")}</span>`, n: money0(r.o), amt: r.cl, ch: r.ch, bl: r.bl })), ["অ্যাকাউন্ট", "শুরু", "ক্লোজিং", "Block", "পরিবর্তন"], false, r => [r.n, money0(r.amt), r.bl ? money0(r.bl) : "—", `<span class="${r.ch >= 0 ? "gr" : "rd"}">${Math.abs(r.ch) < 1 ? "—" : (r.ch >= 0 ? "+" : "−") + money0(Math.abs(r.ch))}</span>`])}</div>`;
+      out.innerHTML = repSheet("p-in", "Bank Balance Report · ব্যাংক ব্যালেন্স রিপোর্ট" + hold, from, to,
+        repKpi([[`Closing Balance · ${dmy(lastD)}`, "৳ " + money0(L.t), "k1"], [`Change since ${dmy(openD)}`, (L.t - To >= 0 ? "+" : "−") + money0(Math.abs(L.t - To)), L.t - To >= 0 ? "k3" : "k2"], [`Usable · Block ${money0(L.b)}`, "৳ " + money0(L.t - L.b), "k3"], [`Highest · Lowest ${money0(mn.t)}`, "৳ " + money0(mx.t), ""]]),
+        repOne(`<div class="dcs-t">Daily Total Balance (${ser.length} days)</div>${repLine([{ v: ser.map(x => x.t), c: "#6366f1", n: "Total" }, { v: ser.map(x => x.t - x.b), c: "#10b981", n: "Usable" }])}`) +
+        repTwo(tbl("By Bank (closing)", byBank.map(r => ({ ...r, k: esc(r.k) })), ["Bank", "A/C", "Balance"]), tbl("By Holder (closing)", byHolder.map(r => ({ ...r, k: esc(r.k) })), ["Holder", "A/C", "Balance"])) +
+        repOne(tbl("Biggest Movers", movers.map(r => ({ k: `<b>${esc(r.c)}</b> <span class="mut">${esc(r.a?.holder || "")}</span>`, n: money0(r.o), amt: r.ch, cl: r.cl })), ["Account", "Opening", "Closing", "Change"], false, r => [r.n, money0(r.cl), `<b class="${r.amt >= 0 ? "gr" : "rd"}">${r.amt >= 0 ? "+" : "−"}${money0(Math.abs(r.amt))}</b>`])) +
+        repOne(tbl("All Accounts", accRows.map(r => ({ k: `<i class="bdot" style="background:${brandOf(r.a).c1}"></i><b>${esc(r.c)}</b> <span class="mut">${esc(r.a?.holder || "")}</span>`, n: money0(r.o), amt: r.cl, ch: r.ch, bl: r.bl })), ["Account", "Opening", "Closing", "Block", "Change"], false, r => [r.n, money0(r.amt), r.bl ? money0(r.bl) : "—", `<span class="${r.ch >= 0 ? "gr" : "rd"}">${Math.abs(r.ch) < 1 ? "—" : (r.ch >= 0 ? "+" : "−") + money0(Math.abs(r.ch))}</span>`])));
+      dcFit(v, "p-in");
       return;
     }
     const all = S.cheques.filter(c => c.date >= from && c.date <= to && hOk(c.code)); const live = all.filter(isLive), by = s => all.filter(c => c.status === s);
@@ -1621,19 +1632,18 @@ async function vReports(v) {
     const T = { pur: group(live, c => c.purpose.split(" (")[0]).sort((a, b) => b.amt - a.amt), tak: group(live.filter(c => c.taker), c => c.taker).sort((a, b) => b.amt - a.amt), st: group(all, c => c.status).sort((a, b) => b.amt - a.amt), bank: group(live, c => (am[c.code] || {}).bank).sort((a, b) => b.amt - a.amt), acc: group(live, c => `${c.code} <span class="mut sm">${esc((am[c.code] || {}).holder || "")}</span>`).sort((a, b) => b.amt - a.amt), day: group(live, c => c.date).sort((a, b) => a.k.localeCompare(b.k)).map(r => ({ ...r, k: dmy(r.k) })), mon: monRows };
     cur = { kind: "chq", from, to, all, live, T };
     if (!all.length) { out.innerHTML = label + `<div class="card empty">এই সময়ে কোনো চেক এন্ট্রি নেই।<div class="mut sm" style="margin-top:6px">ডাটাবেসে মোট <b>${S.cheques.length}</b>টি চেক আছে। চেক এন্ট্রি করলে এখানে খাত, ব্যাংক, অ্যাকাউন্ট আর দিন অনুযায়ী হিসাব আসবে।</div>${S.me.role !== "boss" ? `<div style="margin-top:12px"><a class="btn pri sm" href="#/entry">${ico("plus")} চেক এন্ট্রি</a></div>` : ""}</div>`; return; }
-    out.innerHTML = label + `<div class="grid g4"><div class="kpi card"><div class="l">মোট চেক (কার্যকর)<span class="ki">${ico("list")}</span></div><div class="v num">${live.length}</div><div class="s num">৳ ${money0(sumAmt(live))}</div></div>
-      <div class="kpi card k-gr"><div class="l">Cleared<span class="ki">${ico("flag")}</span></div><div class="v num gr">${by("Cleared").length}</div><div class="s num">৳ ${money0(sumAmt(by("Cleared")))}</div></div>
-      <div class="kpi card k-am"><div class="l">Pending<span class="ki">${ico("clock")}</span></div><div class="v num am">${by("Pending").length}</div><div class="s num">৳ ${money0(sumAmt(by("Pending")))}</div></div>
-      <div class="kpi card k-rd"><div class="l">Bounced / বাতিল<span class="ki">${ico("flag")}</span></div><div class="v num rd">${by("Bounced").length} / ${by("Cancelled").length}</div><div class="s num">৳ ${money0(sumAmt(by("Bounced")))}</div></div></div>
-     <div class="grid g2" style="margin-top:14px">${tbl("খাত অনুযায়ী", T.pur, ["খাত", "চেক", "টাকা"])}${tbl("কে তুলেছে (ক্যাশ)", T.tak, ["নাম", "চেক", "টাকা"])}${tbl("স্ট্যাটাস", T.st, ["স্ট্যাটাস", "চেক", "টাকা"])}${tbl("ব্যাংক অনুযায়ী", T.bank, ["ব্যাংক", "চেক", "টাকা"])}</div>
-     <div style="margin-top:14px">${tbl("অ্যাকাউন্ট অনুযায়ী", T.acc, ["অ্যাকাউন্ট", "চেক", "টাকা"])}</div>
-     <div class="grid g2" style="margin-top:14px">${daysBetween(from, to) <= 62 ? tbl("দিন অনুযায়ী", T.day, ["তারিখ", "চেক", "টাকা"]) : ""}${tbl("মাস অনুযায়ী", T.mon, ["মাস", "চেক", "টাকা"])}</div>`;
+    out.innerHTML = repSheet("p-in", "Cheque Report · চেক রিপোর্ট" + hold, from, to,
+      repKpi([[`Live Cheques · ৳ ${money0(sumAmt(live))}`, live.length, "k1"], [`Cleared · ৳ ${money0(sumAmt(by("Cleared")))}`, by("Cleared").length, "k3"], [`Pending · ৳ ${money0(sumAmt(by("Pending")))}`, by("Pending").length, ""], [`Bounced / Cancelled · ৳ ${money0(sumAmt(by("Bounced")))}`, `${by("Bounced").length} / ${by("Cancelled").length}`, "k2"]]),
+      repTwo(tbl("By Purpose", T.pur, ["Purpose", "Cheque", "Amount"]), tbl("Cash Taken By", T.tak, ["Name", "Cheque", "Amount"])) +
+      repTwo(tbl("By Status", T.st, ["Status", "Cheque", "Amount"]), tbl("By Bank", T.bank, ["Bank", "Cheque", "Amount"])) +
+      repOne(tbl("By Account", T.acc, ["Account", "Cheque", "Amount"])) +
+      repTwo(daysBetween(from, to) <= 62 ? tbl("By Day", T.day, ["Date", "Cheque", "Amount"]) : "", tbl("By Month", T.mon, ["Month", "Cheque", "Amount"])));
+    dcFit(v, "p-in");
   }
   $$(".chip[data-tab]", v).forEach(c => c.onclick = () => { F.tab = c.dataset.tab; sessionStorage.setItem("nabiad_rep_tab", F.tab); $$(".chip[data-tab]", v).forEach(x => x.classList.toggle("on", x === c)); draw(); });
   $$(".chip[data-p]", v).forEach(c => c.onclick = () => { F.p = c.dataset.p; $$(".chip[data-p]", v).forEach(x => x.classList.toggle("on", x === c)); $("#p-cu", v).classList.toggle("hide", F.p !== "custom"); if (F.p === "custom" && !F.from) { F.from = addDays(today(), -30); F.to = today(); $("#p-f", v).value = F.from; $("#p-t", v).value = F.to; } draw(); });
   ["p-f", "p-t"].forEach(id => $("#" + id, v).onchange = () => { F.from = $("#p-f", v).value; F.to = $("#p-t", v).value; if (F.from && F.to && F.from > F.to) return toast("From তারিখ To-এর পরে হতে পারে না", "err"); draw(); });
   $("#p-h", v).onchange = e => { F.holder = e.target.value; draw(); };
-  $("#p-p", v).onclick = () => window.print();
   $("#p-x", v).onclick = () => {
     if (!cur) return toast("ডাটা নেই", "err"); const strip = s => String(s).replace(/<[^>]+>/g, "").trim();
     if (cur.kind === "bank") return exportXlsx({ Daily: [["Date", "Accounts", "Total", "Block", "Usable"], ...cur.ser.map(x => [dmy(x.date), x.n, x.t, x.b, x.t - x.b])], Accounts: [["Code", "Holder", "Bank", "Opening", "Closing", "Block", "Change"], ...cur.accRows.map(r => [r.c, r.a?.holder || "", r.a?.bank || "", r.o, r.cl, r.bl, r.ch])], "By Bank": [["Bank", "A/C", "Closing", "Block"], ...cur.byBank.map(r => [r.k, r.n, r.amt, r.bl])], "By Holder": [["Holder", "A/C", "Closing", "Block"], ...cur.byHolder.map(r => [r.k, r.n, r.amt, r.bl])] }, `Bank_Report_${cur.from}_${cur.to}.xlsx`);
@@ -1641,6 +1651,7 @@ async function vReports(v) {
     exportXlsx({ Summary: [["Period", `${cur.from} → ${cur.to}`], ["Holder", F.holder || "All"], [], ["Live cheques", cur.live.length, sumAmt(cur.live)]], "By Purpose": sh(cur.T.pur, ["Purpose", "Count", "Amount"]), "By Cash Taker": sh(cur.T.tak, ["Name", "Count", "Amount"]), "By Status": sh(cur.T.st, ["Status", "Count", "Amount"]), "By Bank": sh(cur.T.bank, ["Bank", "Count", "Amount"]), "By Account": sh(cur.T.acc, ["Account", "Count", "Amount"]), "By Day": sh(cur.T.day, ["Date", "Count", "Amount"]), "By Month": sh(cur.T.mon, ["Month", "Count", "Amount"]), Details: [CHQ_HEAD, ...[...cur.all].sort((a, b) => a.date.localeCompare(b.date)).map(chqRow)] }, `Cheque_Report_${today()}.xlsx`);
   };
   await draw();
+  return repBind(v, "p", "p-in", () => `${cur?.kind === "chq" ? "Cheque" : "Bank"}_Report_${cur ? cur.from + "_" + cur.to : today()}`, () => cur ? `${cur.kind === "chq" ? "Cheque" : "Bank balance"} report ${dmy(cur.from)} → ${dmy(cur.to)}` : "");
 }
 
 /* =================== v6: CASH — daily record =================== */
@@ -1742,7 +1753,7 @@ function bindPeriod(v, id, F, draw) {
 const cashErr = e => /relation|does not exist|schema cache|not find/i.test(e.message || "") ? "ক্যাশ টেবিল নেই — Supabase-এ schema_v3.sql চালাতে হবে" : isNetErr(e) ? "ইন্টারনেট নেই" : (e.message || String(e));
 async function vCashSum(v) {
   const F = { p: "30" };
-  v.innerHTML = head("ক্যাশ সামারি ও ইতিহাস", `<button class="btn" id="cm-x">${ico("dl")} Excel</button>${S.me.role !== "boss" ? `<a class="btn pri" href="#/cash">${ico("plus")} আজকের রেকর্ড</a>` : ""}`) + `<div class="card noprint" style="margin-bottom:14px">${periodBar("cm", F.p)}</div><div id="cm-out"></div>`;
+  v.innerHTML = head("ক্যাশ সামারি ও ইতিহাস", `${repBtns("cm")}<button class="btn" id="cm-x">${ico("dl")} Excel</button>${S.me.role !== "boss" ? `<a class="btn pri" href="#/cash">${ico("plus")} আজকের রেকর্ড</a>` : ""}`) + `<div class="card noprint" style="margin-bottom:14px">${periodBar("cm", F.p)}</div><div class="card rep-wrap"><div class="rep-scroll"><div id="cm-out"></div></div></div>`;
   let rows = [];
   async function draw() {
     const [f, t] = cashPeriod(F.p, F.f, F.t), out = $("#cm-out", v); out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
@@ -1750,19 +1761,16 @@ async function vCashSum(v) {
     const fin = rows.filter(r => r.status === "final"), R = fin.reduce((s, r) => s + (+r.total_receipt || 0), 0), P = fin.reduce((s, r) => s + (+r.total_payment || 0), 0), last = fin[fin.length - 1], first = fin[0];
     let miss = 0; for (let d = f; d <= (t > today() ? today() : t); d = addDays(d, 1)) if (!isFri(d) && !rows.some(r => r.date === d)) miss++;
     const drafts = rows.filter(r => r.status !== "final");
-    out.innerHTML = `<div class="mut sm" style="margin-bottom:10px"><b>${dmy(f)}</b> → <b>${dmy(t)}</b> · ${fin.length} দিনের ফাইনাল রেকর্ড${drafts.length ? ` · <span class="am">${drafts.length}টি ড্রাফট</span>` : ""}${miss ? ` · <span class="rd">${miss} কর্মদিবসের রেকর্ড নেই</span>` : ""}</div>
-     <div class="grid g4"><div class="kpi card k-gr"><div class="l">মোট Receipt<span class="ki">${ico("dl")}</span></div><div class="v num">৳ ${money0(R)}</div><div class="s">দৈনিক গড় ${money0(fin.length ? R / fin.length : 0)}</div></div>
-      <div class="kpi card k-rd"><div class="l">মোট Payment<span class="ki">${ico("out")}</span></div><div class="v num">৳ ${money0(P)}</div><div class="s">দৈনিক গড় ${money0(fin.length ? P / fin.length : 0)}</div></div>
-      <div class="kpi card ${R - P >= 0 ? "k-vi" : "k-am"}"><div class="l">নিট (Receipt − Payment)<span class="ki">${ico("chart")}</span></div><div class="v num">${R - P >= 0 ? "+" : "−"}${money0(Math.abs(R - P))}</div><div class="s">${first ? `Opening ${money0(+first.opening_cash + +first.opening_bank)}` : "—"}</div></div>
-      <div class="kpi card k-cy"><div class="l">সর্বশেষ Closing<span class="ki">${ico("wallet")}</span></div><div class="v num">৳ ${money0(last?.closing)}</div><div class="s">${last ? `${dmy(last.date)} · হাতে ${money0(last.cash_in_hand)}` : "রেকর্ড নেই"}</div></div></div>
-     <div class="grid g2" style="margin-top:14px"><div class="card"><div class="ch" style="padding:0 0 8px"><h3>দৈনিক Receipt বনাম Payment</h3></div>${bars2(fin.slice(-45).map(r => ({ l: dmy(r.date), a: +r.total_receipt || 0, b: +r.total_payment || 0 })), 110)}<div class="lgd"><span><i style="background:#10b981"></i>Receipt</span><span><i style="background:#f43f5e"></i>Payment</span></div></div>
-      <div class="card"><div class="ch" style="padding:0 0 8px"><h3>Closing ও হাতে নগদ</h3></div><div class="dual">${spark(fin.map(r => +r.closing || 0), "#6366f1", 100)}${spark(fin.map(r => +r.cash_in_hand || 0), "#f59e0b", 50)}</div><div class="lgd"><span><i style="background:#6366f1"></i>Closing</span><span><i style="background:#f59e0b"></i>Cash in hand</span></div></div></div>
-     <div class="card flush" style="margin-top:14px"><div class="ch"><h3>দৈনিক ইতিহাস</h3><span class="tag">${rows.length}</span></div>${rows.length ? `<div class="tw cards"><table><thead><tr><th>তারিখ</th><th class="r">Opening</th><th class="r">Receipt</th><th class="r">Payment</th><th class="r">Closing</th><th class="r">Cash in hand</th><th class="r">Bank</th><th>অবস্থা</th><th>কে</th></tr></thead><tbody>${[...rows].reverse().map(r => `<tr data-d="${r.date}" style="cursor:pointer"><td><b>${dmy(r.date)}</b> <span class="mut xs">${new Date(r.date + "T00:00").toLocaleDateString("en-GB", { weekday: "short" })}</span></td><td class="r num">${money0(+r.opening_cash + +r.opening_bank)}</td><td class="r num gr">${money0(r.total_receipt)}</td><td class="r num rd">${money0(r.total_payment)}</td><td class="r num b">${money0(r.closing)}</td><td class="r num">${r.cash_in_hand == null ? "—" : money0(r.cash_in_hand)}</td><td class="r num">${r.cash_in_hand == null ? "—" : money0(r.closing - r.cash_in_hand)}</td><td>${r.status === "final" ? `<span class="tag au-insert">ফাইনাল</span>` : `<span class="tag au-update">ড্রাফট</span>`}</td><td class="mut sm">${esc(r.entered_by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">এই সময়ে কোনো ক্যাশ রেকর্ড নেই${S.me.role !== "boss" ? `<div style="margin-top:10px"><a class="btn pri sm" href="#/cash">${ico("plus")} ক্যাশ রেকর্ড শুরু করুন</a></div>` : ""}</div>`}</div>`;
-    $$("tr[data-d]", out).forEach(r => r.onclick = () => { if (S.me.role === "boss") return cashView(r.dataset.d); sessionStorage.setItem("nabiad_cash_date", r.dataset.d); location.hash = "#/cash"; });
+    const note = [drafts.length ? `${drafts.length} Draft record` : "", miss ? `${miss} working day(s) without a record` : ""].filter(Boolean).join(" · ");
+    out.innerHTML = repSheet("cm-in", "Cash Summary · ক্যাশ সামারি", f, t,
+      repKpi([[`Total Receipt · avg ${money0(fin.length ? R / fin.length : 0)}/day`, "৳ " + money0(R), "k3"], [`Total Payment · avg ${money0(fin.length ? P / fin.length : 0)}/day`, "৳ " + money0(P), "k2"], [`Net · ${fin.length} final days`, (R - P >= 0 ? "+" : "−") + money0(Math.abs(R - P)), "k1"], [last ? `Last Closing · ${dmy(last.date)}` : "Last Closing", "৳ " + money0(last?.closing), ""]]),
+      repTwo(`<div class="dcs-box"><div class="dcs-t">Daily Receipt vs Payment</div>${repLine([{ v: fin.map(r => +r.total_receipt || 0), c: "#10b981", n: "Receipt" }, { v: fin.map(r => +r.total_payment || 0), c: "#f43f5e", n: "Payment" }], 80)}</div>`, `<div class="dcs-box"><div class="dcs-t">Closing &amp; Cash in Hand</div>${repLine([{ v: fin.map(r => +r.closing || 0), c: "#6366f1", n: "Closing" }, { v: fin.map(r => +r.cash_in_hand || 0), c: "#f59e0b", n: "Cash in hand" }], 80)}</div>`) +
+      repOne(repBox(`Daily History (${rows.length})`, ["Date", "Opening", "Receipt", "Payment", "Closing", "Cash in hand", "Bank", "Status"], [...rows].reverse().map(r => `<tr><td class="cd">${dmy(r.date)} <span class="mut">${new Date(r.date + "T00:00").toLocaleDateString("en-GB", { weekday: "short" })}</span></td><td class="r num">${money0(+r.opening_cash + +r.opening_bank)}</td><td class="r num gr">${money0(r.total_receipt)}</td><td class="r num rd">${money0(r.total_payment)}</td><td class="r num b">${money0(r.closing)}</td><td class="r num">${r.cash_in_hand == null ? "—" : money0(r.cash_in_hand)}</td><td class="r num">${r.cash_in_hand == null ? "—" : money0(r.closing - r.cash_in_hand)}</td><td class="r">${r.status === "final" ? "Final" : "Draft"}</td></tr>`).join(""))), note);
+    dcFit(v, "cm-in");
   }
-  bindPeriod(v, "cm", F, draw);
+  bindPeriod(v, "cm", F, draw); const unb = repBind(v, "cm", "cm-in", () => `Cash_Summary_${cashPeriod(F.p, F.f, F.t).join("_")}`, () => { const [a, b] = cashPeriod(F.p, F.f, F.t); return `Cash summary ${dmy(a)} → ${dmy(b)}`; });
   $("#cm-x", v).onclick = () => rows.length ? exportXlsx({ Daily: [["Date", "Opening Cash", "Opening Bank", "Receipt", "Payment", "Closing", "Cash in hand", "Bank", "Status", "By", "Remarks"], ...rows.map(r => [dmy(r.date), +r.opening_cash, +r.opening_bank, +r.total_receipt, +r.total_payment, +r.closing, r.cash_in_hand == null ? "" : +r.cash_in_hand, r.cash_in_hand == null ? "" : r.closing - r.cash_in_hand, r.status, r.entered_by || "", r.remarks || ""])] }, `Cash_Summary_${today()}.xlsx`) : toast("ডাটা নেই", "err");
-  await draw();
+  await draw(); return unb;
 }
 /* read-only view of one day (used by Boss, who cannot open the entry page) */
 async function cashView(d) {
@@ -1774,7 +1782,7 @@ async function cashView(d) {
 /* =================== v6: CASH — reports (category breakdown) =================== */
 async function vCashRep(v) {
   const F = { p: "month" };
-  v.innerHTML = head("ক্যাশ রিপোর্ট", `<button class="btn" id="cr-x">${ico("dl")} Excel</button><button class="btn" id="cr-p">${ico("print")} প্রিন্ট</button>`) + `<div class="card noprint" style="margin-bottom:14px">${periodBar("cr", F.p)}</div><div id="cr-out"></div>`;
+  v.innerHTML = head("ক্যাশ রিপোর্ট", `${repBtns("cr")}<button class="btn" id="cr-x">${ico("dl")} Excel</button>`) + `<div class="card noprint" style="margin-bottom:14px">${periodBar("cr", F.p)}</div><div class="card rep-wrap"><div class="rep-scroll"><div id="cr-out"></div></div></div>`;
   let cur = null;
   async function draw() {
     const [f, t] = cashPeriod(F.p, F.f, F.t), out = $("#cr-out", v); out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
@@ -1782,18 +1790,19 @@ async function vCashRep(v) {
     if (!rows.length) { out.innerHTML = `<div class="card empty">এই সময়ে কোনো ফাইনাল ক্যাশ রেকর্ড নেই</div>`; cur = null; return; }
     const cat = k => rows.reduce((s, r) => s + (+r.items?.[k]?.a || 0), 0), days = k => rows.filter(r => +r.items?.[k]?.a).length;
     const R = rows.reduce((s, r) => s + +r.total_receipt, 0), P = rows.reduce((s, r) => s + +r.total_payment, 0);
-    const block = (t, title, tot, cls) => { const mx = Math.max(1, ...CASH_KEYS(t).map(cat)); return `<div class="card ${cls}"><div class="ch" style="padding:0 0 8px"><h3>${title}</h3><b class="num" style="margin-left:auto">৳ ${money0(tot)}</b></div><div class="tw"><table><thead><tr><th>খাত</th><th class="r">দিন</th><th class="r">টাকা</th><th class="r">%</th><th class="noprint" style="width:28%"></th></tr></thead><tbody>${CASH[t].map(g => (g.g ? `<tr class="grp"><td colspan="5"><b>${g.g}</b> <span class="mut sm">৳ ${money0(g.items.reduce((s, [k]) => s + cat(k), 0))}</span></td></tr>` : "") + g.items.map(([k, l]) => `<tr><td${g.g ? ' style="padding-left:22px"' : ""}>${esc(l)}</td><td class="r num">${days(k)}</td><td class="r num">${money0(cat(k))}</td><td class="r num mut">${tot ? (cat(k) / tot * 100).toFixed(1) : 0}%</td><td class="noprint"><div class="bar"><i style="width:${(cat(k) / mx * 100).toFixed(1)}%"></i></div></td></tr>`).join("")).join("")}<tr class="tot"><td>মোট</td><td></td><td class="r num">${money0(tot)}</td><td class="r num">100%</td><td class="noprint"></td></tr></tbody></table></div></div>`; };
+    const block = (t, title, tot) => repBox(title, ["Category", "Days", "Amount", "%"], CASH_KEYS(t).map(k => { const a = cat(k); return `<tr><td>${esc(cashLabel(k))}</td><td class="r num">${days(k) || "—"}</td><td class="r num ${a ? "b" : "z"}">${money0(a)}</td><td class="r num">${tot ? (a / tot * 100).toFixed(1) : "0.0"}</td></tr>`; }).join(""), `<tr class="tot"><td>TOTAL</td><td></td><td class="r num">${money0(tot)}</td><td class="r num">100</td></tr>`);
     const months = [...new Set(rows.map(r => r.date.slice(0, 7)))].sort(), mName = m => (LANG === "en" ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] : BN_M)[+m.slice(5) - 1] + " " + m.slice(2, 4);
     const mcat = (m, k) => rows.filter(r => r.date.startsWith(m)).reduce((s, r) => s + (+r.items?.[k]?.a || 0), 0);
     cur = { f, t, rows, cat, months, mcat };
-    out.innerHTML = `<div class="mut sm" style="margin-bottom:10px"><b>${dmy(f)}</b> → <b>${dmy(t)}</b> · ${rows.length} দিন</div>
-     <div class="grid g3"><div class="kpi card k-gr"><div class="l">মোট Receipt</div><div class="v num">৳ ${money0(R)}</div></div><div class="kpi card k-rd"><div class="l">মোট Payment</div><div class="v num">৳ ${money0(P)}</div></div><div class="kpi card k-vi"><div class="l">নিট</div><div class="v num">${R - P >= 0 ? "+" : "−"}${money0(Math.abs(R - P))}</div></div></div>
-     <div class="grid g2" style="margin-top:14px">${block("receipt", "Receipt — খাত অনুযায়ী", R, "c-rec")}${block("payment", "Payment — খাত অনুযায়ী", P, "c-pay")}</div>
-     ${months.length > 1 ? `<div class="card flush" style="margin-top:14px"><div class="ch"><h3>মাস অনুযায়ী</h3></div><div class="tw"><table><thead><tr><th>খাত</th>${months.map(m => `<th class="r">${mName(m)}</th>`).join("")}<th class="r">মোট</th></tr></thead><tbody>${["receipt", "payment"].map(t => CASH_KEYS(t).map(k => `<tr><td>${esc(cashLabel(k))}</td>${months.map(m => `<td class="r num">${money0(mcat(m, k)) || "—"}</td>`).join("")}<td class="r num b">${money0(cat(k))}</td></tr>`).join("") + `<tr class="tot"><td>Total ${t === "receipt" ? "Receipt" : "Payment"}</td>${months.map(m => `<td class="r num">${money0(CASH_KEYS(t).reduce((s, k) => s + mcat(m, k), 0))}</td>`).join("")}<td class="r num">${money0(t === "receipt" ? R : P)}</td></tr>`).join("")}</tbody></table></div></div>` : ""}`;
+    out.innerHTML = repSheet("cr-in", "Cash Report · ক্যাশ রিপোর্ট", f, t,
+      repKpi([["Total Receipt", "৳ " + money0(R), "k3"], ["Total Payment", "৳ " + money0(P), "k2"], ["Net (Receipt − Payment)", (R - P >= 0 ? "+" : "−") + money0(Math.abs(R - P)), "k1"], ["Final Days", rows.length, ""]]),
+      repTwo(block("receipt", "Receipt — by Category", R), block("payment", "Payment — by Category", P)) +
+      (months.length > 1 ? repOne(repBox("By Month", ["Category", ...months.map(mName), "Total"], ["receipt", "payment"].map(t => CASH_KEYS(t).map(k => `<tr><td>${esc(cashLabel(k))}</td>${months.map(m => `<td class="r num">${money0(mcat(m, k)) || "—"}</td>`).join("")}<td class="r num b">${money0(cat(k))}</td></tr>`).join("") + `<tr class="tot"><td>Total ${t === "receipt" ? "Receipt" : "Payment"}</td>${months.map(m => `<td class="r num">${money0(CASH_KEYS(t).reduce((q, k) => q + mcat(m, k), 0))}</td>`).join("")}<td class="r num">${money0(t === "receipt" ? R : P)}</td></tr>`).join(""))) : ""));
+    dcFit(v, "cr-in");
   }
-  bindPeriod(v, "cr", F, draw); $("#cr-p", v).onclick = () => window.print();
+  bindPeriod(v, "cr", F, draw); const unb = repBind(v, "cr", "cr-in", () => `Cash_Report_${cur ? cur.f + "_" + cur.t : today()}`, () => cur ? `Cash report ${dmy(cur.f)} → ${dmy(cur.t)}` : "");
   $("#cr-x", v).onclick = () => { if (!cur) return toast("ডাটা নেই", "err"); const all = [...CASH_KEYS("receipt"), ...CASH_KEYS("payment")]; exportXlsx({ Categories: [["Type", "Category", "Amount"], ...all.map(k => [cashType(k), cashLabel(k), cur.cat(k)])], Monthly: [["Category", ...cur.months, "Total"], ...all.map(k => [cashLabel(k), ...cur.months.map(m => cur.mcat(m, k)), cur.cat(k)])] }, `Cash_Report_${cur.f}_${cur.t}.xlsx`); };
-  await draw();
+  await draw(); return unb;
 }
 
 /* =================== v6: Cash Register (every line of every day) =================== */
@@ -2415,9 +2424,39 @@ async function dcShare(el, name, text) {
   try { if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: name, text }); else await navigator.share({ title: name, text }); } catch (e) { if (e.name !== "AbortError") toast("শেয়ার করা যায়নি: " + e.message, "err"); }
 }
 function dcPdf(el, name) { if (!el) return toast("ডাটা নেই", "err"); document.body.classList.add("print-rep"); const t = document.title; document.title = name; window.print(); document.title = t; setTimeout(() => document.body.classList.remove("print-rep"), 500); }
-function dcFit(v, id) { const el = $("#" + id, v); if (!el) return; el.style.zoom = ""; const w = el.parentElement.clientWidth - 8; if (w < 1000) el.style.zoom = (w / 1000).toFixed(3); }
-const dcHead = (title, f, t) => { const one = f === t, d = new Date(f + "T00:00:00"); return `<div class="rep-hd"><div class="lg"><img src="icon-192.png" alt=""></div><div class="tt"><b>NABIAD DISTRIBUTION</b><span>${title}</span></div><div class="dt"><b>${esc(dcRangeLabel(f, t))}</b><span>${one ? d.toLocaleDateString("en-GB", { weekday: "long" }) : ""}</span></div></div>`; };
-const dcFoot = () => `<div class="rep-ft"><span>Generated ${new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · by ${esc(S.me.name)}</span><span>NABIAD Cheque &amp; Bank Control</span></div>`;
+function dcFit(v, id) { const el = $("#" + id, v); if (!el) return; el.style.zoom = ""; const w = el.parentElement.clientWidth - 8; if (w < 794) el.style.zoom = (w / 794).toFixed(3); }
+const dcHead = (title, f, t, org = "NABIAD GROUP") => { const one = f === t, d = new Date(f + "T00:00:00"); return `<div class="rep-hd"><div class="lg"><img src="icon-192.png" alt=""></div><div class="tt"><b>${org}</b><span>${title}</span></div><div class="dt"><b>${esc(dcRangeLabel(f, t))}</b><span>${one ? d.toLocaleDateString("en-GB", { weekday: "long" }) : ""}</span></div></div>`; };
+const dcFoot = (extra = "") => `<div class="rep-ft"><span>Generated ${new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}${extra} · by ${esc(S.me.name)}</span><span>NABIAD Cheque &amp; Bank Control</span></div>`;
+
+/* ---------- A4 standard sheet helpers (shared by every report) ---------- */
+/* print any A4 sheet html directly (used where the page itself is not a sheet) */
+function printSheet(html, name) {
+  const w = document.createElement("div"); w.className = "rep-wrap printonly"; w.innerHTML = `<div class="rep-scroll">${html}</div>`;
+  document.body.appendChild(w); document.body.classList.add("print-sheet"); const t = document.title; document.title = name;
+  const done = () => { window.removeEventListener("afterprint", done); w.remove(); document.body.classList.remove("print-sheet"); document.title = t; };
+  window.addEventListener("afterprint", done); window.print();
+}
+const repKpi = a => `<div class="rep-kpi" style="grid-template-columns:repeat(${a.length},1fr)">${a.map(([l, v, c]) => `<div class="${c || ""}"><span>${l}</span><b>${v}</b></div>`).join("")}</div>`;
+const repTwo = (...b) => `<div class="dcs-two">${b.join("")}</div>`;
+const repOne = b => `<div class="dcs-one">${b}</div>`;
+const repBox = (title, cols, body, foot) => `<div class="dcs-box"><div class="dcs-t">${title}</div><table class="rep-t"><thead><tr>${cols.map((c, i) => `<th class="${i && !c.startsWith("~") ? "r" : ""}">${c.replace(/^~/, "")}</th>`).join("")}</tr></thead><tbody>${body || `<tr><td colspan="${cols.length}" class="z" style="text-align:center">কিছু নেই</td></tr>`}${foot || ""}</tbody></table></div>`;
+const repSheet = (id, title, f, t, kpi, body, note) => `<div class="rep" id="${id}">${dcHead(title, f, t)}${kpi}${note ? `<div class="dcs-note">${note}</div>` : ""}${body}${dcFoot()}</div>`;
+function repLine(series, h = 84) {
+  const W = 720, all = series.flatMap(x => x.v); if (!all.length) return `<div class="mut sm">—</div>`;
+  const mx = Math.max(...all), mn0 = Math.min(...all), mn = mn0 - (mx - mn0) * 0.08, rg = (mx - mn) || 1, n = Math.max(...series.map(x => x.v.length));
+  const pts = vals => vals.map((x, i) => `${(i / Math.max(1, n - 1) * W).toFixed(1)},${(h - 6 - (x - mn) / rg * (h - 14)).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 ${W} ${h}" preserveAspectRatio="none" style="width:100%;height:${h}px;display:block;background:#fafbff;border:1px solid #eef0f4;border-radius:6px"><line x1="0" x2="${W}" y1="${h - 6}" y2="${h - 6}" stroke="#e5e7eb"/>${series.map(x => `<polyline fill="none" stroke="${x.c}" stroke-width="2" vector-effect="non-scaling-stroke" points="${pts(x.v)}"/>`).join("")}</svg>
+   <div class="rep-lg">${series.map(x => `<span><i style="background:${x.c}"></i>${x.n}</span>`).join("")}<span class="mut">max ${money0(mx)} · ${n} days</span></div>`;
+}
+/* one binder for Screenshot / PDF / Share on a report page: ids are <p>-png, <p>-pdf, <p>-sh */
+function repBind(v, p, sheetId, name, text) {
+  const el = () => $("#" + sheetId, v);
+  $("#" + p + "-png", v) && ($("#" + p + "-png", v).onclick = () => dcPng(el(), name()));
+  $("#" + p + "-pdf", v) && ($("#" + p + "-pdf", v).onclick = () => dcPdf(el(), name()));
+  $("#" + p + "-sh", v) && ($("#" + p + "-sh", v).onclick = () => dcShare(el(), name(), text ? text() : ""));
+  const onRs = () => dcFit(v, sheetId); window.addEventListener("resize", onRs); return () => window.removeEventListener("resize", onRs);
+}
+const repBtns = p => `<button class="btn" id="${p}-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="${p}-pdf">${ico("print")} PDF</button>${navigator.share ? `<button class="btn" id="${p}-sh">${ico("share")} শেয়ার</button>` : ""}`;
 
 /* =================== Collection Summary (screenshot) =================== */
 async function vDsum(v) {
@@ -2436,7 +2475,7 @@ async function vDsum(v) {
     const gm = dpGeoMap(), divs = dcGroup(rows, r => dpGeoOf(gm, r).division || "(No Division)"), dists = dcGroup(rows, r => dpGeoOf(gm, r).district || "(No District)").slice(0, 25);
     const tbl = (title, arr, nm) => `<div class="dcs-box"><div class="dcs-t">${title}</div><table class="rep-t"><thead><tr><th>${nm}</th><th class="r">Entry</th><th class="r">Amount</th></tr></thead><tbody>${arr.map(x => `<tr><td class="${nm === "Bank / Account" ? "cd" : "ho"}">${nm === "Bank / Account" ? `<i class="bdot" style="background:${dcBrand(x.k)}"></i>` : ""}${esc(x.k)}</td><td class="r num ${x.n ? "" : "z"}">${x.n || "—"}</td><td class="r num ${x.amt ? "us" : "z"}">${x.amt ? money0(x.amt) : "0"}</td></tr>`).join("") || `<tr><td colspan="3" class="z" style="text-align:center">কিছু নেই</td></tr>`}<tr class="tot"><td>TOTAL</td><td class="r num">${arr.reduce((s, x) => s + x.n, 0)}</td><td class="r num">${money0(arr.reduce((s, x) => s + x.amt, 0))}</td></tr></tbody></table></div>`;
     cur = { f, t, rows, tot, banks, asms };
-    out.innerHTML = rows.length || F.all ? `<div class="rep" id="ds-in">${dcHead("Distribution Collection Summary · কালেকশন সামারি", f, t)}
+    out.innerHTML = rows.length || F.all ? `<div class="rep" id="ds-in">${dcHead("Distribution Collection Summary · কালেকশন সামারি", f, t, "NABIAD DISTRIBUTION")}
       <div class="rep-kpi"><div class="k1"><span>Total ${esc(dcStatLabel(F.s).split(" ")[0])}</span><b>৳ ${money0(tot)}</b></div><div><span>Entries</span><b>${rows.length}</b></div><div><span>Parties</span><b>${new Set(rows.map(r => r.party)).size}</b></div><div class="k3"><span>Accounts · ASM</span><b>${banks.filter(b => b.amt).length} · ${asms.filter(b => b.amt).length}</b></div></div>
       <div class="dcs-two">${tbl("Per Bank", banks, "Bank / Account")}${tbl("Per Salesman / ASM", asms, "Salesman / ASM")}</div>
       <div class="dcs-two">${tbl("Per Division", divs, "Division")}${tbl(`Per District${dists.length >= 25 ? " (Top 25)" : ""}`, dists, "District")}</div>
@@ -2487,7 +2526,7 @@ async function vDrep(v) {
     const flush = () => { if (multi && day) html += `<tr class="dsub"><td></td><td colspan="${cols - 2}">${dcShort(day)} — ${dn}টি</td><td class="r num">${money0(dsum)}</td>${F.cs ? "<td></td>" : ""}</tr>`; dsum = 0; dn = 0; };
     rows.forEach(r => { if (multi && r.date !== day) { flush(); day = r.date; } n++; dsum += r.amount; dn++; html += `<tr><td class="n">${n}</td><td class="cd">${dcShort(r.date)}</td><td class="ho">${esc(r.party)}${r.remarks ? `<span class="rm"> · ${esc(r.remarks)}</span>` : ""}</td>${F.ca ? `<td class="rm">${esc(r.asm)}</td>` : ""}${F.cd ? `<td class="rm">${esc(gOf(r).district)}</td>` : ""}<td class="cd"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account)}</td><td class="r num">${money0(r.amount)}</td>${F.cs ? `<td><span class="dst ${r.status}">${DC_ST[r.status]}</span></td>` : ""}</tr>`; });
     flush(); const tot = dcSum(rows);
-    out.innerHTML = `<div class="rep" id="dr-in">${dcHead(`Distribution Collection Report · ${esc(dcStatLabel(F.s))}${F.asm ? " · " + esc(F.asm) : ""}${F.ac ? " · " + esc(F.ac) : ""}${F.ds ? " · " + esc(F.ds) : F.dv ? " · " + esc(F.dv) : ""}`, f, t)}
+    out.innerHTML = `<div class="rep" id="dr-in">${dcHead(`Distribution Collection Report · ${esc(dcStatLabel(F.s))}${F.asm ? " · " + esc(F.asm) : ""}${F.ac ? " · " + esc(F.ac) : ""}${F.ds ? " · " + esc(F.ds) : F.dv ? " · " + esc(F.dv) : ""}`, f, t, "NABIAD DISTRIBUTION")}
      <div class="rep-kpi" style="grid-template-columns:repeat(3,1fr)"><div class="k1"><span>Total</span><b>৳ ${money0(tot)}</b></div><div><span>Entries</span><b>${rows.length}</b></div><div class="k3"><span>Parties</span><b>${new Set(rows.map(r => r.party)).size}</b></div></div>
      <table class="rep-t"><thead><tr><th class="r">#</th><th>TxnDate</th><th>Party</th>${F.ca ? "<th>ASM</th>" : ""}${F.cd ? "<th>District</th>" : ""}<th>Bank</th><th class="r">Amount</th>${F.cs ? "<th>Status</th>" : ""}</tr></thead><tbody>${html}<tr class="tot"><td></td><td colspan="${cols - 2}">GRAND TOTAL</td><td class="r num">${money0(tot)}</td>${F.cs ? "<td></td>" : ""}</tr></tbody></table>${dcFoot()}</div>`;
     dcFit(v, "dr-in");
