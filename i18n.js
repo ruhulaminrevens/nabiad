@@ -227,6 +227,7 @@ const I18N = {
   "নিরাপত্তা স্কোর": "Security score", "💻 এই ডিভাইস": "💻 This device", "পাসওয়ার্ড বদলান": "Change password", "ফোন হারালে বা পাসওয়ার্ড অন্য কেউ জানলে আগে \"অন্য সব ডিভাইস থেকে লগআউট\" চাপুন, তারপর পাসওয়ার্ড বদলান।": "If a phone is lost or someone knows the password, first press \"Sign out all other devices\", then change the password.",
   "🗑 গত ৭ দিনে মুছে ফেলা": "🗑 Deleted in the last 7 days", "✔ গত ৭ দিনে কিছু মোছা হয়নি": "✔ Nothing deleted in the last 7 days", "সব দেখুন →": "View all →", "👥 ব্যবহারকারী ও শেষ লগইন": "👥 Users & last sign-in", "বদলান →": "Manage →", "শেষ লগইন": "Last sign-in",
   "শেষ লগইনের সময় দেখাতে schema_v4.sql চালাতে হবে।": "Run schema_v4.sql to show last sign-in times.", "ক্যাশ": "Cash",
+  "নতুন আপডেট এসেছে": "A new update is available", "এখনই আপডেট": "Update now", "পরে": "Later", "এই পাতায় লেখা কিছু সেভ হয়নি — আপডেট করলে তা হারাতে পারে (ক্লোজিং/ক্যাশের ড্রাফট নিরাপদ থাকবে)। আপডেট করবেন?": "Something typed on this page is not saved and may be lost (closing/cash drafts are safe). Update now?",
 };
 const I18N_KEYS = Object.keys(I18N).filter(k => k.length >= 6).sort((a, b) => b.length - a.length);
 const BN_DIG = { "০": "0", "১": "1", "২": "2", "৩": "3", "৪": "4", "৫": "5", "৬": "6", "৭": "7", "৮": "8", "৯": "9" };

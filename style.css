@@ -632,3 +632,9 @@ details summary{cursor:pointer;list-style:none} details summary::-webkit-details
 .logo img,.rep-hd .lg img{width:100%;height:100%;display:block;object-fit:contain}
 .side .logo{box-shadow:0 0 0 1px rgba(255,255,255,.22),0 8px 20px rgba(129,140,248,.35)!important}
 .rep-hd .lg{background:none;overflow:hidden;border-radius:10px}
+
+/* v6.4 update banner */
+#updbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));z-index:80;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 16px;border-radius:14px;background:var(--surface);border:1px solid color-mix(in srgb,var(--pri) 35%,var(--line));box-shadow:var(--sh2);animation:up .25s var(--ease);max-width:calc(100% - 24px)}
+#updbar .iconbtn{width:32px;height:32px}
+#updbar>span{white-space:nowrap}
+@media (max-width:900px){ #updbar{left:12px;right:12px;transform:none;max-width:none;bottom:calc(92px + env(safe-area-inset-bottom))} #updbar>span{flex:1;white-space:normal} }

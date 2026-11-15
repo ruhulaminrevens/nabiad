@@ -431,6 +431,8 @@ function labelTables(root) {
 }
 async function route() {
   if (!S.me) return;
+  if (updReady && navigator.onLine && !Outbox.busy) { location.reload(); return; }   // switching page = safe moment to load the new version
+  DIRTY = false;
   let k = (location.hash.match(/^#\/(\w+)/) || [])[1];
   if (!allowed().includes(k)) k = "dash";
   CUR = k; document.body.classList.remove("print-rep");
@@ -1887,6 +1889,29 @@ Object.assign(DemoAPI, {
   async deleteBackup(id) { demoStore.backups = (demoStore.backups || []).filter(b => b.id !== id); this.save(); },
   async userLogins() { return [{ email: "admin@demo", name: S.me.name, role: "admin", active: true, last_sign_in_at: new Date().toISOString() }]; }
 });
+
+/* ---------- auto update: every open app notices a new release within minutes ---------- */
+const RUN_V = document.querySelector('script[src^="app.js"]')?.getAttribute("src")?.split("v=")[1] || "";
+let updReady = "", updBusy = false, DIRTY = false;
+document.addEventListener("input", e => { if (e.target.closest?.("#view, .modal")) DIRTY = true; }, true);
+async function checkUpdate() {
+  if (updBusy || updReady || !navigator.onLine || !RUN_V) return; updBusy = true;
+  try { const t = await (await fetch("index.html?u=" + Date.now(), { cache: "no-store" })).text(); const m = t.match(/app\.js\?v=([\w.\-]+)/); if (m && m[1] !== RUN_V) onUpdate(m[1]); }
+  catch { } finally { updBusy = false; }
+}
+function onUpdate(v) {
+  updReady = v; navigator.serviceWorker?.getRegistration().then(r => r && r.update()).catch(() => { });
+  if (document.hidden && !DIRTY && !Outbox.busy) return location.reload();   // nobody is looking and nothing is typed → update silently
+  if ($("#updbar")) return;
+  const el = document.createElement("div"); el.id = "updbar";
+  el.innerHTML = `<span>🚀 <b>নতুন আপডেট এসেছে</b> <span class="mut xs">v${esc(v)}</span></span><button class="btn sm pri" id="upd-go">এখনই আপডেট</button><button class="iconbtn" id="upd-x" title="পরে">✕</button>`;
+  document.body.appendChild(el);
+  $("#upd-go").onclick = () => { if (DIRTY && !ask("এই পাতায় লেখা কিছু সেভ হয়নি — আপডেট করলে তা হারাতে পারে (ক্লোজিং/ক্যাশের ড্রাফট নিরাপদ থাকবে)। আপডেট করবেন?")) return; location.reload(); };
+  $("#upd-x").onclick = () => el.remove();
+}
+setTimeout(checkUpdate, 8000); setInterval(checkUpdate, 3 * 60 * 1000);
+window.addEventListener("online", () => setTimeout(checkUpdate, 2000));
+document.addEventListener("visibilitychange", () => { if (document.hidden) { if (updReady && !DIRTY && !Outbox.busy) location.reload(); } else checkUpdate(); });
 
 /* ---------- boot ---------- */
 let inited = false;
