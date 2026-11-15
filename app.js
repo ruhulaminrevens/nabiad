@@ -2104,18 +2104,26 @@ function bdGuess(name) {   // "Name-Upazila, District" → district (exact/alias
 }
 const dpGeoMap = () => { const m = new Map(); (DPARTY || []).forEach(p => { m.set(p.id, p); m.set("n:" + norm(p.name), p); }); return m; };
 const dpGeoOf = (m, r) => { const p = m.get(r.party_id) || m.get("n:" + norm(r.party)); return { district: p?.district || "", division: p?.division || "" }; };
-const dpRow = p => ({ id: p.id, name: p.name, asm: p.asm || "", account: p.account || "", phone: p.phone || "", district: p.district || "", division: p.district ? (BD_DIV[p.district] || p.division || "") : "", note: p.note || "", active: p.active !== false });
+const dpRow = p => ({ id: p.id, name: p.name, asm: p.asm || "", account: p.account || "", phone: p.phone || "", contact_person: p.contact_person || "", address: p.address || "", district: p.district || "", division: p.district ? (BD_DIV[p.district] || p.division || "") : "", note: p.note || "", active: p.active !== false });
+const DC_INUSE = "আগের রেকর্ড আছে — মুছা যাবে না। এর বদলে নিষ্ক্রিয় করুন";
 const dcDup = e => e && e.code === "23505" ? new Error("এই নামে পার্টি আগেই আছে") : e;
 const dcShort = d => d ? `${d.slice(8, 10)}-${d.slice(5, 7)}-${d.slice(2, 4)}` : "";
 
 Object.assign(SbAPI, {
   async dparties() { return (await fetchAll("dist_parties", "name")).map(dpRow); },
   async dpartySave(p) {
-    const row = { name: p.name, asm: p.asm || null, account: p.account || null, phone: p.phone || null, district: p.district || null, division: p.district ? (BD_DIV[p.district] || null) : null, note: p.note || null, active: p.active !== false };
+    const row = { name: p.name, asm: p.asm || null, account: p.account || null, phone: p.phone || null, contact_person: p.contact_person || null, address: p.address || null, district: p.district || null, division: p.district ? (BD_DIV[p.district] || null) : null, note: p.note || null, active: p.active !== false };
     if (p.id) { const { data, error } = await sb.from("dist_parties").update(row).eq("id", p.id).select().single(); if (error) throw dcDup(error); return dpRow(data); }
     row.entered_by = S.me.name; const { data, error } = await sb.from("dist_parties").insert(row).select().single(); if (error) throw dcDup(error); return dpRow(data);
   },
-  async dpartyDelete(id) { const { error } = await sb.from("dist_parties").delete().eq("id", id); if (error) throw error; },
+  async dpartyDelete(id) { const { error } = await sb.from("dist_parties").delete().eq("id", id); if (error) throw error.code === "23503" ? new Error(DC_INUSE) : error; },
+  async dpartyUsage(id) { const { count, error } = await sb.from("dist_collections").select("id", { count: "exact", head: true }).eq("party_id", id); if (error) throw error; return count || 0; },
+  async asmUsage(name) { const { count, error } = await sb.from("dist_collections").select("id", { count: "exact", head: true }).eq("asm", name); if (error) throw error; return count || 0; },
+  async asms() { try { return (await fetchAll("dist_asms", "name")).map(a => ({ id: a.id, name: a.name, active: a.active !== false })); } catch (e) { if (/dist_asms|relation|schema cache/i.test(e.message || "")) return []; throw e; } },
+  async asmAdd(name) { const { data, error } = await sb.from("dist_asms").insert({ name, entered_by: S.me.name }).select().single(); if (error) throw error.code === "23505" ? new Error("এই নামে ASM আগেই আছে") : error; return { id: data.id, name: data.name, active: true }; },
+  async asmRename(a, to) { if (a.id) { const { error } = await sb.from("dist_asms").update({ name: to }).eq("id", a.id); if (error) throw error.code === "23505" ? new Error("এই নামে ASM আগেই আছে") : error; } await this.dpartyRenameAsm(a.name, to); },
+  async asmActive(id, on) { const { error } = await sb.from("dist_asms").update({ active: on }).eq("id", id); if (error) throw error; },
+  async asmDelete(id) { const { error } = await sb.from("dist_asms").delete().eq("id", id); if (error) throw error.code === "23503" ? new Error(DC_INUSE) : error; },
   async dpartyRenameAsm(from, to) { const { error } = await sb.from("dist_parties").update({ asm: to || null }).eq("asm", from); if (error) throw error; },
   async dcolRange(from, to) {
     let out = [], f = 0;
@@ -2145,11 +2153,18 @@ Object.assign(DemoAPI, {
   async dpartySave(p) {
     await this.dparties(); const list = demoStore.dparties, nm = norm(p.name);
     if (list.some(x => x.id !== p.id && norm(x.name) === nm)) throw new Error("এই নামে পার্টি আগেই আছে");
-    const row = { name: p.name, asm: p.asm || "", account: p.account || "", phone: p.phone || "", district: p.district || "", division: p.district ? (BD_DIV[p.district] || "") : "", note: p.note || "", active: p.active !== false };
+    const row = { name: p.name, asm: p.asm || "", account: p.account || "", phone: p.phone || "", contact_person: p.contact_person || "", address: p.address || "", district: p.district || "", division: p.district ? (BD_DIV[p.district] || "") : "", note: p.note || "", active: p.active !== false };
     if (p.id) { const o = list.find(x => x.id === p.id); this.aud("dist_parties", "update", "Party " + o.name, { ...o }, { ...o, ...row }); Object.assign(o, row); this.save(); return dpRow(o); }
     const n = { id: crypto.randomUUID(), ...row }; list.push(n); this.aud("dist_parties", "insert", "Party " + n.name, null, n); this.save(); return dpRow(n);
   },
-  async dpartyDelete(id) { await this.dparties(); const o = demoStore.dparties.find(x => x.id === id); o && this.aud("dist_parties", "delete", "Party " + o.name, o, null); demoStore.dparties = demoStore.dparties.filter(x => x.id !== id); this.save(); },
+  async dpartyUsage(id) { await this.dparties(); return demoStore.dcols.filter(r => r.party_id === id).length; },
+  async asmUsage(name) { await this.dparties(); return demoStore.dcols.filter(r => r.asm === name).length; },
+  async asms() { await this.dparties(); if (!demoStore.dasms) { demoStore.dasms = [...new Set(demoStore.dparties.map(p => p.asm).filter(Boolean))].map(n => ({ id: crypto.randomUUID(), name: n, active: true })); this.save(); } return demoStore.dasms.map(a => ({ ...a })); },
+  async asmAdd(name) { await this.asms(); if (demoStore.dasms.some(a => norm(a.name) === norm(name))) throw new Error("এই নামে ASM আগেই আছে"); const a = { id: crypto.randomUUID(), name, active: true }; demoStore.dasms.push(a); this.save(); return { ...a }; },
+  async asmRename(a, to) { await this.asms(); if (demoStore.dasms.some(x => x.id !== a.id && norm(x.name) === norm(to))) throw new Error("এই নামে ASM আগেই আছে"); const o = demoStore.dasms.find(x => x.id === a.id); if (o) o.name = to; await this.dpartyRenameAsm(a.name, to); },
+  async asmActive(id, on) { await this.asms(); const o = demoStore.dasms.find(x => x.id === id); if (o) o.active = on; this.save(); },
+  async asmDelete(id) { await this.asms(); const o = demoStore.dasms.find(x => x.id === id); if (!o) return; if (demoStore.dparties.some(p => p.asm === o.name) || demoStore.dcols.some(r => r.asm === o.name)) throw new Error(DC_INUSE); demoStore.dasms = demoStore.dasms.filter(x => x.id !== id); this.save(); },
+  async dpartyDelete(id) { await this.dparties(); if (demoStore.dcols.some(r => r.party_id === id)) throw new Error(DC_INUSE); const o = demoStore.dparties.find(x => x.id === id); o && this.aud("dist_parties", "delete", "Party " + o.name, o, null); demoStore.dparties = demoStore.dparties.filter(x => x.id !== id); this.save(); },
   async dpartyRenameAsm(from, to) { await this.dparties(); demoStore.dparties.forEach(p => { if (p.asm === from) p.asm = to; }); this.save(); },
   async dcolRange(from, to) { await this.dparties(); return demoStore.dcols.filter(r => r.date >= from && r.date <= to).sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || "").localeCompare(b.created_at || "")).map(dcRow); },
   async dcolAdd(c) { await this.dparties(); const row = { id: crypto.randomUUID(), date: c.date, party_id: c.party_id || null, party: c.party, asm: c.asm || "", account: c.account || "", amount: c.amount, remarks: c.remarks || "", status: "pending", entered_by: S.me.name, created_at: new Date().toISOString() }; demoStore.dcols.push(row); this.aud("dist_collections", "insert", `Collection ${row.date} · ${row.party} · ${row.amount}`, null, row); this.save(); return dcRow(row); },
@@ -2166,10 +2181,10 @@ Object.assign(AU_F, { date: "তারিখ", asm: "ASM", account: "Account", d
 ["party_id", "decided_at"].forEach(k => AU_SKIP.add(k));
 
 /* ---------- shared state + helpers ---------- */
-let DPARTY = null, DPARTY_T = 0;
+let DPARTY = null, DPARTY_T = 0, DASM = [];
 async function dpLoad(force) {
   if (DPARTY && !force && Date.now() - DPARTY_T < 300000) return DPARTY;
-  try { DPARTY = await API.dparties(); DPARTY_T = Date.now(); if (!DEMO) try { localStorage.setItem(DP_KEY, JSON.stringify({ u: S.me?.id, p: DPARTY })); } catch { } }
+  try { const [pp, aa] = await Promise.all([API.dparties(), API.asms().catch(() => DASM)]); DPARTY = pp; DASM = aa; DPARTY_T = Date.now(); if (!DEMO) try { localStorage.setItem(DP_KEY, JSON.stringify({ u: S.me?.id, p: DPARTY })); } catch { } }
   catch (e) {
     if (DPARTY) return DPARTY;
     try { const c = JSON.parse(localStorage.getItem(DP_KEY) || "null"); if (c && c.u === S.me?.id) { DPARTY = c.p; return DPARTY; } } catch { }
@@ -2178,7 +2193,14 @@ async function dpLoad(force) {
   return DPARTY;
 }
 const dcAccounts = () => [...new Set([...(S.accounts || []).map(a => a.code), ...DC_EXTRA, ...(DPARTY || []).map(p => p.account)].filter(Boolean))].sort((a, b) => a.localeCompare(b));
-const dcAsms = () => [...new Set((DPARTY || []).map(p => p.asm).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+const dcAsms = () => [...new Set([...DASM.filter(a => a.active).map(a => a.name), ...(DPARTY || []).map(p => p.asm)].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+function askText(title, ph, def, cb) {
+  modal(`<h2>${title}</h2><input class="in big" id="at-i" autocomplete="off" placeholder="${ph}" value="${esc(def || "")}"><div class="hint rd" id="at-e"></div><div class="row" style="margin-top:14px"><button class="btn pri" id="at-ok">${ico("save")} সেভ</button><button class="btn" id="at-x">বন্ধ</button></div>`, (root, close) => {
+    const i = $("#at-i", root); i.focus(); i.select(); $("#at-x", root).onclick = close;
+    const go = async () => { const v = i.value.replace(/\s+/g, " ").trim(); if (v.length < 2) return $("#at-e", root).textContent = "নাম লিখুন"; try { await cb(v); close(); } catch (e) { $("#at-e", root).textContent = dcErr(e); } };
+    $("#at-ok", root).onclick = go; i.onkeydown = e => { if (e.key === "Enter") go(); };
+  });
+}
 const dcCan = (r, to) => {
   if (r.pending_sync || r.status === to) return false;
   if (S.me.role === "admin") return true;
@@ -2213,54 +2235,47 @@ function dcDecide(ids, st, after) {
 /* ---------- party add / edit ---------- */
 function dpartyModal(p, after) {
   const isNew = !p.id, admin = S.me.role === "admin";
+  const asmOpts = [...new Set([...DASM.filter(a => a.active).map(a => a.name), p.asm].filter(Boolean))].sort((a, b) => a.localeCompare(b));
   modal(`<h2>${isNew ? "নতুন পার্টি" : "পার্টি এডিট"}</h2><div class="fgrid">
    <div class="s4"><label class="f">পার্টির নাম * <span class="mut">(নাম-এলাকা, যেমন: Alam Store-Nawabagonj, Dinajpur)</span></label><input class="in" id="dp-n" autocomplete="off" value="${esc(p.name || "")}"></div>
-   <div class="s2"><label class="f">ASM / Salesman</label><input class="in" id="dp-a" list="dp-dl-a" autocomplete="off" value="${esc(p.asm || "")}"></div>
-   <div class="s2"><label class="f">সাধারণত যে Account-এ জমা দেয়</label><input class="in" id="dp-c" list="dp-dl-c" autocomplete="off" value="${esc(p.account || "")}"></div>
+   <div class="s2"><label class="f">ASM / Salesman</label><select class="in" id="dp-a"><option value="">— বাছুন —</option>${asmOpts.map(a => `<option ${a === p.asm ? "selected" : ""}>${esc(a)}</option>`).join("")}<option value="__new">＋ নতুন ASM যোগ করুন…</option></select><input class="in hide" id="dp-an" autocomplete="off" placeholder="নতুন ASM-এর নাম" style="margin-top:6px"></div>
+   <div class="s2"><label class="f">Contact Person</label><input class="in" id="dp-cp" autocomplete="off" value="${esc(p.contact_person || "")}"></div>
+   <div class="s1"><label class="f">Contact No.</label><input class="in" id="dp-p" inputmode="tel" autocomplete="off" value="${esc(p.phone || "")}"></div>
+   <div class="s3"><label class="f">Full Address</label><input class="in" id="dp-ad" autocomplete="off" value="${esc(p.address || "")}"></div>
    <div class="s2"><label class="f">জেলা <span class="mut">(নাম থেকে নিজে বসে)</span></label><input class="in" id="dp-d" list="dp-dl-d" autocomplete="off" value="${esc(p.district || "")}"></div>
-   <div class="s2"><label class="f">বিভাগ</label><input class="in" id="dp-v" readonly tabindex="-1" value="${esc(p.district ? BD_DIV[p.district] || "" : "")}"></div>
-   <div class="s2"><label class="f">ফোন</label><input class="in" id="dp-p" inputmode="tel" autocomplete="off" value="${esc(p.phone || "")}"></div>
-   <div class="s2"><label class="f">নোট</label><input class="in" id="dp-t" autocomplete="off" value="${esc(p.note || "")}"></div>
-   ${isNew ? "" : `<div class="s4"><label class="keep"><input type="checkbox" id="dp-act" ${p.active !== false ? "checked" : ""}> সক্রিয় পার্টি <span class="mut">(বন্ধ করলে এন্ট্রির সাজেশনে আসবে না)</span></label></div>`}
-  </div>${datalist("dp-dl-a", dcAsms())}${datalist("dp-dl-c", dcAccounts())}${datalist("dp-dl-d", BD_DIST)}<div class="hint rd" id="dp-err"></div>
+   <div class="s2"><label class="f">বিভাগ <span class="mut">(জেলা থেকে নিজে বসে)</span></label><input class="in" id="dp-v" readonly tabindex="-1" value="${esc(p.district ? BD_DIV[p.district] || "" : "")}"></div>
+   ${isNew ? "" : `<div class="s4"><label class="keep"><input type="checkbox" id="dp-act" ${p.active !== false ? "checked" : ""}> সক্রিয় পার্টি <span class="mut">(বন্ধ করলে নতুন এন্ট্রির সাজেশনে আসবে না; আগের রেকর্ড যেমন আছে থাকবে)</span></label></div>`}
+  </div>${datalist("dp-dl-d", BD_DIST)}<div class="hint rd" id="dp-err"></div>
   <div class="row" style="margin-top:14px"><button class="btn pri" id="dp-ok">${ico("save")} সেভ</button><button class="btn" id="dp-x">বন্ধ</button>${!isNew && admin ? `<button class="btn dg" id="dp-del" style="margin-left:auto">${ico("trash")} মুছুন</button>` : ""}</div>`, (root, close) => {
     const err = m => $("#dp-err", root).textContent = m || ""; $("#dp-n", root).focus();
     $("#dp-x", root).onclick = close;
-    const dI = $("#dp-d", root), vI = $("#dp-v", root), syncV = () => { const d = BD_DIST.find(x => x.toLowerCase() === dI.value.trim().toLowerCase()); if (d) dI.value = d; vI.value = BD_DIV[dI.value] || ""; };
+    const dI = $("#dp-d", root), vI = $("#dp-v", root), aS = $("#dp-a", root), aN = $("#dp-an", root);
+    const syncV = () => { const d = BD_DIST.find(x => x.toLowerCase() === dI.value.trim().toLowerCase()); if (d) dI.value = d; vI.value = BD_DIV[dI.value] || ""; };
     dI.oninput = syncV; dI.onchange = syncV;
     $("#dp-n", root).onblur = () => { if (!dI.value.trim()) { dI.value = bdGuess($("#dp-n", root).value); syncV(); } };
+    aS.onchange = () => { aN.classList.toggle("hide", aS.value !== "__new"); if (aS.value === "__new") aN.focus(); };
     $("#dp-ok", root).onclick = async () => {
       const name = $("#dp-n", root).value.replace(/\s+/g, " ").trim(); if (name.length < 2) return err("পার্টির নাম লিখুন");
       syncV(); const dist = dI.value.trim(); if (dist && !BD_DIV[dist]) return err("জেলার নাম লিস্ট থেকে বাছুন");
       try {
-        const saved = await API.dpartySave({ id: p.id, name, asm: $("#dp-a", root).value.trim(), account: $("#dp-c", root).value.trim(), phone: $("#dp-p", root).value.trim(), district: dist, note: $("#dp-t", root).value.trim(), active: isNew ? true : $("#dp-act", root).checked });
+        let asm = aS.value;
+        if (asm === "__new") {
+          asm = aN.value.replace(/\s+/g, " ").trim(); if (asm.length < 2) return err("নতুন ASM-এর নাম লিখুন");
+          const ex = DASM.find(a => norm(a.name) === norm(asm)); if (ex) asm = ex.name; else DASM.push(await API.asmAdd(asm));
+        }
+        const saved = await API.dpartySave({ id: p.id, name, asm, contact_person: $("#dp-cp", root).value.trim(), phone: $("#dp-p", root).value.trim(), address: $("#dp-ad", root).value.trim(), district: dist, account: p.account || "", note: p.note || "", active: isNew ? true : $("#dp-act", root).checked });
         await dpLoad(true); close(); toast("✔ পার্টি সেভ হয়েছে"); after && after(saved);
       } catch (e) { err(dcErr(e)); }
     };
     const del = $("#dp-del", root);
-    if (del) del.onclick = async () => { if (!ask(`"${p.name}" মুছে ফেলবেন? (আগের কালেকশন রেকর্ড থেকে যাবে)`)) return; try { await API.dpartyDelete(p.id); await dpLoad(true); close(); toast("✔ মুছে ফেলা হয়েছে"); after && after(null); } catch (e) { err(dcErr(e)); } };
-  });
-}
-
-/* ---------- collection edit ---------- */
-function dcEditModal(r, after) {
-  modal(`<h2>কালেকশন এডিট</h2><div class="fgrid">
-   <div class="s2"><label class="f">তারিখ</label><input class="in" type="date" id="de-d" value="${r.date}"></div>
-   <div class="s2"><label class="f">টাকা</label><input class="in num" id="de-m" inputmode="decimal" value="${r.amount}"></div>
-   <div class="s4"><label class="f">পার্টি</label><input class="in" id="de-p" list="de-dl-p" autocomplete="off" value="${esc(r.party)}"></div>
-   <div class="s2"><label class="f">ASM</label><input class="in" id="de-a" list="de-dl-a" autocomplete="off" value="${esc(r.asm)}"></div>
-   <div class="s2"><label class="f">Account</label><input class="in" id="de-c" list="de-dl-c" autocomplete="off" value="${esc(r.account)}"></div>
-   <div class="s4"><label class="f">মন্তব্য</label><input class="in" id="de-r" autocomplete="off" value="${esc(r.remarks)}"></div>
-  </div>${datalist("de-dl-p", (DPARTY || []).map(p => p.name))}${datalist("de-dl-a", dcAsms())}${datalist("de-dl-c", dcAccounts())}<div class="hint rd" id="de-err"></div>
-  <div class="row" style="margin-top:14px"><button class="btn pri" id="de-ok">${ico("save")} সেভ</button><button class="btn" id="de-x">বন্ধ</button></div>`, (root, close) => {
-    const err = m => $("#de-err", root).textContent = m || "";
-    $("#de-x", root).onclick = close;
-    $("#de-ok", root).onclick = async () => {
-      const amount = evalAmt($("#de-m", root).value), party = $("#de-p", root).value.trim(), date = $("#de-d", root).value;
-      if (!date) return err("তারিখ দিন"); if (!party) return err("পার্টির নাম দিন"); if (isNaN(amount) || amount <= 0) return err("টাকার অংক ঠিক নেই");
-      const m = (DPARTY || []).find(p => norm(p.name) === norm(party));
-      const patch = { date, party: m ? m.name : party, party_id: m ? m.id : (party === r.party ? r.party_id : null), asm: $("#de-a", root).value.trim(), account: $("#de-c", root).value.trim(), amount, remarks: $("#de-r", root).value.trim() };
-      try { await API.dcolUpdate(r.id, patch); DCACHE.dcol = null; close(); toast("✔ সেভ হয়েছে"); after && after({ ...r, ...patch }); } catch (e) { err(dcErr(e)); }
+    if (del) del.onclick = async () => {
+      err("");
+      try {
+        const n = await API.dpartyUsage(p.id);
+        if (n > 0) return err(`এই পার্টির ${n}টি কালেকশন রেকর্ড আছে — মুছা যাবে না। এর বদলে উপরের "সক্রিয় পার্টি" টিক তুলে সেভ করুন (আগের রেকর্ড অক্ষত থাকবে)।`);
+        if (!ask(`"${p.name}" মুছে ফেলবেন? (কোনো কালেকশন রেকর্ড নেই, তাই নিরাপদ)`)) return;
+        await API.dpartyDelete(p.id); await dpLoad(true); close(); toast("✔ মুছে ফেলা হয়েছে"); after && after(null);
+      } catch (e) { err(dcErr(e)); }
     };
   });
 }
@@ -2488,7 +2503,7 @@ async function vDrep(v) {
 async function vDparty(v) {
   const admin = S.me.role === "admin", canAdd = S.me.role !== "boss"; const F = { q: "", asm: "", dv: "", ds: "", act: "1", lim: 200 }; let list = [];
   v.innerHTML = head("ডিস্ট্রিবিউশন পার্টি", `<button class="btn" id="dp-asm">${ico("users")} ASM তালিকা</button><button class="btn" id="dp-geo">${ico("map")} এলাকা অনুযায়ী</button><button class="btn" id="dp-xl">${ico("dl")} Excel</button>${canAdd ? `<button class="btn pri" id="dp-new">${ico("plus")} নতুন পার্টি</button>` : ""}`) + `<div id="dp-kpi"></div>
-   <div class="card noprint" style="margin:14px 0"><div class="row"><div style="flex:2 1 240px"><label class="f">খুঁজুন</label><input class="in" id="dp-q" type="search" autocomplete="off" placeholder="পার্টি, ASM, জেলা, বিভাগ…"></div><div><label class="f">ASM</label><select class="in" id="dp-fa"></select></div><div><label class="f">বিভাগ</label><select class="in" id="dp-fv"></select></div><div><label class="f">জেলা</label><select class="in" id="dp-fd"></select></div><div><label class="f">অবস্থা</label><select class="in" id="dp-fs"><option value="1">সক্রিয়</option><option value="0">নিষ্ক্রিয়</option><option value="">সব</option></select></div></div></div>
+   <div class="card noprint" style="margin:14px 0"><div class="row"><div style="flex:2 1 240px"><label class="f">খুঁজুন</label><input class="in" id="dp-q" type="search" autocomplete="off" placeholder="পার্টি, ASM, জেলা, ফোন, ঠিকানা…"></div><div><label class="f">ASM</label><select class="in" id="dp-fa"></select></div><div><label class="f">বিভাগ</label><select class="in" id="dp-fv"></select></div><div><label class="f">জেলা</label><select class="in" id="dp-fd"></select></div><div><label class="f">অবস্থা</label><select class="in" id="dp-fs"><option value="1">সক্রিয়</option><option value="0">নিষ্ক্রিয়</option><option value="">সব</option></select></div></div></div>
    <div class="card flush"><div class="ch"><h3>পার্টি তালিকা</h3><span class="tag" id="dp-cnt">0</span></div><div id="dp-out"></div></div>`;
   const out = $("#dp-out", v);
   try { list = await dpLoad(true); } catch (e) { out.innerHTML = `<div class="alert rd" style="margin:12px">${esc(dcErr(e))}</div>`; return; }
@@ -2501,10 +2516,10 @@ async function vDparty(v) {
   }
   function draw() {
     list = DPARTY || list; const q = norm(F.q);
-    const vis = list.filter(p => (F.act === "" || (F.act === "1") === p.active) && (!F.asm || (F.asm === "__none" ? !p.asm : p.asm === F.asm)) && (!F.dv || (F.dv === "__none" ? !p.division : p.division === F.dv)) && (!F.ds || (F.ds === "__none" ? !p.district : p.district === F.ds)) && (!q || norm([p.name, p.asm, p.district, p.division, p.phone, p.note].join(" ")).includes(q)));
+    const vis = list.filter(p => (F.act === "" || (F.act === "1") === p.active) && (!F.asm || (F.asm === "__none" ? !p.asm : p.asm === F.asm)) && (!F.dv || (F.dv === "__none" ? !p.division : p.division === F.dv)) && (!F.ds || (F.ds === "__none" ? !p.district : p.district === F.ds)) && (!q || norm([p.name, p.asm, p.district, p.division, p.phone, p.contact_person, p.address, p.note].join(" ")).includes(q)));
     $("#dp-kpi", v).innerHTML = `<div class="grid g4"><div class="kpi card k-vi"><div class="l">মোট পার্টি<span class="ki">${ico("users")}</span></div><div class="v num">${list.length}</div><div class="s">সক্রিয় ${list.filter(p => p.active).length}</div></div><div class="kpi card k-gr"><div class="l">ASM / Salesman<span class="ki">${ico("users")}</span></div><div class="v num">${dcAsms().length}</div><div class="s">জন</div></div><div class="kpi card k-am"><div class="l">ASM ঠিক করা নেই<span class="ki">${ico("flag")}</span></div><div class="v num">${list.filter(p => !p.asm).length}</div><div class="s">পার্টি</div></div><div class="kpi card"><div class="l">জেলা ঠিক করা নেই<span class="ki">${ico("flag")}</span></div><div class="v num">${list.filter(p => !p.district).length}</div><div class="s">পার্টি · ${new Set(list.map(p => p.district).filter(Boolean)).size}টি জেলায় বাকিরা</div></div></div>`;
     $("#dp-cnt", v).textContent = vis.length;
-    out.innerHTML = vis.length ? `<div class="tw cards"><table><thead><tr><th class="r">#</th><th>পার্টি</th><th>ASM / Salesman</th><th>জেলা</th><th>বিভাগ</th><th>অবস্থা</th><th class="r noprint"></th></tr></thead><tbody>${vis.slice(0, F.lim).map((p, i) => `<tr class="${p.active ? "" : "dim"}"><td class="r mut">${i + 1}</td><td><b>${esc(p.name)}</b>${p.note ? `<div class="mut xs">${esc(p.note)}</div>` : ""}</td><td>${esc(p.asm) || '<span class="am">—</span>'}</td><td>${p.district ? esc(p.district) : '<span class="am">—</span>'}</td><td>${p.division ? esc(p.division) : '<span class="am">—</span>'}</td><td>${p.active ? '<span class="dst approved">সক্রিয়</span>' : '<span class="dst cancelled">নিষ্ক্রিয়</span>'}</td><td class="r noprint">${admin ? `<button class="iconbtn sm" data-ed="${p.id}" title="এডিট">${ico("edit")}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${vis.length > F.lim ? `<div style="padding:12px;text-align:center"><button class="btn" id="dp-more">আরও ${Math.min(200, vis.length - F.lim)}টি দেখান (মোট ${vis.length})</button></div>` : ""}` : `<div class="empty">কোনো পার্টি পাওয়া যায়নি</div>`;
+    out.innerHTML = vis.length ? `<div class="tw cards"><table><thead><tr><th class="r">#</th><th>পার্টি</th><th>ASM / Salesman</th><th>জেলা</th><th>বিভাগ</th><th>অবস্থা</th><th class="r noprint"></th></tr></thead><tbody>${vis.slice(0, F.lim).map((p, i) => `<tr class="${p.active ? "" : "dim"}"><td class="r mut">${i + 1}</td><td><b>${esc(p.name)}</b>${[p.contact_person, p.phone].filter(Boolean).length ? `<div class="mut xs">${esc([p.contact_person, p.phone].filter(Boolean).join(" · "))}</div>` : ""}${p.address ? `<div class="mut xs">${esc(p.address)}</div>` : ""}</td><td>${esc(p.asm) || '<span class="am">—</span>'}</td><td>${p.district ? esc(p.district) : '<span class="am">—</span>'}</td><td>${p.division ? esc(p.division) : '<span class="am">—</span>'}</td><td>${p.active ? '<span class="dst approved">সক্রিয়</span>' : '<span class="dst cancelled">নিষ্ক্রিয়</span>'}</td><td class="r noprint">${admin ? `<button class="iconbtn sm" data-ed="${p.id}" title="এডিট">${ico("edit")}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${vis.length > F.lim ? `<div style="padding:12px;text-align:center"><button class="btn" id="dp-more">আরও ${Math.min(200, vis.length - F.lim)}টি দেখান (মোট ${vis.length})</button></div>` : ""}` : `<div class="empty">কোনো পার্টি পাওয়া যায়নি</div>`;
     labelTables(out);
     $$("[data-ed]", out).forEach(b => b.onclick = () => dpartyModal(list.find(p => p.id === b.dataset.ed), () => { filters(); draw(); }));
     const mb = $("#dp-more", out); if (mb) mb.onclick = () => { F.lim += 200; draw(); };
@@ -2513,16 +2528,30 @@ async function vDparty(v) {
   $("#dp-q", v).oninput = e => { F.q = e.target.value; F.lim = 200; draw(); };
   $("#dp-fa", v).onchange = e => { F.asm = e.target.value; F.lim = 200; draw(); }; $("#dp-fv", v).onchange = e => { F.dv = e.target.value; F.ds = ""; F.lim = 200; filters(); draw(); }; $("#dp-fd", v).onchange = e => { F.ds = e.target.value; F.lim = 200; draw(); }; $("#dp-fs", v).onchange = e => { F.act = e.target.value; F.lim = 200; draw(); };
   const nw = $("#dp-new", v); if (nw) nw.onclick = () => dpartyModal({}, () => { filters(); draw(); });
-  $("#dp-xl", v).onclick = () => exportXlsx({ Parties: [["Party", "ASM / Salesman", "District", "Division", "Account", "Phone", "Note", "Active"], ...list.map(p => [p.name, p.asm, p.district, p.division, p.account, p.phone, p.note, p.active ? "Yes" : "No"])] }, `Distribution_Parties_${today()}.xlsx`);
+  $("#dp-xl", v).onclick = () => exportXlsx({ Parties: [["Party", "ASM / Salesman", "Contact Person", "Contact No.", "Full Address", "District", "Division", "Active"], ...list.map(p => [p.name, p.asm, p.contact_person, p.phone, p.address, p.district, p.division, p.active ? "Yes" : "No"])] }, `Distribution_Parties_${today()}.xlsx`);
   $("#dp-geo", v).onclick = () => {
     const dv = dcGroup(list, p => p.division || "(বিভাগ নেই)").map(x => ({ ...x, ds: dcGroup(list.filter(p => (p.division || "(বিভাগ নেই)") === x.k), p => p.district || "—") }));
     modal(`<h2>এলাকা অনুযায়ী পার্টি</h2><div class="tw"><table><thead><tr><th>বিভাগ / জেলা</th><th class="r">পার্টি</th></tr></thead><tbody>${dv.map(x => `<tr class="dsub"><td><b>${esc(x.k)}</b></td><td class="r num"><b>${x.n}</b></td></tr>` + x.ds.map(d => `<tr><td style="padding-left:22px">${esc(d.k)}</td><td class="r num">${d.n}</td></tr>`).join("")).join("")}</tbody></table></div><div class="row" style="margin-top:14px"><button class="btn" id="gx-x">বন্ধ</button></div>`, (root, close) => { $("#gx-x", root).onclick = close; });
   };
-  $("#dp-asm", v).onclick = () => {
-    const rows = dcGroup(list.filter(p => p.asm), p => p.asm).sort((a, b) => a.k.localeCompare(b.k));
-    modal(`<h2>ASM / Salesman তালিকা</h2><div class="mut sm" style="margin-bottom:8px">${admin ? "নাম বদলালে ওই ASM-এর সব পার্টির ASM বদলে যাবে (আগের কালেকশন রেকর্ড আগের নামেই থাকবে)।" : ""}</div><div class="tw"><table><thead><tr><th>ASM</th><th class="r">পার্টি</th>${admin ? "<th></th>" : ""}</tr></thead><tbody>${rows.map((r, i) => `<tr><td>${esc(r.k)}</td><td class="r num">${r.n}</td>${admin ? `<td class="r"><button class="btn sm" data-rn="${i}">নাম বদলান</button></td>` : ""}</tr>`).join("")}</tbody></table></div><div class="row" style="margin-top:14px"><button class="btn" id="am-x">বন্ধ</button></div>`, (root, close) => {
-      $("#am-x", root).onclick = close;
-      $$("[data-rn]", root).forEach(b => b.onclick = async () => { const o = rows[+b.dataset.rn].k, n = prompt(tr("নতুন নাম"), o); if (n == null || !n.trim() || n.trim() === o) return; try { await API.dpartyRenameAsm(o, n.trim()); await dpLoad(true); close(); toast("✔ ASM-এর নাম বদলানো হয়েছে"); filters(); draw(); } catch (e) { toast(dcErr(e), "err"); } });
+  $("#dp-asm", v).onclick = function openAsm() {
+    const canAdd = S.me.role !== "boss";
+    const names = new Map(); DASM.forEach(a => names.set(a.name, { ...a, n: 0 })); list.forEach(p => { if (!p.asm) return; const o = names.get(p.asm) || { id: null, name: p.asm, active: true, n: 0 }; o.n++; names.set(p.asm, o); });
+    const rows = [...names.values()].sort((a, b) => a.name.localeCompare(b.name));
+    modal(`<h2>ASM / Salesman তালিকা</h2><div class="mut sm" style="margin-bottom:8px">${admin ? "নাম বদলালে ওই ASM-এর সব পার্টির ASM বদলে যাবে (আগের কালেকশন রেকর্ড আগের নামেই থাকবে)। যে ASM-এর পার্টি বা রেকর্ড আছে তাকে মুছা যায় না — নিষ্ক্রিয় করুন।" : ""}</div>${canAdd ? `<button class="btn pri sm" id="am-add" style="margin-bottom:10px">${ico("plus")} নতুন ASM</button>` : ""}<div class="tw"><table><thead><tr><th>ASM</th><th class="r">পার্টি</th><th>অবস্থা</th>${admin ? "<th></th>" : ""}</tr></thead><tbody>${rows.map((r, i) => `<tr class="${r.active ? "" : "dim"}"><td>${esc(r.name)}</td><td class="r num">${r.n}</td><td>${r.active ? '<span class="dst approved">সক্রিয়</span>' : '<span class="dst cancelled">নিষ্ক্রিয়</span>'}</td>${admin ? `<td class="r"><div class="dcacts"><button class="btn sm" data-rn="${i}">নাম বদলান</button>${r.id ? `<button class="btn sm" data-ac="${i}">${r.active ? "নিষ্ক্রিয়" : "সক্রিয়"}</button><button class="iconbtn sm rd" data-dl="${i}" title="মুছুন">${ico("trash")}</button>` : ""}</div></td>` : ""}</tr>`).join("") || `<tr><td colspan="4" class="mut" style="text-align:center">কোনো ASM নেই</td></tr>`}</tbody></table></div><div class="hint rd" id="am-e"></div><div class="row" style="margin-top:14px"><button class="btn" id="am-x">বন্ধ</button></div>`, (root, close) => {
+      $("#am-x", root).onclick = close; const e = m => $("#am-e", root).textContent = m || "";
+      const again = async () => { await dpLoad(true); list = DPARTY; filters(); draw(); openAsm(); };
+      const add = $("#am-add", root); if (add) add.onclick = () => askText("নতুন ASM / Salesman", "নাম লিখুন (যেমন: Rahim-ASM-Bogura)", "", async n => { if (names.has(n) || [...names.keys()].some(k => norm(k) === norm(n))) throw new Error("এই নামে ASM আগেই আছে"); await API.asmAdd(n); toast("✔ ASM যোগ হয়েছে"); again(); });
+      $$("[data-rn]", root).forEach(b => b.onclick = () => { const r = rows[+b.dataset.rn]; askText("ASM-এর নাম বদলান", "নতুন নাম", r.name, async n => { if (n === r.name) return; await API.asmRename(r, n); toast("✔ ASM-এর নাম বদলানো হয়েছে"); again(); }); });
+      $$("[data-ac]", root).forEach(b => b.onclick = async () => { const r = rows[+b.dataset.ac]; try { await API.asmActive(r.id, !r.active); toast(r.active ? "✔ নিষ্ক্রিয় করা হয়েছে" : "✔ সক্রিয় করা হয়েছে"); again(); } catch (x) { e(dcErr(x)); } });
+      $$("[data-dl]", root).forEach(b => b.onclick = async () => {
+        const r = rows[+b.dataset.dl]; e("");
+        try {
+          const c = await API.asmUsage(r.name);
+          if (r.n > 0 || c > 0) return e(`"${r.name}" — ${r.n}টি পার্টি ও ${c}টি কালেকশন রেকর্ডে আছে, মুছা যাবে না। "নিষ্ক্রিয়" করুন।`);
+          if (!ask(`"${r.name}" মুছে ফেলবেন? (কোনো পার্টি বা রেকর্ড নেই)`)) return;
+          await API.asmDelete(r.id); toast("✔ মুছে ফেলা হয়েছে"); again();
+        } catch (x) { e(dcErr(x)); }
+      });
     });
   };
 }

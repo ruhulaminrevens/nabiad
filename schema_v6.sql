@@ -160,3 +160,54 @@ begin
 end $$;
 revoke all on function public.make_backup(text) from public;
 grant execute on function public.make_backup(text) to authenticated;
+
+-- ============ v6.19 — richer party record, ASM master list, "never orphan history" ============
+alter table dist_parties add column if not exists contact_person text;
+alter table dist_parties add column if not exists address text;
+
+-- a party that has collection records can no longer be deleted (was: party_id silently set to null)
+alter table dist_collections drop constraint if exists dist_collections_party_id_fkey;
+alter table dist_collections add constraint dist_collections_party_id_fkey foreign key (party_id) references dist_parties(id) on delete restrict;
+
+-- ASM / salesman master list
+create table if not exists dist_asms (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  active boolean not null default true,
+  entered_by text,
+  user_id uuid default auth.uid(),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create unique index if not exists dist_asms_name_uq on dist_asms (lower(btrim(name)));
+drop trigger if exists touch_dist_asms on dist_asms;
+create trigger touch_dist_asms before update on dist_asms for each row execute function touch_updated_at();
+alter table dist_asms enable row level security;
+drop policy if exists p_dasm_read on dist_asms;
+drop policy if exists p_dasm_ins on dist_asms;
+drop policy if exists p_dasm_upd on dist_asms;
+drop policy if exists p_dasm_del on dist_asms;
+create policy p_dasm_read on dist_asms for select to authenticated using (my_role() is not null);
+create policy p_dasm_ins  on dist_asms for insert to authenticated with check (my_role() in ('admin','staff'));
+create policy p_dasm_upd  on dist_asms for update to authenticated using (my_role() = 'admin') with check (my_role() = 'admin');
+create policy p_dasm_del  on dist_asms for delete to authenticated using (my_role() = 'admin');
+
+-- an ASM used by any party or any collection cannot be deleted (deactivate instead)
+create or replace function public.dist_asm_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if exists (select 1 from dist_parties where lower(btrim(asm)) = lower(btrim(old.name)))
+     or exists (select 1 from dist_collections where lower(btrim(asm)) = lower(btrim(old.name))) then
+    raise exception 'ASM is in use — deactivate instead of deleting' using errcode = '23503';
+  end if;
+  return old;
+end $$;
+drop trigger if exists dist_asm_guard_trg on dist_asms;
+create trigger dist_asm_guard_trg before delete on dist_asms for each row execute function dist_asm_guard();
+drop trigger if exists audit_dasm on dist_asms;
+create trigger audit_dasm after insert or update or delete on dist_asms for each row execute function audit_trg();
+
+-- fill the master list from the ASM names already on parties (safe to re-run)
+insert into dist_asms (name, entered_by)
+  select distinct on (lower(btrim(asm))) btrim(asm), 'Old file (Foysal)' from dist_parties where btrim(coalesce(asm, '')) <> ''
+  on conflict do nothing;
