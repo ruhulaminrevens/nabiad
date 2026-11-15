@@ -210,16 +210,40 @@ const I18N = {
   "👮 কে কী পারে": "👮 Who can do what", "চেক / ক্লোজিং / ক্যাশ যোগ": "Add cheque / closing / cash", "ফাইনাল সেভের পর বদলানো": "Change after final save", "মুছে ফেলা": "Delete", "রিপোর্ট দেখা": "View reports", "Backup ও ব্যবহারকারী": "Backup & users",
   "ভুল স্ট্যাটাস দিলে নতুন স্ট্যাটাস দিন — ইতিহাস থেকে যায়। এই নিয়ম ডাটাবেস (RLS) নিজেই আটকায়।": "If a status is wrong, add a new one — history is kept. The database (RLS) enforces these rules.", "⚡ দ্রুত লিংক": "⚡ Quick links", "Supabase ড্যাশবোর্ড ↗": "Supabase dashboard ↗", "GitHub কোড ↗": "GitHub code ↗",
   "💡 একই খাতে কয়েকটা অংক থাকলে + দিয়ে লিখুন, যেমন 5000+12000": "💡 Several amounts in one category? Type them with +, e.g. 5000+12000",
+  "ডাউনলোড ▾": "Download ▾", "প্রিন্ট / PDF": "Print / PDF", "লগ পরিষ্কার": "Clear log", "তারিখ": "Date", "খুঁজুন — A/C, চেক নং, ইমেইল…": "Search — A/C, cheque no, email…", "সব জায়গা": "All places", "সব কাজ": "All actions", "সবাই": "Everyone",
+  "মোট পরিবর্তন": "Total changes", "সবচেয়ে বেশি:": "Most:", "আরও লোড করুন": "Load more", "৯০ দিন": "90 days",
+  "🧹 Audit log পরিষ্কার": "🧹 Clear audit log", "পুরনো লগ মুছে জায়গা খালি করুন। মোছার পরেও \"কে কখন পরিষ্কার করেছে\" তার একটা রেকর্ড থেকে যাবে।": "Delete old log entries to free space. A record of who cleared it, and when, is always kept.",
+  "৯০ দিনের বেশি পুরনো": "Older than 90 days", "৩০ দিনের বেশি পুরনো": "Older than 30 days", "৭ দিনের বেশি পুরনো": "Older than 7 days", "সব লগ": "Entire log", "মোছার আগে Excel কপি ডাউনলোড করুন": "Download an Excel copy before deleting",
+  "নিশ্চিত করতে": "To confirm, type", "লিখুন": "", "পরিষ্কার করুন": "Clear", "CLEAR লিখুন": "Type CLEAR", "টি পুরনো লগ মুছে ফেলা হয়েছে": " old log entries deleted", "schema_v4.sql চালানো বাকি": "schema_v4.sql not run yet",
+  "পুরো ডাটা (Excel)": "All data (Excel)", "শেষ স্বয়ংক্রিয়": "Last automatic", "আজ রাতে প্রথমটি হবে": "First one tonight", "পরের Backup": "Next backup", "মোট Backup": "Total backups", "শেষ হাতে-নেওয়া": "Last manual",
+  "ℹ️ Backup কীভাবে কাজ করে": "ℹ️ How backup works", "🕛 প্রতি রাত ১২টায় (বাংলাদেশ সময়) ডাটাবেস নিজে থেকে Backup নেয় — কাউকে কিছু করতে হয় না।": "🕛 Every night at 12 AM (Bangladesh time) the database backs itself up — nobody needs to do anything.",
+  "🗂 স্বয়ংক্রিয় Backup শেষ ১৪ দিনের রাখা হয়, হাতে নেওয়া Backup শেষ ১০টি।": "🗂 Automatic backups are kept for 14 days; the last 10 manual ones are kept.",
+  "⬇ যেকোনো Backup JSON বা Excel হিসেবে ডাউনলোড করে নিজের কম্পিউটার / Google Drive-এ রাখুন — মাসে অন্তত একবার।": "⬇ Download any backup as JSON or Excel and keep it on your computer / Google Drive — at least once a month.",
+  "♻ ডাটা ফেরত আনতে হলে Admin ডাউনলোড করা ফাইল দিয়ে Supabase-এ restore করতে পারে।": "♻ To recover data, Admin can restore from a downloaded file in Supabase.", "এখনো কোনো Backup নেই — \"এখনই Backup\" চাপুন": "No backups yet — press \"Backup now\"",
+  "এই হাতে-নেওয়া Backup মুছবেন?": "Delete this manual backup?", "✔ মুছে ফেলা হয়েছে": "✔ Deleted", "ডাটা আনা হচ্ছে… একটু সময় লাগবে": "Fetching data… please wait",
+  "ডাটাবেস নিরাপত্তা (RLS) চালু": "Database security (RLS) on", "Staff শুধু যোগ করতে পারে; বদলানো ও মোছা শুধু Admin": "Staff can only add; only Admin can change or delete", "নতুন কেউ নিজে অ্যাকাউন্ট খুলতে পারে না": "Nobody can sign themselves up", "শুধু Admin ব্যবহারকারী যোগ করে": "Only Admin adds users",
+  "নিরাপদ সংযোগ (HTTPS)": "Secure connection (HTTPS)", "দৈনিক Backup": "Daily backup", "এখনো স্বয়ংক্রিয় Backup হয়নি": "No automatic backup yet", "সব পরিবর্তনের রেকর্ড (Audit log)": "Record of every change (Audit log)", "কে, কখন, আগে কী ছিল": "Who, when, what it was before",
+  "চেকের ছবি সুরক্ষিত": "Cheque photos protected", "লগইন ছাড়া দেখা যায় না": "Not visible without login", "এই ডিভাইসে নোটিফিকেশন": "Notifications on this device", "সেটিংস থেকে চালু করুন": "Turn on in Settings", "সব ব্যবহারকারীর নাম দেওয়া": "All users have names", "জনের নাম ঠিক করা বাকি": "users still need a name", "ঠিক আছে": "OK",
+  "নিরাপত্তা স্কোর": "Security score", "💻 এই ডিভাইস": "💻 This device", "পাসওয়ার্ড বদলান": "Change password", "ফোন হারালে বা পাসওয়ার্ড অন্য কেউ জানলে আগে \"অন্য সব ডিভাইস থেকে লগআউট\" চাপুন, তারপর পাসওয়ার্ড বদলান।": "If a phone is lost or someone knows the password, first press \"Sign out all other devices\", then change the password.",
+  "🗑 গত ৭ দিনে মুছে ফেলা": "🗑 Deleted in the last 7 days", "✔ গত ৭ দিনে কিছু মোছা হয়নি": "✔ Nothing deleted in the last 7 days", "সব দেখুন →": "View all →", "👥 ব্যবহারকারী ও শেষ লগইন": "👥 Users & last sign-in", "বদলান →": "Manage →", "শেষ লগইন": "Last sign-in",
+  "শেষ লগইনের সময় দেখাতে schema_v4.sql চালাতে হবে।": "Run schema_v4.sql to show last sign-in times.", "ক্যাশ": "Cash",
 };
 const I18N_KEYS = Object.keys(I18N).filter(k => k.length >= 6).sort((a, b) => b.length - a.length);
 const BN_DIG = { "০": "0", "১": "1", "২": "2", "৩": "3", "৪": "4", "৫": "5", "৬": "6", "৭": "7", "৮": "8", "৯": "9" };
 const HAS_BN = /[ঀ-৿]/;
+/* replace a phrase only when it is a whole word — never inside a longer Bangla word ("পরিবর্তনের" must not become "Changeের") */
+const BNL = /[\u0980-\u09FF]/;
+function subBound(s, k, v) {
+  let i = 0, o = "", j; const kb = BNL.test(k[0]), ke = BNL.test(k[k.length - 1]);
+  while ((j = s.indexOf(k, i)) !== -1) { const a = s[j - 1], b = s[j + k.length]; const ok = !(kb && a && BNL.test(a)) && !(ke && b && BNL.test(b)); o += s.slice(i, j) + (ok ? v : k); i = j + k.length; }
+  return o + s.slice(i);
+}
 function tr(str) {
   if (LANG !== "en" || !str || !HAS_BN.test(str)) return str;
   const t = str.trim();
   if (I18N[t] !== undefined) return str.replace(t, I18N[t]);
   let out = str;
-  for (const k of I18N_KEYS) if (out.includes(k)) { out = out.split(k).join(I18N[k]); if (!HAS_BN.test(out)) break; }
+  for (const k of I18N_KEYS) if (out.includes(k)) { out = subBound(out, k, I18N[k]); if (!HAS_BN.test(out)) break; }
   out = out.replace(/(\d)\s?টি/g, "$1 ").replace(/[০-৯]/g, d => BN_DIG[d]);
   const t2 = out.trim(); if (I18N[t2] !== undefined) out = out.replace(t2, I18N[t2]);
   return out;

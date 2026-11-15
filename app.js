@@ -24,7 +24,7 @@ const num = v => { const n = parseFloat(String(v ?? "").replace(/,/g, "")); retu
 const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const purposeKey = p => { const s = String(p || "").toLowerCase(); return s.startsWith("cash") ? "cash" : s.startsWith("own") ? "own" : s.startsWith("cancel") ? "cancel" : s.startsWith("supplier") ? "supplier" : "other"; };
-function toast(msg, kind = "ok") { const t = document.createElement("div"); t.className = "toast " + kind; t.innerHTML = `<i>${kind === "err" ? "!" : "✓"}</i><span></span>`; t.lastChild.textContent = tr(String(msg).replace(/^✔\s*/, "")); $("#toasts").appendChild(t); setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 260); }, kind === "err" ? 6000 : 2800); }
+function toast(msg, kind = "ok") { const t = document.createElement("div"); t.className = "toast " + kind; t.innerHTML = `<i>${kind === "err" ? "!" : "✓"}</i><span></span>`; t.lastChild.textContent = tr(String(msg)).replace(/^✔\s*/, ""); $("#toasts").appendChild(t); setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 260); }, kind === "err" ? 6000 : 2800); }
 const ask = m => confirm(tr(m));
 function modal(html, onMount) {
   const root = $("#modal-root"); root.innerHTML = `<div class="mback"><div class="modal">${html}</div></div>`;
@@ -1170,6 +1170,7 @@ function nextOcc(r) {
 }
 function relTime(d) {
   const m = Math.round((new Date(d) - Date.now()) / 6e4), a = Math.abs(m);
+  if (LANG === "en") { const e = a < 60 ? `${a} min` : a < 1440 ? `${Math.round(a / 60)} h` : `${Math.round(a / 1440)} days`; return m < 0 ? `${e} ago` : m === 0 ? "now" : `in ${e}`; }
   const s = a < 60 ? `${a} মিনিট` : a < 1440 ? `${Math.round(a / 60)} ঘণ্টা` : `${Math.round(a / 1440)} দিন`;
   return m < 0 ? `${s} আগে` : m === 0 ? "এখন" : `${s} পরে`;
 }
@@ -1254,31 +1255,6 @@ function auDiff(r) {
   const o = r.old || {}, n = r.new || {}, L = k => `<span class="au-k">${esc(AU_F[k] || k)}</span>`;
   if (r.action === "update") return Object.keys({ ...o, ...n }).filter(k => !AU_SKIP.has(k) && JSON.stringify(o[k]) !== JSON.stringify(n[k])).map(k => `${L(k)} <s>${esc(auV(o[k]))}</s> → <b>${esc(auV(n[k]))}</b>`).join("<br>") || "—";
   const x = r.action === "delete" ? o : n; return Object.entries(x).filter(([k, val]) => !AU_SKIP.has(k) && val !== null && val !== "").slice(0, 7).map(([k, val]) => `${L(k)} ${esc(auV(val))}`).join(" · ");
-}
-async function vAudit(v) {
-  const F = { tbl: "", act: "", from: addDays(today(), -30), to: today() };
-  v.innerHTML = head("Audit log · এডিট ইতিহাস", `<button class="btn" id="au-x">${ico("dl")} Excel</button>`) + `<div class="card noprint" style="margin-bottom:14px"><div class="row">
-   <div style="flex:2 1 220px"><label class="f">খুঁজুন (কে, A/C, চেক নং, তারিখ)</label><input class="in" id="au-q" autocomplete="off" type="search"></div>
-   <div><label class="f">কোথায়</label><select class="in" id="au-t"><option value="">সব</option>${Object.entries(AU_T).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></div>
-   <div><label class="f">কাজ</label><select class="in" id="au-a"><option value="">সব</option>${Object.entries(AU_A).map(([k, l]) => `<option value="${k}">${l[0]}</option>`).join("")}</select></div>
-   <div><label class="f">From</label><input class="in" type="date" id="au-f" value="${F.from}"></div><div><label class="f">To</label><input class="in" type="date" id="au-to" value="${F.to}"></div></div></div>
-   <div id="au-sum" class="mut sm" style="margin-bottom:8px"></div><div class="card flush" id="au-out"><div class="empty">লোড হচ্ছে…</div></div>`;
-  let rows = [], shown = [];
-  async function load() {
-    F.tbl = $("#au-t", v).value; F.act = $("#au-a", v).value; F.from = $("#au-f", v).value; F.to = $("#au-to", v).value;
-    $("#au-out", v).innerHTML = `<div class="empty">লোড হচ্ছে…</div>`;
-    try { rows = await API.audit(F); } catch (e) { $("#au-out", v).innerHTML = `<div class="alert rd" style="margin:12px">${/relation|does not exist|schema cache|not find/i.test(e.message || "") ? "Audit log টেবিল নেই — Supabase-এ schema_v2.sql চালাতে হবে" : esc(e.message || e)}</div>`; return; }
-    draw();
-  }
-  function draw() {
-    const q = norm($("#au-q", v).value); shown = rows.filter(r => !q || norm([r.user_name, r.row_key, r.tbl, JSON.stringify(r.new || r.old)].join(" ")).includes(q));
-    const c = a => shown.filter(r => r.action === a).length;
-    $("#au-sum", v).innerHTML = `<b>${shown.length}</b>টি পরিবর্তন · <span class="gr">যোগ ${c("insert")}</span> · <span class="am">বদল ${c("update")}</span> · <span class="rd">মুছে ফেলা ${c("delete")}</span>${rows.length >= 500 ? " · (সর্বশেষ ৫০০টি — তারিখ ছোট করুন)" : ""}`;
-    $("#au-out", v).innerHTML = shown.length ? `<div class="tw cards"><table><thead><tr><th>সময়</th><th>কে</th><th>কোথায়</th><th>কাজ</th><th>কী</th><th>পরিবর্তন</th></tr></thead><tbody>${shown.map(r => `<tr><td class="num sm">${new Date(r.at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}</td><td><b>${esc(r.user_name || "")}</b></td><td>${esc(AU_T[r.tbl] || r.tbl)}</td><td><span class="tag au-${r.action}">${(AU_A[r.action] || [r.action])[0]}</span></td><td>${esc(r.row_key || "")}</td><td class="sm au-d">${auDiff(r)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">এই সময়ে কোনো পরিবর্তন নেই</div>`;
-  }
-  ["au-t", "au-a", "au-f", "au-to"].forEach(id => $("#" + id, v).onchange = load); $("#au-q", v).oninput = draw;
-  $("#au-x", v).onclick = () => exportXlsx({ Audit: [["Time", "User", "Table", "Action", "Key", "Old", "New"], ...shown.map(r => [new Date(r.at).toLocaleString("en-GB"), r.user_name, r.tbl, r.action, r.row_key, r.old ? JSON.stringify(r.old) : "", r.new ? JSON.stringify(r.new) : ""])] }, `Audit_${today()}.xlsx`);
-  await load();
 }
 
 /* =================== v6: API extensions =================== */
@@ -1766,38 +1742,151 @@ async function vSettings(v) {
 }
 
 /* =================== v6: audit & security (tabs) =================== */
+
+/* =================== v6.2: audit log =================== */
+AU_T.cash_records = "ক্যাশ"; AU_T.audit_log = "Audit log";
+const AU_IC = { insert: "plus", update: "edit", delete: "trash" };
+const auText = r => { const o = r.old || {}, n = r.new || {}; if (r.action === "update") return Object.keys({ ...o, ...n }).filter(k => !AU_SKIP.has(k) && JSON.stringify(o[k]) !== JSON.stringify(n[k])).map(k => `${AU_F[k] || k}: ${auV(o[k])} → ${auV(n[k])}`).join("; "); const x = r.action === "delete" ? o : n; return Object.entries(x).filter(([k, val]) => !AU_SKIP.has(k) && val !== null && val !== "").map(([k, val]) => `${AU_F[k] || k}: ${auV(val)}`).join("; "); };
+function auChips(r, all) {
+  const o = r.old || {}, n = r.new || {}, L = k => `<span class="au-k">${esc(AU_F[k] || k)}</span>`;
+  if (r.action === "update") { const ks = Object.keys({ ...o, ...n }).filter(k => !AU_SKIP.has(k) && JSON.stringify(o[k]) !== JSON.stringify(n[k])); return ks.map(k => `<span class="auc">${L(k)}<s>${esc(auV(o[k]))}</s><i>→</i><b>${esc(auV(n[k]))}</b></span>`).join("") || `<span class="mut xs">—</span>`; }
+  const x = r.action === "delete" ? o : n, es = Object.entries(x).filter(([k, val]) => !AU_SKIP.has(k) && val !== null && val !== "" && typeof val !== "object");
+  return es.slice(0, all ? 99 : 4).map(([k, val]) => `<span class="auc">${L(k)}<b>${esc(auV(val))}</b></span>`).join("") + (!all && es.length > 4 ? `<button class="btn sm ghost au-more">+${es.length - 4}</button>` : "");
+}
+async function vAudit(v) {
+  const admin = S.me.role === "admin", F = { p: "30", tbl: "", act: "", who: "", q: "", from: "", to: "" };
+  v.innerHTML = head("Audit log", `<div class="dd"><button class="btn" id="au-dl">${ico("dl")} ডাউনলোড ▾</button><div class="ddm hide" id="au-menu"><button data-dl="xlsx">${ico("dl")} Excel (.xlsx)</button><button data-dl="csv">${ico("list")} CSV</button><button data-dl="print">${ico("print")} প্রিন্ট / PDF</button></div></div>${admin ? `<button class="btn rdo" id="au-clr">${ico("trash")} লগ পরিষ্কার</button>` : ""}`) + `
+   <div class="card noprint" style="margin-bottom:12px"><div class="seg wrap" id="au-p">${[["1", "আজ"], ["7", "৭ দিন"], ["30", "৩০ দিন"], ["90", "৯০ দিন"], ["custom", "তারিখ"]].map(([k, l]) => `<span class="chip ${k === F.p ? "on" : ""}" data-p="${k}">${l}</span>`).join("")}</div>
+    <div class="row hide" id="au-cu" style="margin-top:8px"><input class="in" type="date" id="au-f"><input class="in" type="date" id="au-to"></div>
+    <div class="srch"><label class="si">${ico("search")}<input class="in" id="au-q" placeholder="খুঁজুন — A/C, চেক নং, ইমেইল…" autocomplete="off" type="search"></label></div>
+    <div class="aufl"><select class="in" id="au-t"><option value="">সব জায়গা</option>${Object.entries({ ...AU_T, cash_records: "ক্যাশ" }).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select><select class="in" id="au-a"><option value="">সব কাজ</option>${Object.entries(AU_A).map(([k, l]) => `<option value="${k}">${l[0]}</option>`).join("")}</select><select class="in" id="au-w"><option value="">সবাই</option></select></div></div>
+   <div class="grid g4 au-k4" id="au-kpi"></div><div id="au-out" style="margin-top:12px"><div class="card empty">লোড হচ্ছে…</div></div>`;
+  let rows = [], shown = [], more = false;
+  const range = () => { if (F.p === "custom") return [F.from || addDays(today(), -30), F.to || today()]; return [addDays(today(), -(+F.p - 1)), today()]; };
+  async function load(append) {
+    const [from, to] = range(); if (!append) $("#au-out", v).innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
+    try { const r = await API.audit({ tbl: F.tbl, act: F.act, from, to, offset: append ? rows.length : 0 }); rows = append ? rows.concat(r) : r; more = r.length >= 500; }
+    catch (e) { $("#au-out", v).innerHTML = `<div class="alert rd">${/relation|does not exist|schema cache|not find/i.test(e.message || "") ? "Audit log টেবিল নেই — Supabase-এ schema_v2.sql চালাতে হবে" : esc(e.message || e)}</div>`; return; }
+    const users = [...new Set(rows.map(r => r.user_name).filter(Boolean))].sort(); const ws = $("#au-w", v), cur = ws.value; ws.innerHTML = `<option value="">সবাই</option>` + users.map(u => `<option ${u === cur ? "selected" : ""}>${esc(u)}</option>`).join("");
+    draw();
+  }
+  function draw() {
+    const q = norm(F.q); shown = rows.filter(r => (!F.who || r.user_name === F.who) && (!q || norm([r.user_name, r.row_key, r.tbl, JSON.stringify(r.new || r.old)].join(" ")).includes(q)));
+    const c = a => shown.filter(r => r.action === a).length, top = Object.entries(shown.reduce((m, r) => (m[r.user_name] = (m[r.user_name] || 0) + 1, m), {})).sort((a, b) => b[1] - a[1])[0];
+    $("#au-kpi", v).innerHTML = `<div class="kpi card k-vi"><div class="l">মোট পরিবর্তন</div><div class="v num">${shown.length}${more ? "+" : ""}</div><div class="s">${top ? `<span>সবচেয়ে বেশি:</span> ${esc(top[0])} (${top[1]})` : "—"}</div></div><div class="kpi card k-gr"><div class="l">যোগ</div><div class="v num">${c("insert")}</div></div><div class="kpi card k-am"><div class="l">বদল</div><div class="v num">${c("update")}</div></div><div class="kpi card k-rd"><div class="l">মুছে ফেলা</div><div class="v num">${c("delete")}</div></div>`;
+    if (!shown.length) { $("#au-out", v).innerHTML = `<div class="card empty">এই সময়ে কোনো পরিবর্তন নেই</div>`; return; }
+    let last = "", html = "";
+    shown.forEach((r, i) => { const d = r.at.slice(0, 10), ld = new Date(r.at); if (d !== last) { last = d; html += `<div class="au-day">${ld.toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>`; }
+      html += `<div class="aui a-${r.action}" data-i="${i}"><div class="aic">${ico(AU_IC[r.action] || "edit")}</div><div class="aib"><div class="ait"><span class="tag au-${r.action}">${(AU_A[r.action] || [r.action])[0]}</span><b>${esc(AU_T[r.tbl] || (r.tbl === "cash_records" ? "ক্যাশ" : r.tbl))}</b><span class="aik">${esc(r.row_key || "")}</span></div><div class="aim">${ico("clock").replace("<svg", '<svg width="12" height="12"')} ${ld.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · <b>${esc(r.user_name || "system")}</b></div><div class="aud">${auChips(r)}</div></div></div>`; });
+    $("#au-out", v).innerHTML = `<div class="card au-list">${html}</div>${more ? `<div class="row" style="justify-content:center;margin-top:10px"><button class="btn fix" id="au-more">আরও লোড করুন</button></div>` : ""}`;
+    $$(".au-more", v).forEach(b => b.onclick = e => { e.stopPropagation(); const r = shown[+b.closest(".aui").dataset.i]; b.closest(".aud").innerHTML = auChips(r, true); });
+    $("#au-more", v) && ($("#au-more", v).onclick = () => load(true));
+  }
+  const fname = ext => `Audit_${range()[0]}_${range()[1]}.${ext}`;
+  async function download(kind) {
+    $("#au-menu", v).classList.add("hide"); if (!shown.length) return toast("ডাটা নেই", "err");
+    const H = ["Time", "User", "Where", "Action", "Item", "Changes", "Old (JSON)", "New (JSON)"], R = shown.map(r => [new Date(r.at).toLocaleString("en-GB"), r.user_name || "", AU_T[r.tbl] ? tr(AU_T[r.tbl]) : r.tbl, r.action, r.row_key || "", auText(r), r.old ? JSON.stringify(r.old) : "", r.new ? JSON.stringify(r.new) : ""]);
+    if (kind === "xlsx") return exportXlsx({ Audit: [H, ...R] }, fname("xlsx"));
+    if (kind === "csv") { const csv = "﻿" + [H, ...R].map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\r\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = fname("csv"); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); return; }
+    window.print();
+  }
+  $("#au-dl", v).onclick = e => { e.stopPropagation(); $("#au-menu", v).classList.toggle("hide"); };
+  $$("#au-menu [data-dl]", v).forEach(b => b.onclick = () => download(b.dataset.dl));
+  const hideMenu = () => $("#au-menu", v)?.classList.add("hide"); document.addEventListener("click", hideMenu);
+  $("#au-clr", v) && ($("#au-clr", v).onclick = () => clearAuditModal(() => load()));
+  $$("#au-p .chip", v).forEach(c => c.onclick = () => { F.p = c.dataset.p; $$("#au-p .chip", v).forEach(x => x.classList.toggle("on", x === c)); $("#au-cu", v).classList.toggle("hide", F.p !== "custom"); if (F.p === "custom" && !F.from) { F.from = addDays(today(), -30); F.to = today(); $("#au-f", v).value = F.from; $("#au-to", v).value = F.to; } load(); });
+  ["au-f", "au-to"].forEach(id => $("#" + id, v).onchange = () => { F.from = $("#au-f", v).value; F.to = $("#au-to", v).value; load(); });
+  $("#au-t", v).onchange = e => { F.tbl = e.target.value; load(); }; $("#au-a", v).onchange = e => { F.act = e.target.value; load(); }; $("#au-w", v).onchange = e => { F.who = e.target.value; draw(); };
+  $("#au-q", v).oninput = e => { F.q = e.target.value; draw(); };
+  await load();
+  return () => document.removeEventListener("click", hideMenu);
+}
+function clearAuditModal(after) {
+  modal(`<h2>🧹 Audit log পরিষ্কার</h2><p class="mut sm" style="margin-top:-6px">পুরনো লগ মুছে জায়গা খালি করুন। মোছার পরেও "কে কখন পরিষ্কার করেছে" তার একটা রেকর্ড থেকে যাবে।</p>
+   <div class="grid" style="gap:8px">${[["90", "৯০ দিনের বেশি পুরনো"], ["30", "৩০ দিনের বেশি পুরনো"], ["7", "৭ দিনের বেশি পুরনো"], ["all", "সব লগ"]].map(([k, l], i) => `<label class="rad"><input type="radio" name="clr" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
+   <label class="rad" style="margin-top:12px"><input type="checkbox" id="clr-dl" checked><span>মোছার আগে Excel কপি ডাউনলোড করুন</span></label>
+   <div id="clr-all" class="hide" style="margin-top:10px"><label class="f">নিশ্চিত করতে <b>CLEAR</b> লিখুন</label><input class="in" id="clr-t" autocomplete="off"></div>
+   <div class="row" style="margin-top:16px"><button class="btn bad fix" id="clr-ok">${ico("trash")} পরিষ্কার করুন</button><button class="btn fix" id="clr-x">বাতিল</button></div>`, (root, close) => {
+    $$("[name=clr]", root).forEach(r => r.onchange = () => $("#clr-all", root).classList.toggle("hide", $("[name=clr]:checked", root).value !== "all"));
+    $("#clr-x", root).onclick = close;
+    $("#clr-ok", root).onclick = async () => {
+      const k = $("[name=clr]:checked", root).value; if (k === "all" && $("#clr-t", root).value.trim().toUpperCase() !== "CLEAR") return toast("CLEAR লিখুন", "err");
+      const before = k === "all" ? new Date(Date.now() + 60000).toISOString() : new Date(addDays(today(), -+k) + "T00:00:00").toISOString();
+      const b = $("#clr-ok", root); b.disabled = true;
+      try {
+        if ($("#clr-dl", root).checked) { const old = await API.audit({ from: "2000-01-01", to: k === "all" ? today() : addDays(today(), -+k - 1), limit: 20000 }); if (old.length) await exportXlsx({ Audit: [["Time", "User", "Where", "Action", "Item", "Changes"], ...old.map(r => [new Date(r.at).toLocaleString("en-GB"), r.user_name || "", r.tbl, r.action, r.row_key || "", auText(r)])] }, `Audit_archive_${today()}.xlsx`); }
+        const n = await API.clearAudit(before); close(); toast(`✔ ${n}টি পুরনো লগ মুছে ফেলা হয়েছে`); after && after();
+      } catch (e) { toast(/function|does not exist/i.test(e.message || "") ? "schema_v4.sql চালানো বাকি" : e.message, "err"); b.disabled = false; }
+    };
+  });
+}
+
+/* =================== v6.2: audit & security shell =================== */
 async function vSecurity(v) {
   const admin = S.me.role === "admin"; let tab = sessionStorage.getItem("nabiad_sec_tab") || "audit"; if (!admin && tab !== "audit") tab = "audit";
-  const tabs = [["audit", "📜 Audit log"], ...(admin ? [["backup", "💾 Backup"], ["sec", "🔐 Security"]] : [])];
-  v.innerHTML = `<div class="tabs" style="margin-bottom:12px">${tabs.map(([k, l]) => `<span class="chip ${k === tab ? "on" : ""}" data-st="${k}">${l}</span>`).join("")}</div><div id="sec-out"></div>`;
-  $$("[data-st]", v).forEach(c => c.onclick = () => { sessionStorage.setItem("nabiad_sec_tab", c.dataset.st); vSecurity(v); });
+  const tabs = [["audit", "📜", "Audit log"], ...(admin ? [["backup", "💾", "Backup"], ["sec", "🔐", "Security"]] : [])];
+  v.innerHTML = `<div class="tabs ntabs" style="margin-bottom:12px">${tabs.map(([k, i, l]) => `<span class="chip ${k === tab ? "on" : ""}" data-st="${k}"><i class="te">${i}</i> <span>${l}</span></span>`).join("")}</div><div id="sec-out"></div>`;
+  $$("[data-st]", v).forEach(c => c.onclick = () => { sessionStorage.setItem("nabiad_sec_tab", c.dataset.st); if (cleanup) { cleanup(); cleanup = null; } vSecurity(v).then(f => { cleanup = f || null; }); });
   const out = $("#sec-out", v);
   if (tab === "audit") return vAudit(out);
-  if (tab === "backup") {
-    out.innerHTML = head("Backup", `<button class="btn pri" id="bk-now">${ico("save")} এখনই Backup</button><button class="btn" id="bk-dl">${ico("dl")} পুরো ডাটা ডাউনলোড (Excel)</button>`) + `<div class="alert vi" style="margin-bottom:12px">🕛 <span>প্রতি রাত <b>১২:০০টায়</b> (বাংলাদেশ সময়) ডাটাবেস নিজে থেকে Backup হয়। শেষ <b>১৪ দিনের</b> স্বয়ংক্রিয় আর শেষ <b>১০টি</b> হাতে-নেওয়া Backup রাখা হয়। যেকোনো Backup JSON হিসেবে ডাউনলোড করে নিজের কাছে রাখা যায়।</span></div><div class="card flush" id="bk-list"><div class="empty">লোড হচ্ছে…</div></div>`;
-    const list = async () => {
-      let rows; try { rows = await API.backups(); } catch (e) { $("#bk-list", out).innerHTML = `<div class="alert rd" style="margin:12px">${/relation|does not exist|schema cache|not find/i.test(e.message || "") ? "Backup টেবিল নেই — Supabase-এ schema_v3.sql চালাতে হবে" : esc(e.message)}</div>`; return; }
-      const last = rows.find(r => r.kind === "auto");
-      $("#bk-list", out).innerHTML = `<div class="ch"><h3>Backup তালিকা</h3><span class="tag">${rows.length}</span><span class="mut sm" style="margin-left:auto">শেষ স্বয়ংক্রিয়: ${last ? new Date(last.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) + " (" + relTime(last.at) + ")" : "এখনো হয়নি — আজ রাত ১২টায় প্রথমটি হবে"}</span></div>` + (rows.length ? `<div class="tw cards"><table><thead><tr><th>সময়</th><th>ধরন</th><th class="r">রেকর্ড</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td>${new Date(r.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</td><td><span class="tag ${r.kind === "auto" ? "au-insert" : "au-update"}">${r.kind === "auto" ? "স্বয়ংক্রিয়" : "হাতে"}</span></td><td class="r num">${money0(r.size_rows)}</td><td class="r"><button class="btn sm" data-bk="${r.id}" data-at="${r.at}">${ico("dl")} JSON</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">এখনো কোনো Backup নেই</div>`);
-      $$("[data-bk]", out).forEach(b => b.onclick = async () => { b.disabled = true; try { const d = await API.backupData(+b.dataset.bk || b.dataset.bk); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(d)], { type: "application/json" })); a.download = `nabiad_backup_${b.dataset.at.slice(0, 16).replace(/[:T]/g, "-")}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); } catch (e) { toast(e.message, "err"); } b.disabled = false; });
-    };
-    $("#bk-now", out).onclick = async () => { const b = $("#bk-now", out); b.disabled = true; try { await API.backupNow(); toast("✔ Backup নেওয়া হয়েছে"); await list(); } catch (e) { toast(e.message, "err"); } b.disabled = false; };
-    $("#bk-dl", out).onclick = async () => { const b = $("#bk-dl", out); b.disabled = true; toast("ডাটা আনা হচ্ছে… (ব্যালেন্স ইতিহাস বড়, একটু সময় লাগবে)"); try { const d = await API.dumpAll(); const sheets = {}; for (const [t, rows] of Object.entries(d)) { if (!Array.isArray(rows) || !rows.length) continue; const keys = [...new Set(rows.flatMap(r => Object.keys(r)))]; sheets[t] = [keys, ...rows.map(r => keys.map(k => r[k] !== null && typeof r[k] === "object" ? JSON.stringify(r[k]) : r[k]))]; } await exportXlsx(sheets, `Nabiad_Full_Backup_${today()}.xlsx`); } catch (e) { toast(e.message, "err"); } b.disabled = false; };
-    return list();
-  }
-  // security
-  let us = []; try { us = await API.users(); } catch { }
+  if (tab === "backup") return vBackup(out);
+  return vSec(out);
+}
+function nextMidnight() { const d = new Date(); d.setHours(24, 0, 0, 0); return d; }
+async function vBackup(out) {
+  out.innerHTML = head("Backup", `<button class="btn pri" id="bk-now">${ico("save")} এখনই Backup</button><button class="btn" id="bk-dl">${ico("dl")} পুরো ডাটা (Excel)</button>`) + `<div class="grid g4" id="bk-kpi"><div class="kpi card"><div class="skel"></div></div><div class="kpi card"><div class="skel"></div></div><div class="kpi card"><div class="skel"></div></div><div class="kpi card"><div class="skel"></div></div></div>
+   <div class="card flush" style="margin-top:12px" id="bk-list"><div class="empty">লোড হচ্ছে…</div></div>
+   <div class="card" style="margin-top:12px"><h3>ℹ️ Backup কীভাবে কাজ করে</h3><ul class="chk"><li>🕛 প্রতি রাত ১২টায় (বাংলাদেশ সময়) ডাটাবেস নিজে থেকে Backup নেয় — কাউকে কিছু করতে হয় না।</li><li>🗂 স্বয়ংক্রিয় Backup শেষ ১৪ দিনের রাখা হয়, হাতে নেওয়া Backup শেষ ১০টি।</li><li>⬇ যেকোনো Backup JSON বা Excel হিসেবে ডাউনলোড করে নিজের কম্পিউটার / Google Drive-এ রাখুন — মাসে অন্তত একবার।</li><li>♻ ডাটা ফেরত আনতে হলে Admin ডাউনলোড করা ফাইল দিয়ে Supabase-এ restore করতে পারে।</li></ul></div>`;
+  const toXlsx = async (d, name) => { const sheets = {}; for (const [t, rows] of Object.entries(d || {})) { if (!Array.isArray(rows) || !rows.length) continue; const keys = [...new Set(rows.flatMap(r => Object.keys(r)))]; sheets[t.slice(0, 31)] = [keys, ...rows.map(r => keys.map(k => r[k] !== null && typeof r[k] === "object" ? JSON.stringify(r[k]) : r[k]))]; } if (!Object.keys(sheets).length) return toast("ডাটা নেই", "err"); await exportXlsx(sheets, name); };
+  const list = async () => {
+    let rows; try { rows = await API.backups(); } catch (e) { $("#bk-list", out).innerHTML = `<div class="alert rd" style="margin:12px">${/relation|does not exist|schema cache|not find/i.test(e.message || "") ? "Backup টেবিল নেই — Supabase-এ schema_v3.sql চালাতে হবে" : esc(e.message)}</div>`; $("#bk-kpi", out).innerHTML = ""; return; }
+    const lastA = rows.find(r => r.kind === "auto"), lastM = rows.find(r => r.kind === "manual"), nm = nextMidnight(), ok = lastA && Date.now() - new Date(lastA.at) < 36 * 36e5;
+    $("#bk-kpi", out).innerHTML = `<div class="kpi card ${ok ? "k-gr" : "k-am"}"><div class="l">শেষ স্বয়ংক্রিয়</div><div class="v" style="font-size:17px">${lastA ? new Date(lastA.at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "এখনো হয়নি"}</div><div class="s">${lastA ? relTime(lastA.at) : "আজ রাতে প্রথমটি হবে"}</div></div>
+      <div class="kpi card k-vi"><div class="l">পরের Backup</div><div class="v" style="font-size:17px">${nm.toLocaleString("en-GB", { day: "2-digit", month: "short" })}, 12:00 AM</div><div class="s">${relTime(nm)}</div></div>
+      <div class="kpi card k-cy"><div class="l">মোট Backup</div><div class="v num">${rows.length}</div><div class="s"><span>স্বয়ংক্রিয়</span> ${rows.filter(r => r.kind === "auto").length} · <span>হাতে</span> ${rows.filter(r => r.kind === "manual").length}</div></div>
+      <div class="kpi card"><div class="l">শেষ হাতে-নেওয়া</div><div class="v" style="font-size:17px">${lastM ? new Date(lastM.at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</div><div class="s">${rows[0] ? `<span>রেকর্ড</span> ${money0(rows[0].size_rows)}` : ""}</div></div>`;
+    $("#bk-list", out).innerHTML = `<div class="ch"><h3>Backup তালিকা</h3><span class="tag">${rows.length}</span></div>` + (rows.length ? `<div class="bkl">${rows.map(r => `<div class="bkr"><div class="bki ${r.kind}">${ico(r.kind === "auto" ? "clock" : "save")}</div><div class="bkb"><b>${new Date(r.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</b><div class="mut xs"><span>${r.kind === "auto" ? "স্বয়ংক্রিয়" : "হাতে"}</span> · ${money0(r.size_rows)} <span>রেকর্ড</span> · ${relTime(r.at)}</div></div><div class="bka"><button class="btn sm" data-j="${r.id}" data-at="${r.at}" title="JSON">JSON</button><button class="btn sm" data-x="${r.id}" data-at="${r.at}" title="Excel">${ico("dl")} Excel</button>${r.kind === "manual" ? `<button class="btn sm ghost" data-del="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></div>`).join("")}</div>` : `<div class="empty">এখনো কোনো Backup নেই — "এখনই Backup" চাপুন</div>`);
+    const fn = (at, ext) => `nabiad_backup_${at.slice(0, 16).replace(/[:T]/g, "-")}.${ext}`;
+    $$("[data-j]", out).forEach(b => b.onclick = async () => { b.disabled = true; try { const d = await API.backupData(+b.dataset.j || b.dataset.j); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(d)], { type: "application/json" })); a.download = fn(b.dataset.at, "json"); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); } catch (e) { toast(e.message, "err"); } b.disabled = false; });
+    $$("[data-x]", out).forEach(b => b.onclick = async () => { b.disabled = true; try { await toXlsx(await API.backupData(+b.dataset.x || b.dataset.x), fn(b.dataset.at, "xlsx")); } catch (e) { toast(e.message, "err"); } b.disabled = false; });
+    $$("[data-del]", out).forEach(b => b.onclick = async () => { if (!ask("এই হাতে-নেওয়া Backup মুছবেন?")) return; try { await API.deleteBackup(+b.dataset.del || b.dataset.del); toast("✔ মুছে ফেলা হয়েছে"); list(); } catch (e) { toast(/function|does not exist/i.test(e.message || "") ? "schema_v4.sql চালানো বাকি" : e.message, "err"); } });
+  };
+  $("#bk-now", out).onclick = async () => { const b = $("#bk-now", out); b.disabled = true; try { await API.backupNow(); toast("✔ Backup নেওয়া হয়েছে"); await list(); } catch (e) { toast(e.message, "err"); } b.disabled = false; };
+  $("#bk-dl", out).onclick = async () => { const b = $("#bk-dl", out); b.disabled = true; toast("ডাটা আনা হচ্ছে… একটু সময় লাগবে"); try { await toXlsx(await API.dumpAll(), `Nabiad_Full_Data_${today()}.xlsx`); } catch (e) { toast(e.message, "err"); } b.disabled = false; };
+  await list();
+}
+async function vSec(out) {
+  out.innerHTML = head("Security") + `<div class="card empty">লোড হচ্ছে…</div>`;
+  const [logins, bks, recent] = await Promise.all([API.userLogins().catch(() => null), API.backups().catch(() => []), API.audit({ act: "delete", from: addDays(today(), -6), to: today() }).catch(() => [])]);
+  let us = logins; if (!us) { try { us = (await API.users()).map(u => ({ ...u, last_sign_in_at: null })); } catch { us = []; } }
+  const perm = "Notification" in window ? Notification.permission : "na", lastB = bks.find(b => b.kind === "auto"), noName = us.filter(u => !u.name || u.name === (u.email || "").split("@")[0]).length;
+  const checks = [[true, "ডাটাবেস নিরাপত্তা (RLS) চালু", "Staff শুধু যোগ করতে পারে; বদলানো ও মোছা শুধু Admin"], [true, "নতুন কেউ নিজে অ্যাকাউন্ট খুলতে পারে না", "শুধু Admin ব্যবহারকারী যোগ করে"], [location.protocol === "https:" || DEMO, "নিরাপদ সংযোগ (HTTPS)", location.host],
+    [!!lastB && Date.now() - new Date(lastB.at) < 36 * 36e5, "দৈনিক Backup", lastB ? relTime(lastB.at) : "এখনো স্বয়ংক্রিয় Backup হয়নি"], [true, "সব পরিবর্তনের রেকর্ড (Audit log)", "কে, কখন, আগে কী ছিল"], [true, "চেকের ছবি সুরক্ষিত", "লগইন ছাড়া দেখা যায় না"],
+    [perm === "granted", "এই ডিভাইসে নোটিফিকেশন", perm === "granted" ? "চালু" : "সেটিংস থেকে চালু করুন"], [!noName, "সব ব্যবহারকারীর নাম দেওয়া", noName ? `${noName} জনের নাম ঠিক করা বাকি` : "ঠিক আছে"]];
+  const score = Math.round(checks.filter(c => c[0]).length / checks.length * 100);
   out.innerHTML = head("Security") + `<div class="grid g2">
-    <div class="card"><h3>🔐 নিরাপত্তা ব্যবস্থা</h3><ul class="chk">
-      <li>✓ <b>Row Level Security</b> চালু — Staff শুধু যোগ করতে পারে, বদলাতে বা মুছতে পারে শুধু Admin (ডাটাবেস নিজেই আটকায়)</li>
-      <li>✓ Public sign-up বন্ধ — শুধু Admin যোগ করলে লগইন করা যায়</li>
-      <li>✓ সব পরিবর্তনের Audit log (কে, কখন, আগে কী ছিল)</li><li>✓ চেকের ছবি private storage-এ — লগইন ছাড়া দেখা যায় না</li>
-      <li>✓ পুরনো ব্যালেন্স ফাইল এনক্রিপ্ট করা (AES-GCM)</li><li>✓ প্রতি রাত ১২টায় স্বয়ংক্রিয় Backup</li><li>✓ HTTPS (github.io)</li></ul></div>
-    <div class="card"><h3>💻 এই সেশন</h3><div class="grid" style="gap:8px"><div class="kv"><span>লগইন</span><b>${esc(S.me.email)}</b></div><div class="kv"><span>Role</span><b>${esc(S.me.role)}</b></div><div class="kv"><span>ডিভাইস</span><b class="sm">${esc((navigator.userAgentData?.platform || navigator.platform || "") + " · " + (/Mobi/.test(navigator.userAgent) ? "Mobile" : "Desktop"))}</b></div></div>
-      <div class="row" style="margin-top:12px"><button class="btn fix" id="sc-oth">অন্য সব ডিভাইস থেকে লগআউট</button></div><div class="mut xs" style="margin-top:6px">ফোন হারালে বা কারও কাছে পাসওয়ার্ড গেলে এটা চাপুন, তারপর সেটিংস থেকে পাসওয়ার্ড বদলান।</div></div>
-    <div class="card" style="grid-column:1/-1"><h3>👥 ব্যবহারকারী</h3>${us.length ? `<div class="tw cards"><table><thead><tr><th>ইমেইল</th><th>নাম</th><th>Role</th><th>অবস্থা</th></tr></thead><tbody>${us.map(u => `<tr><td>${esc(u.email)}</td><td>${esc(u.name || "")}</td><td><span class="pill">${esc(u.role)}</span></td><td>${u.active ? `<span class="gr b">সক্রিয়</span>` : `<span class="rd b">নিষ্ক্রিয়</span>`}</td></tr>`).join("")}</tbody></table></div><div class="row" style="margin-top:10px"><a class="btn sm" href="#/admin">ব্যবহারকারী বদলাতে Admin →</a></div>` : `<div class="empty">তালিকা পাওয়া যায়নি</div>`}</div></div>`;
+    <div class="card"><div class="secs"><div class="ring" style="--p:${score}"><b>${score}%</b></div><div><h3 style="margin:0">নিরাপত্তা স্কোর</h3><div class="mut sm">${checks.filter(c => c[0]).length} / ${checks.length} <span>ঠিক আছে</span></div></div></div>
+      <div class="hcl">${checks.map(([ok, l, s]) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "!"}</i><div><b>${l}</b><div class="mut xs">${esc(s)}</div></div></div>`).join("")}</div></div>
+    <div class="grid" style="gap:14px;align-content:start"><div class="card"><h3>💻 এই ডিভাইস</h3><div class="kv"><span>লগইন</span><b class="sm">${esc(S.me.email)}</b></div><div class="kv"><span>Role</span><b>${esc(S.me.role)}</b></div><div class="kv"><span>ডিভাইস</span><b class="sm">${esc((navigator.userAgentData?.platform || navigator.platform || "") + " · " + (/Mobi/.test(navigator.userAgent) ? "Mobile" : "Desktop"))}</b></div>
+       <div class="row" style="margin-top:12px"><button class="btn fix" id="sc-oth">${ico("out")} অন্য সব ডিভাইস থেকে লগআউট</button><a class="btn fix" href="#/settings">${ico("gear")} পাসওয়ার্ড বদলান</a></div><div class="mut xs" style="margin-top:6px">ফোন হারালে বা পাসওয়ার্ড অন্য কেউ জানলে আগে "অন্য সব ডিভাইস থেকে লগআউট" চাপুন, তারপর পাসওয়ার্ড বদলান।</div></div>
+      <div class="card"><h3>🗑 গত ৭ দিনে মুছে ফেলা</h3>${recent.length ? `<div class="mini">${recent.slice(0, 6).map(r => `<div class="mi"><div><b>${esc(AU_T[r.tbl] || r.tbl)} · ${esc(r.row_key || "")}</b><div class="mut xs">${esc(r.user_name || "")} · ${new Date(r.at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}</div></div></div>`).join("")}</div><a class="btn sm" style="margin-top:8px" href="#/audit" onclick="sessionStorage.setItem('nabiad_sec_tab','audit')">সব দেখুন →</a>` : `<div class="alert gr">✔ গত ৭ দিনে কিছু মোছা হয়নি</div>`}</div></div>
+    <div class="card flush" style="grid-column:1/-1"><div class="ch"><h3>👥 ব্যবহারকারী ও শেষ লগইন</h3><span class="tag">${us.length}</span><div class="sp" style="flex:1"></div><a class="sm" href="#/admin" onclick="sessionStorage.setItem('nabiad_admin_tab','usr')">বদলান →</a></div>
+      <div class="ulr">${us.map(u => `<div class="ur"><div class="ava">${esc((u.name || u.email || "?").trim().slice(0, 1).toUpperCase())}</div><div class="ub"><b>${esc(u.name || "—")}</b> <span class="pill sm">${esc(u.role)}</span>${u.active ? "" : ` <span class="tag cl">নিষ্ক্রিয়</span>`}<div class="mut xs">${esc(u.email)}</div></div><div class="ut"><span class="mut xs">শেষ লগইন</span><b class="sm">${u.last_sign_in_at ? relTime(u.last_sign_in_at) : "—"}</b></div></div>`).join("")}</div>
+      ${logins ? "" : `<div class="mut xs" style="padding:0 16px 12px">শেষ লগইনের সময় দেখাতে schema_v4.sql চালাতে হবে।</div>`}</div></div>`;
   $("#sc-oth", out).onclick = async () => { if (!ask("অন্য সব ডিভাইস থেকে লগআউট করবেন? (এই ডিভাইস লগইন থাকবে)")) return; try { await API.signOutOthers(); toast("✔ অন্য ডিভাইস থেকে লগআউট হয়েছে"); } catch (e) { toast(e.message, "err"); } };
 }
+Object.assign(SbAPI, {
+  async audit(f) { const lim = f.limit || 500, off = f.offset || 0; let q = sb.from("audit_log").select("*").order("at", { ascending: false }).range(off, off + lim - 1); if (f.tbl) q = q.eq("tbl", f.tbl); if (f.act) q = q.eq("action", f.act); if (f.from) q = q.gte("at", new Date(f.from + "T00:00:00").toISOString()); if (f.to) q = q.lt("at", new Date(addDays(f.to, 1) + "T00:00:00").toISOString()); const { data, error } = await q; if (error) throw error; return data; },
+  async clearAudit(before) { const { data, error } = await sb.rpc("clear_audit", { before }); if (error) throw error; return data; },
+  async deleteBackup(id) { const { error } = await sb.rpc("delete_backup", { bid: id }); if (error) throw error; },
+  async userLogins() { const { data, error } = await sb.rpc("user_logins"); if (error) throw error; return data; }
+});
+Object.assign(DemoAPI, {
+  async audit(f) { const off = f.offset || 0, lim = f.limit || 500; return demoStore.audit.filter(r => (!f.tbl || r.tbl === f.tbl) && (!f.act || r.action === f.act) && (!f.from || r.at.slice(0, 10) >= f.from) && (!f.to || r.at.slice(0, 10) <= f.to)).slice(off, off + lim); },
+  async clearAudit(before) { const n = demoStore.audit.filter(r => r.at < before).length; demoStore.audit = demoStore.audit.filter(r => r.at >= before); this.aud("audit_log", "delete", `${n} rows cleared`, null, null); this.save(); return n; },
+  async deleteBackup(id) { demoStore.backups = (demoStore.backups || []).filter(b => b.id !== id); this.save(); },
+  async userLogins() { return [{ email: "admin@demo", name: S.me.name, role: "admin", active: true, last_sign_in_at: new Date().toISOString() }]; }
+});
 
 /* ---------- boot ---------- */
 let inited = false;
