@@ -918,3 +918,10 @@ tr.dim td{opacity:.55}
 .chip.add{border-style:dashed;color:var(--pri);background:var(--pri-soft)}
 .daterow .photo-in .btn.big{padding:0 12px}
 @media (max-width:900px){ .fb2{flex:1 1 100%} .daterow .photo-in{gap:6px} .daterow .photo-in .btn.big .lbl{font-size:13px} }
+
+/* v6.24 — Daily Closing / Cash: draft + final save equal size on one line */
+.cbar{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:stretch}
+.cbar .btn.lg{width:100%;height:auto;min-height:52px;justify-content:center;text-align:center;white-space:normal;line-height:1.25;padding:8px 10px;margin:0}
+.cbar .hint,.cbar .sp{grid-column:1/-1}.cbar .sp{display:none}
+@media (min-width:901px){.cbar{grid-template-columns:minmax(0,300px) minmax(0,300px) 1fr}.cbar .hint{grid-column:auto}}
+@media (max-width:420px){.cbar .btn.lg{font-size:13.5px;gap:6px}.cbar .btn.lg svg{width:16px;height:16px;flex:none}}
