@@ -1170,7 +1170,7 @@ function nextOcc(r) {
 }
 function relTime(d) {
   const m = Math.round((new Date(d) - Date.now()) / 6e4), a = Math.abs(m);
-  if (LANG === "en") { const e = a < 60 ? `${a} min` : a < 1440 ? `${Math.round(a / 60)} h` : `${Math.round(a / 1440)} days`; return m < 0 ? `${e} ago` : m === 0 ? "now" : `in ${e}`; }
+  if (LANG === "en") { const e = a < 60 ? `${a} min` : a < 1440 ? `${Math.round(a / 60)} h` : `${Math.round(a / 1440)} day${Math.round(a / 1440) === 1 ? "" : "s"}`; return m < 0 ? `${e} ago` : m === 0 ? "now" : `in ${e}`; }
   const s = a < 60 ? `${a} মিনিট` : a < 1440 ? `${Math.round(a / 60)} ঘণ্টা` : `${Math.round(a / 1440)} দিন`;
   return m < 0 ? `${s} আগে` : m === 0 ? "এখন" : `${s} পরে`;
 }

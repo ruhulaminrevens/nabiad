@@ -1,2 +1,6 @@
 dev/
 *.key
+private_data/
+*.plain.json
+history.json
+accounts.json
