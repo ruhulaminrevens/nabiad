@@ -265,18 +265,19 @@ const Outbox = {
     try { await sb.auth.getSession(); } catch { }
     try {
       while (a.length) {
-        const it = a[0], tbl = { cheque: "cheques", status: "cheque_status", bal: "balances" }[it.k];
+        const it = a[0], tbl = { cheque: "cheques", status: "cheque_status", bal: "balances", dcol: "dist_collections" }[it.k];
         const { error } = await sb.from(tbl).insert(it.p);
         if (error && isNetErr(error)) break;
         if (error && error.code !== "23505" && !/foreign key/i.test(error.message)) { if (/JWT|auth|permission|policy/i.test(error.message)) break; dropped.push(`${it.k}: ${error.message}`); }
         else if (error) {
           if (it.k === "cheque") { dropped.push(`${it.p.code} · ${it.p.chq_no} — আগেই অন্য কেউ এন্ট্রি করেছে`); a = a.filter((x, i) => i === 0 || !(x.k === "status" && x.p.cheque_id === it.p.id)); }
           else if (it.k === "bal") dropped.push(`${it.p[0]?.date} ব্যালেন্স — আগেই সেভ করা আছে`);
+          else if (it.k === "dcol") dropped.push(`${it.p.party} কালেকশন — আগেই সেভ হয়েছে`);
         } else done++;
         a.shift(); this.save(a);
       }
     } finally { this.busy = false; syncBadge(); }
-    if (done) { toast(`✔ ${done}টি অফলাইন এন্ট্রি সিঙ্ক হয়েছে`); balCache.clear(); try { await reload(); refreshBadges(); if (CUR !== "closing") route(); } catch { } }
+    if (done) { toast(`✔ ${done}টি অফলাইন এন্ট্রি সিঙ্ক হয়েছে`); balCache.clear(); try { await reload(); refreshBadges(); if (CUR === "dcol" && window.__dcolRefresh) window.__dcolRefresh(); else if (CUR !== "closing") route(); } catch { } }
     dropped.forEach(m => toast("সিঙ্ক হয়নি: " + m, "err"));
   }
 };
@@ -379,15 +380,19 @@ const ROUTES = {
   cash: { t: "দৈনিক ক্যাশ রেকর্ড", ic: "wallet", roles: "as", sec: "cash", f: () => vCash },
   cashsum: { t: "ক্যাশ সামারি", ic: "clock", roles: "asb", sec: "cash", f: () => vCashSum },
   cashrep: { t: "ক্যাশ রিপোর্ট", ic: "chart", roles: "asb", sec: "cash", f: () => vCashRep },
+  dcol: { t: "দৈনিক কালেকশন", ic: "wallet", roles: "as", sec: "dist", f: () => vDcol },
+  dsum: { t: "কালেকশন সামারি", ic: "clock", roles: "asb", sec: "dist", f: () => vDsum },
+  drep: { t: "কালেকশন রিপোর্ট", ic: "chart", roles: "asb", sec: "dist", f: () => vDrep },
   books: { t: "চেক বই", ic: "book", roles: "asb", sec: "more", f: () => vBooks },
   accounts: { t: "অ্যাকাউন্ট খুঁজুন", ic: "card", roles: "asb", sec: "more", f: () => vAccounts },
   register: { t: "ক্যাশ রেজিস্টার", ic: "list", roles: "asb", sec: "more", f: () => vRegister },
+  dparty: { t: "ডিস্ট্রিবিউশন পার্টি", ic: "users", roles: "asb", sec: "more", f: () => vDparty },
   rem: { t: "রিমাইন্ডার", ic: "bell", roles: "asb", sec: "more", f: () => vRem },
   settings: { t: "সেটিংস", ic: "gear", roles: "asb", sec: "more", f: () => vSettings },
   audit: { t: "Audit ও Security", ic: "shield", roles: "ab", sec: "more", f: () => vSecurity },
   admin: { t: "অ্যাডমিন", ic: "gear", roles: "a", sec: "more", f: () => vAdmin }
 };
-const SECS = { top: "", main: "চেক", bank: "ব্যাংক", cash: "ক্যাশ", more: "অন্যান্য" };
+const SECS = { top: "", main: "চেক", bank: "ব্যাংক", cash: "ক্যাশ", dist: "ডিস্ট্রিবিউশন কালেকশন", more: "অন্যান্য" };
 const roleKey = () => ({ admin: "a", staff: "s", boss: "b" }[S.me.role]);
 const allowed = () => Object.keys(ROUTES).filter(k => ROUTES[k].roles.includes(roleKey()));
 let cleanup = null;
@@ -1232,7 +1237,7 @@ async function vAdmin(v) {
       const row = (ok, l, sub) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "✗"}</i><div><b>${l}</b>${sub ? `<div class="mut xs">${sub}</div>` : ""}</div></div>`;
       out.innerHTML = `<div class="grid g2"><div class="card"><h3>🩺 সিস্টেম অবস্থা</h3><div class="hcl">
         ${row(chk.db, "ডাটাবেস সংযোগ", DEMO ? "DEMO মোড" : "Supabase")}${row(chk.v2, "v2: ড্রাফট · রিমাইন্ডার · Audit · ছবি", chk.v2 ? "চালু" : "schema_v2.sql চালাতে হবে")}
-        ${row(chk.v3, "v3: ক্যাশ · Backup · নিজের নাম", chk.v3 ? "চালু" : "schema_v3.sql চালাতে হবে")}${row(chk.backup, "রাত ১২টার Backup", chk.backupAt ? "শেষ: " + new Date(chk.backupAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "এখনো হয়নি")}
+        ${row(chk.v3, "v3: ক্যাশ · Backup · নিজের নাম", chk.v3 ? "চালু" : "schema_v3.sql চালাতে হবে")}${row(chk.v6, "v6: ডিস্ট্রিবিউশন কালেকশন", chk.v6 ? "চালু" : "schema_v6.sql চালাতে হবে")}${row(chk.backup, "রাত ১২টার Backup", chk.backupAt ? "শেষ: " + new Date(chk.backupAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "এখনো হয়নি")}
         ${row(location.protocol === "https:" || DEMO, "HTTPS", location.host)}${row(!!navigator.serviceWorker?.controller || DEMO, "অফলাইন মোড (PWA)", navigator.serviceWorker?.controller ? "চালু" : "রিলোড দিলে চালু হবে")}</div>
         <div class="mut xs" style="margin-top:10px">সংস্করণ v6 · ${esc(document.querySelector('script[src^="app.js"]')?.getAttribute("src")?.split("v=")[1] || "")}</div></div>
        <div class="card"><h3>👮 কে কী পারে</h3><table class="perm"><thead><tr><th></th><th>Admin</th><th>Staff</th><th>Boss</th></tr></thead><tbody>
@@ -1246,12 +1251,12 @@ async function vAdmin(v) {
 Object.assign(SbAPI, {
   async health() {
     const t = async (tbl, col = "*") => { const { error } = await sb.from(tbl).select(col, { count: "exact", head: true }); return !error; };
-    const [db, v2, v3] = await Promise.all([t("accounts", "code"), t("reminders", "id"), t("cash_records", "date")]);
+    const [db, v2, v3, v6] = await Promise.all([t("accounts", "code"), t("reminders", "id"), t("cash_records", "date"), t("dist_collections", "id")]);
     let backupAt = null; try { backupAt = (await this.backups())[0]?.at || null; } catch { }
-    return { db, v2, v3, backup: !!backupAt && Date.now() - new Date(backupAt) < 36 * 36e5, backupAt };
+    return { db, v2, v3, v6, backup: !!backupAt && Date.now() - new Date(backupAt) < 36 * 36e5, backupAt };
   }
 });
-Object.assign(DemoAPI, { async health() { const b = (demoStore.backups || [])[0]; return { db: true, v2: true, v3: true, backup: !!b, backupAt: b?.at }; } });
+Object.assign(DemoAPI, { async health() { const b = (demoStore.backups || [])[0]; return { db: true, v2: true, v3: true, v6: true, backup: !!b, backupAt: b?.at }; } });
 
 /* ---------- "More" sheet: grouped tiles, ✕ / tap outside / swipe down / phone Back all close it ---------- */
 let moreClose = null;
@@ -1461,7 +1466,7 @@ Object.assign(SbAPI, {
   async setMyName(n) { const { error } = await sb.rpc("set_my_name", { n }); if (error) throw error; },
   async changePassword(p) { const { error } = await sb.auth.updateUser({ password: p }); if (error) throw error; },
   async signOutOthers() { const { error } = await sb.auth.signOut({ scope: "others" }); if (error) throw error; },
-  async dumpAll() { const T = ["accounts", "cheques", "cheque_status", "balances", "books", "reminders", "cash_records", "balance_drafts"], o = {}; for (const t of T) { try { o[t] = await fetchAll(t, t === "accounts" ? "code" : t === "balances" ? "date" : t === "balance_drafts" || t === "cash_records" ? "date" : "id"); } catch (e) { o[t] = { error: e.message }; } } return o; }
+  async dumpAll() { const T = ["accounts", "cheques", "cheque_status", "balances", "books", "reminders", "cash_records", "balance_drafts", "dist_parties", "dist_collections"], o = {}; for (const t of T) { try { o[t] = await fetchAll(t, t === "accounts" ? "code" : t === "balances" ? "date" : t === "balance_drafts" || t === "cash_records" ? "date" : t === "dist_parties" ? "name" : "id"); } catch (e) { o[t] = { error: e.message }; } } return o; }
 });
 Object.assign(DemoAPI, {
   async balancesRange(from, to) { const h = await this.hist(), out = []; for (const [d, m] of h) if (d >= from && d <= to) for (const c in m) out.push({ date: d, code: c, total: Number(m[c].total) || 0, block: Number(m[c].block) || 0 }); return out.sort((a, b) => a.date.localeCompare(b.date)); },
@@ -2073,6 +2078,403 @@ Object.assign(DemoAPI, {
   async deleteBackup(id) { demoStore.backups = (demoStore.backups || []).filter(b => b.id !== id); this.save(); },
   async userLogins() { return [{ email: "admin@demo", name: S.me.name, role: "admin", active: true, last_sign_in_at: new Date().toISOString() }]; }
 });
+
+/* =================== v6.15: Distribution Collection (daily record · approval · summary · report · parties) =================== */
+Object.assign(ICON, {
+  users: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0M16 5.2a3.2 3.2 0 0 1 0 5.6M18 14.5a6 6 0 0 1 3 5.5"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
+  xmark: '<path d="M6 6l12 12M18 6L6 18"/>'
+});
+const DC_ST = { pending: "Pending", approved: "Approved", hold: "Hold", cancelled: "Cancelled" };
+const DC_EXTRA = ["Cash", "bKash", "Nagad", "Priyo Agro", "Unknown"];
+const DP_KEY = "nabiad_dparty_v1";
+const dcErr = e => /relation|does not exist|schema cache|not find|dist_/i.test(e.message || "") && !/permission|policy/i.test(e.message || "") ? "কালেকশন টেবিল নেই — Supabase-এ schema_v6.sql চালাতে হবে" : isNetErr(e) ? "ইন্টারনেট নেই" : (e.message || String(e));
+const dcRow = r => ({ id: r.id, date: r.date, party_id: r.party_id || null, party: r.party, asm: r.asm || "", account: r.account || "", amount: Number(r.amount), status: r.status || "pending", remarks: r.remarks || "", decided_by: r.decided_by || null, decided_at: r.decided_at || null, decision_note: r.decision_note || "", entered_by: r.entered_by || "", created_at: r.created_at || "" });
+const dpRow = p => ({ id: p.id, name: p.name, asm: p.asm || "", account: p.account || "", phone: p.phone || "", note: p.note || "", active: p.active !== false });
+const dcDup = e => e && e.code === "23505" ? new Error("এই নামে পার্টি আগেই আছে") : e;
+const dcShort = d => d ? `${d.slice(8, 10)}-${d.slice(5, 7)}-${d.slice(2, 4)}` : "";
+
+Object.assign(SbAPI, {
+  async dparties() { return (await fetchAll("dist_parties", "name")).map(dpRow); },
+  async dpartySave(p) {
+    const row = { name: p.name, asm: p.asm || null, account: p.account || null, phone: p.phone || null, note: p.note || null, active: p.active !== false };
+    if (p.id) { const { data, error } = await sb.from("dist_parties").update(row).eq("id", p.id).select().single(); if (error) throw dcDup(error); return dpRow(data); }
+    row.entered_by = S.me.name; const { data, error } = await sb.from("dist_parties").insert(row).select().single(); if (error) throw dcDup(error); return dpRow(data);
+  },
+  async dpartyDelete(id) { const { error } = await sb.from("dist_parties").delete().eq("id", id); if (error) throw error; },
+  async dpartyRenameAsm(from, to) { const { error } = await sb.from("dist_parties").update({ asm: to || null }).eq("asm", from); if (error) throw error; },
+  async dcolRange(from, to) {
+    let out = [], f = 0;
+    for (;;) { const { data, error } = await sb.from("dist_collections").select("*").gte("date", from).lte("date", to).order("date").order("created_at").order("id").range(f, f + 999); if (error) throw error; out = out.concat(data); if (data.length < 1000) break; f += 1000; }
+    return out.map(dcRow);
+  },
+  async dcolAdd(c) {
+    const row = { id: c.id || crypto.randomUUID(), date: c.date, party_id: c.party_id || null, party: c.party, asm: c.asm || null, account: c.account || null, amount: c.amount, remarks: c.remarks || null, status: "pending", entered_by: S.me.name };
+    const local = () => ({ ...dcRow({ ...row, created_at: new Date().toISOString() }), pending_sync: true });
+    if (!navigator.onLine) { Outbox.add("dcol", row); return local(); }
+    const { data, error } = await sb.from("dist_collections").insert(row).select().single();
+    if (error && isNetErr(error)) { Outbox.add("dcol", row); return local(); }
+    if (error) throw error; return dcRow(data);
+  },
+  async dcolUpdate(id, p) {
+    const row = {}; for (const k of ["date", "party_id", "party", "asm", "account", "amount", "remarks"]) if (k in p) row[k] = p[k] === "" ? null : p[k];
+    const { error } = await sb.from("dist_collections").update(row).eq("id", id); if (error) throw error;
+  },
+  async dcolDelete(id) { const { error } = await sb.from("dist_collections").delete().eq("id", id); if (error) throw error; },
+  async dcolStatus(ids, st, note) { const { data, error } = await sb.rpc("dist_set_status", { ids, st, note: note || null }); if (error) throw error; return data; }
+});
+Object.assign(DemoAPI, {
+  async dparties() {
+    if (!demoStore.dparties) { demoStore.dparties = []; try { demoStore.dparties = await (await fetch("dev/dist_parties.json")).json(); } catch { } this.save(); }
+    demoStore.dcols ||= []; return demoStore.dparties.map(dpRow);
+  },
+  async dpartySave(p) {
+    await this.dparties(); const list = demoStore.dparties, nm = norm(p.name);
+    if (list.some(x => x.id !== p.id && norm(x.name) === nm)) throw new Error("এই নামে পার্টি আগেই আছে");
+    const row = { name: p.name, asm: p.asm || "", account: p.account || "", phone: p.phone || "", note: p.note || "", active: p.active !== false };
+    if (p.id) { const o = list.find(x => x.id === p.id); this.aud("dist_parties", "update", "Party " + o.name, { ...o }, { ...o, ...row }); Object.assign(o, row); this.save(); return dpRow(o); }
+    const n = { id: crypto.randomUUID(), ...row }; list.push(n); this.aud("dist_parties", "insert", "Party " + n.name, null, n); this.save(); return dpRow(n);
+  },
+  async dpartyDelete(id) { await this.dparties(); const o = demoStore.dparties.find(x => x.id === id); o && this.aud("dist_parties", "delete", "Party " + o.name, o, null); demoStore.dparties = demoStore.dparties.filter(x => x.id !== id); this.save(); },
+  async dpartyRenameAsm(from, to) { await this.dparties(); demoStore.dparties.forEach(p => { if (p.asm === from) p.asm = to; }); this.save(); },
+  async dcolRange(from, to) { await this.dparties(); return demoStore.dcols.filter(r => r.date >= from && r.date <= to).sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || "").localeCompare(b.created_at || "")).map(dcRow); },
+  async dcolAdd(c) { await this.dparties(); const row = { id: crypto.randomUUID(), date: c.date, party_id: c.party_id || null, party: c.party, asm: c.asm || "", account: c.account || "", amount: c.amount, remarks: c.remarks || "", status: "pending", entered_by: S.me.name, created_at: new Date().toISOString() }; demoStore.dcols.push(row); this.aud("dist_collections", "insert", `Collection ${row.date} · ${row.party} · ${row.amount}`, null, row); this.save(); return dcRow(row); },
+  async dcolUpdate(id, p) { await this.dparties(); const o = demoStore.dcols.find(x => x.id === id); this.aud("dist_collections", "update", `Collection ${o.date} · ${o.party} · ${o.amount}`, { ...o }, { ...o, ...p }); Object.assign(o, p); this.save(); },
+  async dcolDelete(id) { await this.dparties(); const o = demoStore.dcols.find(x => x.id === id); o && this.aud("dist_collections", "delete", `Collection ${o.date} · ${o.party} · ${o.amount}`, o, null); demoStore.dcols = demoStore.dcols.filter(x => x.id !== id); this.save(); },
+  async dcolStatus(ids, st, note) {
+    await this.dparties(); let n = 0; const role = S.me.role;
+    demoStore.dcols.forEach(r => { if (!ids.includes(r.id)) return; if (role !== "admin" && !["pending", "hold"].includes(r.status)) return; if (role === "staff" && st === "pending") return; const o = { ...r }; r.status = st; r.decided_by = st === "pending" ? null : S.me.name; r.decided_at = st === "pending" ? null : new Date().toISOString(); r.decision_note = st === "pending" ? "" : (note || ""); this.aud("dist_collections", "update", `Collection ${r.date} · ${r.party} · ${r.amount}`, o, { ...r }); n++; });
+    this.save(); return n;
+  }
+});
+Object.assign(AU_T, { dist_collections: "কালেকশন", dist_parties: "ডিস্ট্রিবিউশন পার্টি" });
+Object.assign(AU_F, { date: "তারিখ", asm: "ASM", account: "Account", decided_by: "কে সিদ্ধান্ত দিল", decision_note: "কারণ", phone: "ফোন", note: "নোট" });
+["party_id", "decided_at"].forEach(k => AU_SKIP.add(k));
+
+/* ---------- shared state + helpers ---------- */
+let DPARTY = null, DPARTY_T = 0;
+async function dpLoad(force) {
+  if (DPARTY && !force && Date.now() - DPARTY_T < 300000) return DPARTY;
+  try { DPARTY = await API.dparties(); DPARTY_T = Date.now(); if (!DEMO) try { localStorage.setItem(DP_KEY, JSON.stringify({ u: S.me?.id, p: DPARTY })); } catch { } }
+  catch (e) {
+    if (DPARTY) return DPARTY;
+    try { const c = JSON.parse(localStorage.getItem(DP_KEY) || "null"); if (c && c.u === S.me?.id) { DPARTY = c.p; return DPARTY; } } catch { }
+    throw e;
+  }
+  return DPARTY;
+}
+const dcAccounts = () => [...new Set([...(S.accounts || []).map(a => a.code), ...DC_EXTRA, ...(DPARTY || []).map(p => p.account)].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+const dcAsms = () => [...new Set((DPARTY || []).map(p => p.asm).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+const dcCan = (r, to) => {
+  if (r.pending_sync || r.status === to) return false;
+  if (S.me.role === "admin") return true;
+  return S.me.role === "staff" && to !== "pending" && ["pending", "hold"].includes(r.status);
+};
+const dcCanEdit = r => !r.pending_sync && (S.me.role === "admin" || (S.me.role === "staff" && r.status === "pending"));
+const dcBrand = code => { try { return brandOf({ code, bank: "" }).c1; } catch { return "#94a3b8"; } };
+const dcStTag = r => `<span class="dst ${r.status}">${DC_ST[r.status]}</span>${r.pending_sync ? ` <span class="dst pending" title="ইন্টারনেট এলে সেভ হবে">⏳ সিঙ্ক বাকি</span>` : ""}`;
+const dcGroup = (rows, kf) => { const m = new Map(); rows.forEach(r => { const k = kf(r) || "—"; const o = m.get(k) || { k, n: 0, amt: 0 }; o.n++; o.amt += r.amount; m.set(k, o); }); return [...m.values()].sort((a, b) => b.amt - a.amt); };
+const dcSum = rows => rows.reduce((s, r) => s + r.amount, 0);
+function dcPending() { return Outbox.list().filter(x => x.k === "dcol" && x.u === S.me?.id).map(x => ({ ...dcRow({ ...x.p, created_at: new Date(x.at).toISOString() }), pending_sync: true })); }
+
+/* status change with optional reason */
+function dcDecide(ids, st, after) {
+  const run = async note => {
+    try {
+      const n = await API.dcolStatus(ids, st, note);
+      if (n < ids.length) toast(`${ids.length - n}টি রো বদলানো যায়নি (অনুমতি নেই)`, "err");
+      if (n) toast(`✔ ${n}টি ${DC_ST[st]} করা হয়েছে`);
+      DCACHE.dcol = null; after && after(n);
+    } catch (e) { toast(dcErr(e), "err"); }
+  };
+  if (st === "approved" || st === "pending") return run("");
+  const L = st === "hold" ? "Hold — ধরে রাখুন" : "Cancel — বাতিল";
+  modal(`<h2>${L} · ${ids.length}টি</h2><label class="f">কারণ / মন্তব্য <span class="mut">(ঐচ্ছিক)</span></label><input class="in" id="dd-n" autocomplete="off" placeholder="যেমন: স্টেটমেন্টে নেই / স্লিপ আসেনি"><div class="row" style="margin-top:14px"><button class="btn pri" id="dd-ok">নিশ্চিত করুন</button><button class="btn" id="dd-x">বাতিল</button></div>`, (root, close) => {
+    const inp = $("#dd-n", root); inp.focus();
+    const go = () => { close(); run(inp.value.trim()); };
+    $("#dd-ok", root).onclick = go; $("#dd-x", root).onclick = close; inp.onkeydown = e => { if (e.key === "Enter") go(); };
+  });
+}
+
+/* ---------- party add / edit ---------- */
+function dpartyModal(p, after) {
+  const isNew = !p.id, admin = S.me.role === "admin";
+  modal(`<h2>${isNew ? "নতুন পার্টি" : "পার্টি এডিট"}</h2><div class="fgrid">
+   <div class="s4"><label class="f">পার্টির নাম * <span class="mut">(নাম-এলাকা, যেমন: Alam Store-Nawabagonj, Dinajpur)</span></label><input class="in" id="dp-n" autocomplete="off" value="${esc(p.name || "")}"></div>
+   <div class="s2"><label class="f">ASM / Salesman</label><input class="in" id="dp-a" list="dp-dl-a" autocomplete="off" value="${esc(p.asm || "")}"></div>
+   <div class="s2"><label class="f">সাধারণত যে Account-এ জমা দেয়</label><input class="in" id="dp-c" list="dp-dl-c" autocomplete="off" value="${esc(p.account || "")}"></div>
+   <div class="s2"><label class="f">ফোন</label><input class="in" id="dp-p" inputmode="tel" autocomplete="off" value="${esc(p.phone || "")}"></div>
+   <div class="s2"><label class="f">নোট</label><input class="in" id="dp-t" autocomplete="off" value="${esc(p.note || "")}"></div>
+   ${isNew ? "" : `<div class="s4"><label class="keep"><input type="checkbox" id="dp-act" ${p.active !== false ? "checked" : ""}> সক্রিয় পার্টি <span class="mut">(বন্ধ করলে এন্ট্রির সাজেশনে আসবে না)</span></label></div>`}
+  </div>${datalist("dp-dl-a", dcAsms())}${datalist("dp-dl-c", dcAccounts())}<div class="hint rd" id="dp-err"></div>
+  <div class="row" style="margin-top:14px"><button class="btn pri" id="dp-ok">${ico("save")} সেভ</button><button class="btn" id="dp-x">বন্ধ</button>${!isNew && admin ? `<button class="btn dg" id="dp-del" style="margin-left:auto">${ico("trash")} মুছুন</button>` : ""}</div>`, (root, close) => {
+    const err = m => $("#dp-err", root).textContent = m || ""; $("#dp-n", root).focus();
+    $("#dp-x", root).onclick = close;
+    $("#dp-ok", root).onclick = async () => {
+      const name = $("#dp-n", root).value.replace(/\s+/g, " ").trim(); if (name.length < 2) return err("পার্টির নাম লিখুন");
+      try {
+        const saved = await API.dpartySave({ id: p.id, name, asm: $("#dp-a", root).value.trim(), account: $("#dp-c", root).value.trim(), phone: $("#dp-p", root).value.trim(), note: $("#dp-t", root).value.trim(), active: isNew ? true : $("#dp-act", root).checked });
+        await dpLoad(true); close(); toast("✔ পার্টি সেভ হয়েছে"); after && after(saved);
+      } catch (e) { err(dcErr(e)); }
+    };
+    const del = $("#dp-del", root);
+    if (del) del.onclick = async () => { if (!ask(`"${p.name}" মুছে ফেলবেন? (আগের কালেকশন রেকর্ড থেকে যাবে)`)) return; try { await API.dpartyDelete(p.id); await dpLoad(true); close(); toast("✔ মুছে ফেলা হয়েছে"); after && after(null); } catch (e) { err(dcErr(e)); } };
+  });
+}
+
+/* ---------- collection edit ---------- */
+function dcEditModal(r, after) {
+  modal(`<h2>কালেকশন এডিট</h2><div class="fgrid">
+   <div class="s2"><label class="f">তারিখ</label><input class="in" type="date" id="de-d" value="${r.date}"></div>
+   <div class="s2"><label class="f">টাকা</label><input class="in num" id="de-m" inputmode="decimal" value="${r.amount}"></div>
+   <div class="s4"><label class="f">পার্টি</label><input class="in" id="de-p" list="de-dl-p" autocomplete="off" value="${esc(r.party)}"></div>
+   <div class="s2"><label class="f">ASM</label><input class="in" id="de-a" list="de-dl-a" autocomplete="off" value="${esc(r.asm)}"></div>
+   <div class="s2"><label class="f">Account</label><input class="in" id="de-c" list="de-dl-c" autocomplete="off" value="${esc(r.account)}"></div>
+   <div class="s4"><label class="f">মন্তব্য</label><input class="in" id="de-r" autocomplete="off" value="${esc(r.remarks)}"></div>
+  </div>${datalist("de-dl-p", (DPARTY || []).map(p => p.name))}${datalist("de-dl-a", dcAsms())}${datalist("de-dl-c", dcAccounts())}<div class="hint rd" id="de-err"></div>
+  <div class="row" style="margin-top:14px"><button class="btn pri" id="de-ok">${ico("save")} সেভ</button><button class="btn" id="de-x">বন্ধ</button></div>`, (root, close) => {
+    const err = m => $("#de-err", root).textContent = m || "";
+    $("#de-x", root).onclick = close;
+    $("#de-ok", root).onclick = async () => {
+      const amount = evalAmt($("#de-m", root).value), party = $("#de-p", root).value.trim(), date = $("#de-d", root).value;
+      if (!date) return err("তারিখ দিন"); if (!party) return err("পার্টির নাম দিন"); if (isNaN(amount) || amount <= 0) return err("টাকার অংক ঠিক নেই");
+      const m = (DPARTY || []).find(p => norm(p.name) === norm(party));
+      const patch = { date, party: m ? m.name : party, party_id: m ? m.id : (party === r.party ? r.party_id : null), asm: $("#de-a", root).value.trim(), account: $("#de-c", root).value.trim(), amount, remarks: $("#de-r", root).value.trim() };
+      try { await API.dcolUpdate(r.id, patch); DCACHE.dcol = null; close(); toast("✔ সেভ হয়েছে"); after && after({ ...r, ...patch }); } catch (e) { err(dcErr(e)); }
+    };
+  });
+}
+
+/* =================== Daily Collection =================== */
+async function vDcol(v) {
+  let date = sessionStorage.getItem("nabiad_dc_date") || today(); sessionStorage.removeItem("nabiad_dc_date");
+  const F = { st: "", ac: "", q: "" }; let rows = [], sel = new Set(), busy = false;
+  v.innerHTML = head("দৈনিক কালেকশন", `<a class="btn" href="#/dsum">${ico("clock")} সামারি</a><a class="btn" href="#/drep">${ico("chart")} রিপোর্ট</a>`) + `
+   <div class="card navcard" style="margin-bottom:14px">${dateNav("dc", date)}</div>
+   <div class="card" style="margin-bottom:14px"><div class="fgrid">
+     <div class="s2"><label class="f">পার্টি * <span class="mut">(টাইপ করুন, লিস্ট থেকে বাছুন)</span></label><div><input class="in big" id="dc-pty" autocomplete="off" placeholder="পার্টির নাম…"></div><div class="hint" id="dc-ph"></div></div>
+     <div class="s1"><label class="f">ASM / Salesman</label><input class="in" id="dc-a" list="dc-dl-a" autocomplete="off"></div>
+     <div class="s1"><label class="f">Account *</label><input class="in" id="dc-c" list="dc-dl-c" autocomplete="off" placeholder="DBBL-17"></div>
+     <div class="s1"><label class="f">টাকা * <span class="mut">(50000+300 চলবে)</span></label><input class="in big num" id="dc-m" inputmode="decimal" autocomplete="off"><div class="hint num" id="dc-mh"></div></div>
+     <div class="s2"><label class="f">মন্তব্য <span class="mut">(ঐচ্ছিক)</span></label><input class="in" id="dc-r" autocomplete="off" placeholder="স্লিপ নং / নোট"></div>
+     <div class="s1"><label class="f">&nbsp;</label><button class="btn pri big" id="dc-add" style="width:100%">${ico("plus")} যোগ করুন</button></div>
+    </div><div class="hint rd" id="dc-err" style="margin-top:6px"></div><datalist id="dc-dl-a"></datalist><datalist id="dc-dl-c"></datalist></div>
+   <div id="dc-kpi"></div>
+   <div class="card flush" style="margin-top:14px"><div class="ch"><h3>আজকের কালেকশন লিস্ট</h3><span class="tag" id="dc-cnt">0</span></div>
+    <div class="noprint" style="padding:0 16px 12px"><div class="chips" id="dc-sc"></div><div class="chips" id="dc-ac" style="margin-top:8px"></div>${searchBox("dc-q", "খুঁজুন — পার্টি, ASM, Account, টাকা, মন্তব্য…")}</div>
+    <div id="dc-list"></div></div><div id="dc-selbar" class="selbar hide"></div>`;
+  const list = $("#dc-list", v), err = m => $("#dc-err", v).textContent = m || "";
+  let parties = [];
+  try { parties = await dpLoad(); } catch (e) { $("#dc-list", v).innerHTML = `<div class="alert rd" style="margin:12px">${esc(dcErr(e))}</div>`; }
+  $("#dc-dl-a", v).innerHTML = dcAsms().map(a => `<option value="${esc(a)}">`).join(""); $("#dc-dl-c", v).innerHTML = dcAccounts().map(a => `<option value="${esc(a)}">`).join("");
+  const pIn = $("#dc-pty", v), aIn = $("#dc-a", v), cIn = $("#dc-c", v), mIn = $("#dc-m", v), rIn = $("#dc-r", v);
+  const byName = n => parties.find(p => norm(p.name) === norm(n));
+  const fill = p => { aIn.value = p?.asm || ""; if (p?.account) cIn.value = p.account; $("#dc-ph", v).innerHTML = p ? `<span class="gr">✔ ${esc(p.asm || "ASM নেই")}</span>${p.note ? ` · <span class="mut">${esc(p.note)}</span>` : ""}` : ""; };
+  const picker = suggest(pIn, () => parties.filter(p => p.active).map(p => ({ value: p.name, label: p.asm || "", sub: p.account || "" })), it => { if (it) { fill(byName(it.value)); } else $("#dc-ph", v).innerHTML = ""; });
+  pIn.addEventListener("picked", () => mIn.focus());
+  const newBtn = () => { const t = pIn.value.trim(); $("#dc-ph", v).innerHTML = t && !picker.get() && !byName(t) ? `<a href="#" id="dc-new" class="rd">+ "${esc(t.slice(0, 30))}" নতুন পার্টি তৈরি করুন</a>` : ($("#dc-ph", v).innerHTML && picker.get() ? $("#dc-ph", v).innerHTML : ""); const a = $("#dc-new", v); if (a) a.onclick = e => { e.preventDefault(); createParty(t); }; };
+  pIn.addEventListener("input", newBtn);
+  mIn.addEventListener("input", () => { const n = evalAmt(mIn.value); $("#dc-mh", v).textContent = mIn.value && !isNaN(n) && /[+-]/.test(mIn.value.replace(/^[-+]/, "")) ? "= " + money0(n) : isNaN(n) ? "অংক ঠিক নেই" : ""; });
+  [mIn, rIn, cIn, aIn].forEach(x => x.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); add(); } }));
+  $("#dc-add", v).onclick = add;
+  function createParty(name) { dpartyModal({ name, asm: aIn.value, account: cIn.value }, saved => { if (!saved) return; parties = DPARTY; picker.set({ value: saved.name, label: saved.asm || "", sub: saved.account || "" }); fill(saved); mIn.focus(); }); }
+  async function add() {
+    if (busy) return; err("");
+    const typed = pIn.value.trim(); let party = picker.get() ? byName(picker.get().value) : byName(typed);
+    if (!typed) return err("পার্টি বাছুন"), pIn.focus();
+    if (!party) { if (ask(`"${typed}" পার্টি তালিকায় নেই। নতুন পার্টি তৈরি করবেন?`)) createParty(typed); return; }
+    const amount = evalAmt(mIn.value), account = cIn.value.trim(), d = $("#dc-d", v).value;
+    if (!d) return err("তারিখ দিন");
+    if (!account) return err("Account লিখুন (যেমন DBBL-17)"), cIn.focus();
+    if (isNaN(amount) || amount <= 0) return err("টাকার অংক ঠিক নেই"), mIn.focus();
+    if (rows.some(r => r.party_id === party.id && r.amount === amount && r.status !== "cancelled") && !ask("এই তারিখে একই পার্টি, একই টাকা আগেই আছে। আবার যোগ করবেন?")) return;
+    busy = true;
+    try {
+      const r = await API.dcolAdd({ date: d, party_id: party.id, party: party.name, asm: aIn.value.trim(), account, amount, remarks: rIn.value.trim() });
+      rows.push(r); toast(`✔ ${party.name} — ৳ ${money0(amount)} যোগ হয়েছে`); picker.set(null); pIn.value = ""; aIn.value = ""; cIn.value = ""; mIn.value = ""; rIn.value = ""; $("#dc-mh", v).textContent = ""; $("#dc-ph", v).innerHTML = "";
+      DCACHE.dcol = null; draw(); pIn.focus();
+    } catch (e) { err(dcErr(e)); } finally { busy = false; }
+  }
+  async function load() {
+    date = $("#dc-d", v).value; if (!date) return; sel.clear(); list.innerHTML = `<div class="empty">লোড হচ্ছে…</div>`;
+    try { rows = await API.dcolRange(date, date); } catch (e) { rows = []; list.innerHTML = `<div class="alert rd" style="margin:12px">${esc(dcErr(e))}</div>`; if (!isNetErr(e)) return; }
+    const ids = new Set(rows.map(r => r.id)); dcPending().filter(r => r.date === date && !ids.has(r.id)).forEach(r => rows.push(r));
+    draw();
+  }
+  function visible() { const q = norm(F.q); return rows.filter(r => (!F.st || r.status === F.st) && (!F.ac || r.account === F.ac) && (!q || norm([r.party, r.asm, r.account, r.remarks, r.amount].join(" ")).includes(q))); }
+  function selbar() {
+    const el = $("#dc-selbar", v); sel = new Set([...sel].filter(id => rows.some(r => r.id === id))); if (!sel.size) return el.classList.add("hide");
+    const rs = rows.filter(r => sel.has(r.id)), can = st => rs.some(r => dcCan(r, st));
+    el.classList.remove("hide"); el.innerHTML = `<b>${sel.size}</b> <span>টি · ৳ ${money0(dcSum(rs))}</span>${can("approved") ? `<button class="btn sm pri" data-b="approved">${ico("check")} Approve</button>` : ""}${can("hold") ? `<button class="btn sm" data-b="hold">${ico("pause")} Hold</button>` : ""}${can("cancelled") ? `<button class="btn sm" data-b="cancelled">${ico("xmark")} Cancel</button>` : ""}${can("pending") ? `<button class="btn sm" data-b="pending">Pending</button>` : ""}<button class="btn sm ghost" data-b="x">✕</button>`;
+    $$("[data-b]", el).forEach(b => b.onclick = () => { if (b.dataset.b === "x") { sel.clear(); return draw(); } const ids = rs.filter(r => dcCan(r, b.dataset.b)).map(r => r.id); sel.clear(); dcDecide(ids, b.dataset.b, load); });
+  }
+  function draw() {
+    const live = rows.filter(r => r.status !== "cancelled"), by = s => rows.filter(r => r.status === s);
+    $("#dc-kpi", v).innerHTML = `<div class="grid g4"><div class="kpi card k-vi"><div class="l">মোট কালেকশন<span class="ki">${ico("wallet")}</span></div><div class="v num">৳ ${money0(dcSum(live))}</div><div class="s">${live.length}টি এন্ট্রি${by("cancelled").length ? ` · ${by("cancelled").length}টি Cancelled` : ""}</div></div>
+     <div class="kpi card k-gr"><div class="l">Approved<span class="ki">${ico("check")}</span></div><div class="v num">৳ ${money0(dcSum(by("approved")))}</div><div class="s">${by("approved").length}টি</div></div>
+     <div class="kpi card k-am"><div class="l">Pending (স্টেটমেন্ট মেলানো বাকি)<span class="ki">${ico("clock")}</span></div><div class="v num">৳ ${money0(dcSum(by("pending")))}</div><div class="s">${by("pending").length}টি</div></div>
+     <div class="kpi card"><div class="l">Hold<span class="ki">${ico("pause")}</span></div><div class="v num">৳ ${money0(dcSum(by("hold")))}</div><div class="s">${by("hold").length}টি</div></div></div>`;
+    $("#dc-sc", v).innerHTML = [["", "সব"], ...Object.entries(DC_ST)].map(([k, l]) => `<span class="chip ${F.st === k ? "on" : ""}" data-s="${k}">${l} <span class="mut">${k ? by(k).length : rows.length}</span></span>`).join("");
+    const acs = dcGroup(live, r => r.account); $("#dc-ac", v).innerHTML = acs.length ? `<span class="mut xs" style="align-self:center">Account:</span>` + acs.map(a => `<span class="chip ${F.ac === a.k ? "on" : ""}" data-a="${esc(a.k)}"><i class="bdot" style="background:${dcBrand(a.k)}"></i>${esc(a.k)} · ${money0(a.amt)} <span class="mut">(${a.n})</span></span>`).join("") : "";
+    $$("#dc-sc [data-s]", v).forEach(c => c.onclick = () => { F.st = c.dataset.s; draw(); }); $$("#dc-ac [data-a]", v).forEach(c => c.onclick = () => { F.ac = F.ac === c.dataset.a ? "" : c.dataset.a; draw(); });
+    const vis = visible(); $("#dc-cnt", v).textContent = vis.length;
+    const actionable = vis.filter(r => ["approved", "hold", "cancelled"].some(s => dcCan(r, s)));
+    list.innerHTML = vis.length ? `<div class="tw cards"><table><thead><tr><th style="width:34px">${actionable.length ? `<input type="checkbox" id="dc-all" title="সব বাছুন">` : ""}</th><th class="r">#</th><th>পার্টি</th><th>Account</th><th class="r">টাকা</th><th>অবস্থা</th><th>মন্তব্য</th><th class="r noprint">কাজ</th></tr></thead><tbody>${vis.map((r, i) => {
+      const acts = [["approved", "check", "gr", "Approve (ঠিক আছে)"], ["hold", "pause", "am", "Hold"], ["cancelled", "xmark", "rd", "Cancel"]].filter(([s]) => dcCan(r, s)).map(([s, ic, c, t]) => `<button class="iconbtn sm dca ${c}" data-st="${s}" data-id="${r.id}" title="${t}">${ico(ic)}</button>`).join("") + (r.status !== "pending" && dcCan(r, "pending") ? `<button class="btn sm" data-st="pending" data-id="${r.id}" title="Pending-এ ফেরত">↺</button>` : "");
+      return `<tr class="dcr ${r.status}"><td>${dcCan(r, "approved") || dcCan(r, "hold") || dcCan(r, "cancelled") ? `<input type="checkbox" data-sel="${r.id}" ${sel.has(r.id) ? "checked" : ""}>` : ""}</td><td class="r mut">${i + 1}</td><td><b>${esc(r.party)}</b><div class="mut xs">${esc(r.asm || "—")}</div></td><td class="b"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account || "—")}</td><td class="r num b">${money0(r.amount)}</td><td>${dcStTag(r)}${r.decided_by ? `<div class="mut xs">${esc(r.decided_by)}${r.decision_note ? " · " + esc(r.decision_note) : ""}</div>` : ""}</td><td class="sm">${esc(r.remarks)}</td><td class="r noprint"><div class="dcacts">${acts}${dcCanEdit(r) ? `<button class="iconbtn sm" data-ed="${r.id}" title="এডিট">${ico("edit")}</button>` : ""}${S.me.role === "admin" && !r.pending_sync ? `<button class="iconbtn sm rd" data-dl="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></td></tr>`;
+    }).join("")}<tr class="tot"><td></td><td></td><td colspan="2">মোট (${vis.filter(r => r.status !== "cancelled").length}টি, Cancelled বাদে)</td><td class="r num">${money0(dcSum(vis.filter(r => r.status !== "cancelled")))}</td><td colspan="3"></td></tr></tbody></table></div>` : `<div class="empty">${rows.length ? "খোঁজার সাথে কিছু মেলেনি" : "এই তারিখে এখনো কোনো কালেকশন এন্ট্রি নেই — উপরের ফর্ম থেকে যোগ করুন"}</div>`;
+    labelTables(list);
+    $$("[data-sel]", list).forEach(x => x.onchange = () => { x.checked ? sel.add(x.dataset.sel) : sel.delete(x.dataset.sel); selbar(); });
+    const all = $("#dc-all", list); if (all) all.onchange = () => { actionable.forEach(r => all.checked ? sel.add(r.id) : sel.delete(r.id)); $$("[data-sel]", list).forEach(x => x.checked = all.checked); selbar(); };
+    $$("[data-st]", list).forEach(b => b.onclick = () => dcDecide([b.dataset.id], b.dataset.st, load));
+    $$("[data-ed]", list).forEach(b => b.onclick = () => dcEditModal(rows.find(r => r.id === b.dataset.ed), load));
+    $$("[data-dl]", list).forEach(b => b.onclick = async () => { const r = rows.find(x => x.id === b.dataset.dl); if (!ask(`"${r.party}" — ৳ ${money0(r.amount)} মুছে ফেলবেন?`)) return; try { await API.dcolDelete(r.id); DCACHE.dcol = null; toast("✔ মুছে ফেলা হয়েছে"); load(); } catch (e) { toast(dcErr(e), "err"); } });
+    selbar();
+  }
+  $("#dc-q", v).oninput = e => { F.q = e.target.value; draw(); };
+  bindDateNav(v, "dc", load);
+  window.__dcolRefresh = () => { if (CUR === "dcol" && !busy) load(); };
+  await load(); if (innerWidth > 800) pIn.focus();
+  return () => { window.__dcolRefresh = null; };
+}
+
+/* ---------- period bar shared by Summary and Report ---------- */
+function dcPeriodBar(id, F) {
+  return `<div class="seg wrap" id="${id}">${[["today", "আজ"], ["day", "নির্দিষ্ট তারিখ"], ["month", "এই মাস"], ["last", "গত মাস"], ["custom", "যেকোনো তারিখ"]].map(([k, l]) => `<span class="chip ${k === F.p ? "on" : ""}" data-p="${k}">${l}</span>`).join("")}</div>
+   <div class="row ${F.p === "day" ? "" : "hide"}" id="${id}-day" style="margin-top:8px">${dateNav(id + "x", F.d)}</div>
+   <div class="row ${F.p === "custom" ? "" : "hide"}" id="${id}-cu" style="margin-top:8px"><div><label class="f">From</label><input class="in" type="date" id="${id}-f" value="${F.f}"></div><div><label class="f">To</label><input class="in" type="date" id="${id}-t" value="${F.t}"></div></div>`;
+}
+function dcRange(F) { if (F.p === "today") return [today(), today()]; if (F.p === "day") return [F.d, F.d]; if (F.p === "custom") return [F.f <= F.t ? F.f : F.t, F.f <= F.t ? F.t : F.f]; return periodRange(F.p); }
+function dcBindPeriod(v, id, F, draw) {
+  $$(`#${id} .chip`, v).forEach(c => c.onclick = () => { F.p = c.dataset.p; $$(`#${id} .chip`, v).forEach(x => x.classList.toggle("on", x === c)); $(`#${id}-day`, v).classList.toggle("hide", F.p !== "day"); $(`#${id}-cu`, v).classList.toggle("hide", F.p !== "custom"); draw(); });
+  bindDateNav(v, id + "x", () => { F.d = $(`#${id}x-d`, v).value; draw(); });
+  [`${id}-f`, `${id}-t`].forEach(x => $("#" + x, v).onchange = () => { F.f = $(`#${id}-f`, v).value; F.t = $(`#${id}-t`, v).value; draw(); });
+}
+const dcRangeLabel = (f, t) => f === t ? new Date(f + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : `${dmy(f)} → ${dmy(t)}`;
+const dcStatLabel = s => ({ approved: "Approved", pending: "Pending", hold: "Hold", cancelled: "Cancelled", live: "All (Cancelled বাদে)" }[s]);
+const dcStatPass = (r, s) => s === "live" ? r.status !== "cancelled" : r.status === s;
+const dcStatOpts = cur => ["approved", "pending", "hold", "live", "cancelled"].map(s => `<option value="${s}" ${s === cur ? "selected" : ""}>${dcStatLabel(s)}</option>`).join("");
+async function dcCanvas(el) { await loadScript("vendor/html2canvas.min.js"); const z = el.style.zoom; el.style.zoom = ""; try { return await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", width: el.offsetWidth, windowWidth: 1200 }); } finally { el.style.zoom = z; } }
+async function dcPng(el, name) { if (!el) return toast("ডাটা নেই", "err"); const cv = await dcCanvas(el); const a = document.createElement("a"); a.download = name + ".png"; a.href = cv.toDataURL("image/png"); a.click(); }
+async function dcShare(el, name, text) {
+  if (!el) return toast("ডাটা নেই", "err"); const cv = await dcCanvas(el), blob = await new Promise(r => cv.toBlob(r, "image/png")), file = new File([blob], name + ".png", { type: "image/png" });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: name, text }); else await navigator.share({ title: name, text }); } catch (e) { if (e.name !== "AbortError") toast("শেয়ার করা যায়নি: " + e.message, "err"); }
+}
+function dcPdf(el, name) { if (!el) return toast("ডাটা নেই", "err"); document.body.classList.add("print-rep"); const t = document.title; document.title = name; window.print(); document.title = t; setTimeout(() => document.body.classList.remove("print-rep"), 500); }
+function dcFit(v, id) { const el = $("#" + id, v); if (!el) return; el.style.zoom = ""; const w = el.parentElement.clientWidth - 8; if (w < 1000) el.style.zoom = (w / 1000).toFixed(3); }
+const dcHead = (title, f, t) => { const one = f === t, d = new Date(f + "T00:00:00"); return `<div class="rep-hd"><div class="lg"><img src="icon-192.png" alt=""></div><div class="tt"><b>NABIAD DISTRIBUTION</b><span>${title}</span></div><div class="dt"><b>${esc(dcRangeLabel(f, t))}</b><span>${one ? d.toLocaleDateString("en-GB", { weekday: "long" }) : ""}</span></div></div>`; };
+const dcFoot = () => `<div class="rep-ft"><span>Generated ${new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · by ${esc(S.me.name)}</span><span>NABIAD Cheque &amp; Bank Control</span></div>`;
+
+/* =================== Collection Summary (screenshot) =================== */
+async function vDsum(v) {
+  const F = { p: "today", d: today(), f: addDays(today(), -6), t: today(), s: "approved", all: false }; let cur = null;
+  v.innerHTML = head("কালেকশন সামারি", `<button class="btn" id="ds-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="ds-pdf">${ico("print")} PDF</button>${navigator.share ? `<button class="btn" id="ds-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
+   <div class="card noprint" style="margin-bottom:14px">${dcPeriodBar("ds", F)}<div class="row" style="margin-top:10px"><div><label class="f">কোন Status ধরব</label><select class="in" id="ds-s">${dcStatOpts(F.s)}</select></div><div style="align-self:end"><label class="keep"><input type="checkbox" id="ds-z"> ০ টাকার Account/ASM-ও দেখাও</label></div></div></div>
+   <div class="card rep-wrap"><div class="rep-scroll"><div id="ds-out"></div></div></div>`;
+  async function draw() {
+    const [f, t] = dcRange(F), out = $("#ds-out", v); out.innerHTML = `<div class="skel" style="height:160px"></div>`; let all;
+    try { await dpLoad().catch(() => { }); all = await API.dcolRange(f, t); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(dcErr(e))}</div>`; cur = null; return; }
+    const rows = all.filter(r => dcStatPass(r, F.s)), tot = dcSum(rows);
+    let banks = dcGroup(rows, r => r.account || "(No account)"), asms = dcGroup(rows, r => r.asm || "(No ASM)");
+    if (F.all) { dcAccounts().forEach(a => { if (!banks.some(x => x.k === a)) banks.push({ k: a, n: 0, amt: 0 }); }); dcAsms().forEach(a => { if (!asms.some(x => x.k === a)) asms.push({ k: a, n: 0, amt: 0 }); }); }
+    const days = t > f ? dcGroup(rows, r => r.date).sort((a, b) => a.k.localeCompare(b.k)) : [];
+    const mx = a => Math.max(1, ...a.map(x => x.amt)), others = all.filter(r => !dcStatPass(r, F.s) && r.status !== "cancelled");
+    const tbl = (title, arr, nm) => `<div class="dcs-box"><div class="dcs-t">${title}</div><table class="rep-t"><thead><tr><th>${nm}</th><th class="r">Entry</th><th class="r">Amount</th></tr></thead><tbody>${arr.map(x => `<tr><td class="${nm === "Bank / Account" ? "cd" : "ho"}">${nm === "Bank / Account" ? `<i class="bdot" style="background:${dcBrand(x.k)}"></i>` : ""}${esc(x.k)}</td><td class="r num ${x.n ? "" : "z"}">${x.n || "—"}</td><td class="r num ${x.amt ? "us" : "z"}">${x.amt ? money0(x.amt) : "0"}</td></tr>`).join("") || `<tr><td colspan="3" class="z" style="text-align:center">কিছু নেই</td></tr>`}<tr class="tot"><td>TOTAL</td><td class="r num">${arr.reduce((s, x) => s + x.n, 0)}</td><td class="r num">${money0(arr.reduce((s, x) => s + x.amt, 0))}</td></tr></tbody></table></div>`;
+    cur = { f, t, rows, tot, banks, asms };
+    out.innerHTML = rows.length || F.all ? `<div class="rep" id="ds-in">${dcHead("Distribution Collection Summary · কালেকশন সামারি", f, t)}
+      <div class="rep-kpi"><div class="k1"><span>Total ${esc(dcStatLabel(F.s).split(" ")[0])}</span><b>৳ ${money0(tot)}</b></div><div><span>Entries</span><b>${rows.length}</b></div><div><span>Parties</span><b>${new Set(rows.map(r => r.party)).size}</b></div><div class="k3"><span>Accounts · ASM</span><b>${banks.filter(b => b.amt).length} · ${asms.filter(b => b.amt).length}</b></div></div>
+      <div class="dcs-two">${tbl("Per Bank", banks, "Bank / Account")}${tbl("Per Salesman / ASM", asms, "Salesman / ASM")}</div>
+      ${days.length ? `<div class="dcs-box" style="margin:0 16px 12px"><div class="dcs-t">Per Day</div><table class="rep-t"><thead><tr><th>Date</th><th class="r">Entry</th><th class="r">Amount</th><th style="width:50%"></th></tr></thead><tbody>${days.map(x => `<tr><td class="cd">${dcShort(x.k)}</td><td class="r num">${x.n}</td><td class="r num us">${money0(x.amt)}</td><td><div class="dcbar"><i style="width:${(x.amt / mx(days) * 100).toFixed(1)}%"></i></div></td></tr>`).join("")}</tbody></table></div>` : ""}
+      ${others.length ? `<div class="dcs-note">Note: এই তারিখে আরও ${others.length}টি এন্ট্রি (৳ ${money0(dcSum(others))}) অন্য Status-এ আছে — এখানে ধরা হয়নি।</div>` : ""}${dcFoot()}</div>` : `<div class="empty">এই সময়ে ${esc(dcStatLabel(F.s))} কোনো কালেকশন নেই</div>`;
+    dcFit(v, "ds-in");
+  }
+  dcBindPeriod(v, "ds", F, draw);
+  $("#ds-s", v).onchange = e => { F.s = e.target.value; draw(); }; $("#ds-z", v).onchange = e => { F.all = e.target.checked; draw(); };
+  const nm = () => `Collection_Summary_${cur ? cur.f + (cur.t !== cur.f ? "_" + cur.t : "") : today()}`;
+  $("#ds-png", v).onclick = () => dcPng($("#ds-in", v), nm()); $("#ds-pdf", v).onclick = () => dcPdf($("#ds-in", v), nm());
+  $("#ds-sh", v) && ($("#ds-sh", v).onclick = () => dcShare($("#ds-in", v), nm(), cur ? `Collection ${dcRangeLabel(cur.f, cur.t)} — Total ৳ ${money0(cur.tot)}` : ""));
+  const onRs = () => dcFit(v, "ds-in"); window.addEventListener("resize", onRs);
+  await draw(); return () => window.removeEventListener("resize", onRs);
+}
+
+/* =================== Collection Report (screenshot / Excel) =================== */
+async function vDrep(v) {
+  const F = { p: "today", d: today(), f: addDays(today(), -6), t: today(), s: "approved", asm: "", ac: "", q: "", ca: false, cs: false, sub: true }; let cur = null, all = [];
+  v.innerHTML = head("কালেকশন রিপোর্ট", `<button class="btn" id="dr-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="dr-pdf">${ico("print")} PDF</button><button class="btn" id="dr-xl">${ico("dl")} Excel</button>${navigator.share ? `<button class="btn" id="dr-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
+   <div class="card noprint" style="margin-bottom:14px">${dcPeriodBar("dr", F)}
+    <div class="row" style="margin-top:10px"><div><label class="f">Status</label><select class="in" id="dr-s">${dcStatOpts(F.s)}</select></div><div><label class="f">ASM</label><select class="in" id="dr-asm"><option value="">সব ASM</option></select></div><div><label class="f">Account</label><select class="in" id="dr-ac"><option value="">সব Account</option></select></div><div style="flex:2 1 200px"><label class="f">পার্টি খুঁজুন</label><input class="in" id="dr-q" type="search" autocomplete="off" placeholder="পার্টির নাম / টাকা / মন্তব্য"></div></div>
+    <div class="row" style="margin-top:8px"><label class="keep"><input type="checkbox" id="dr-ca"> ASM কলাম</label><label class="keep"><input type="checkbox" id="dr-cs"> Status কলাম</label><label class="keep"><input type="checkbox" id="dr-sub" checked> দিন অনুযায়ী সাবটোটাল</label></div></div>
+   <div class="card rep-wrap"><div class="rep-scroll"><div id="dr-out"></div></div></div>`;
+  async function load() {
+    const [f, t] = dcRange(F), out = $("#dr-out", v); out.innerHTML = `<div class="skel" style="height:160px"></div>`;
+    try { await dpLoad().catch(() => { }); all = await API.dcolRange(f, t); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(dcErr(e))}</div>`; cur = null; return; }
+    const asmSel = $("#dr-asm", v), acSel = $("#dr-ac", v), a0 = asmSel.value, c0 = acSel.value;
+    asmSel.innerHTML = `<option value="">সব ASM</option>` + [...new Set(all.map(r => r.asm).filter(Boolean))].sort().map(a => `<option ${a === a0 ? "selected" : ""}>${esc(a)}</option>`).join("");
+    acSel.innerHTML = `<option value="">সব Account</option>` + [...new Set(all.map(r => r.account).filter(Boolean))].sort().map(a => `<option ${a === c0 ? "selected" : ""}>${esc(a)}</option>`).join("");
+    F.asm = asmSel.value; F.ac = acSel.value; draw();
+  }
+  function draw() {
+    const [f, t] = dcRange(F), out = $("#dr-out", v), q = norm(F.q);
+    const rows = all.filter(r => dcStatPass(r, F.s) && (!F.asm || r.asm === F.asm) && (!F.ac || r.account === F.ac) && (!q || norm([r.party, r.amount, r.remarks, r.account].join(" ")).includes(q)));
+    cur = { f, t, rows }; if (!rows.length) { out.innerHTML = `<div class="empty">এই সময়ে কোনো এন্ট্রি নেই</div>`; return; }
+    const multi = f !== t && F.sub, cols = 4 + (F.ca ? 1 : 0) + (F.cs ? 1 : 0); let n = 0, html = "", day = null, dsum = 0, dn = 0;
+    const flush = () => { if (multi && day) html += `<tr class="dsub"><td></td><td colspan="${cols - 2}">${dcShort(day)} — ${dn}টি</td><td class="r num">${money0(dsum)}</td>${F.cs ? "<td></td>" : ""}</tr>`; dsum = 0; dn = 0; };
+    rows.forEach(r => { if (multi && r.date !== day) { flush(); day = r.date; } n++; dsum += r.amount; dn++; html += `<tr><td class="n">${n}</td><td class="cd">${dcShort(r.date)}</td><td class="ho">${esc(r.party)}${r.remarks ? `<span class="rm"> · ${esc(r.remarks)}</span>` : ""}</td>${F.ca ? `<td class="rm">${esc(r.asm)}</td>` : ""}<td class="cd"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account)}</td><td class="r num">${money0(r.amount)}</td>${F.cs ? `<td><span class="dst ${r.status}">${DC_ST[r.status]}</span></td>` : ""}</tr>`; });
+    flush(); const tot = dcSum(rows);
+    out.innerHTML = `<div class="rep" id="dr-in">${dcHead(`Distribution Collection Report · ${esc(dcStatLabel(F.s))}${F.asm ? " · " + esc(F.asm) : ""}${F.ac ? " · " + esc(F.ac) : ""}`, f, t)}
+     <div class="rep-kpi" style="grid-template-columns:repeat(3,1fr)"><div class="k1"><span>Total</span><b>৳ ${money0(tot)}</b></div><div><span>Entries</span><b>${rows.length}</b></div><div class="k3"><span>Parties</span><b>${new Set(rows.map(r => r.party)).size}</b></div></div>
+     <table class="rep-t"><thead><tr><th class="r">#</th><th>TxnDate</th><th>Party</th>${F.ca ? "<th>ASM</th>" : ""}<th>Bank</th><th class="r">Amount</th>${F.cs ? "<th>Status</th>" : ""}</tr></thead><tbody>${html}<tr class="tot"><td></td><td colspan="${cols - 2}">GRAND TOTAL</td><td class="r num">${money0(tot)}</td>${F.cs ? "<td></td>" : ""}</tr></tbody></table>${dcFoot()}</div>`;
+    dcFit(v, "dr-in");
+  }
+  dcBindPeriod(v, "dr", F, load);
+  $("#dr-s", v).onchange = e => { F.s = e.target.value; draw(); }; $("#dr-asm", v).onchange = e => { F.asm = e.target.value; draw(); }; $("#dr-ac", v).onchange = e => { F.ac = e.target.value; draw(); };
+  $("#dr-q", v).oninput = e => { F.q = e.target.value; draw(); };
+  [["ca", "dr-ca"], ["cs", "dr-cs"], ["sub", "dr-sub"]].forEach(([k, id]) => $("#" + id, v).onchange = e => { F[k] = e.target.checked; draw(); });
+  const nm = () => `Collection_Report_${cur ? cur.f + (cur.t !== cur.f ? "_" + cur.t : "") : today()}`;
+  $("#dr-png", v).onclick = () => dcPng($("#dr-in", v), nm()); $("#dr-pdf", v).onclick = () => dcPdf($("#dr-in", v), nm());
+  $("#dr-sh", v) && ($("#dr-sh", v).onclick = () => dcShare($("#dr-in", v), nm(), cur?.rows.length ? `Collection ${dcRangeLabel(cur.f, cur.t)} — ${cur.rows.length} entries · ৳ ${money0(dcSum(cur.rows))}` : ""));
+  $("#dr-xl", v).onclick = () => cur?.rows.length ? exportXlsx({ Collection: [["TxnDate", "Party", "ASM", "Bank", "Amount", "Status", "Remarks", "Entered By", "Decided By"], ...cur.rows.map(r => [dmy(r.date), r.party, r.asm, r.account, r.amount, DC_ST[r.status], r.remarks, r.entered_by, r.decided_by || ""])], "By Bank": [["Bank", "Entries", "Amount"], ...dcGroup(cur.rows, r => r.account || "(No account)").map(x => [x.k, x.n, x.amt])], "By ASM": [["ASM", "Entries", "Amount"], ...dcGroup(cur.rows, r => r.asm || "(No ASM)").map(x => [x.k, x.n, x.amt])] }, nm() + ".xlsx") : toast("ডাটা নেই", "err");
+  const onRs = () => dcFit(v, "dr-in"); window.addEventListener("resize", onRs);
+  await load(); return () => window.removeEventListener("resize", onRs);
+}
+
+/* =================== Distribution Party (master list) =================== */
+async function vDparty(v) {
+  const admin = S.me.role === "admin", canAdd = S.me.role !== "boss"; const F = { q: "", asm: "", ac: "", act: "1", lim: 200 }; let list = [];
+  v.innerHTML = head("ডিস্ট্রিবিউশন পার্টি", `<button class="btn" id="dp-asm">${ico("users")} ASM তালিকা</button><button class="btn" id="dp-xl">${ico("dl")} Excel</button>${canAdd ? `<button class="btn pri" id="dp-new">${ico("plus")} নতুন পার্টি</button>` : ""}`) + `<div id="dp-kpi"></div>
+   <div class="card noprint" style="margin:14px 0"><div class="row"><div style="flex:2 1 240px"><label class="f">খুঁজুন</label><input class="in" id="dp-q" type="search" autocomplete="off" placeholder="পার্টি, ASM, Account, ফোন…"></div><div><label class="f">ASM</label><select class="in" id="dp-fa"></select></div><div><label class="f">Account</label><select class="in" id="dp-fc"></select></div><div><label class="f">অবস্থা</label><select class="in" id="dp-fs"><option value="1">সক্রিয়</option><option value="0">নিষ্ক্রিয়</option><option value="">সব</option></select></div></div></div>
+   <div class="card flush"><div class="ch"><h3>পার্টি তালিকা</h3><span class="tag" id="dp-cnt">0</span></div><div id="dp-out"></div></div>`;
+  const out = $("#dp-out", v);
+  try { list = await dpLoad(true); } catch (e) { out.innerHTML = `<div class="alert rd" style="margin:12px">${esc(dcErr(e))}</div>`; return; }
+  function filters() {
+    const fa = $("#dp-fa", v), fc = $("#dp-fc", v), a0 = F.asm, c0 = F.ac;
+    fa.innerHTML = `<option value="">সব ASM</option><option value="__none" ${a0 === "__none" ? "selected" : ""}>ASM নেই</option>` + dcAsms().map(a => `<option ${a === a0 ? "selected" : ""}>${esc(a)}</option>`).join("");
+    fc.innerHTML = `<option value="">সব Account</option>` + [...new Set(list.map(p => p.account).filter(Boolean))].sort().map(a => `<option ${a === c0 ? "selected" : ""}>${esc(a)}</option>`).join("");
+  }
+  function draw() {
+    list = DPARTY || list; const q = norm(F.q);
+    const vis = list.filter(p => (F.act === "" || (F.act === "1") === p.active) && (!F.asm || (F.asm === "__none" ? !p.asm : p.asm === F.asm)) && (!F.ac || p.account === F.ac) && (!q || norm([p.name, p.asm, p.account, p.phone, p.note].join(" ")).includes(q)));
+    $("#dp-kpi", v).innerHTML = `<div class="grid g4"><div class="kpi card k-vi"><div class="l">মোট পার্টি<span class="ki">${ico("users")}</span></div><div class="v num">${list.length}</div><div class="s">সক্রিয় ${list.filter(p => p.active).length}</div></div><div class="kpi card k-gr"><div class="l">ASM / Salesman<span class="ki">${ico("users")}</span></div><div class="v num">${dcAsms().length}</div><div class="s">জন</div></div><div class="kpi card k-am"><div class="l">ASM ঠিক করা নেই<span class="ki">${ico("flag")}</span></div><div class="v num">${list.filter(p => !p.asm).length}</div><div class="s">পার্টি</div></div><div class="kpi card"><div class="l">Account ঠিক করা নেই<span class="ki">${ico("card")}</span></div><div class="v num">${list.filter(p => !p.account).length}</div><div class="s">পার্টি</div></div></div>`;
+    $("#dp-cnt", v).textContent = vis.length;
+    out.innerHTML = vis.length ? `<div class="tw cards"><table><thead><tr><th class="r">#</th><th>পার্টি</th><th>ASM / Salesman</th><th>Account</th><th>ফোন</th><th>অবস্থা</th><th class="r noprint"></th></tr></thead><tbody>${vis.slice(0, F.lim).map((p, i) => `<tr class="${p.active ? "" : "dim"}"><td class="r mut">${i + 1}</td><td><b>${esc(p.name)}</b>${p.note ? `<div class="mut xs">${esc(p.note)}</div>` : ""}</td><td>${esc(p.asm) || '<span class="am">—</span>'}</td><td>${p.account ? `<i class="bdot" style="background:${dcBrand(p.account)}"></i>${esc(p.account)}` : "—"}</td><td>${esc(p.phone)}</td><td>${p.active ? '<span class="dst approved">সক্রিয়</span>' : '<span class="dst cancelled">নিষ্ক্রিয়</span>'}</td><td class="r noprint">${admin ? `<button class="iconbtn sm" data-ed="${p.id}" title="এডিট">${ico("edit")}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${vis.length > F.lim ? `<div style="padding:12px;text-align:center"><button class="btn" id="dp-more">আরও ${Math.min(200, vis.length - F.lim)}টি দেখান (মোট ${vis.length})</button></div>` : ""}` : `<div class="empty">কোনো পার্টি পাওয়া যায়নি</div>`;
+    labelTables(out);
+    $$("[data-ed]", out).forEach(b => b.onclick = () => dpartyModal(list.find(p => p.id === b.dataset.ed), () => { filters(); draw(); }));
+    const mb = $("#dp-more", out); if (mb) mb.onclick = () => { F.lim += 200; draw(); };
+  }
+  filters(); draw();
+  $("#dp-q", v).oninput = e => { F.q = e.target.value; F.lim = 200; draw(); };
+  $("#dp-fa", v).onchange = e => { F.asm = e.target.value; F.lim = 200; draw(); }; $("#dp-fc", v).onchange = e => { F.ac = e.target.value; F.lim = 200; draw(); }; $("#dp-fs", v).onchange = e => { F.act = e.target.value; F.lim = 200; draw(); };
+  const nw = $("#dp-new", v); if (nw) nw.onclick = () => dpartyModal({}, () => { filters(); draw(); });
+  $("#dp-xl", v).onclick = () => exportXlsx({ Parties: [["Party", "ASM / Salesman", "Account", "Phone", "Note", "Active"], ...list.map(p => [p.name, p.asm, p.account, p.phone, p.note, p.active ? "Yes" : "No"])] }, `Distribution_Parties_${today()}.xlsx`);
+  $("#dp-asm", v).onclick = () => {
+    const rows = dcGroup(list.filter(p => p.asm), p => p.asm).sort((a, b) => a.k.localeCompare(b.k));
+    modal(`<h2>ASM / Salesman তালিকা</h2><div class="mut sm" style="margin-bottom:8px">${admin ? "নাম বদলালে ওই ASM-এর সব পার্টির ASM বদলে যাবে (আগের কালেকশন রেকর্ড আগের নামেই থাকবে)।" : ""}</div><div class="tw"><table><thead><tr><th>ASM</th><th class="r">পার্টি</th>${admin ? "<th></th>" : ""}</tr></thead><tbody>${rows.map((r, i) => `<tr><td>${esc(r.k)}</td><td class="r num">${r.n}</td>${admin ? `<td class="r"><button class="btn sm" data-rn="${i}">নাম বদলান</button></td>` : ""}</tr>`).join("")}</tbody></table></div><div class="row" style="margin-top:14px"><button class="btn" id="am-x">বন্ধ</button></div>`, (root, close) => {
+      $("#am-x", root).onclick = close;
+      $$("[data-rn]", root).forEach(b => b.onclick = async () => { const o = rows[+b.dataset.rn].k, n = prompt(tr("নতুন নাম"), o); if (n == null || !n.trim() || n.trim() === o) return; try { await API.dpartyRenameAsm(o, n.trim()); await dpLoad(true); close(); toast("✔ ASM-এর নাম বদলানো হয়েছে"); filters(); draw(); } catch (e) { toast(dcErr(e), "err"); } });
+    });
+  };
+}
 
 /* ---------- auto update: every open app notices a new release within minutes ---------- */
 const RUN_V = document.querySelector('script[src^="app.js"]')?.getAttribute("src")?.split("v=")[1] || "";
