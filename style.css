@@ -930,3 +930,6 @@ tr.dim td{opacity:.55}
 .dcx-tools{padding:14px 16px 12px}
 .dcx-tabs{padding:4px 4px 8px;margin:-4px -4px -8px}
 @media (max-width:760px){ .dcx-tabs{padding:4px 6px 10px;margin:-4px -6px -10px} .dcx-acc{padding:4px 6px 8px} }
+.cbar .bl{display:flex;flex-direction:column;align-items:center;line-height:1.2} .cbar .bl small{font-size:11px;font-weight:600;opacity:.85}
+.cbar .hint:empty{display:none}
+@media (max-width:420px){.cbar .btn.lg{min-height:56px}}
