@@ -26,7 +26,6 @@ const addDays = (s, n) => { const d = new Date(s + "T00:00:00"); d.setDate(d.get
 const daysBetween = (a, b) => Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 864e5);
 const num = v => { const n = parseFloat(String(v ?? "").replace(/,/g, "")); return isNaN(n) ? 0 : n; };
 const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 const purposeKey = p => { const s = String(p || "").toLowerCase(); return s.startsWith("cash") ? "cash" : s.startsWith("own") ? "own" : s.startsWith("cancel") ? "cancel" : s.startsWith("supplier") ? "supplier" : "other"; };
 function toast(msg, kind = "ok") { const t = document.createElement("div"); t.className = "toast " + kind; t.innerHTML = `<i>${kind === "err" ? "!" : "✓"}</i><span></span>`; t.lastChild.textContent = tr(String(msg)).replace(/^✔\s*/, ""); $("#toasts").appendChild(t); setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 260); }, kind === "err" ? 6000 : 2800); }
 const ask = m => confirm(tr(m));
@@ -496,7 +495,6 @@ let CUR = "dash";
 const head = (title, extra = "") => `<div class="top"><div class="pic">${ico(ROUTES[CUR]?.ic || "home")}</div><h1>${title}</h1><div class="sp"></div>${extra ? `<div class="acts">${extra}</div>` : ""}</div>`;
 const stTag = s => `<span class="st ${s}">${s}</span>`;
 const pendTag = c => c.pending || c.events?.some(e => e.pending) ? ` <span class="tag" style="background:var(--am-soft);color:var(--am)" title="সার্ভারে যাওয়া বাকি">⏳ সিঙ্ক বাকি</span>` : "";
-const chqLine = c => `${esc(c.code)} · ${c.no}`;
 const chqIcons = c => `${c.photo ? ` <span class="ci" title="ছবি আছে">📷</span>` : ""}${(S.reminders || []).some(r => r.cheque_id === c.id && !r.done) ? ` <span class="ci" title="রিমাইন্ডার আছে">⏰</span>` : ""}`;
 
 /* ---------- login ---------- */
@@ -1472,11 +1470,6 @@ const AU_A = { insert: ["যোগ", "gr"], update: ["বদল", "am"], delete:
 const AU_F = { chq_date: "তারিখ", code: "A/C", chq_no: "চেক নং", amount: "টাকা", purpose: "খাত", cash_taker: "কে তুলেছে", party: "পার্টি", to_ac: "To A/C", remarks: "মন্তব্য", new_status: "স্ট্যাটাস", status_date: "স্ট্যাটাস তারিখ", total: "ক্লোজিং", block: "Block", remark: "মন্তব্য", other_debit: "অন্য খরচ", other_deposit: "অন্য জমা", photo: "ছবি", holder: "হোল্ডার", bank: "ব্যাংক", acno: "A/C নং", status: "Status", role: "Role", active: "সক্রিয়", name: "নাম" };
 const AU_SKIP = new Set(["created_at", "user_id", "id", "updated_at", "entered_by", "cheque_id"]);
 const auV = x => x === null || x === undefined || x === "" ? "—" : typeof x === "number" || /^-?\d+(\.\d+)?$/.test(String(x)) && String(x).length > 3 ? money(x) : String(x);
-function auDiff(r) {
-  const o = r.old || {}, n = r.new || {}, L = k => `<span class="au-k">${esc(AU_F[k] || k)}</span>`;
-  if (r.action === "update") return Object.keys({ ...o, ...n }).filter(k => !AU_SKIP.has(k) && JSON.stringify(o[k]) !== JSON.stringify(n[k])).map(k => `${L(k)} <s>${esc(auV(o[k]))}</s> → <b>${esc(auV(n[k]))}</b>`).join("<br>") || "—";
-  const x = r.action === "delete" ? o : n; return Object.entries(x).filter(([k, val]) => !AU_SKIP.has(k) && val !== null && val !== "").slice(0, 7).map(([k, val]) => `${L(k)} ${esc(auV(val))}`).join(" · ");
-}
 
 /* =================== v6: API extensions =================== */
 Object.assign(SbAPI, {
@@ -1790,11 +1783,6 @@ async function vCashSum(v) {
   await draw(); return unb;
 }
 /* read-only view of one day (used by Boss, who cannot open the entry page) */
-async function cashView(d) {
-  let r; try { r = await API.cashOn(d); } catch (e) { return toast(cashErr(e), "err"); } if (!r) return toast("রেকর্ড নেই", "err");
-  const line = k => r.items?.[k]?.a ? `<tr><td>${esc(cashLabel(k))}${r.items[k].n ? `<div class="mut xs">${esc(r.items[k].n)}</div>` : ""}</td><td class="r num">${money0(r.items[k].a)}</td></tr>` : "";
-  modal(`<h2>ক্যাশ রেকর্ড · ${dmy(d)}</h2><div class="tw"><table><tbody><tr class="tot"><td>Opening (Cash ${money0(r.opening_cash)} + Bank ${money0(r.opening_bank)})</td><td class="r num">${money0(+r.opening_cash + +r.opening_bank)}</td></tr>${CASH_KEYS("receipt").map(line).join("")}<tr class="tot"><td>Total Receipt</td><td class="r num gr">${money0(r.total_receipt)}</td></tr>${CASH_KEYS("payment").map(line).join("")}<tr class="tot"><td>Total Payment</td><td class="r num rd">${money0(r.total_payment)}</td></tr><tr class="tot"><td>Closing · Cash in hand ${money0(r.cash_in_hand)}</td><td class="r num">${money0(r.closing)}</td></tr></tbody></table></div><div class="row" style="margin-top:14px"><button class="btn" id="cv-x">বন্ধ</button></div>`, (root, close) => $("#cv-x", root).onclick = close);
-}
 
 /* =================== v6: CASH — reports (category breakdown) =================== */
 async function vCashRep(v) {

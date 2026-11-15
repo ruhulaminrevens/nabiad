@@ -228,3 +228,16 @@ drop policy if exists p_cpur_del on cheque_purposes;
 create policy p_cpur_read on cheque_purposes for select to authenticated using (my_role() is not null);
 create policy p_cpur_ins  on cheque_purposes for insert to authenticated with check (my_role() in ('admin','staff'));
 create policy p_cpur_del  on cheque_purposes for delete to authenticated using (my_role() = 'admin');
+
+-- v6.28 — hardening + indexes (safe to re-run)
+-- RPC functions already check my_role() internally; also stop anonymous callers reaching them at all.
+revoke execute on function public.clear_audit(timestamptz) from public, anon;
+revoke execute on function public.delete_backup(bigint) from public, anon;
+revoke execute on function public.user_logins() from public, anon;
+revoke execute on function public.set_my_name(text) from public, anon;
+revoke execute on function public.set_cheque_photo(uuid, text) from public, anon;
+revoke execute on function public.dist_set_status(uuid[], text, text) from public, anon;
+revoke execute on function public.make_backup(text) from public, anon;
+grant execute on function public.clear_audit(timestamptz), public.delete_backup(bigint), public.user_logins(), public.set_my_name(text), public.set_cheque_photo(uuid, text), public.dist_set_status(uuid[], text, text), public.make_backup(text) to authenticated;
+create index if not exists balances_code_date_ix on balances (code, date);
+create index if not exists dist_col_asm_ix on dist_collections (asm);
