@@ -347,8 +347,9 @@ function suggest(input, getItems, onPick) {
   let items = [], idx = 0, picked = null;
   const render = () => {
     const q = norm(input.value);
-    items = getItems().map(it => ({ it, s: norm(it.value + " " + it.label + " " + (it.sub || "")) })).filter(x => !q || x.s.includes(q))
-      .sort((a, b) => (norm(a.it.value).startsWith(q) ? 0 : 1) - (norm(b.it.value).startsWith(q) ? 0 : 1)).slice(0, 40).map(x => x.it);
+    const rank = it => { const v = norm(it.value); if (!q) return 0; if (v === q) return 0; if (v.startsWith(q)) return 1; if (v.includes(q)) return 2; return 3; };
+    items = getItems().filter(it => !q || [it.value, it.label, it.sub].some(f => norm(f).includes(q)))
+      .map(it => ({ it, r: rank(it) })).sort((a, b) => a.r - b.r).slice(0, 40).map(x => x.it);
     idx = 0; list.innerHTML = items.map((it, i) => `<div data-i="${i}" class="${i === 0 ? "on" : ""}">${it.html || `<span><b>${esc(it.value)}</b> ${esc(it.label)}</span>`}<small>${esc(it.sub || "")}</small></div>`).join("") || `<div class="mut">কিছু পাওয়া যায়নি</div>`;
     list.classList.toggle("hide", !items.length && !input.value);
   };
@@ -2343,6 +2344,7 @@ async function vDcol(v) {
   const qa = () => {
     const el = $("#dc-qa", v), p = picker?.get() ? byName(picker.get().value) : null, seen = new Set(), out = [];
     [p?.account, ...dcGroup(rows.filter(r => r.status !== "cancelled"), r => r.account).map(x => x.k)].forEach(a => { if (a && !seen.has(a) && out.length < 5) { seen.add(a); out.push(a); } });
+    const tq = norm(cIn.value); if (tq) { const hit = out.filter(a => norm(a).includes(tq)); out.length = 0; out.push(...hit); }
     el.innerHTML = out.map(a => `<button type="button" class="qa ${cIn.value.trim() === a ? "on" : ""}" data-qa="${esc(a)}"><i class="bdot" style="background:${dcBrand(a)}"></i>${esc(a)}</button>`).join("");
     $$("[data-qa]", el).forEach(b => b.onclick = () => { cIn.value = b.dataset.qa; qa(); mIn.focus(); });
   };

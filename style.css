@@ -925,3 +925,8 @@ tr.dim td{opacity:.55}
 .cbar .hint,.cbar .sp{grid-column:1/-1}.cbar .sp{display:none}
 @media (min-width:901px){.cbar{grid-template-columns:minmax(0,300px) minmax(0,300px) 1fr}.cbar .hint{grid-column:auto}}
 @media (max-width:420px){.cbar .btn.lg{font-size:13.5px;gap:6px}.cbar .btn.lg svg{width:16px;height:16px;flex:none}}
+
+/* v6.24 — collection list: tabs no longer stick to the header line / clipped */
+.dcx-tools{padding:14px 16px 12px}
+.dcx-tabs{padding:4px 4px 8px;margin:-4px -4px -8px}
+@media (max-width:760px){ .dcx-tabs{padding:4px 6px 10px;margin:-4px -6px -10px} .dcx-acc{padding:4px 6px 8px} }
