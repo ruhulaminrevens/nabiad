@@ -979,7 +979,7 @@ function shareAccounts(list, startMode) {
   const withPh = () => list.filter(a => a.book_photo);
   const getBlobs = async () => blobs || (blobs = await Promise.all(withPh().map(async a => ({ a, blob: await bookBlob(a) }))));
   const cardHtml = () => `<div class="shc" id="sh-card">${list.map(a => { const b = brandOf(a); return `<div class="shc-i" style="--b1:${b.c1};--b2:${b.c2}"><div class="shc-h"><span class="blogo">${esc(b.s)}</span><b>${esc(a.bank || "")}</b></div><div class="shc-b"><div class="shc-n">${esc(a.holder || "")}</div><div class="shc-a">${esc(fmtAcno(a.acno) || "—")}</div><div class="shc-m">${[a.branch, a.routing && "Routing " + a.routing].filter(Boolean).map(esc).join(" · ")}</div></div></div>`; }).join("")}<div class="shc-f">NABIAD GROUP</div></div>`;
-  modal(`<h2>${ico("share")} ব্যাংক তথ্য শেয়ার <span class="tag">${list.length}</span><button class="shclose" id="sh-x" type="button">✕ বন্ধ</button></h2>
+  modal(`<h2>${ico("share")} ব্যাংক তথ্য শেয়ার <span class="tag">${list.length}</span></h2>
    <div class="seg" id="sh-mode" style="margin-bottom:10px"><span class="chip" data-m="full">সব তথ্য</span><span class="chip" data-m="chq">A/C with Cheque</span></div>
    <label class="f">যা পাঠানো হবে <span class="mut">(চাইলে বদলাতে পারেন)</span></label><textarea class="in" id="sh-t" rows="${Math.min(14, list.length * 6 + 1)}" style="height:auto;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.5"></textarea>
    <div id="sh-ph"></div><div id="sh-warn"></div>
@@ -1007,13 +1007,14 @@ function shareAccounts(list, startMode) {
         `<button class="btn wa" data-s="wa">${ico("share")} WhatsApp</button>` +
         (chq && hasPh ? `<button class="btn sh-im" data-s="cpimg">${ico("img")} ছবি কপি</button><button class="btn sh-im" data-s="dlimg">${ico("img")} ছবি ডাউনলোড</button>` : "") +
         (!chq && navigator.share ? `<button class="btn sh-ot" data-s="native">${ico("share")} অন্য অ্যাপে</button>` : "") +
-        `<button class="btn sh-ml" data-s="mail">${ico("mail")} ইমেইল</button>` + (!chq ? `<button class="btn sh-im" data-s="img">${ico("img")} কার্ড ছবি</button>` : "");
+        `<button class="btn sh-ml" data-s="mail">${ico("mail")} ইমেইল</button>` + (!chq ? `<button class="btn sh-im" data-s="img">${ico("img")} কার্ড ছবি</button>` : "") + `<button class="btn shclose" id="sh-x" type="button">✕ বন্ধ</button>`;
       warn(); phStrip();
     };
     draw();
     $$("#sh-mode .chip", root).forEach(c => c.onclick = () => { mode = c.dataset.m; draw(); });
-    $("#sh-x", root).onclick = close;
+    
     btns.onclick = async e => {
+      if (e.target.closest("#sh-x")) return close();
       const b = e.target.closest("[data-s]"); if (!b) return; const t = ta.value.trim(), k = b.dataset.s;
       if (k === "copy") return copyText(t, "✔ কপি হয়েছে — যেখানে খুশি paste করুন");
       if (k === "wa") return window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank", "noopener");

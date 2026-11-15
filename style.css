@@ -743,3 +743,7 @@ details summary{cursor:pointer;list-style:none} details summary::-webkit-details
 .modal h2:has(.shclose){display:flex;align-items:center;gap:8px}
 .shclose{margin-left:auto;height:34px;padding:0 14px;font-size:13px;box-shadow:0 4px 10px -4px rgba(239,68,68,.8);cursor:pointer}
 .shfoot{display:none}
+
+/* v6.13 close in grid */
+.shgrid .shclose{margin:0;height:46px;padding:0 10px;font-size:14px;border-radius:12px;background:#ef4444;color:#fff;border:0;box-shadow:0 6px 14px -6px rgba(239,68,68,.7);grid-column:auto}
+.shgrid .shclose:hover{background:#dc2626}
