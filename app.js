@@ -2321,7 +2321,7 @@ async function vDcol(v) {
     <div class="dcx-grid">
      <div class="dcx-p"><label class="f">পার্টি *</label><div><input class="in big" id="dc-pty" autocomplete="off" placeholder="পার্টির নাম লিখুন…"></div><div class="dcx-h" id="dc-ph"></div></div>
      <div class="dcx-a"><label class="f">ASM / Salesman</label><input class="in" id="dc-a" list="dc-dl-a" autocomplete="off" placeholder="অটো বসবে"></div>
-     <div class="dcx-c"><label class="f">Account *</label><div><input class="in" id="dc-c" autocomplete="off" placeholder="Account খুঁজুন — DBBL-17"></div><div class="dcx-qa" id="dc-qa"></div></div>
+     <div class="dcx-c"><label class="f">Account *</label><div><input class="in" id="dc-c" autocomplete="off" placeholder="Account খুঁজুন — DBBL-17"></div></div>
      <div class="dcx-m"><label class="f">টাকা *</label><input class="in big num" id="dc-m" inputmode="decimal" autocomplete="off" placeholder="0"><div class="dcx-h num" id="dc-mh"></div></div>
      <div class="dcx-r"><label class="f">মন্তব্য <span class="mut">(ঐচ্ছিক)</span></label><input class="in big" id="dc-r" autocomplete="off" placeholder="স্লিপ নং / নোট"></div>
      <div class="dcx-b"><button class="btn pri big" id="dc-add">${ico("plus")} যোগ করুন</button></div>
@@ -2339,17 +2339,11 @@ async function vDcol(v) {
   const geoTxt = p => [p?.district, p?.division && p.division !== p.district ? p.division : ""].filter(Boolean).join(", ");
   const info = p => {
     if (!p) return ""; const td = rows.filter(r => r.party_id === p.id && r.status !== "cancelled");
-    return `<div class="dcx-info"><span class="tg v">${ico("users")} ${esc(p.asm || "ASM নেই")}</span>${geoTxt(p) ? `<span class="tg">${ico("map")} ${esc(geoTxt(p))}</span>` : ""}${p.account ? `<button type="button" class="tg use" data-use="${esc(p.account)}"><i class="bdot" style="background:${dcBrand(p.account)}"></i>সাধারণত ${esc(p.account)}</button>` : ""}${td.length ? `<span class="tg w">এই তারিখে আগেই ${td.length}টি · ৳ ${money0(dcSum(td))}</span>` : ""}${p.note ? `<span class="mut xs">${esc(p.note)}</span>` : ""}</div>`;
+    return `<div class="dcx-info"><span class="tg v">${ico("users")} ${esc(p.asm || "ASM নেই")}</span>${geoTxt(p) ? `<span class="tg">${ico("map")} ${esc(geoTxt(p))}</span>` : ""}${td.length ? `<span class="tg w">এই তারিখে আগেই ${td.length}টি · ৳ ${money0(dcSum(td))}</span>` : ""}${p.note ? `<span class="mut xs">${esc(p.note)}</span>` : ""}</div>`;
   };
-  const qa = () => {
-    const el = $("#dc-qa", v), p = picker?.get() ? byName(picker.get().value) : null, seen = new Set(), out = [];
-    [p?.account, ...dcGroup(rows.filter(r => r.status !== "cancelled"), r => r.account).map(x => x.k)].forEach(a => { if (a && !seen.has(a) && out.length < 5) { seen.add(a); out.push(a); } });
-    const tq = norm(cIn.value); if (tq) { const hit = out.filter(a => norm(a).includes(tq)); out.length = 0; out.push(...hit); }
-    el.innerHTML = out.map(a => `<button type="button" class="qa ${cIn.value.trim() === a ? "on" : ""}" data-qa="${esc(a)}"><i class="bdot" style="background:${dcBrand(a)}"></i>${esc(a)}</button>`).join("");
-    $$("[data-qa]", el).forEach(b => b.onclick = () => { cIn.value = b.dataset.qa; qa(); mIn.focus(); });
-  };
+  const qa = () => {};
   cIn.addEventListener("input", () => qa());
-  const fill = p => { aIn.value = p?.asm || ""; if (p?.account) cIn.value = p.account; $("#dc-ph", v).innerHTML = info(p); $$("[data-use]", $("#dc-ph", v)).forEach(b => b.onclick = () => { cIn.value = b.dataset.use; qa(); mIn.focus(); }); qa(); };
+  const fill = p => { aIn.value = p?.asm || ""; $("#dc-ph", v).innerHTML = info(p); };
   const picker = suggest(pIn, () => parties.filter(p => p.active).map(p => ({ value: p.name, label: p.asm || "", sub: "", html: `<span class="sgn"><b>${esc(p.name)}</b><em>${esc([p.asm, p.district].filter(Boolean).join(" · "))}</em></span>` })), it => { if (it) { fill(byName(it.value)); } else { $("#dc-ph", v).innerHTML = ""; } });
   pIn.addEventListener("picked", () => cIn.focus());
   const accItems = () => dcAccounts().map(c => { const a = (S.accounts || []).find(x => x.code === c); return { value: c, label: a?.holder || "", sub: a?.bank || "", html: `<span class="sgn"><b><i class="bdot" style="background:${dcBrand(c)}"></i> ${esc(c)}</b><em>${esc([a?.holder, a?.bank].filter(Boolean).join(" · "))}</em></span>` }; });
