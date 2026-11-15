@@ -961,7 +961,7 @@ function accMissing(a) { return ACC_FIELDS.filter(([k]) => !(isMFS(a) && (k === 
 const accPct = a => { const need = ACC_FIELDS.filter(([k]) => !(isMFS(a) && (k === "branch" || k === "routing"))).length; return Math.round((need - accMissing(a).length) / need * 100); };
 const fmtAcno = s => String(s || "").replace(/\s+/g, "").replace(/(\d{4})(?=\d)/g, "$1 ");
 function accText(list, opt = {}) {
-  return list.map((a, i) => [list.length > 1 ? `${i + 1})` : "", a.bank && `Bank: ${a.bank}`, a.branch && `Branch: ${a.branch}`, !opt.cheque && a.routing && `Routing No: ${a.routing}`, a.holder && `A/C Name: ${a.holder}`, a.acno && `A/C No: ${a.acno}`].filter(Boolean).join("\n")).join("\n\n");
+  return list.map((a, i) => [list.length > 1 ? `${i + 1})` : "", a.bank && `Bank: ${a.bank}`, a.branch && `Branch: ${a.branch}`, !opt.cheque && a.routing && `Routing No: ${a.routing}`, !opt.cheque && a.swift && `SWIFT: ${a.swift}`, a.holder && `A/C Name: ${a.holder}`, a.acno && `A/C No: ${a.acno}`].filter(Boolean).join("\n")).join("\n\n");
 }
 async function copyText(t, msg = "কপি হয়েছে") { try { await navigator.clipboard.writeText(t); toast(msg); } catch { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast(msg); } catch { toast("কপি করা যায়নি", "err"); } ta.remove(); } }
 const bookBlob = async a => { const u = await API.photoUrl(a.book_photo); const r = await fetch(u); return await r.blob(); };
