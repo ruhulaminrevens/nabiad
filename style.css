@@ -713,3 +713,12 @@ details summary{cursor:pointer;list-style:none} details summary::-webkit-details
   .accf-bar{margin:10px -22px -18px;bottom:calc(-18px - env(safe-area-inset-bottom))}
   #a-prev .card{display:none}
 }
+
+/* v6.10 share modal polish */
+.shgrid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.shgrid .btn{justify-content:center;white-space:nowrap;padding-left:10px;padding-right:10px;min-width:0}
+.shgrid .btn.pri{grid-column:1/-1;height:44px;font-weight:600}
+.phstrip.one{display:block;overflow:visible}
+.phstrip.one .phi{flex:none;width:100%;cursor:zoom-in}
+.phstrip.one .phi img{width:100%;height:auto;aspect-ratio:1600/680;object-fit:contain;background:var(--surface2)}
+.phstrip:not(.one) .phi{flex:0 0 168px;cursor:zoom-in}.phstrip:not(.one) .phi img{width:168px;height:71px;object-fit:contain}

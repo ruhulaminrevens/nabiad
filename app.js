@@ -994,12 +994,13 @@ function shareAccounts(list, startMode) {
     };
     const phStrip = async () => {
       const box = $("#sh-ph", root); if (mode !== "chq") return box.innerHTML = ""; const w = withPh(); if (!w.length) return box.innerHTML = "";
-      box.innerHTML = `<div class="phstrip">${w.map(a => `<div class="phi"><img data-c="${esc(a.code)}" alt=""><span>${esc(a.code)}</span></div>`).join("")}</div>`;
+      box.innerHTML = `<div class="phstrip ${w.length === 1 ? "one" : ""}">${w.map(a => `<div class="phi" data-v="${esc(a.code)}" title="বড় করে দেখুন"><img data-c="${esc(a.code)}" alt=""><span>${esc(a.code)}${w.length === 1 ? " · Cheque book" : ""}</span></div>`).join("")}</div>`;
+      $$("[data-v]", box).forEach(el => el.onclick = () => { const a = list.find(x => x.code === el.dataset.v); if (a) viewBookPhoto(a); });
       for (const a of w) { try { const u = await API.photoUrl(a.book_photo); const im = $(`img[data-c="${CSS.escape(a.code)}"]`, box); if (im) im.src = u; } catch { } }
     };
     const draw = () => {
       $$("#sh-mode .chip", root).forEach(x => x.classList.toggle("on", x.dataset.m === mode));
-      ta.value = accText(list, { cheque: mode === "chq" });
+      ta.value = accText(list, { cheque: mode === "chq" }); ta.rows = Math.max(4, Math.min(14, list.length * (mode === "chq" ? 5 : 6) - 1));
       const chq = mode === "chq", hasPh = withPh().length > 0;
       btns.innerHTML = `<button class="btn" data-s="copy">${ico("copy")} কপি</button>` +
         (chq && hasPh ? `<button class="btn pri" data-s="withph">${ico("share")} ছবিসহ শেয়ার</button>` : "") +
