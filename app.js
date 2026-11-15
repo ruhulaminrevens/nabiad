@@ -418,16 +418,8 @@ function shell() {
   $("#qs").onclick = palette; $("#bell").onclick = () => { const d = dueList(); if (d.length) dueModal(d); else location.hash = "#/rem"; }; updateBell();
   if ($("#sync")) { $("#sync").onclick = () => navigator.onLine ? Outbox.flush() : toast("ইন্টারনেট নেই — নেট এলে নিজে থেকে সিঙ্ক হবে", "err"); syncBadge(); }
   $("#lang").onclick = () => setLang(LANG === "bn" ? "en" : "bn");
-  $("#more").onclick = e => {
-    e.preventDefault(); const cur = (location.hash.match(/^#\/(\w+)/) || [])[1];
-    const el = document.createElement("div"); el.className = "sheet";
-    el.innerHTML = `<div class="box"><div class="grab"></div>${keys.filter(k => !mob.includes(k)).map(k => `<a href="#/${k}" class="${k === cur ? "on" : ""}">${ico(ROUTES[k].ic)}${ROUTES[k].t}${bd[k] ? `<span class="badge">${bd[k]}</span>` : ""}</a>`).join("")}
-      <button class="lnk" data-x="th">${ico(getTheme() === "dark" ? "sun" : "moon")}${getTheme() === "dark" ? "লাইট থিম" : "ডার্ক থিম"}</button>
-      <button class="lnk" data-x="lg">${ico("copyt")}${LANG === "bn" ? "English" : "বাংলা"}</button>
-      <button class="lnk" data-x="lo">${ico("out")}লগআউট <span class="mut sm" style="margin-left:auto">${esc(S.me.name)}</span></button></div>`;
-    document.body.appendChild(el);
-    el.addEventListener("click", ev => { if (ev.target === el || ev.target.closest("a")) el.remove(); const x = ev.target.closest("[data-x]"); if (x?.dataset.x === "th") { setTheme(getTheme() === "dark" ? "light" : "dark"); el.remove(); } if (x?.dataset.x === "lo") lo(); if (x?.dataset.x === "lg") { el.remove(); setLang(LANG === "bn" ? "en" : "bn"); } });
-  };
+  $("#more").onclick = e => { e.preventDefault(); openMore(keys, mob, bd, lo); };
+
 }
 function refreshBadges() {
   const bd = badges();
@@ -1009,28 +1001,108 @@ async function vAccounts(v) {
   draw();
 }
 async function vAdmin(v) {
-  let tab = "acc";
+  let tab = sessionStorage.getItem("nabiad_admin_tab") || "acc";
   const draw = async () => {
-    v.innerHTML = head("অ্যাডমিন") + `<div class="tabs">${[["acc", "অ্যাকাউন্ট"], ["usr", "ব্যবহারকারী"], ["imp", "পুরনো ডাটা import"], ["help", "সেটআপ"]].map(([k, l]) => `<span class="chip ${k === tab ? "on" : ""}" data-t="${k}">${l}</span>`).join("")}</div><div id="ad"></div>`;
+    sessionStorage.setItem("nabiad_admin_tab", tab);
+    v.innerHTML = head("অ্যাডমিন") + `<div class="tabs ntabs">${[["acc", "🏦", "অ্যাকাউন্ট"], ["usr", "👥", "ব্যবহারকারী"], ["imp", "📥", "পুরনো ডাটা"], ["help", "🧰", "সেটআপ"]].map(([k, i, l]) => `<span class="chip ${k === tab ? "on" : ""}" data-t="${k}"><i class="te">${i}</i> <span>${l}</span></span>`).join("")}</div><div id="ad"></div>`;
     $$("[data-t]", v).forEach(c => c.onclick = () => { tab = c.dataset.t; draw(); }); const out = $("#ad", v);
     if (tab === "acc") {
-      out.innerHTML = `<div class="row" style="margin-bottom:12px"><button class="btn pri fix" id="ac-add">${ico("plus")} নতুন অ্যাকাউন্ট</button></div><div class="card flush"><div class="tw cards"><table><thead><tr><th>#</th><th>Code</th><th>হোল্ডার</th><th>ব্যাংক</th><th>A/C নং</th><th>দৈনিক</th><th>Status</th><th></th></tr></thead><tbody>${S.accounts.map(a => `<tr><td class="mut">${a.sort}</td><td><b>${esc(a.code)}</b></td><td>${esc(a.holder || "")}</td><td class="mut sm">${esc(a.bank || "")}</td><td class="mut sm">${esc(a.acno || "")}</td><td>${a.daily ? "✓" : ""}</td><td>${esc(a.status)}</td><td><button class="btn sm" data-a="${esc(a.code)}">${ico("edit")} এডিট</button></td></tr>`).join("")}</tbody></table></div></div>`;
-      $("#ac-add", out).onclick = () => accountModal(null, draw); $$("[data-a]", out).forEach(b => b.onclick = () => accountModal(S.accounts.find(x => x.code === b.dataset.a), draw));
+      const F = { q: "", st: "Active" };
+      out.innerHTML = `<div class="card noprint" style="margin-bottom:12px"><div class="srch" style="margin-top:0"><label class="si">${ico("search")}<input class="in" id="aa-q" placeholder="কোড, হোল্ডার, ব্যাংক, A/C নং…" autocomplete="off" type="search"></label><select class="in fix" id="aa-s"><option value="Active">Active</option><option value="">সব</option><option value="Closed">Closed</option></select><button class="btn pri fix" id="ac-add">${ico("plus")} <span class="lbl2">নতুন</span></button></div></div><div class="mut sm" id="aa-n" style="margin-bottom:8px"></div><div class="card flush"><div class="alist" id="aa-out"></div></div>`;
+      const list = () => {
+        const q = norm(F.q), arr = S.accounts.filter(a => (!F.st || a.status === F.st) && (!q || accHay(a).includes(q))).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+        $("#aa-n", out).innerHTML = `<b>${arr.length}</b>টি অ্যাকাউন্ট · <span>দৈনিক ক্লোজিং-এ</span> ${arr.filter(a => a.daily).length}`;
+        $("#aa-out", out).innerHTML = arr.map(a => { const b = brandOf(a); return `<div class="ar" style="--b1:${b.c1}"><span class="blg" style="background:${b.c1}">${esc(b.s)}</span><div class="acm"><div><b>${esc(a.code)}</b> <span class="mut sm">#${a.sort ?? ""}</span>${a.status !== "Active" ? ` <span class="tag cl">${esc(a.status)}</span>` : ""}${a.daily ? ` <span class="tag t-chg">দৈনিক</span>` : ""}</div><div class="sm">${esc(a.holder || "")}</div><div class="mut xs">${esc(a.bank || "")}${a.acno ? " · " + esc(a.acno) : ""}</div></div><button class="btn sm" data-a="${esc(a.code)}">${ico("edit")}</button></div>`; }).join("") || `<div class="empty">কিছু পাওয়া যায়নি</div>`;
+        $$("[data-a]", out).forEach(b => b.onclick = () => accountModal(S.accounts.find(x => x.code === b.dataset.a), draw));
+      };
+      $("#aa-q", out).oninput = e => { F.q = e.target.value; list(); }; $("#aa-s", out).onchange = e => { F.st = e.target.value; list(); };
+      $("#ac-add", out).onclick = () => accountModal(null, draw); list();
     } else if (tab === "usr") {
-      const us = await API.users();
-      out.innerHTML = `<div class="card"><div class="alert am" style="margin-bottom:12px"><span>নতুন ব্যবহারকারী যোগ: Supabase → Authentication → Users → Add user (ইমেইল + পাসওয়ার্ড)। এখানে এসে নাম ও Role ঠিক করুন। <b>নাম</b> চেক এন্ট্রিতে "কে এন্ট্রি করেছে" হিসেবে বসে।</span></div>
-       <div class="tw"><table><thead><tr><th>ইমেইল</th><th>নাম</th><th>Role</th><th>সক্রিয়</th><th></th></tr></thead><tbody>${us.map(u => `<tr data-u="${u.id}"><td>${esc(u.email)}</td><td><input class="cell t nm" value="${esc(u.name || "")}"></td><td><select class="in rl" style="min-height:34px;padding:4px 8px">${["admin", "staff", "boss"].map(r => `<option ${r === u.role ? "selected" : ""}>${r}</option>`).join("")}</select></td><td><input type="checkbox" class="ac" ${u.active ? "checked" : ""}></td><td><button class="btn sm" data-s="${u.id}">সেভ</button></td></tr>`).join("")}</tbody></table></div></div>`;
-      $$("[data-s]", out).forEach(b => b.onclick = async () => { const tr = b.closest("tr"); try { await API.updateProfile(b.dataset.s, { name: $(".nm", tr).value.trim(), role: $(".rl", tr).value, active: $(".ac", tr).checked }); toast("সেভ হয়েছে"); } catch (e) { toast(e.message, "err"); } });
+      out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
+      let us = []; try { us = await API.users(); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(e.message)}</div>`; return; }
+      out.innerHTML = `<div class="ulist">${us.map(u => `<div class="card uc" data-u="${u.id}"><div class="uh"><div class="ava">${esc((u.name || u.email || "?").trim().slice(0, 1).toUpperCase())}</div><div class="ue"><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div><label class="sw" title="সক্রিয়"><input type="checkbox" class="ac" ${u.active ? "checked" : ""}><i></i></label></div>
+        <div class="ug"><div><label class="f">নাম</label><input class="in nm" value="${esc(u.name || "")}"></div><div><label class="f">Role</label><div class="seg rl">${[["admin", "Admin"], ["staff", "Staff"], ["boss", "Boss"]].map(([r, l]) => `<span class="chip ${r === u.role ? "on" : ""}" data-r="${r}">${l}</span>`).join("")}</div></div></div>
+        <div class="row" style="margin-top:10px"><button class="btn pri sm fix" data-s="${u.id}">${ico("save")} সেভ</button>${u.id === S.me.id ? `<span class="mut xs">এটা আপনি</span>` : ""}</div></div>`).join("")}</div>
+       <details class="card" style="margin-top:12px"><summary><b>➕ নতুন ব্যবহারকারী কীভাবে যোগ করবেন</b></summary><ol class="steps"><li>Supabase → <b>Authentication → Users → Add user</b></li><li>ইমেইল ও পাসওয়ার্ড দিন, <b>Auto Confirm</b> টিক দিন</li><li>এই পাতা রিফ্রেশ করুন — নতুন ব্যবহারকারী নিষ্ক্রিয় অবস্থায় আসবে</li><li>নাম ও Role ঠিক করে সক্রিয় করুন, তারপর সেভ</li></ol><div class="mut xs">নাম চেক/ক্লোজিং/ক্যাশে "কে এন্ট্রি করেছে" হিসেবে বসে।</div></details>`;
+      $$(".rl .chip", out).forEach(c => c.onclick = () => { $$(".chip", c.parentElement).forEach(x => x.classList.toggle("on", x === c)); });
+      $$("[data-s]", out).forEach(b => b.onclick = async () => {
+        const card = b.closest(".uc"), role = $(".rl .chip.on", card)?.dataset.r, active = $(".ac", card).checked;
+        if (b.dataset.s === S.me.id && (role !== "admin" || !active) && !ask("নিজের Admin অধিকার সরিয়ে দিলে আর অ্যাডমিন পাতায় আসতে পারবেন না। নিশ্চিত?")) return;
+        b.disabled = true; try { await API.updateProfile(b.dataset.s, { name: $(".nm", card).value.trim(), role, active }); toast("✔ সেভ হয়েছে"); if (b.dataset.s === S.me.id) { S.me.name = $(".nm", card).value.trim(); saveCache(); } } catch (e) { toast(e.message, "err"); } b.disabled = false;
+      });
     } else if (tab === "imp") {
-      const n = await API.balanceCount();
-      out.innerHTML = `<div class="card"><h3>পুরনো ব্যাংক ব্যালেন্স ইতিহাস</h3><p>এখন ডাটাবেসে ব্যালেন্স রেকর্ড: <b class="num">${money0(n)}</b></p>${DEMO ? `<div class="alert gr">DEMO মোডে পুরনো ডাটা (৩৯,৪৭৯ রেকর্ড, ০২-০৯-২০২৩ থেকে) আগে থেকেই লোড আছে।</div>` : `<p class="mut">history.json (২০২৩-২০২৬ এর ৩৯,৪৭৯ রেকর্ড) ডাটাবেসে তুলবে। একই তারিখ+A/C আবার তুললে নতুন করে বসবে, ডুপ্লিকেট হবে না।</p><button class="btn pri" id="im-go">⬆ পুরনো ডাটা import করুন</button><div class="bar" style="margin-top:12px"><i id="im-bar" style="width:0"></i></div><div class="hint" id="im-t"></div>`}</div>`;
+      out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
+      let n = 0; try { n = await API.balanceCount(); } catch { }
+      const done = n >= 39000;
+      out.innerHTML = `<div class="card"><h3>📥 পুরনো ব্যাংক ব্যালেন্স ইতিহাস</h3>
+        <div class="grid g3" style="margin:12px 0"><div class="kv"><span>ডাটাবেসে রেকর্ড</span><b class="num">${money0(n)}</b></div><div class="kv"><span>ফাইলে রেকর্ড</span><b class="num">39,479</b></div><div class="kv"><span>শুরু</span><b>02-09-2023</b></div></div>
+        ${DEMO ? `<div class="alert gr">DEMO মোডে পুরনো ডাটা আগে থেকেই লোড আছে।</div>` : done ? `<div class="alert gr">✔ পুরনো ডাটা ইতিমধ্যে import হয়ে গেছে — আর কিছু করতে হবে না।</div><details style="margin-top:10px"><summary class="mut sm">আবার import করতে চাইলে</summary><div style="margin-top:8px"><button class="btn" id="im-go">⬆ আবার import</button></div></details>` : `<div class="alert am">এখনো import হয়নি।</div><button class="btn pri" id="im-go" style="margin-top:10px">⬆ পুরনো ডাটা import করুন</button>`}
+        <div class="bar" style="margin-top:12px"><i id="im-bar" style="width:0"></i></div><div class="hint" id="im-t"></div>
+        <div class="mut xs" style="margin-top:8px">একই তারিখ+A/C আবার তুললে আগেরটার জায়গায় বসবে — ডুপ্লিকেট হয় না।</div></div>`;
       $("#im-go", out) && ($("#im-go", out).onclick = async () => { if (!ask("পুরনো ডাটা import করবেন?")) return; $("#im-go", out).disabled = true; try { const rows = await loadEncrypted("history.enc"); await API.importBalances(rows, (a, b) => { $("#im-bar", out).style.width = a / b * 100 + "%"; $("#im-t", out).textContent = `${a} / ${b}`; }); balCache.clear(); toast("✔ import সম্পূর্ণ"); S.lastBal = await API.lastBalDate(); } catch (e) { toast(e.message, "err"); $("#im-go", out).disabled = false; } });
     } else {
-      out.innerHTML = `<div class="card"><h3>সংক্ষেপে</h3><ul style="line-height:1.9"><li><b>Staff</b> শুধু নতুন এন্ট্রি / স্ট্যাটাস / ব্যালেন্স <u>যোগ</u> করতে পারে — পুরনো এন্ট্রি বদলানো বা মোছা শুধু <b>Admin</b> (ডাটাবেস নিজেই আটকায়)।</li><li><b>Boss</b> শুধু দেখতে ও এনকোয়ারি/রিপোর্ট নিতে পারে।</li><li>ভুল স্ট্যাটাস দিলে নতুন স্ট্যাটাস দিন — ইতিহাস থেকে যাবে।</li><li>নতুন চেক বই যোগ করলে "চেক বই" পাতায় মিসিং পাতা নিজে থেকে ধরা পড়বে।</li><li><b>v2 ফিচার</b> (ড্রাফট সার্ভারে, রিমাইন্ডার, Audit log, চেকের ছবি) চালু করতে Supabase → SQL Editor-এ <code>schema_v2.sql</code> একবার চালাতে হবে।</li><li>সব পরিবর্তনের ইতিহাস: <a href="#/audit">Audit log</a></li></ul></div>`;
+      out.innerHTML = `<div class="card empty">সিস্টেম পরীক্ষা হচ্ছে…</div>`;
+      const chk = await API.health().catch(() => ({}));
+      const row = (ok, l, sub) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "✗"}</i><div><b>${l}</b>${sub ? `<div class="mut xs">${sub}</div>` : ""}</div></div>`;
+      out.innerHTML = `<div class="grid g2"><div class="card"><h3>🩺 সিস্টেম অবস্থা</h3><div class="hcl">
+        ${row(chk.db, "ডাটাবেস সংযোগ", DEMO ? "DEMO মোড" : "Supabase")}${row(chk.v2, "v2: ড্রাফট · রিমাইন্ডার · Audit · ছবি", chk.v2 ? "চালু" : "schema_v2.sql চালাতে হবে")}
+        ${row(chk.v3, "v3: ক্যাশ · Backup · নিজের নাম", chk.v3 ? "চালু" : "schema_v3.sql চালাতে হবে")}${row(chk.backup, "রাত ১২টার Backup", chk.backupAt ? "শেষ: " + new Date(chk.backupAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "এখনো হয়নি")}
+        ${row(location.protocol === "https:" || DEMO, "HTTPS", location.host)}${row(!!navigator.serviceWorker?.controller || DEMO, "অফলাইন মোড (PWA)", navigator.serviceWorker?.controller ? "চালু" : "রিলোড দিলে চালু হবে")}</div>
+        <div class="mut xs" style="margin-top:10px">সংস্করণ v6 · ${esc(document.querySelector('script[src^="app.js"]')?.getAttribute("src")?.split("v=")[1] || "")}</div></div>
+       <div class="card"><h3>👮 কে কী পারে</h3><table class="perm"><thead><tr><th></th><th>Admin</th><th>Staff</th><th>Boss</th></tr></thead><tbody>
+        ${[["চেক / ক্লোজিং / ক্যাশ যোগ", 1, 1, 0], ["ফাইনাল সেভের পর বদলানো", 1, 0, 0], ["মুছে ফেলা", 1, 0, 0], ["রিপোর্ট দেখা", 1, 1, 1], ["Audit log", 1, 0, 1], ["Backup ও ব্যবহারকারী", 1, 0, 0]].map(([l, ...r]) => `<tr><td>${l}</td>${r.map(x => `<td class="c">${x ? `<b class="gr">✓</b>` : `<span class="mut">—</span>`}</td>`).join("")}</tr>`).join("")}</tbody></table>
+        <div class="mut xs" style="margin-top:8px">ভুল স্ট্যাটাস দিলে নতুন স্ট্যাটাস দিন — ইতিহাস থেকে যায়। এই নিয়ম ডাটাবেস (RLS) নিজেই আটকায়।</div></div>
+       <div class="card" style="grid-column:1/-1"><h3>⚡ দ্রুত লিংক</h3><div class="qlinks"><a href="#/audit">${ico("shield")} Audit ও Backup</a><a href="#/books">${ico("book")} চেক বই</a><a href="#/settings">${ico("gear")} সেটিংস</a><a href="https://supabase.com/dashboard/project/mtzxcwuojiajsanearsz" target="_blank" rel="noopener">${ico("bank")} Supabase ড্যাশবোর্ড ↗</a><a href="https://github.com/ruhulaminrevens/nabiad" target="_blank" rel="noopener">${ico("copyt")} GitHub কোড ↗</a></div></div></div>`;
     }
   };
   await draw();
 }
+Object.assign(SbAPI, {
+  async health() {
+    const t = async (tbl, col = "*") => { const { error } = await sb.from(tbl).select(col, { count: "exact", head: true }); return !error; };
+    const [db, v2, v3] = await Promise.all([t("accounts", "code"), t("reminders", "id"), t("cash_records", "date")]);
+    let backupAt = null; try { backupAt = (await this.backups())[0]?.at || null; } catch { }
+    return { db, v2, v3, backup: !!backupAt && Date.now() - new Date(backupAt) < 36 * 36e5, backupAt };
+  }
+});
+Object.assign(DemoAPI, { async health() { const b = (demoStore.backups || [])[0]; return { db: true, v2: true, v3: true, backup: !!b, backupAt: b?.at }; } });
+
+/* ---------- "More" sheet: grouped tiles, ✕ / tap outside / swipe down / phone Back all close it ---------- */
+let moreClose = null;
+function openMore(keys, mob, bd, lo) {
+  if (moreClose) return moreClose();
+  const cur = (location.hash.match(/^#\/(\w+)/) || [])[1], dark = getTheme() === "dark";
+  const groups = []; keys.filter(k => !mob.includes(k)).forEach(k => { const s = ROUTES[k].sec; let g = groups.find(x => x.s === s); if (!g) groups.push(g = { s, ks: [] }); g.ks.push(k); });
+  const el = document.createElement("div"); el.className = "sheet sheet2";
+  el.innerHTML = `<div class="box"><div class="sh-hd"><div class="grab"></div><b>সব পাতা</b><button class="iconbtn sh-x" data-x="close" title="বন্ধ">✕</button></div><div class="sh-body">
+    ${groups.map(g => `<div class="sh-sec">${SECS[g.s] || "মেনু"}</div><div class="sh-grid">${g.ks.map(k => `<a href="#/${k}" class="${k === cur ? "on" : ""}"><span class="ti">${ico(ROUTES[k].ic)}${bd[k] ? `<span class="badge">${bd[k]}</span>` : ""}</span><span class="tl">${ROUTES[k].t}</span></a>`).join("")}</div>`).join("")}
+    <div class="sh-foot"><button data-x="th">${ico(dark ? "sun" : "moon")}<span>${dark ? "লাইট থিম" : "ডার্ক থিম"}</span></button><button data-x="lg">${ico("copyt")}<span>${LANG === "bn" ? "English" : "বাংলা"}</span></button><button data-x="lo" class="lo">${ico("out")}<span>লগআউট</span></button></div>
+    <div class="mut xs c" style="margin-top:8px">${esc(S.me.name)} · ${esc(S.me.role)}</div></div></div>`;
+  document.body.appendChild(el); document.body.classList.add("noscroll");
+  history.pushState({ more: 1 }, "");
+  let closed = false;
+  const close = viaPop => {
+    if (closed) return; closed = true; moreClose = null; window.removeEventListener("popstate", onPop); document.removeEventListener("keydown", onKey);
+    el.classList.add("out"); document.body.classList.remove("noscroll"); setTimeout(() => el.remove(), 200);
+    if (!viaPop && history.state?.more) history.back();
+  };
+  const onPop = () => close(true), onKey = e => { if (e.key === "Escape") close(); };
+  window.addEventListener("popstate", onPop); document.addEventListener("keydown", onKey); moreClose = () => close();
+  el.addEventListener("click", ev => {
+    if (ev.target === el) return close();
+    const a = ev.target.closest("a[href^='#/']");
+    if (a) { ev.preventDefault(); const h = a.getAttribute("href"); close(true); history.replaceState(null, "", h); route(); return; }
+    const x = ev.target.closest("[data-x]"); if (!x) return;
+    if (x.dataset.x === "close") close();
+    else if (x.dataset.x === "th") { setTheme(dark ? "light" : "dark"); close(); }
+    else if (x.dataset.x === "lg") { close(); setTimeout(() => setLang(LANG === "bn" ? "en" : "bn"), 60); }
+    else if (x.dataset.x === "lo") lo();
+  });
+  let y0 = null; const hd = $(".sh-hd", el);
+  hd.addEventListener("touchstart", e => { y0 = e.touches[0].clientY; }, { passive: true });
+  hd.addEventListener("touchend", e => { if (y0 != null && e.changedTouches[0].clientY - y0 > 50) close(); y0 = null; });
+}
+
 
 /* ---------- bank brand colours (approximate brand palettes; edit here if a shade looks off) ---------- */
 const BRAND = {
@@ -1438,11 +1510,12 @@ async function vCash(v) {
     else if (src) msgs.push(`<div class="alert vi">📝 <span>ড্রাফট লোড হয়েছে${fromLocal ? " (এই ডিভাইস)" : ""} — ${esc(src.entered_by || S.me.name)} · ${new Date(src.updated_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>${!locked ? `<button class="btn sm" id="cs-dd" style="margin-left:auto">ড্রাফট বাদ দিন</button>` : ""}</div>`);
     if (!src && prev) msgs.push(`<div class="mut sm">Opening নেওয়া হয়েছে <b>${dmy(prev.date)}</b>-এর ক্লোজিং থেকে${workGap(prev.date, date) ? ` · <b class="am">মাঝে ${workGap(prev.date, date)} কর্মদিবসের রেকর্ড নেই</b>` : ""}</div>`);
     if (!src && !prev) msgs.push(`<div class="mut sm">এটা প্রথম রেকর্ড — Opening Cash ও Bank নিজে লিখুন।</div>`);
+    if (!locked) msgs.push(`<div class="mut xs">💡 একই খাতে কয়েকটা অংক থাকলে + দিয়ে লিখুন, যেমন 5000+12000</div>`);
     $("#cs-msg", v).innerHTML = msgs.join("");
     $("#cs-dd", v) && ($("#cs-dd", v).onclick = async () => { if (!ask("এই তারিখের ড্রাফট মুছবেন?")) return; localStorage.removeItem(CASH_DRAFT(date)); if (ex && !final) { try { await API.cashSave({ date, opening_cash: oc, opening_bank: ob, items: {}, total_receipt: 0, total_payment: 0, closing: oc + ob, cash_in_hand: null, remarks: null, status: "draft" }); } catch { } } draw(); });
     const dis = locked ? "disabled" : "";
-    const row = (k, l) => { const it = items[k] || {}; return `<div class="crow" data-k="${k}"><label>${esc(l)}</label><input class="cell camt" value="${esc(it.x ?? (it.a ? fmtIn(it.a) : ""))}" inputmode="decimal" placeholder="0" ${dis}><input class="cell t cnote" value="${esc(it.n || "")}" placeholder="নোট" ${dis}><span class="cval num"></span></div>`; };
-    const side = (t, title, cls) => `<div class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num" id="cs-T${t[0]}">0</b></div>${CASH[t].map(g => `${g.g ? `<div class="cgrp"><span>${g.g}</span><b class="num" data-g="${g.g}">0</b></div>` : ""}<div class="${g.g ? "cin" : ""}">${g.items.map(([k, l]) => row(k, l)).join("")}</div>`).join("")}<div class="mut xs" style="margin-top:6px">একাধিক অংক যোগ করতে + লিখুন, যেমন 5000+12000+800</div></div>`;
+    const row = (k, l) => { const it = items[k] || {}; return `<div class="crow cr2" data-k="${k}"><label>${esc(l)}</label><div class="cv"><input class="cell camt" value="${esc(it.x ?? (it.a ? fmtIn(it.a) : ""))}" inputmode="decimal" placeholder="0" ${dis}><span class="cval num"></span></div></div>`; };
+    const side = (t, title, cls) => `<div class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num" id="cs-T${t[0]}">0</b></div>${CASH[t].map(g => `${g.g ? `<div class="cgrp"><span>${g.g}</span><b class="num" data-g="${g.g}">0</b></div>` : ""}<div class="${g.g ? "cin" : ""}">${g.items.map(([k, l]) => row(k, l)).join("")}</div>`).join("")}</div>`;
     body.innerHTML = `<div class="card csec c-open"><div class="csh"><h3>Opening Balance <span class="mut sm">(Cash in hand + Bank)</span></h3><b class="num" id="cs-OT">0</b></div>
        <div class="crow"><label>Cash in hand</label><input class="cell" id="cs-oc" value="${fmtIn(oc)}" inputmode="decimal" ${dis}></div><div class="crow"><label>Bank</label><input class="cell" id="cs-ob" value="${fmtIn(ob)}" inputmode="decimal" ${dis}></div></div>
       <div class="grid g2" style="margin-top:14px">${side("receipt", "Total Receipt", "c-rec")}${side("payment", "Total Payment", "c-pay")}</div>
@@ -1455,7 +1528,7 @@ async function vCash(v) {
       ${locked ? "" : `<div class="cbar"><button class="btn lg fix" id="cs-draft">${ico("edit")} ড্রাফট সেভ</button><button class="btn pri lg fix" id="cs-save">${ico("save")} ${dmy(date)} ক্যাশ ফাইনাল সেভ</button><div class="hint" id="cs-err"></div><div class="sp"></div><span class="mut sm" id="cs-auto"></span></div>`}`;
     const collect = () => {
       const it = {}; let bad = null;
-      $$(".crow[data-k]", body).forEach(r => { const k = r.dataset.k, x = $(".camt", r).value.trim(), n = $(".cnote", r).value.trim(), a = evalAmt(x); r.classList.toggle("err", isNaN(a)); if (isNaN(a)) bad ||= k; $(".cval", r).textContent = /[+-]/.test(x.replace(/^[-+]/, "")) && !isNaN(a) ? "= " + money0(a) : ""; $(".camt", r).classList.toggle("chg", !!a); if (a || n) it[k] = { a: isNaN(a) ? 0 : a, ...(x && /[+-]/.test(x.replace(/^[-+]/, "")) ? { x } : {}), ...(n ? { n } : {}) }; });
+      $$(".crow[data-k]", body).forEach(r => { const k = r.dataset.k, x = $(".camt", r).value.trim(), n = items[k]?.n || "", a = evalAmt(x); r.classList.toggle("err", isNaN(a)); if (isNaN(a)) bad ||= k; $(".cval", r).textContent = /[+-]/.test(x.replace(/^[-+]/, "")) && !isNaN(a) ? "= " + money0(a) : ""; $(".camt", r).classList.toggle("chg", !!a); if (a || n) it[k] = { a: isNaN(a) ? 0 : a, ...(x && /[+-]/.test(x.replace(/^[-+]/, "")) ? { x } : {}), ...(n ? { n } : {}) }; });
       const T = cashTotals(it), oc = num($("#cs-oc", body).value), ob = num($("#cs-ob", body).value), cl = oc + ob + T.r - T.p, chv = $("#cs-ch", body).value.trim();
       return { bad, row: { date, opening_cash: oc, opening_bank: ob, items: it, total_receipt: T.r, total_payment: T.p, closing: cl, cash_in_hand: chv === "" ? null : num(chv), remarks: $("#cs-rm", body).value.trim() || null } };
     };

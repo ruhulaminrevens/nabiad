@@ -537,3 +537,56 @@ tr.grp td{background:var(--surface2)!important}
 .setg .card h3{margin:0 0 12px}
 .kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line2)} .kv span{color:var(--mut)}
 .chk{list-style:none;padding:0;margin:0;line-height:1.9} .chk li{padding-left:2px}
+
+/* ================= v6.1: cash rows, more-sheet, admin ================= */
+.crow.cr2{grid-template-columns:1fr minmax(130px,190px);gap:10px;padding:4px 0}
+.crow.cr2 .cv{display:flex;flex-direction:column;align-items:stretch}
+.crow.cr2 .cval:empty{display:none} .crow.cr2 .cval{min-width:0;text-align:right;margin-top:2px}
+@media (max-width:700px){ .crow.cr2{grid-template-columns:1fr minmax(120px,48%)} .crow.cr2 label{grid-column:auto} .crow.cr2 .cval{grid-column:auto} }
+body.noscroll{overflow:hidden}
+.sheet2{position:fixed;inset:0;z-index:70;background:rgba(17,23,51,.55);display:flex;align-items:flex-end;justify-content:center;animation:fd .15s}
+.sheet2.out{opacity:0;transition:opacity .18s} .sheet2.out .box{transform:translateY(40px);transition:transform .18s}
+.sheet2 .box{width:100%;max-width:640px;max-height:82vh;display:flex;flex-direction:column;background:var(--surface);border-radius:22px 22px 0 0;padding:0 14px calc(14px + env(safe-area-inset-bottom));animation:up .22s var(--ease);box-shadow:0 -10px 40px rgba(0,0,0,.25)}
+.sheet2 .sh-hd{position:relative;display:flex;align-items:center;justify-content:space-between;padding:16px 2px 10px;touch-action:none}
+.sheet2 .sh-hd .grab{position:absolute;left:50%;top:6px;transform:translateX(-50%);width:42px;height:5px;border-radius:9px;background:var(--line)}
+.sheet2 .sh-hd b{font-size:16px}
+.sheet2 .sh-x{width:40px;height:40px;font-size:17px;font-weight:700;color:var(--txt)}
+.sheet2 .sh-body{overflow-y:auto;overscroll-behavior:contain;padding-bottom:4px}
+.sheet2 .sh-sec{font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--mut);margin:10px 4px 6px}
+.sheet2 .sh-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.sheet2 .sh-grid a{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 6px;border-radius:14px;background:var(--surface2);border:1px solid var(--line2);color:var(--txt);text-decoration:none!important;font-size:12.5px;font-weight:600;text-align:center;line-height:1.25;width:auto}
+.sheet2 .sh-grid a .ti{position:relative;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--grad-soft);color:var(--pri)} .sheet2 .sh-grid a .ti svg{width:20px;height:20px}
+.sheet2 .sh-grid a .badge{position:absolute;top:-6px;right:-8px;margin:0;font-size:10px;line-height:16px;min-width:16px;padding:0 4px}
+.sheet2 .sh-grid a.on{background:var(--grad);color:#fff;border-color:transparent} .sheet2 .sh-grid a.on .ti{background:rgba(255,255,255,.2);color:#fff}
+.sheet2 .sh-foot{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line2)}
+.sheet2 .sh-foot button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border-radius:12px;border:1px solid var(--line);background:var(--surface);font-size:12px;font-weight:600;color:var(--txt);cursor:pointer}
+.sheet2 .sh-foot button svg{width:19px;height:19px;color:var(--pri)} .sheet2 .sh-foot .lo svg{color:var(--rd)} .sheet2 .sh-foot .lo{color:var(--rd)}
+/* admin */
+.ntabs{flex-wrap:nowrap} .tabs .chip{white-space:nowrap}
+.alist .ar{display:flex;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line2);border-left:4px solid var(--b1,#6366f1)}
+.alist .ar:first-child{border-top:0}
+.alist .blg{flex:none;min-width:46px;height:30px;padding:0 6px;border-radius:8px;color:#fff;font-size:10.5px;font-weight:800;display:grid;place-items:center;letter-spacing:.2px}
+.alist .acm{flex:1;min-width:0;color:var(--txt)} .alist .acm .sm,.alist .acm .xs{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ulist{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.uc .uh{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.uc .ava{width:40px;height:40px;border-radius:50%;background:var(--grad);color:#fff;display:grid;place-items:center;font-weight:800;flex:none}
+.uc .ue{flex:1;min-width:0} .uc .ue .xs{overflow:hidden;text-overflow:ellipsis}
+.uc .ug{display:grid;gap:10px} .uc .seg{display:flex;width:100%} .uc .seg .chip{flex:1;text-align:center}
+.sw{position:relative;display:inline-block;width:46px;height:26px;flex:none;cursor:pointer}
+.sw input{opacity:0;width:0;height:0} .sw i{position:absolute;inset:0;border-radius:99px;background:var(--line);transition:.2s}
+.sw i::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:.2s}
+.sw input:checked+i{background:#10b981} .sw input:checked+i::after{transform:translateX(20px)}
+details summary{cursor:pointer;list-style:none} details summary::-webkit-details-marker{display:none}
+.steps{margin:10px 0 6px;padding-left:20px;line-height:1.9}
+.hcl{display:grid;gap:8px;margin-top:10px}
+.hc{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:var(--surface2);border:1px solid var(--line2)}
+.hc i{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-weight:900;flex:none}
+.hc.ok i{background:var(--gr-soft);color:var(--gr)} .hc.no i{background:var(--rd-soft);color:var(--rd)}
+.perm{width:100%;border-collapse:collapse;margin-top:6px} .perm td,.perm th{padding:7px 6px;border-bottom:1px solid var(--line2);font-size:13px} .perm th{font-size:11.5px;color:var(--mut);text-align:center} .perm th:first-child{text-align:left}
+.tw.cards .perm,.perm{display:table} .perm tbody{display:table-row-group} .perm tr{display:table-row} .perm td{display:table-cell}
+.qlinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.qlinks a{display:inline-flex;align-items:center;gap:7px;padding:9px 13px;border-radius:11px;border:1px solid var(--line);background:var(--surface2);color:var(--txt);font-weight:600;font-size:13px;text-decoration:none!important}
+.qlinks a svg{width:17px;height:17px;color:var(--pri)}
+@media (max-width:520px){ .lbl2{display:none} }
+.ntabs .te{font-style:normal}
+@media (max-width:520px){ .ntabs .te{display:none} .ntabs .chip{padding:8px 12px} #ad .srch select{flex:1 1 auto} #ad .srch .btn{flex:none} #ad .srch .si{flex:1 1 100%} }
