@@ -240,6 +240,7 @@ Object.assign(I18N, {
   // v6.28 — audit fixes: split text nodes that missed translation
   "শুধু Enter চাপুন: পার্টি → Account → টাকা → যোগ হবে · টাকার ঘরে ": "Just press Enter: Party → Account → Amount → added · in the amount box you can type ", " লেখা যায়": "", "কিছু নেই": "Nothing", " — \"+ নতুন বই\" চাপুন": " — press \"+ New book\"", "জেলায় বাকিরা": "districts among the rest",
   "২ দিন": "2 days", "৩ দিন": "3 days", "৫ দিন": "5 days", "৭ দিন": "7 days",
+  "Audit Log · পরিবর্তনের লগ": "Audit Log · Change log", "এই চেকের": "This cheque has", "টি স্ট্যাটাস রেকর্ড আছে — মুছা যাবে না। ভুল এন্ট্রি হলে \"Cancelled\" স্ট্যাটাস দিন": " status record(s) — cannot be deleted. For a wrong entry set status \"Cancelled\"", "এই বইয়ের": "This book has", "টি পাতায় চেক এন্ট্রি আছে — মুছা যাবে না। এর বদলে বইয়ের স্ট্যাটাস Finished বা Lost দিন": " leaf/leaves with cheque entries — cannot be deleted. Set the book status to Finished or Lost instead",
   // v6.24 — cheque entry: camera/gallery, add purpose
   "তুলুন": "Camera", "বাছুন": "Gallery", "ছবি তুলুন": "Take photo", "গ্যালারি": "Gallery", "＋ নতুন": "＋ New", "নতুন খাত (Purpose)": "New purpose", "খাতের নাম লিখুন (যেমন: Salary)": "Enter purpose name (e.g. Salary)", "এই খাত আগেই আছে": "This purpose already exists", "✔ নতুন খাত যোগ হয়েছে": "✔ New purpose added", "সেভ করুন": "Save", "পরিষ্কার": "Clear",
   // v6.19 — party record, ASM master, delete protection

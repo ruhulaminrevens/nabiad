@@ -135,7 +135,7 @@ const SbAPI = {
     for (const k in p) row[m[k]] = p[k] === "" ? null : p[k];
     const { error } = await sb.from("cheques").update(row).eq("id", id); if (error) throw error;
   },
-  async deleteCheque(id) { const { error } = await sb.from("cheques").delete().eq("id", id); if (error) throw error; },
+  async deleteCheque(id) { const { error } = await sb.from("cheques").delete().eq("id", id); if (error) throw /in_use/.test(error.message || "") ? new Error("এই চেকের স্ট্যাটাস রেকর্ড আছে — মুছা যাবে না। \"Cancelled\" স্ট্যাটাস দিন") : error; },
   async deleteStatus(id) { const { error } = await sb.from("cheque_status").delete().eq("id", id); if (error) throw error; },
   async lastBalDate() { const { data } = await sb.from("balances").select("date").order("date", { ascending: false }).limit(1); return data?.[0]?.date || null; },
   async balancesOn(d) { const { data, error } = await sb.from("balances").select("*").eq("date", d).limit(2000); if (error) throw error; return Object.fromEntries(data.map(r => [r.code, { total: r.total == null ? null : Number(r.total), block: r.block == null ? null : Number(r.block), remark: r.remark, od: r.other_debit, odp: r.other_deposit, by: r.entered_by }])); },
@@ -164,7 +164,7 @@ const SbAPI = {
     const row = { code: b.code, series: b.series || null, first_leaf: b.first, last_leaf: b.last, track_from: b.track, status: b.status, note: b.note || null }; if (b.id) row.id = b.id;
     const { data, error } = await sb.from("books").upsert(row).select().single(); if (error) throw error; return data.id;
   },
-  async deleteBook(id) { const { error } = await sb.from("books").delete().eq("id", id); if (error) throw error; },
+  async deleteBook(id) { const { error } = await sb.from("books").delete().eq("id", id); if (error) throw /in_use/.test(error.message || "") ? new Error("এই বইয়ের পাতায় চেক এন্ট্রি আছে — মুছা যাবে না। স্ট্যাটাস Finished বা Lost দিন") : error; },
   async dataKey() { const { data, error } = await sb.from("app_secrets").select("v").eq("k", "data_key").maybeSingle(); if (error || !data) throw new Error("ডাটা কী পাওয়া যায়নি"); return data.v; },
   async users() { const { data, error } = await sb.from("profiles").select("*").order("role"); if (error) throw error; return data; },
   async updateProfile(id, p) { const { error } = await sb.from("profiles").update(p).eq("id", id); if (error) throw error; },
@@ -687,7 +687,7 @@ function chequeModal(c, after) {
     $("#c-ap", root) && ($("#c-ap", root).onclick = () => { close(); addPhotoModal(c, after); });
     $("#c-st", root) && ($("#c-st", root).onclick = () => { close(); statusModal(c, after); });
     $$("[data-de]", root).forEach(b => b.onclick = async () => { if (!ask("এই স্ট্যাটাস এন্ট্রি স্থায়ীভাবে মুছবেন?")) return; await API.deleteStatus(b.dataset.de); await reload(); close(); after && after(); toast("মুছে ফেলা হয়েছে"); });
-    $("#c-dl", root) && ($("#c-dl", root).onclick = async () => { if (!ask(`চেক ${c.code} · ${c.no} স্থায়ীভাবে মুছবেন? (ফেরানো যাবে না)`)) return; try { await API.deleteCheque(c.id); await reload(); close(); after && after(); toast("চেক মুছে ফেলা হয়েছে"); } catch (e) { toast(e.message, "err"); } });
+    $("#c-dl", root) && ($("#c-dl", root).onclick = async () => { if (c.events.length) return toast(`এই চেকের ${c.events.length}টি স্ট্যাটাস রেকর্ড আছে — মুছা যাবে না। ভুল এন্ট্রি হলে "Cancelled" স্ট্যাটাস দিন`, "err"); if (!ask(`চেক ${c.code} · ${c.no} স্থায়ীভাবে মুছবেন? (ফেরানো যাবে না)`)) return; try { await API.deleteCheque(c.id); await reload(); close(); after && after(); toast("চেক মুছে ফেলা হয়েছে"); } catch (e) { toast(e.message, "err"); } });
     $("#c-ed", root) && ($("#c-ed", root).onclick = () => { close(); editChequeModal(c, after); });
   });
 }
@@ -962,7 +962,7 @@ function bookModal(b, after) {
    <div class="row"><button class="btn pri" id="b-ok">সেভ</button>${b.id ? `<button class="btn bad" id="b-dl">মুছুন</button>` : ""}<button class="btn" id="b-x">বাতিল</button></div></div>`, (root, close) => {
     $("#b-x", root).onclick = close;
     $("#b-ok", root).onclick = async () => { const first = parseInt($("#b-f", root).value); if (!first) return toast("প্রথম পাতা দিন", "err"); try { await API.upsertBook({ id: b.id, code: $("#b-c", root).value, series: $("#b-s", root).value.trim(), first, last: parseInt($("#b-l", root).value) || null, track: parseInt($("#b-t", root).value) || null, status: $("#b-st", root).value, note: $("#b-n", root).value.trim() }); await reload(); close(); after(); toast("সেভ হয়েছে"); } catch (e) { toast(e.message, "err"); } };
-    $("#b-dl", root) && ($("#b-dl", root).onclick = async () => { if (!ask("এই বই মুছবেন?")) return; await API.deleteBook(b.id); await reload(); close(); after(); });
+    $("#b-dl", root) && ($("#b-dl", root).onclick = async () => { const u = bookStats(b).used; if (u) return toast(`এই বইয়ের ${u}টি পাতায় চেক এন্ট্রি আছে — মুছা যাবে না। এর বদলে বইয়ের স্ট্যাটাস Finished বা Lost দিন`, "err"); if (!ask("এই বই মুছবেন?")) return; try { await API.deleteBook(b.id); await reload(); close(); after(); } catch (e) { toast(e.message || "মোছা যায়নি", "err"); } });
   });
 }
 async function vBooks(v) {
@@ -1993,7 +1993,9 @@ async function vAudit(v) {
     const H = ["Time", "User", "Where", "Action", "Item", "Changes", "Old (JSON)", "New (JSON)"], R = shown.map(r => [new Date(r.at).toLocaleString("en-GB"), r.user_name || "", AU_T[r.tbl] ? tr(AU_T[r.tbl]) : r.tbl, r.action, r.row_key || "", auText(r), r.old ? JSON.stringify(r.old) : "", r.new ? JSON.stringify(r.new) : ""]);
     if (kind === "xlsx") return exportXlsx({ Audit: [H, ...R] }, fname("xlsx"));
     if (kind === "csv") { const csv = "﻿" + [H, ...R].map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\r\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = fname("csv"); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); return; }
-    window.print();
+    const [f0, t0] = range(), cnt = a => shown.filter(r => r.action === a).length;
+    const body = shown.map(r => `<tr><td>${esc(new Date(r.at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }))}</td><td>${esc(r.user_name || "")}</td><td>${esc(AU_T[r.tbl] ? tr(AU_T[r.tbl]) : (r.tbl === "cash_records" ? tr("ক্যাশ") : r.tbl))}</td><td>${esc((AU_A[r.action] || [r.action])[0])}</td><td>${esc(r.row_key || "")}</td><td>${esc(auText(r))}</td></tr>`).join("");
+    printSheet(repSheet("au-sheet", "Audit Log · পরিবর্তনের লগ", f0, t0, repKpi([["Changes", shown.length], ["Added", cnt("insert")], ["Edited", cnt("update")], ["Deleted", cnt("delete")]]), repOne(repBox("Change history", ["~Time", "~User", "~Where", "~Action", "~Item", "~Changes"], body)), more ? "Note: only the loaded records are included." : ""), fname("pdf").replace(/\.pdf$/, ""));
   }
   $("#au-dl", v).onclick = e => { e.stopPropagation(); $("#au-menu", v).classList.toggle("hide"); };
   $$("#au-menu [data-dl]", v).forEach(b => b.onclick = () => download(b.dataset.dl));

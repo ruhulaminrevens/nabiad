@@ -241,3 +241,28 @@ revoke execute on function public.make_backup(text) from public, anon;
 grant execute on function public.clear_audit(timestamptz), public.delete_backup(bigint), public.user_logins(), public.set_my_name(text), public.set_cheque_photo(uuid, text), public.dist_set_status(uuid[], text, text), public.make_backup(text) to authenticated;
 create index if not exists balances_code_date_ix on balances (code, date);
 create index if not exists dist_col_asm_ix on dist_collections (asm);
+
+-- v6.29 — delete protection for cheques and cheque books (accounts already protected by FKs; no delete UI)
+create or replace function public.cheque_del_guard() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if exists (select 1 from cheque_status s where s.cheque_id = old.id) then
+    raise exception 'cheque_in_use: has status records' using errcode = '23503';
+  end if;
+  return old;
+end $$;
+drop trigger if exists cheque_del_guard on cheques;
+create trigger cheque_del_guard before delete on cheques for each row execute function cheque_del_guard();
+
+create or replace function public.book_del_guard() returns trigger
+language plpgsql set search_path = public as $$
+declare st bigint := coalesce(old.track_from, old.first_leaf);
+        en bigint := coalesce(old.last_leaf, 9223372036854775807);
+begin
+  if exists (select 1 from cheques c where c.code = old.code and c.chq_no between st and en) then
+    raise exception 'book_in_use: cheques exist in this book' using errcode = '23503';
+  end if;
+  return old;
+end $$;
+drop trigger if exists book_del_guard on books;
+create trigger book_del_guard before delete on books for each row execute function book_del_guard();
