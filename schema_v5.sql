@@ -3,3 +3,5 @@ alter table public.accounts add column if not exists routing text;
 alter table public.accounts add column if not exists swift text;
 alter table public.accounts add column if not exists note text;
 notify pgrst, 'reload schema';
+alter table public.accounts add column if not exists book_photo text;
+notify pgrst, 'reload schema';

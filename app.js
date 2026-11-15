@@ -961,38 +961,80 @@ function accMissing(a) { return ACC_FIELDS.filter(([k]) => !(isMFS(a) && (k === 
 const accPct = a => { const need = ACC_FIELDS.filter(([k]) => !(isMFS(a) && (k === "branch" || k === "routing"))).length; return Math.round((need - accMissing(a).length) / need * 100); };
 const fmtAcno = s => String(s || "").replace(/\s+/g, "").replace(/(\d{4})(?=\d)/g, "$1 ");
 function accText(list, opt = {}) {
-  return list.map((a, i) => [list.length > 1 ? `${i + 1})` : "", `Account Name: ${a.holder || "—"}`, `A/C No: ${a.acno || "—"}`, `Bank: ${a.bank || "—"}`, !opt.short && a.branch ? `Branch: ${a.branch}` : "", !opt.short && a.routing ? `Routing No: ${a.routing}` : "", !opt.short && a.swift ? `SWIFT: ${a.swift}` : "", !opt.short && a.type ? `Type: ${a.type}` : ""].filter(Boolean).join("\n")).join("\n\n");
+  return list.map((a, i) => [list.length > 1 ? `${i + 1})` : "", a.bank && `Bank: ${a.bank}`, a.branch && `Branch: ${a.branch}`, !opt.cheque && a.routing && `Routing No: ${a.routing}`, a.holder && `A/C Name: ${a.holder}`, a.acno && `A/C No: ${a.acno}`].filter(Boolean).join("\n")).join("\n\n");
 }
 async function copyText(t, msg = "কপি হয়েছে") { try { await navigator.clipboard.writeText(t); toast(msg); } catch { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast(msg); } catch { toast("কপি করা যায়নি", "err"); } ta.remove(); } }
-function shareAccounts(list) {
-  if (!list.length) return; let short = false;
-  const cardHtml = () => `<div class="shc" id="sh-card">${list.map(a => { const b = brandOf(a); return `<div class="shc-i" style="--b1:${b.c1};--b2:${b.c2}"><div class="shc-h"><span class="blogo">${esc(b.s)}</span><b>${esc(a.bank || "")}</b></div><div class="shc-b"><div class="shc-n">${esc(a.holder || "")}</div><div class="shc-a">${esc(fmtAcno(a.acno) || "—")}</div>${!short ? `<div class="shc-m">${[a.branch, a.routing && "Routing " + a.routing, a.swift && "SWIFT " + a.swift].filter(Boolean).map(esc).join(" · ")}</div>` : ""}</div></div>`; }).join("")}<div class="shc-f">NABIAD GROUP</div></div>`;
+const bookBlob = async a => { const u = await API.photoUrl(a.book_photo); const r = await fetch(u); return await r.blob(); };
+const pngOf = async blob => { const bm = await createImageBitmap(blob), cv = document.createElement("canvas"); cv.width = bm.width; cv.height = bm.height; cv.getContext("2d").drawImage(bm, 0, 0); return await new Promise(r => cv.toBlob(r, "image/png")); };
+const dlBlob = (blob, name) => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+function viewBookPhoto(a) {
+  modal(`<h2>${ico("img")} Cheque book · ${esc(a.code)}</h2><div class="mut sm">${esc(a.holder || "")} · ${esc(a.bank || "")}</div><div id="bk-i" style="margin-top:10px"><div class="skel" style="height:200px"></div></div><div class="row" style="margin-top:12px"><button class="btn pri" id="bk-s">${ico("share")} শেয়ার</button><button class="btn fix" id="bk-x">বন্ধ</button></div>`, (root, close) => {
+    API.photoUrl(a.book_photo).then(u => $("#bk-i", root).innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="cheque book" style="width:100%;border-radius:12px;border:1px solid var(--line)"></a>`).catch(e => $("#bk-i", root).innerHTML = `<div class="mut">ছবি লোড হয়নি: ${esc(e.message || e)}</div>`);
+    $("#bk-x", root).onclick = close; $("#bk-s", root).onclick = () => { close(); shareAccounts([a], "chq"); };
+  });
+}
+function shareAccounts(list, startMode) {
+  if (!list.length) return; let mode = startMode || "full", blobs = null;
+  const withPh = () => list.filter(a => a.book_photo);
+  const getBlobs = async () => blobs || (blobs = await Promise.all(withPh().map(async a => ({ a, blob: await bookBlob(a) }))));
+  const cardHtml = () => `<div class="shc" id="sh-card">${list.map(a => { const b = brandOf(a); return `<div class="shc-i" style="--b1:${b.c1};--b2:${b.c2}"><div class="shc-h"><span class="blogo">${esc(b.s)}</span><b>${esc(a.bank || "")}</b></div><div class="shc-b"><div class="shc-n">${esc(a.holder || "")}</div><div class="shc-a">${esc(fmtAcno(a.acno) || "—")}</div><div class="shc-m">${[a.branch, a.routing && "Routing " + a.routing].filter(Boolean).map(esc).join(" · ")}</div></div></div>`; }).join("")}<div class="shc-f">NABIAD GROUP</div></div>`;
   modal(`<h2>${ico("share")} ব্যাংক তথ্য শেয়ার <span class="tag">${list.length}</span></h2>
-   <div class="seg" id="sh-mode" style="margin-bottom:10px"><span class="chip on" data-m="full">সব তথ্য</span><span class="chip" data-m="short">শুধু নাম ও A/C নং</span></div>
+   <div class="seg" id="sh-mode" style="margin-bottom:10px"><span class="chip" data-m="full">সব তথ্য</span><span class="chip" data-m="chq">A/C with Cheque</span></div>
    <label class="f">যা পাঠানো হবে <span class="mut">(চাইলে বদলাতে পারেন)</span></label><textarea class="in" id="sh-t" rows="${Math.min(14, list.length * 6 + 1)}" style="height:auto;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.5"></textarea>
-   ${list.some(a => accMissing(a).length) ? `<div class="alert am" style="margin-top:8px">⚠ <span>কিছু তথ্য বাকি আছে: ${list.filter(a => accMissing(a).length).map(a => `<b>${esc(a.code)}</b> (${accMissing(a).map(m => m.l).join(", ")})`).join(" · ")}</span></div>` : ""}
-   <div class="shgrid"><button class="btn" data-s="copy">${ico("copy")} কপি</button><button class="btn wa" data-s="wa">${ico("share")} WhatsApp</button>${navigator.share ? `<button class="btn" data-s="native">${ico("share")} অন্য অ্যাপে</button>` : ""}<button class="btn" data-s="mail">${ico("mail")} ইমেইল</button><button class="btn" data-s="img">${ico("img")} ছবি</button></div>
+   <div id="sh-ph"></div><div id="sh-warn"></div>
+   <div class="shgrid" id="sh-btns"></div>
    <div id="sh-prev" style="position:absolute;left:-9999px;top:0"></div>
    <div class="row" style="margin-top:12px"><button class="btn fix" id="sh-x">বন্ধ</button></div>`, (root, close) => {
-    const ta = $("#sh-t", root), fill = () => { ta.value = accText(list, { short }); };
-    fill();
-    $$("#sh-mode .chip", root).forEach(c => c.onclick = () => { short = c.dataset.m === "short"; $$("#sh-mode .chip", root).forEach(x => x.classList.toggle("on", x === c)); fill(); });
+    const ta = $("#sh-t", root), btns = $("#sh-btns", root);
+    const warn = () => {
+      const miss = list.filter(a => accMissing(a).some(m => ["bank", "acno", "holder"].includes(m.k) || (mode === "full" && ["branch", "routing"].includes(m.k))));
+      const nop = mode === "chq" ? list.filter(a => !a.book_photo) : [];
+      $("#sh-warn", root).innerHTML = (miss.length ? `<div class="alert am" style="margin-top:8px">⚠ <span>কিছু তথ্য বাকি আছে: ${miss.map(a => `<b>${esc(a.code)}</b> (${accMissing(a).filter(m => ["bank", "acno", "holder", ...(mode === "full" ? ["branch", "routing"] : [])].includes(m.k)).map(m => m.l).join(", ")})`).join(" · ")}</span></div>` : "") + (nop.length ? `<div class="alert am" style="margin-top:8px">📷 <span>Cheque book-এর ছবি নেই: ${nop.map(a => `<b>${esc(a.code)}</b>`).join(", ")} — অ্যাকাউন্ট এডিটে ছবি যোগ করুন</span></div>` : "");
+    };
+    const phStrip = async () => {
+      const box = $("#sh-ph", root); if (mode !== "chq") return box.innerHTML = ""; const w = withPh(); if (!w.length) return box.innerHTML = "";
+      box.innerHTML = `<div class="phstrip">${w.map(a => `<div class="phi"><img data-c="${esc(a.code)}" alt=""><span>${esc(a.code)}</span></div>`).join("")}</div>`;
+      for (const a of w) { try { const u = await API.photoUrl(a.book_photo); const im = $(`img[data-c="${CSS.escape(a.code)}"]`, box); if (im) im.src = u; } catch { } }
+    };
+    const draw = () => {
+      $$("#sh-mode .chip", root).forEach(x => x.classList.toggle("on", x.dataset.m === mode));
+      ta.value = accText(list, { cheque: mode === "chq" });
+      const chq = mode === "chq", hasPh = withPh().length > 0;
+      btns.innerHTML = `<button class="btn" data-s="copy">${ico("copy")} কপি</button>` +
+        (chq && hasPh ? `<button class="btn pri" data-s="withph">${ico("share")} ছবিসহ শেয়ার</button>` : "") +
+        `<button class="btn wa" data-s="wa">${ico("share")} WhatsApp</button>` +
+        (chq && hasPh ? `<button class="btn" data-s="cpimg">${ico("img")} ছবি কপি</button><button class="btn" data-s="dlimg">${ico("img")} ছবি ডাউনলোড</button>` : "") +
+        (!chq && navigator.share ? `<button class="btn" data-s="native">${ico("share")} অন্য অ্যাপে</button>` : "") +
+        `<button class="btn" data-s="mail">${ico("mail")} ইমেইল</button>` + (!chq ? `<button class="btn" data-s="img">${ico("img")} কার্ড ছবি</button>` : "");
+      warn(); phStrip();
+    };
+    draw();
+    $$("#sh-mode .chip", root).forEach(c => c.onclick = () => { mode = c.dataset.m; draw(); });
     $("#sh-x", root).onclick = close;
-    $$("[data-s]", root).forEach(b => b.onclick = async () => {
-      const t = ta.value.trim(), k = b.dataset.s;
+    btns.onclick = async e => {
+      const b = e.target.closest("[data-s]"); if (!b) return; const t = ta.value.trim(), k = b.dataset.s;
       if (k === "copy") return copyText(t, "✔ কপি হয়েছে — যেখানে খুশি paste করুন");
       if (k === "wa") return window.open("https://wa.me/?text=" + encodeURIComponent(t), "_blank", "noopener");
       if (k === "mail") return location.href = `mailto:?subject=${encodeURIComponent("Bank details — " + (list[0].holder || ""))}&body=${encodeURIComponent(t)}`;
       if (k === "native") { try { await navigator.share({ title: "Bank details", text: t }); } catch (e) { if (e.name !== "AbortError") toast(e.message, "err"); } return; }
-      if (k === "img") {
-        b.disabled = true; const host = $("#sh-prev", root); host.innerHTML = cardHtml();
-        try { await loadScript("vendor/html2canvas.min.js"); const cv = await html2canvas($("#sh-card", host), { scale: 2, backgroundColor: null }); const blob = await new Promise(r => cv.toBlob(r, "image/png")); const file = new File([blob], `Bank_details_${list[0].code}.png`, { type: "image/png" });
-          if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: "Bank details" });
-          else { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast("ছবি ডাউনলোড হয়েছে"); }
-        } catch (e) { if (e.name !== "AbortError") toast("ছবি বানানো যায়নি: " + e.message, "err"); }
-        b.disabled = false;
-      }
-    });
+      b.disabled = true;
+      try {
+        if (k === "withph" || k === "dlimg" || k === "cpimg") {
+          const bl = await getBlobs(), files = bl.map(x => new File([x.blob], `${x.a.code}_cheque.jpg`, { type: "image/jpeg" }));
+          if (k === "withph") {
+            if (navigator.canShare && navigator.canShare({ files })) { try { await navigator.share({ files, text: t, title: "Bank details" }); } catch (e) { if (e.name !== "AbortError") throw e; } }
+            else { await copyText(t, "✔ টেক্সট কপি হয়েছে"); files.forEach(f => dlBlob(f, f.name)); toast("ছবি ডাউনলোড হয়েছে — WhatsApp-এ ছবি attach করে টেক্সট paste করুন"); }
+          } else if (k === "dlimg") { files.forEach(f => dlBlob(f, f.name)); toast("ছবি ডাউনলোড হয়েছে"); }
+          else { await navigator.clipboard.write([new ClipboardItem({ "image/png": await pngOf(bl[0].blob) })]); toast(bl.length > 1 ? "✔ প্রথম ছবিটি কপি হয়েছে (বাকিগুলো ডাউনলোড করুন)" : "✔ ছবি কপি হয়েছে — chat-এ paste করুন"); }
+        } else if (k === "img") {
+          const host = $("#sh-prev", root); host.innerHTML = cardHtml();
+          await loadScript("vendor/html2canvas.min.js"); const cv = await html2canvas($("#sh-card", host), { scale: 2, backgroundColor: null }); const blob = await new Promise(r => cv.toBlob(r, "image/png")); const file = new File([blob], `Bank_details_${list[0].code}.png`, { type: "image/png" });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: "Bank details" }); } catch (e) { if (e.name !== "AbortError") throw e; } }
+          else { dlBlob(blob, file.name); toast("ছবি ডাউনলোড হয়েছে"); }
+        }
+      } catch (e) { toast("ব্যর্থ: " + (e.message || e), "err"); }
+      b.disabled = false;
+    };
   });
 }
 
@@ -1015,6 +1057,7 @@ function accountModal(a, after) {
      <div><label class="f">ধরন</label><div class="chips" id="a-tq">${quickTypes.map(t => `<span class="chip" data-ty="${esc(t)}">${esc(t)}</span>`).join("")}</div><input class="in" id="a-t" list="dl-type" value="${esc(a.type || "")}" placeholder="অথবা লিখুন" autocomplete="off" style="margin-top:6px"></div></div>
     <div class="fsec"><div class="fst"><i>3</i>সেটিংস</div>
      <div class="fr3"><div><label class="f">দৈনিক ক্লোজিং-এ</label><label class="sw2"><input type="checkbox" id="a-d" ${a.daily ? "checked" : ""}><i></i><span>আসবে</span></label></div><div><label class="f">Status</label><div class="seg" id="a-s">${["Active", "Closed"].map(s => `<span class="chip ${s === a.status ? "on" : ""}" data-st="${s}">${s}</span>`).join("")}</div></div><div><label class="f">ক্রম</label><input class="in" id="a-o" value="${a.sort}" inputmode="numeric"></div></div>
+     <div><label class="f">Cheque book-এর ছবি <span class="mut">(পার্টিকে পাঠানোর জন্য)</span></label><div class="bph"><div id="a-bphw" class="bph-w hide"><img id="a-bphi" alt=""></div><div class="row" style="gap:8px"><label class="btn sm" for="a-bpin">${ico("cam")} ছবি তুলুন / বাছুন</label><input type="file" id="a-bpin" accept="image/*" hidden><button class="btn sm ghost hide" id="a-bpx" type="button">মুছুন</button></div></div></div>
      <div><label class="f">নোট <span class="mut">(ঐচ্ছিক)</span></label><input class="in" id="a-note" value="${esc(a.note || "")}" placeholder="যেমন: OD limit 1.5 Cr, signatory…" autocomplete="off"></div></div>
    </div>
    <aside class="accf-side"><div class="mut xs" style="margin-bottom:6px">প্রিভিউ</div><div id="a-prev"></div><div id="a-comp" style="margin-top:12px"></div></aside></div>
@@ -1043,6 +1086,10 @@ function accountModal(a, after) {
       g("a-comp").innerHTML = `<div class="cmp"><div class="cmp-t"><b>তথ্য ${pct}% সম্পূর্ণ</b></div><div class="bar"><i style="width:${pct}%;background:${pct === 100 ? "var(--g-green)" : pct >= 60 ? "var(--g-amber)" : "var(--g-red)"}"></i></div>${miss.length ? `<div class="mut xs" style="margin-top:6px">বাকি: ${miss.map(m => m.l).join(", ")}</div>` : `<div class="gr xs" style="margin-top:6px">✓ পার্টিকে শেয়ার করার জন্য প্রস্তুত</div>`}</div>`;
     }
     $$("input", root).forEach(i => i.addEventListener("input", upd)); g("a-d").addEventListener("change", upd); upd();
+    const ph = { blob: null, remove: false }, showPh = src => { g("a-bphi").src = src; g("a-bphw").classList.remove("hide"); g("a-bpx").classList.remove("hide"); }, hidePh = () => { g("a-bphw").classList.add("hide"); g("a-bpx").classList.add("hide"); g("a-bphi").removeAttribute("src"); };
+    if (a.book_photo) API.photoUrl(a.book_photo).then(showPh).catch(() => { });
+    g("a-bpin").onchange = async () => { const f = g("a-bpin").files[0]; if (!f) return; try { ph.blob = await compressImage(f); ph.remove = false; showPh(URL.createObjectURL(ph.blob)); } catch (e) { toast(e.message, "err"); } g("a-bpin").value = ""; };
+    g("a-bpx").onclick = () => { ph.blob = null; ph.remove = true; hidePh(); };
     g("a-x").onclick = close;
     g("a-sh") && (g("a-sh").onclick = () => { close(); shareAccounts([{ ...a, ...cur(), code: a.code }]); });
     g("a-ok").onclick = async () => {
@@ -1050,33 +1097,73 @@ function accountModal(a, after) {
       if (isNew && S.accounts.some(x => x.code === c.code)) return toast("এই Code আগেই আছে", "err");
       if (c.routing && c.routing.length !== 9 && !ask("Routing নং ৯ ডিজিট নয়। তবুও সেভ করবেন?")) return;
       const b = g("a-ok"); b.disabled = true;
-      try { const row = { ...c }; if (!isNew) row.code = a.code; await API.upsertAccount(row); await reload(); close(); after && after(); toast("✔ সেভ হয়েছে"); }
-      catch (e) { toast(/routing|swift|note|column/i.test(e.message || "") ? "নতুন ঘর (Routing/SWIFT/নোট) সেভ করতে schema_v5.sql চালাতে হবে" : e.message, "err"); b.disabled = false; }
+      try { const row = { ...c }; if (!isNew) row.code = a.code; if (ph.blob) { const pth = `books/${norm(row.code)}_${Date.now()}.jpg`; await API.uploadPhoto(pth, ph.blob); row.book_photo = pth; } else if (ph.remove && a.book_photo) row.book_photo = null; await API.upsertAccount(row); await reload(); close(); after && after(); toast("✔ সেভ হয়েছে"); }
+      catch (e) { toast(/routing|swift|note|book_photo|column/i.test(e.message || "") ? "নতুন ঘর (Routing/SWIFT/নোট/ছবি) সেভ করতে schema_v5.sql চালাতে হবে" : e.message, "err"); b.disabled = false; }
     };
     g(isNew ? "a-b" : "a-h").focus();
   });
 }
 
 /* ---------- account directory: search · missing-info filter · select & share ---------- */
+/* ---------- bulk import of cheque-book photos: file name  BANK-BRANCH-HOLDER-LAST3.jpg  →  account ---------- */
+const FILE_PFX = { AGRANI: "ABL", BRAC: "BBL", DBBL: "DBBL", EBL: "EBL", IBBL: "IBBL", IFIC: "IFIC", MBL: "MBL", NBL: "NBL", PUBALI: "PBL", SIBPLC: "SBL", UCB: "UCB", ABL: "ABL", BBL: "BBL", PBL: "PBL", SBL: "SBL" };
+function matchBookFile(fname) {
+  const base = fname.replace(/\.[a-z0-9]+$/i, "").trim();
+  if (/\(\d+\)\s*$/.test(base)) return { st: "dup" };
+  const p = base.split("-").map(x => x.trim()); if (p.length < 3) return { st: "bad" };
+  const pfx = FILE_PFX[p[0].toUpperCase()], last = p[p.length - 1].replace(/\D/g, ""), hold = norm(p.slice(2, -1).join(" "));
+  if (!pfx || !last) return { st: "bad" };
+  let c = S.accounts.filter(a => a.code.split("-")[0] === pfx && String(a.acno || "").replace(/\D/g, "").endsWith(last));
+  if (c.length > 1) { const ex = c.filter(a => norm(a.holder) === hold); if (ex.length === 1) c = ex; else { const h1 = c.filter(a => norm(a.holder).includes(hold)); if (h1.length === 1) c = h1; else { const h2 = c.filter(a => hold.includes(norm(a.holder))); if (h2.length === 1) c = h2; } } }
+  return c.length === 1 ? { st: "ok", a: c[0] } : { st: c.length ? "amb" : "none" };
+}
+function bookImportModal(after) {
+  let items = [];
+  modal(`<h2>${ico("cam")} Cheque book ছবি ইমপোর্ট</h2>
+   <div class="mut sm" style="margin-bottom:10px">ফাইলের নাম <b>BANK-BRANCH-HOLDER-শেষ৩ডিজিট.jpg</b> ধরনের হলে নিজে নিজে অ্যাকাউন্ট খুঁজে নেবে। একসাথে অনেক ছবি বাছুন।</div>
+   <label class="btn" for="bi-f">${ico("cam")} ছবি বাছুন (একাধিক)</label><input type="file" id="bi-f" accept="image/*" multiple hidden>
+   <div id="bi-l" style="margin-top:12px;max-height:48vh;overflow:auto"></div>
+   <label class="sw2 hide" id="bi-rw" style="margin-top:8px"><input type="checkbox" id="bi-r"><i></i><span>যাদের ছবি আছে তাদেরটাও বদলান</span></label>
+   <div class="row" style="margin-top:12px"><button class="btn pri fix hide" id="bi-ok">আপলোড</button><button class="btn fix" id="bi-x">বন্ধ</button></div>`, (root, close) => {
+    const g = id => $("#" + id, root); g("bi-x").onclick = close;
+    const list = () => {
+      const ok = items.filter(x => x.m.st === "ok" && (g("bi-r").checked || !x.m.a.book_photo));
+      g("bi-l").innerHTML = `<table class="tbl"><tbody>${items.map(x => `<tr><td class="sm">${esc(x.f.name.slice(0, 44))}</td><td>${x.m.st === "ok" ? `<b>${esc(x.m.a.code)}</b> <span class="mut xs">${esc(x.m.a.holder)}</span>${x.m.a.book_photo ? ` <span class="am xs">(ছবি আছে)</span>` : ""}` : x.m.st === "dup" ? `<span class="mut xs">ডুপ্লিকেট — বাদ</span>` : `<span class="rd xs">${x.m.st === "amb" ? "একাধিক মিলেছে" : "অ্যাকাউন্ট মেলেনি"}</span>`}</td><td>${x.done ? "✅" : x.err ? "❌" : ""}</td></tr>`).join("")}</tbody></table>`;
+      g("bi-rw").classList.toggle("hide", !items.some(x => x.m.st === "ok" && x.m.a.book_photo)); g("bi-ok").classList.toggle("hide", !items.length);
+      g("bi-ok").textContent = `আপলোড (${ok.length}টি)`; g("bi-ok").disabled = !ok.length; return ok;
+    };
+    g("bi-f").onchange = () => { items = [...g("bi-f").files].map(f => ({ f, m: matchBookFile(f.name) })); list(); };
+    g("bi-r").onchange = list;
+    g("bi-ok").onclick = async () => {
+      const ok = list(); if (!ok.length) return; g("bi-ok").disabled = true; let n = 0;
+      for (const x of ok) {
+        try { const blob = await compressImage(x.f), pth = `books/${norm(x.m.a.code)}_${Date.now()}.jpg`; await API.uploadPhoto(pth, blob); await API.upsertAccount({ ...x.m.a, book_photo: pth }); x.done = true; n++; }
+        catch (e) { x.err = true; console.warn(e); if (/book_photo|column/i.test(e.message || "")) { toast("schema_v5.sql চালাতে হবে", "err"); break; } }
+        g("bi-ok").textContent = `আপলোড হচ্ছে… ${n}/${ok.length}`; list();
+      }
+      await reload(); toast(`✔ ${n}টি ছবি যোগ হয়েছে`); after && after(); g("bi-ok").textContent = "হয়ে গেছে"; 
+    };
+  });
+}
 async function vAccounts(v) {
   const admin = S.me.role === "admin", sel = new Set(); const F = { q: "", b: "", h: "", st: "Active", miss: "" };
   const banks = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort(), holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort();
-  v.innerHTML = head("অ্যাকাউন্ট খুঁজুন", admin ? `<button class="btn pri" id="ad-add">${ico("plus")} নতুন অ্যাকাউন্ট</button>` : "") + `<div class="card noprint" style="margin-bottom:12px">
+  v.innerHTML = head("অ্যাকাউন্ট খুঁজুন", admin ? `<button class="btn" id="ad-imp">${ico("cam")} ছবি ইমপোর্ট</button><button class="btn pri" id="ad-add">${ico("plus")} নতুন অ্যাকাউন্ট</button>` : "") + `<div class="card noprint" style="margin-bottom:12px">
     ${searchBox("ad-q", "কোড, নাম, ব্যাংক, শাখা, A/C বা Routing নং — যেমন: 483, pubali")}
     <div class="aufl" style="margin-top:8px"><select class="in" id="ad-b"><option value="">সব ব্যাংক</option>${banks.map(b => `<option>${esc(b)}</option>`).join("")}</select><select class="in" id="ad-h"><option value="">সব হোল্ডার</option>${holders.map(b => `<option>${esc(b)}</option>`).join("")}</select><select class="in" id="ad-s"><option value="Active">Active</option><option value="">সব</option><option value="Closed">Closed</option></select></div>
     <div class="mchips" id="ad-m"></div></div>
    <div class="mut sm" id="ad-n" style="margin-bottom:8px"></div><div class="acc-grid" id="ad-out"></div><div id="ad-selbar" class="selbar hide"></div>`;
   const base = () => S.accounts.filter(a => (!F.b || a.bank === F.b) && (!F.h || a.holder === F.h) && (!F.st || a.status === F.st));
-  const mf = { inc: a => accMissing(a).length > 0, ok: a => !accMissing(a).length, acno: a => accMissing(a).some(m => m.k === "acno"), routing: a => accMissing(a).some(m => m.k === "routing"), branch: a => accMissing(a).some(m => m.k === "branch"), type: a => accMissing(a).some(m => m.k === "type") };
+  const mf = { inc: a => accMissing(a).length > 0, ok: a => !accMissing(a).length, acno: a => accMissing(a).some(m => m.k === "acno"), routing: a => accMissing(a).some(m => m.k === "routing"), branch: a => accMissing(a).some(m => m.k === "branch"), type: a => accMissing(a).some(m => m.k === "type"), nophoto: a => !a.book_photo };
   const selbar = () => { const el = $("#ad-selbar", v); if (!sel.size) return el.classList.add("hide"); el.classList.remove("hide"); el.innerHTML = `<b>${sel.size}</b> <span>টি নির্বাচিত</span><button class="btn sm pri" id="sb-sh">${ico("share")} শেয়ার</button><button class="btn sm" id="sb-cp">${ico("copy")} কপি</button><button class="btn sm ghost" id="sb-x">✕</button>`;
     const list = () => S.accounts.filter(a => sel.has(a.code)); $("#sb-sh", el).onclick = () => shareAccounts(list()); $("#sb-cp", el).onclick = () => copyText(accText(list()), "✔ নির্বাচিত অ্যাকাউন্টের তথ্য কপি হয়েছে"); $("#sb-x", el).onclick = () => { sel.clear(); draw(); }; };
   const draw = () => {
     const q = norm(F.q), b0 = base(), cnt = k => b0.filter(mf[k]).length;
-    $("#ad-m", v).innerHTML = [["", "সব", b0.length], ["inc", "⚠ তথ্য অসম্পূর্ণ", cnt("inc")], ["ok", "✓ সম্পূর্ণ", cnt("ok")], ["acno", "A/C নং নেই", cnt("acno")], ["routing", "Routing নেই", cnt("routing")], ["branch", "শাখা নেই", cnt("branch")], ["type", "ধরন নেই", cnt("type")]].filter(([k, , n]) => !k || n || F.miss === k).map(([k, l, n]) => `<span class="chip ${F.miss === k ? "on" : ""} ${k && k !== "ok" ? "warn" : ""}" data-mf="${k}"><span>${l}</span> <b>${n}</b></span>`).join("");
+    $("#ad-m", v).innerHTML = [["", "সব", b0.length], ["inc", "⚠ তথ্য অসম্পূর্ণ", cnt("inc")], ["ok", "✓ সম্পূর্ণ", cnt("ok")], ["acno", "A/C নং নেই", cnt("acno")], ["routing", "Routing নেই", cnt("routing")], ["branch", "শাখা নেই", cnt("branch")], ["type", "ধরন নেই", cnt("type")], ["nophoto", "📷 ছবি নেই", cnt("nophoto")]].filter(([k, , n]) => !k || n || F.miss === k).map(([k, l, n]) => `<span class="chip ${F.miss === k ? "on" : ""} ${k && k !== "ok" ? "warn" : ""}" data-mf="${k}"><span>${l}</span> <b>${n}</b></span>`).join("");
     $$("#ad-m [data-mf]", v).forEach(c => c.onclick = () => { F.miss = c.dataset.mf; draw(); });
     const arr = b0.filter(a => (!F.miss || mf[F.miss](a)) && (!q || norm([a.code, a.holder, a.bank, a.branch, a.acno, a.type, a.routing, a.swift].join(" ")).includes(q))).sort((x, y) => (x.sort || 0) - (y.sort || 0));
     $("#ad-n", v).innerHTML = `<b>${arr.length}</b>টি অ্যাকাউন্ট${arr.length ? ` · <a href="#" id="ad-all">সব নির্বাচন</a>` : ""}`;
-    $("#ad-out", v).innerHTML = arr.map(a => { const n = S.cheques.filter(c => c.code === a.code).length, br = brandOf(a), miss = accMissing(a), pct = accPct(a); return `<div class="card acc ${sel.has(a.code) ? "picked" : ""}" style="--b1:${br.c1};--b2:${br.c2}"><div class="hd"><label class="pick" title="নির্বাচন"><input type="checkbox" data-sel="${esc(a.code)}" ${sel.has(a.code) ? "checked" : ""}><i></i></label><span class="blogo">${esc(br.s)}</span><span class="code">${esc(a.code)}</span>${a.status !== "Active" ? `<span class="tag cl">${esc(a.status)}</span>` : ""}${a.type ? `<span class="tag">${esc(a.type)}</span>` : ""}<span style="flex:1"></span><button class="btn sm ghost" data-sh="${esc(a.code)}" title="শেয়ার">${ico("share")}</button>${admin ? `<button class="btn sm ghost" data-e="${esc(a.code)}" title="এডিট">${ico("edit")}</button>` : ""}</div><div class="bd">
+    $("#ad-out", v).innerHTML = arr.map(a => { const n = S.cheques.filter(c => c.code === a.code).length, br = brandOf(a), miss = accMissing(a), pct = accPct(a); return `<div class="card acc ${sel.has(a.code) ? "picked" : ""}" style="--b1:${br.c1};--b2:${br.c2}"><div class="hd"><label class="pick" title="নির্বাচন"><input type="checkbox" data-sel="${esc(a.code)}" ${sel.has(a.code) ? "checked" : ""}><i></i></label><span class="blogo">${esc(br.s)}</span><span class="code">${esc(a.code)}</span>${a.status !== "Active" ? `<span class="tag cl">${esc(a.status)}</span>` : ""}${a.type ? `<span class="tag">${esc(a.type)}</span>` : ""}<span style="flex:1"></span>${a.book_photo ? `<button class="btn sm ghost" data-ph="${esc(a.code)}" title="Cheque ছবি">${ico("img")}</button>` : ""}<button class="btn sm ghost" data-sh="${esc(a.code)}" title="শেয়ার">${ico("share")}</button>${admin ? `<button class="btn sm ghost" data-e="${esc(a.code)}" title="এডিট">${ico("edit")}</button>` : ""}</div><div class="bd">
       <div class="b">${esc(a.holder || "")}</div><div class="bk">${esc(a.bank || "")}${a.branch ? " · " + esc(a.branch) : ""}</div>
       ${a.acno ? `<div class="no"><span>${esc(fmtAcno(a.acno))}</span><button class="btn sm ghost" data-cp="${esc(a.acno)}" title="কপি">${ico("copy")} কপি</button></div>` : `<div class="nomiss">A/C নং দেওয়া নেই</div>`}
       ${a.routing || a.swift ? `<div class="rt">${a.routing ? `<span>Routing <b>${esc(a.routing)}</b> <button class="lnkb" data-cp="${esc(a.routing)}">কপি</button></span>` : ""}${a.swift ? `<span>SWIFT <b>${esc(a.swift)}</b></span>` : ""}</div>` : ""}
@@ -1084,6 +1171,7 @@ async function vAccounts(v) {
       <div class="mut sm">${n ? `${n}টি চেক · <a href="#/cheques" data-go="${esc(a.code)}">দেখুন</a>` : "এখনো চেক নেই"}${a.daily ? " · দৈনিক ক্লোজিং" : ""}${a.note ? ` · <span title="${esc(a.note)}">📝 ${esc(a.note.slice(0, 30))}</span>` : ""}</div></div></div>`; }).join("") || `<div class="card empty" style="grid-column:1/-1">কিছু পাওয়া যায়নি</div>`;
     $$("[data-cp]", v).forEach(x => x.onclick = () => copyText(x.dataset.cp, "✔ কপি হয়েছে"));
     $$("[data-e]", v).forEach(x => x.onclick = () => accountModal(S.accounts.find(a => a.code === x.dataset.e), () => vAccounts(v)));
+    $$("[data-ph]", v).forEach(x => x.onclick = () => viewBookPhoto(S.accounts.find(a => a.code === x.dataset.ph)));
     $$("[data-sh]", v).forEach(x => x.onclick = () => shareAccounts([S.accounts.find(a => a.code === x.dataset.sh)]));
     $$("[data-go]", v).forEach(x => x.onclick = () => sessionStorage.setItem("nabiad_chq_ac", x.dataset.go));
     $$("[data-sel]", v).forEach(x => x.onchange = () => { x.checked ? sel.add(x.dataset.sel) : sel.delete(x.dataset.sel); x.closest(".acc").classList.toggle("picked", x.checked); selbar(); });
@@ -1091,6 +1179,7 @@ async function vAccounts(v) {
     selbar();
   };
   $("#ad-q", v).oninput = e => { F.q = e.target.value; draw(); }; $("#ad-b", v).onchange = e => { F.b = e.target.value; draw(); }; $("#ad-h", v).onchange = e => { F.h = e.target.value; draw(); }; $("#ad-s", v).onchange = e => { F.st = e.target.value; draw(); };
+  $("#ad-imp", v) && ($("#ad-imp", v).onclick = () => bookImportModal(() => vAccounts(v)));
   $("#ad-add", v) && ($("#ad-add", v).onclick = () => accountModal(null, () => vAccounts(v)));
   draw(); setTimeout(() => $("#ad-q", v)?.focus(), 50);
 }

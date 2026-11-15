@@ -688,3 +688,8 @@ details summary{cursor:pointer;list-style:none} details summary::-webkit-details
 .acc .hd .btn.sm{padding:5px 6px}
 .cmpl-t{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .shgrid .btn svg{width:16px;height:16px}
+/* v6.6 — cheque-book photo */
+.bph-w{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:8px;max-width:360px}.bph-w img{display:block;width:100%}
+.phstrip{display:flex;gap:8px;overflow-x:auto;margin-top:10px;padding-bottom:4px}
+.phi{flex:0 0 120px;text-align:center;font-size:11px;color:var(--mut)}.phi img{width:120px;height:68px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:var(--surface2);display:block;margin-bottom:2px}
+.tbl{width:100%;border-collapse:collapse}.tbl td{padding:5px 6px;border-bottom:1px solid var(--line2);vertical-align:middle}
