@@ -56,6 +56,76 @@ function imgToAvatar(file, size = 256) {
     im.src = url;
   });
 }
+/* ---------- v6.42: image crop (manual + auto-suggest) — used by every photo upload/capture ---------- */
+const crClamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function crFit(b, a, W, H) { let w = b.w, h = b.h; const cx = b.x + w / 2, cy = b.y + h / 2; if (w / h > a) h = w / a; else w = h * a; if (w > W) { w = W; h = w / a; } if (h > H) { h = H; w = h * a; } return { x: crClamp(cx - w / 2, 0, W - w), y: crClamp(cy - h / 2, 0, H - h), w, h }; }
+async function crAuto(src, aspect, face) {
+  const W = src.width, H = src.height;
+  if (face && "FaceDetector" in window) { try { const f = await new window.FaceDetector({ fastMode: true, maxDetectedFaces: 3 }).detect(src); if (f.length) { const b = f.map(x => x.boundingBox).sort((p, q) => q.width * q.height - p.width * p.height)[0], sz = Math.max(b.width, b.height) * 2.6; return crFit({ x: b.x + b.width / 2 - sz / 2, y: b.y + b.height / 2 - sz * .46, w: sz, h: sz }, aspect || 1, W, H); } } catch { } }
+  const k = 180 / Math.max(W, H), w = Math.max(8, Math.round(W * k)), h = Math.max(8, Math.round(H * k)), c = document.createElement("canvas"); c.width = w; c.height = h;
+  const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(src, 0, 0, w, h); const d = x.getImageData(0, 0, w, h).data, g = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) g[i] = .299 * d[i * 4] + .587 * d[i * 4 + 1] + .114 * d[i * 4 + 2];
+  const col = new Float32Array(w), row = new Float32Array(h); let tot = 0, mx = 0, my = 0;
+  for (let j = 1; j < h - 1; j++) for (let i = 1; i < w - 1; i++) { const p = j * w + i, e = Math.abs(g[p + 1] - g[p - 1]) + Math.abs(g[p + w] - g[p - w]); col[i] += e; row[j] += e; tot += e; mx += e * i; my += e * j; }
+  if (!tot) return crFit({ x: 0, y: 0, w: W, h: H }, aspect || W / H, W, H);
+  const edge = (p, fr) => { const T = p.reduce((a, b) => a + b, 0); let s = 0, lo = 0, hi = p.length - 1; for (let i = 0; i < p.length; i++) { s += p[i]; if (s >= T * fr) { lo = i; break; } } s = 0; for (let i = p.length - 1; i >= 0; i--) { s += p[i]; if (s >= T * fr) { hi = i; break; } } return [lo, hi]; };
+  let [x0, x1] = edge(col, .012), [y0, y1] = edge(row, .012); const padX = (x1 - x0) * .03 + 1, padY = (y1 - y0) * .03 + 1;
+  let b = { x: crClamp(x0 - padX, 0, w) / k, y: crClamp(y0 - padY, 0, h) / k, w: 0, h: 0 }; b.w = Math.min(W - b.x, (x1 - x0 + 2 * padX) / k); b.h = Math.min(H - b.y, (y1 - y0 + 2 * padY) / k);
+  if (aspect === 1 && face) { const sz = Math.min(W, H) * .86; return crFit({ x: mx / tot / k - sz / 2, y: my / tot / k - sz / 2, w: sz, h: sz }, 1, W, H); }
+  if (b.w * b.h > W * H * .94) b = { x: W * .02, y: H * .02, w: W * .96, h: H * .96 };
+  return aspect ? crFit(b, aspect, W, H) : b;
+}
+const crLoad = blob => new Promise((res, rej) => { const u = URL.createObjectURL(blob), i = new Image(); i.onload = () => { URL.revokeObjectURL(u); res(i); }; i.onerror = () => { URL.revokeObjectURL(u); rej(new Error("img")); }; i.src = u; });
+/* cropModal(file, {title, aspect:null|number, aspects:[…], circle, face, maxSide, allowFull}) → Promise<Blob|File|null>  (null = cancelled) */
+async function cropModal(file, o = {}) {
+  const en = LANG === "en"; let im; try { im = await crLoad(file); } catch { return file; }
+  const k0 = Math.min(1, 2800 / Math.max(im.naturalWidth, im.naturalHeight)); let src = document.createElement("canvas"); src.width = Math.round(im.naturalWidth * k0); src.height = Math.round(im.naturalHeight * k0); src.getContext("2d").drawImage(im, 0, 0, src.width, src.height);
+  const ASP = o.aspects === undefined ? [null, 1, 4 / 3, 3 / 4, 16 / 9] : o.aspects, nm = a => a == null ? (en ? "Free" : "ফ্রি") : a === 1 ? "1:1" : a === 4 / 3 ? "4:3" : a === 3 / 4 ? "3:4" : a === 16 / 9 ? "16:9" : a.toFixed(2);
+  return new Promise(async resolve => {
+    const host = document.createElement("div"); host.className = "crhost";
+    host.innerHTML = `<div class="mback" style="z-index:95"><div class="modal crop"><h2>✂️ ${esc(o.title || (en ? "Crop photo" : "ছবি ক্রপ করুন"))}</h2>
+      <div class="crwrap"><div class="crstage" id="cr-st"><canvas id="cr-cv"></canvas><div class="crbox ${o.circle ? "circ" : ""}" id="cr-bx"><i class="crh" data-h="nw"></i><i class="crh" data-h="ne"></i><i class="crh" data-h="sw"></i><i class="crh" data-h="se"></i></div></div></div>
+      <div class="crtools"><button class="btn sm" id="cr-auto" type="button">✨ ${en ? "Auto crop" : "অটো ক্রপ"}</button><button class="btn sm" id="cr-l" type="button" title="${en ? "Rotate left" : "বাঁয়ে ঘোরান"}">↺</button><button class="btn sm" id="cr-r" type="button" title="${en ? "Rotate right" : "ডানে ঘোরান"}">↻</button><button class="btn sm" id="cr-rs" type="button">${en ? "Reset" : "রিসেট"}</button>${ASP.length > 1 ? `<div class="seg" id="cr-as">${ASP.map(a => `<span class="chip" data-a="${a == null ? "" : a}">${nm(a)}</span>`).join("")}</div>` : ""}</div>
+      <div class="mut xs" id="cr-info" style="margin:8px 0 0"></div>
+      <div class="row" style="margin-top:14px;justify-content:flex-end">${o.allowFull === false ? "" : `<button class="btn" id="cr-full" type="button">${en ? "Use full photo" : "পুরো ছবি"}</button>`}<button class="btn" id="cr-x" type="button">${en ? "Cancel" : "বাতিল"}</button><button class="btn pri" id="cr-ok" type="button">✔ ${en ? "Crop & use" : "ক্রপ করে নিন"}</button></div></div></div>`;
+    document.body.appendChild(host);
+    const q = id => host.querySelector("#" + id), cv = q("cr-cv"), st = q("cr-st"), bx = q("cr-bx"); let aspect = o.aspect === undefined ? (ASP.length ? ASP[0] : null) : o.aspect, box, s = 1;
+    const fin = v => { document.removeEventListener("keydown", key); host.remove(); resolve(v); };
+    const info = () => { q("cr-info").textContent = `${Math.round(box.w)} × ${Math.round(box.h)} px`; };
+    const paint = () => { bx.style.left = box.x * s + "px"; bx.style.top = box.y * s + "px"; bx.style.width = box.w * s + "px"; bx.style.height = box.h * s + "px"; info(); };
+    const chips = () => host.querySelectorAll("#cr-as .chip").forEach(c => c.classList.toggle("on", (c.dataset.a === "" ? null : +c.dataset.a) === aspect));
+    const layout = () => { const aw = Math.max(120, st.parentElement.clientWidth - 2), ah = Math.min(innerHeight * .5, 460); s = Math.min(aw / src.width, ah / src.height); cv.width = Math.round(src.width * s); cv.height = Math.round(src.height * s); st.style.width = cv.width + "px"; st.style.height = cv.height + "px"; cv.getContext("2d").drawImage(src, 0, 0, cv.width, cv.height); paint(); };
+    const initBox = () => { const W = src.width, H = src.height; box = aspect ? crFit({ x: W * .05, y: H * .05, w: W * .9, h: H * .9 }, aspect, W, H) : { x: W * .04, y: H * .04, w: W * .92, h: H * .92 }; };
+    const setAuto = async () => { const b = q("cr-auto"); b.disabled = true; try { box = await crAuto(src, aspect, !!o.face); } catch { initBox(); } b.disabled = false; paint(); };
+    const rot = d => { const n = document.createElement("canvas"); n.width = src.height; n.height = src.width; const x = n.getContext("2d"); x.translate(n.width / 2, n.height / 2); x.rotate(d * Math.PI / 2); x.drawImage(src, -src.width / 2, -src.height / 2); src = n; initBox(); layout(); };
+    let drag = null; const MIN = 24;
+    bx.addEventListener("pointerdown", e => { drag = { h: e.target.dataset?.h || "", sx: e.clientX, sy: e.clientY, b: { ...box } }; bx.setPointerCapture(e.pointerId); e.preventDefault(); });
+    bx.addEventListener("pointermove", e => {
+      if (!drag) return; const W = src.width, H = src.height, dx = (e.clientX - drag.sx) / s, dy = (e.clientY - drag.sy) / s, b0 = drag.b, h = drag.h;
+      if (!h) { box = { ...b0, x: crClamp(b0.x + dx, 0, W - b0.w), y: crClamp(b0.y + dy, 0, H - b0.h) }; return paint(); }
+      const hw = h.includes("w"), hn = h.includes("n"), r0 = b0.x + b0.w, bt0 = b0.y + b0.h; let l, r, t, bt;
+      if (aspect) { let w = b0.w + (hw ? -dx : dx), hh; const maxW = hw ? r0 : W - b0.x, maxH = hn ? bt0 : H - b0.y; w = Math.max(MIN, Math.min(w, maxW, maxH * aspect)); hh = w / aspect; l = hw ? r0 - w : b0.x; r = l + w; t = hn ? bt0 - hh : b0.y; bt = t + hh; }
+      else { l = hw ? crClamp(b0.x + dx, 0, r0 - MIN) : b0.x; r = hw ? r0 : crClamp(r0 + dx, b0.x + MIN, W); t = hn ? crClamp(b0.y + dy, 0, bt0 - MIN) : b0.y; bt = hn ? bt0 : crClamp(bt0 + dy, b0.y + MIN, H); }
+      box = { x: l, y: t, w: r - l, h: bt - t }; paint();
+    });
+    const up = () => { drag = null; }; bx.addEventListener("pointerup", up); bx.addEventListener("pointercancel", up);
+    const apply = async () => {
+      const mx = o.maxSide || 2000, k = Math.min(1, mx / Math.max(box.w, box.h)), c = document.createElement("canvas"); c.width = Math.max(1, Math.round(box.w * k)); c.height = Math.max(1, Math.round(box.h * k));
+      const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(src, box.x, box.y, box.w, box.h, 0, 0, c.width, c.height);
+      const blob = await new Promise(r => c.toBlob(r, "image/jpeg", .92)); fin(blob);
+    };
+    function key(e) { if (e.key === "Escape") fin(null); else if (e.key === "Enter" && !(e.target.tagName === "BUTTON")) apply(); }
+    document.addEventListener("keydown", key);
+    q("cr-x").onclick = () => fin(null); q("cr-ok").onclick = apply; q("cr-full") && (q("cr-full").onclick = () => fin(file));
+    q("cr-auto").onclick = setAuto; q("cr-l").onclick = () => rot(-1); q("cr-r").onclick = () => rot(1); q("cr-rs").onclick = () => { initBox(); paint(); };
+    host.querySelectorAll("#cr-as .chip").forEach(c => c.onclick = () => { aspect = c.dataset.a === "" ? null : +c.dataset.a; chips(); if (aspect) { box = crFit(box, aspect, src.width, src.height); paint(); } });
+    host.querySelector(".mback").addEventListener("mousedown", e => { if (e.target.classList.contains("mback")) fin(null); });
+    initBox(); chips(); requestAnimationFrame(async () => { layout(); await setAuto(); });
+  });
+}
+/* ask for a crop, then return the blob to upload (null = user cancelled) */
+async function pickImage(file, o) { if (!file) return null; return await cropModal(file, o); }
+
 function userErr(e) {
   const m = String(e?.message || e), en = LANG === "en";
   const T = { admin_only: ["শুধু Admin এই কাজ করতে পারেন", "Only an admin can do this"], bad_email: ["ইমেইল ঠিক নয়", "Invalid email address"], weak_password: ["পাসওয়ার্ড কমপক্ষে ১০ অক্ষর হতে হবে", "Password must be at least 10 characters"], bad_role: ["Role ঠিক নয়", "Invalid role"], email_exists: ["এই ইমেইলে আগেই ব্যবহারকারী আছে", "A user with this email already exists"], no_user: ["ব্যবহারকারী পাওয়া যায়নি", "User not found"] };
@@ -94,6 +164,34 @@ function credModal(email, pw, name, reset) {
     <div class="card cred" data-nt><div><span class="mut xs">${en ? "Name" : "নাম"}</span><b>${esc(name || "—")}</b></div><div><span class="mut xs">${en ? "Email" : "ইমেইল"}</span><b>${esc(email)}</b></div><div><span class="mut xs">${en ? "Password" : "পাসওয়ার্ড"}</span><b class="mono">${esc(pw)}</b></div><div><span class="mut xs">${en ? "Sign in at" : "লগইন লিংক"}</span><b>${esc(url)}</b></div></div>
     <div class="mut xs" style="margin:10px 0">${en ? "This password is shown only now. Copy it before closing." : "এই পাসওয়ার্ড শুধু এখনই দেখা যাবে। বন্ধ করার আগে কপি করে নিন।"}</div>
     <div class="row" style="justify-content:flex-end"><button class="btn pri" id="cr-cp">${ico("copy")} ${en ? "Copy details" : "সব কপি করুন"}</button><button class="btn" id="cr-x">${en ? "Done" : "হয়েছে"}</button></div>`, (root, close) => { $("#cr-cp", root).onclick = () => copyText(txt, en ? "Details copied" : "তথ্য কপি হয়েছে"); $("#cr-x", root).onclick = close; });
+}
+function editUserModal(u, after) {
+  const en = LANG === "en", me = u.id === S.me.id, st = { av: undefined };
+  const cur = () => st.av === undefined ? avaMap()[u.id] : st.av;
+  modal(`<h2>✏️ ${en ? "Edit user" : "ব্যবহারকারী এডিট"}</h2>
+    <div class="pfp"><div class="ava xl" id="eu-av"></div><div class="pfb"><b style="word-break:break-all">${esc(u.email)}</b>${me ? `<div class="mut xs">${en ? "This is you" : "এটা আপনি"}</div>` : ""}<div class="row" style="margin-top:8px"><button class="btn sm pri fix" id="eu-up" type="button">${ico("cam")} ${en ? "Photo" : "ছবি"}</button><button class="btn sm fix" id="eu-rm" type="button">${ico("trash")} ${en ? "Remove" : "মুছুন"}</button><input type="file" id="eu-f" accept="image/*" hidden></div></div></div>
+    <div class="ug2" style="margin-top:14px"><div><label class="f">${en ? "Name" : "নাম"}</label><input class="in" id="eu-n" value="${esc(u.name || "")}" autocomplete="off"></div>
+    <div><label class="f">Role</label><div class="seg rl" id="eu-r" style="display:flex;width:100%">${[["admin", "Admin"], ["staff", "Staff"], ["boss", "Boss"]].map(([r, l]) => `<span class="chip ${r === u.role ? "on" : ""}" data-r="${r}" style="flex:1;text-align:center">${l}</span>`).join("")}</div></div>
+    <div class="euac"><div><b>${en ? "Active" : "সক্রিয়"}</b><div class="mut xs">${en ? "Inactive users cannot sign in or see any data." : "নিষ্ক্রিয় ইউজার লগইন করতে বা কোনো ডাটা দেখতে পারেন না।"}</div></div><label class="sw"><input type="checkbox" id="eu-ac" ${u.active ? "checked" : ""}><i></i></label></div></div>
+    <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" id="eu-x" type="button">${en ? "Cancel" : "বাতিল"}</button><button class="btn pri" id="eu-ok" type="button">${ico("save")} ${en ? "Save changes" : "সেভ করুন"}</button></div>`, (root, close) => {
+    const g = id => $("#" + id, root), paint = () => { const im = cur(); g("eu-av").innerHTML = im ? `<img src="${im}" alt="">` : avaInit(g("eu-n").value || u.name, u.email); g("eu-av").classList.toggle("has", !!im); g("eu-rm").classList.toggle("hide", !im); };
+    paint(); g("eu-n").oninput = paint; $$("#eu-r .chip", root).forEach(c => c.onclick = () => $$("#eu-r .chip", root).forEach(x => x.classList.toggle("on", x === c)));
+    g("eu-up").onclick = () => g("eu-f").click(); g("eu-x").onclick = close;
+    g("eu-f").onchange = async () => { const f0 = g("eu-f").files[0]; g("eu-f").value = ""; if (!f0) return; const f = await pickImage(f0, { title: en ? "Crop profile picture" : "প্রোফাইল ছবি ক্রপ", aspect: 1, aspects: [], circle: true, face: true, allowFull: false, maxSide: 512 }); if (!f) return; try { st.av = await imgToAvatar(f); paint(); } catch (e) { toast(e.message, "err"); } };
+    g("eu-rm").onclick = () => { st.av = null; paint(); };
+    g("eu-ok").onclick = async e => {
+      const name = g("eu-n").value.trim(), role = $("#eu-r .chip.on", root).dataset.r, active = g("eu-ac").checked;
+      if (!name) return toast(en ? "Enter a name" : "নাম লিখুন", "err");
+      if (me && (role !== "admin" || !active) && !ask(en ? "Removing your own Admin access will lock you out of the admin pages. Sure?" : "নিজের Admin অধিকার সরিয়ে দিলে আর অ্যাডমিন পাতায় আসতে পারবেন না। নিশ্চিত?")) return;
+      e.target.disabled = true;
+      try {
+        await API.updateProfile(u.id, { name, role, active });
+        if (st.av !== undefined) { await API.setUserAvatar(u.id, st.av); st.av ? avaMap()[u.id] = st.av : delete avaMap()[u.id]; if (me) try { st.av ? localStorage.setItem("nabiad_ava_" + u.id, st.av) : localStorage.removeItem("nabiad_ava_" + u.id); } catch { } }
+        close(); toast(en ? "✔ Saved" : "✔ সেভ হয়েছে");
+        if (me) { S.me.name = name; saveCache(); shell(); route(); } else { refreshAvatars(); after && after(); }
+      } catch (er) { toast(er.message, "err"); e.target.disabled = false; }
+    };
+  });
 }
 function resetPwModal(u) {
   const en = LANG === "en", me = u.id === S.me.id;
@@ -261,6 +359,7 @@ const SbAPI = {
   async setUserPassword(id, password) { const { error } = await sb.rpc("admin_set_password", { p_user: id, p_password: password }); if (error) throw userErr(error); },
   async avatars() { const { data, error } = await sb.from("user_avatars").select("user_id,img"); if (error) throw error; return Object.fromEntries((data || []).map(r => [r.user_id, r.img])); },
   async setAvatar(img) { const { error } = await sb.rpc("set_my_avatar", { a: img || null }); if (error) throw error; },
+  async setUserAvatar(id, img) { const { error } = await sb.rpc("admin_set_avatar", { p_user: id, a: img || null }); if (error) throw userErr(error); },
   /* v2: drafts, reminders, audit log, cheque photos (need schema_v2.sql) */
   async getDraft(d) { const { data, error } = await sb.from("balance_drafts").select("*").eq("date", d).maybeSingle(); if (error) throw error; return data ? { rows: data.data, at: data.updated_at, by: data.updated_by } : null; },
   async saveDraft(d, rows) { const { error } = await sb.from("balance_drafts").upsert({ date: d, data: rows, updated_by: S.me.name, updated_at: new Date().toISOString() }); if (error) throw error; },
@@ -327,6 +426,7 @@ const DemoAPI = {
   async updateProfile() { },
   async createUser(email, password, name, role) { if (demoStore.users?.some(u => u.email === email)) throw userErr({ message: "email_exists" }); (demoStore.users ||= []).push({ id: "d" + Date.now(), email, name: name || email.split("@")[0], role, active: true }); this.aud("users", "insert", email, null, { role, event: "user_created" }); this.save(); },
   async avatars() { return { ...(demoStore.avatars || {}) }; },
+  async setUserAvatar(id, img) { (demoStore.avatars ||= {}); if (img) demoStore.avatars[id] = img; else delete demoStore.avatars[id]; this.save(); },
   async setAvatar(img) { (demoStore.avatars ||= {}); if (img) demoStore.avatars[S.me.id] = img; else delete demoStore.avatars[S.me.id]; this.save(); },
   async setUserPassword(id) { this.aud("users", "update", (demoStore.users || []).find(u => u.id === id)?.email || "admin@demo", null, { event: "password_reset" }); this.save(); },
   aud(tbl, action, key, o, n) { demoStore.audit.unshift({ id: Date.now() + Math.random(), at: new Date().toISOString(), user_name: S.me?.name, tbl, action, row_key: key, old: o || null, new: n || null }); demoStore.audit.length > 2000 && (demoStore.audit.length = 2000); },
@@ -1309,7 +1409,7 @@ function accountModal(a, after) {
     $$("input", root).forEach(i => i.addEventListener("input", upd)); g("a-d").addEventListener("change", upd); upd();
     const ph = { blob: null, remove: false }, showPh = src => { g("a-bphi").src = src; g("a-bphw").classList.remove("hide"); g("a-bpx").classList.remove("hide"); }, hidePh = () => { g("a-bphw").classList.add("hide"); g("a-bpx").classList.add("hide"); g("a-bphi").removeAttribute("src"); };
     if (a.book_photo) API.photoUrl(a.book_photo).then(showPh).catch(() => { });
-    g("a-bpin").onchange = async () => { const f = g("a-bpin").files[0]; if (!f) return; try { ph.blob = await compressImage(f); ph.remove = false; showPh(URL.createObjectURL(ph.blob)); } catch (e) { toast(e.message, "err"); } g("a-bpin").value = ""; };
+    g("a-bpin").onchange = async () => { const f0 = g("a-bpin").files[0]; g("a-bpin").value = ""; if (!f0) return; const f = await pickImage(f0, { title: LANG === "en" ? "Crop cheque book photo" : "Cheque book-এর ছবি ক্রপ", aspect: null }); if (!f) return; try { ph.blob = await compressImage(f); ph.remove = false; showPh(URL.createObjectURL(ph.blob)); } catch (e) { toast(e.message, "err"); } g("a-bpin").value = ""; };
     g("a-bpx").onclick = () => { ph.blob = null; ph.remove = true; hidePh(); };
     g("a-x").onclick = close;
     g("a-sh") && (g("a-sh").onclick = () => { close(); shareAccounts([{ ...a, ...cur(), code: a.code }]); });
@@ -1424,18 +1524,13 @@ async function vAdmin(v) {
     } else if (tab === "usr") {
       out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
       let us = []; try { us = await API.users(); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(e.message)}</div>`; return; }
-      out.innerHTML = `<div class="row ubar"><div><b>${us.length} ${LANG === "en" ? "users" : "জন ব্যবহারকারী"}</b><div class="mut xs">${LANG === "en" ? "Create accounts, set roles and reset passwords here" : "এখান থেকেই অ্যাকাউন্ট খোলা, Role দেওয়া ও পাসওয়ার্ড রিসেট"}</div></div><button class="btn pri" id="u-new">${ico("plus")} ${LANG === "en" ? "New user" : "নতুন ব্যবহারকারী"}</button></div>
-       <div class="ulist">${us.map(u => `<div class="card uc" data-u="${u.id}"><div class="uh">${avaEl(u.id, u.name, u.email)}<div class="ue"><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div><label class="sw" title="সক্রিয়"><input type="checkbox" class="ac" ${u.active ? "checked" : ""}><i></i></label></div>
-        <div class="ug"><div><label class="f">নাম</label><input class="in nm" value="${esc(u.name || "")}"></div><div><label class="f">Role</label><div class="seg rl">${[["admin", "Admin"], ["staff", "Staff"], ["boss", "Boss"]].map(([r, l]) => `<span class="chip ${r === u.role ? "on" : ""}" data-r="${r}">${l}</span>`).join("")}</div></div></div>
-        <div class="row" style="margin-top:10px"><button class="btn pri sm fix" data-s="${u.id}">${ico("save")} সেভ</button><button class="btn sm fix" data-pw="${u.id}">🔑 ${LANG === "en" ? "Reset password" : "পাসওয়ার্ড রিসেট"}</button>${u.id === S.me.id ? `<span class="mut xs">এটা আপনি</span>` : ""}</div></div>`).join("")}</div>`;
+      out.innerHTML = `<div class="row ubar"><div><b>${us.length} ${LANG === "en" ? "users" : "জন ব্যবহারকারী"}</b><div class="mut xs">${LANG === "en" ? "Create accounts, edit profiles, set roles and reset passwords here" : "এখান থেকেই অ্যাকাউন্ট খোলা, প্রোফাইল এডিট, Role দেওয়া ও পাসওয়ার্ড রিসেট"}</div></div><button class="btn pri" id="u-new">${ico("plus")} ${LANG === "en" ? "New user" : "নতুন ব্যবহারকারী"}</button></div>
+       <div class="ulist">${us.map(u => `<div class="card uc ${u.active ? "" : "off"}" data-u="${u.id}"><div class="uh">${avaEl(u.id, u.name, u.email)}<div class="ue"><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div></div>
+        <div class="row" style="gap:6px;margin-bottom:12px"><span class="pill">${esc(u.role)}</span><span class="tag ${u.active ? "ok" : "off"}">${u.active ? (LANG === "en" ? "Active" : "সক্রিয়") : (LANG === "en" ? "Inactive" : "নিষ্ক্রিয়")}</span>${u.id === S.me.id ? `<span class="mut xs">${LANG === "en" ? "This is you" : "এটা আপনি"}</span>` : ""}</div>
+        <div class="row"><button class="btn pri sm fix" data-ed="${u.id}">✏️ ${LANG === "en" ? "Edit" : "এডিট"}</button><button class="btn sm fix" data-pw="${u.id}">🔑 ${LANG === "en" ? "Reset password" : "পাসওয়ার্ড রিসেট"}</button></div></div>`).join("")}</div>`;
       $("#u-new", out).onclick = () => newUserModal(draw);
+      $$("[data-ed]", out).forEach(b => b.onclick = () => editUserModal(us.find(u => u.id === b.dataset.ed), draw));
       $$("[data-pw]", out).forEach(b => b.onclick = () => resetPwModal(us.find(u => u.id === b.dataset.pw)));
-      $$(".rl .chip", out).forEach(c => c.onclick = () => { $$(".chip", c.parentElement).forEach(x => x.classList.toggle("on", x === c)); });
-      $$("[data-s]", out).forEach(b => b.onclick = async () => {
-        const card = b.closest(".uc"), role = $(".rl .chip.on", card)?.dataset.r, active = $(".ac", card).checked;
-        if (b.dataset.s === S.me.id && (role !== "admin" || !active) && !ask("নিজের Admin অধিকার সরিয়ে দিলে আর অ্যাডমিন পাতায় আসতে পারবেন না। নিশ্চিত?")) return;
-        b.disabled = true; try { await API.updateProfile(b.dataset.s, { name: $(".nm", card).value.trim(), role, active }); toast("✔ সেভ হয়েছে"); if (b.dataset.s === S.me.id) { S.me.name = $(".nm", card).value.trim(); saveCache(); } } catch (e) { toast(e.message, "err"); } b.disabled = false;
-      });
     } else if (tab === "imp") {
       out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
       let st = { n: 0, first: null, last: null }; try { st = await API.balanceStats(); } catch { }
@@ -1560,7 +1655,7 @@ async function showPhoto(el, c) {
 }
 function photoPicker(root, st, ids) {
   const inp = $("#" + ids.inp, root), img = $("#" + ids.img, root), x = $("#" + ids.x, root);
-  const onPick = async function () { const f = this.files[0]; if (!f) return; try { st.photo = await compressImage(f); img.src = URL.createObjectURL(st.photo); img.classList.remove("hide"); x.classList.remove("hide"); } catch (e) { toast(e.message, "err"); } this.value = ""; };
+  const onPick = async function () { const f0 = this.files[0]; this.value = ""; if (!f0) return; const f = await pickImage(f0, { title: LANG === "en" ? "Crop cheque photo" : "চেকের ছবি ক্রপ", aspect: null }); if (!f) return; try { st.photo = await compressImage(f); img.src = URL.createObjectURL(st.photo); img.classList.remove("hide"); x.classList.remove("hide"); } catch (e) { toast(e.message, "err"); } this.value = ""; };
   inp.onchange = onPick; const cam = ids.cam && $("#" + ids.cam, root); if (cam) cam.onchange = onPick;
   x.onclick = e => { e.preventDefault(); st.photo = null; img.classList.add("hide"); x.classList.add("hide"); img.removeAttribute("src"); };
   return () => x.onclick(new Event("click"));
@@ -2212,7 +2307,7 @@ async function vSettings(v) {
    ${admin ? `<div class="card" style="grid-column:1/-1"><h3>🛡 Admin শর্টকাট</h3><div class="row"><a class="btn fix" href="#/admin">${ico("gear")} ব্যবহারকারী ও অ্যাকাউন্ট</a><a class="btn fix" href="#/audit">${ico("shield")} Audit ও Backup</a><a class="btn fix" href="#/books">${ico("book")} চেক বই</a></div></div>` : ""}</div>`;
   const g = id => $("#" + id, v);
   { const f = g("pf-f"), rm = g("pf-rm"); g("pf-up").onclick = () => f.click();
-    f.onchange = async () => { const file = f.files[0]; f.value = ""; if (!file) return; const b = g("pf-up"); b.disabled = true; try { const img = await imgToAvatar(file); await API.setAvatar(img); avaMap()[S.me.id] = img; try { localStorage.setItem("nabiad_ava_" + S.me.id, img); } catch { } refreshAvatars(); rm.classList.remove("hide"); toast(LANG === "en" ? "✔ Photo updated" : "✔ ছবি সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? "schema_v6.sql-এর v6.41 অংশ চালানো হয়নি" : e.message, "err"); } b.disabled = false; };
+    f.onchange = async () => { const f0 = f.files[0]; f.value = ""; if (!f0) return; const file = await pickImage(f0, { title: LANG === "en" ? "Crop profile picture" : "প্রোফাইল ছবি ক্রপ", aspect: 1, aspects: [], circle: true, face: true, allowFull: false, maxSide: 512 }); if (!file) return; const b = g("pf-up"); b.disabled = true; try { const img = await imgToAvatar(file); await API.setAvatar(img); avaMap()[S.me.id] = img; try { localStorage.setItem("nabiad_ava_" + S.me.id, img); } catch { } refreshAvatars(); rm.classList.remove("hide"); toast(LANG === "en" ? "✔ Photo updated" : "✔ ছবি সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? "schema_v6.sql-এর v6.41 অংশ চালানো হয়নি" : e.message, "err"); } b.disabled = false; };
     rm.onclick = async () => { if (!ask(LANG === "en" ? "Remove your profile picture?" : "প্রোফাইল ছবি মুছে ফেলবেন?")) return; try { await API.setAvatar(null); delete avaMap()[S.me.id]; try { localStorage.removeItem("nabiad_ava_" + S.me.id); } catch { } refreshAvatars(); rm.classList.add("hide"); toast(LANG === "en" ? "✔ Photo removed" : "✔ ছবি মুছে ফেলা হয়েছে"); } catch (e) { toast(e.message, "err"); } }; }
   g("st-nm-s").onclick = async () => { const n = g("st-nm").value.trim(); if (!n) return toast("নাম লিখুন", "err"); try { await API.setMyName(n); S.me.name = n; saveCache(); shell(); route(); toast("✔ নাম সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? "schema_v3.sql চালানো বাকি" : e.message, "err"); } };
   g("st-pw-s") && (g("st-pw-s").onclick = async () => { const p = g("st-pw").value; if (p.length < 10) return toast("পাসওয়ার্ড কমপক্ষে ১০ অক্ষর", "err"); try { await API.changePassword(p); g("st-pw").value = ""; toast("✔ পাসওয়ার্ড বদলানো হয়েছে"); } catch (e) { toast(e.message, "err"); } });

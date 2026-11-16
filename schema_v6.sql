@@ -333,3 +333,21 @@ begin
 end $$;
 revoke execute on function public.set_my_avatar(text) from anon, public;
 grant execute on function public.set_my_avatar(text) to authenticated;
+
+-- v6.42 — admin can set / remove any user's profile picture (edit-user screen)
+create or replace function public.admin_set_avatar(p_user uuid, a text) returns void language plpgsql security definer set search_path = public as $$
+declare em text;
+begin
+  if my_role() is distinct from 'admin' then raise exception 'admin_only'; end if;
+  select email into em from public.profiles where id = p_user;
+  if em is null then raise exception 'no_user'; end if;
+  if a is null or a = '' then delete from public.user_avatars where user_id = p_user;
+  else
+    if a not like 'data:image/%' or length(a) > 150000 then raise exception 'bad_image'; end if;
+    insert into public.user_avatars(user_id, img, updated_at) values (p_user, a, now())
+      on conflict (user_id) do update set img = excluded.img, updated_at = now();
+  end if;
+  insert into public.audit_log(user_name,tbl,action,row_key,new) values ((select name from public.profiles where id = auth.uid()),'users','update',em,jsonb_build_object('event','photo_changed'));
+end $$;
+revoke execute on function public.admin_set_avatar(uuid,text) from anon, public;
+grant execute on function public.admin_set_avatar(uuid,text) to authenticated;
