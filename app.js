@@ -389,7 +389,7 @@ const acItems = (all = false) => (all ? S.accounts : activeAccounts()).map(a => 
 /* ---------- shell / router ---------- */
 const ROUTES = {
   dash: { t: "ড্যাশবোর্ড", ic: "home", roles: "asb", sec: "top", f: () => vDash },
-  entry: { t: "নতুন চেক", ic: "plus", roles: "as", sec: "main", f: () => vEntry },
+  entry: { t: "চেক পোস্টিং", ic: "plus", roles: "as", sec: "main", f: () => vEntry },
   status: { t: "চেক স্ট্যাটাস", ic: "flag", roles: "as", sec: "main", f: () => vStatus },
   cheques: { t: "চেক রেজিস্টার", ic: "list", roles: "asb", sec: "main", f: () => vCheques },
   closing: { t: "ব্যাংক ক্লোজিং", ic: "bank", roles: "as", sec: "bank", f: () => vClosing },
@@ -539,7 +539,7 @@ async function setStatus(c, status, date, remarks) {
 }
 async function vEntry(v) {
   const st = { purpose: null, photo: null };
-  v.innerHTML = head("নতুন চেক<span class=\"mut\">Enter চাপলে পরের ঘরে যাবে · শেষ ঘরে Enter = সেভ</span>") + `
+  v.innerHTML = head("চেক পোস্টিং<span class=\"mut\">Enter চাপলে পরের ঘরে যাবে · শেষ ঘরে Enter = সেভ</span>") + `
   <div class="split">
    <div class="card">
     <div class="fgrid">
@@ -1602,8 +1602,8 @@ async function vDash(v) {
   const todayC = S.cheques.filter(c => c.date === t && isLive(c)), pend = S.cheques.filter(c => c.status === "Pending"), old = pendingOld();
   const mon = S.cheques.filter(c => c.date.startsWith(ym) && isLive(c)), due = dueList(), sys = sysAlerts();
   const upcoming = (S.reminders || []).filter(r => !r.done).sort((a, b) => remDue(a) - remDue(b)).slice(0, 5);
-  const acts = boss ? [["crep", "img", "ব্যালেন্স স্ন্যাপশট", "qa1"], ["cashsum", "pulse", "ক্যাশ সামারি", "qa2"], ["reports", "chart", "ব্যাংক রিপোর্ট", "qa3"]]
-    : [["entry", "plus", "নতুন চেক", "qa1"], ["closing", "bank", "ব্যাংক ক্লোজিং", "qa2"], ["cash", "wallet", "ক্যাশ এন্ট্রি", "qa3"]];
+  const acts = boss ? [["crep", "img", "ব্যালেন্স স্ন্যাপশট", "qa1"], ["cashsum", "pulse", "ক্যাশ সামারি", "qa2"], ["reports", "chart", "ব্যাংক রিপোর্ট", "qa3"], ["dsum", "trend", "কালেকশন সামারি", "qa4"]]
+    : [["entry", "plus", "চেক পোস্টিং", "qa1"], ["closing", "bank", "ব্যাংক ক্লোজিং", "qa2"], ["cash", "wallet", "ক্যাশ এন্ট্রি", "qa3"], ["dcol", "coins", "কালেকশন এন্ট্রি", "qa4"]];
   const bankDone = S.lastBal === t, cashDone = S.lastCash === t, workday = !isFri(t);
   const st = (ok, l, go, sub) => `<a class="stchip ${ok ? "ok" : "no"}" href="${go}"><i>${ok ? "✓" : "!"}</i><span><b>${l}</b><small>${sub}</small></span></a>`;
   /* today's progress */
@@ -1679,7 +1679,7 @@ async function vDash(v) {
       Object.entries(bm).forEach(([c, r]) => { const a = am[c]; if (!a || !a.daily || r.total == null) return; const k = (a.bank || "—").trim(), o = by.get(k) || { k, t: 0, b: 0, l: [] }; o.t += Number(r.total); o.b += Number(r.block || 0); o.l.push({ c, h: a.holder || "", t: Number(r.total) }); by.set(k, o); });
       const bl = [...by.values()].sort((a, b) => b.t - a.t), tot = bl.reduce((s, x) => s + x.t, 0) || 1, mxb = bl[0]?.t || 1;
       $("#d-bk-d", v).textContent = dmy(last.date);
-      $("#d-banks", v).innerHTML = bl.length ? `<div class="bkl">${bl.slice(0, 8).map(b => `<details class="bk"><summary><span class="bn">${esc(b.k)}</span><span class="bbar"><i style="width:${Math.max(3, b.t / mxb * 100)}%"></i></span><b class="num">৳ ${money0(b.t)}</b><em>${(b.t / tot * 100).toFixed(0)}%</em></summary><div class="bkd">${b.l.sort((x, y) => y.t - x.t).map(a => `<div><span>${esc(a.c)}${a.h ? ` · ${esc(a.h)}` : ""}</span><b class="num">৳ ${money0(a.t)}</b></div>`).join("")}${b.b ? `<div class="mut"><span>Block</span><b class="num">৳ ${money0(b.b)}</b></div>` : ""}</div></details>`).join("")}</div>${bl.length > 8 ? `<div class="mut sm" style="margin-top:6px"><span>আরও</span> ${bl.length - 8} <span>টি ব্যাংক</span> — <a href="#/crep">সব দেখুন</a></div>` : ""}` : `<div class="mut sm">ডাটা নেই</div>`;
+      $("#d-banks", v).innerHTML = bl.length ? `<div class="bkl">${bl.slice(0, 8).map(b => `<details class="bk"><summary><span class="bn">${esc(b.k)}</span><span class="bbar"><i style="width:${Math.max(3, b.t / mxb * 100)}%"></i></span><b class="num">৳ ${money0(b.t)}</b><em>${(b.t / tot * 100).toFixed(0)}%</em></summary><div class="bkd">${b.l.sort((x, y) => y.t - x.t).map(a => `<div><span>${esc(a.c)}${a.h ? ` · ${esc(a.h)}` : ""}</span><b class="num">৳ ${money0(a.t)}</b></div>`).join("")}${b.b ? `<div class="mut"><span>Block</span><b class="num">৳ ${money0(b.b)}</b></div>` : ""}</div></details>`).join("")}</div>${bl.length > 8 ? `<div class="mut sm" style="margin-top:6px">${LANG === "en" ? `${bl.length - 8} more banks` : `আরও ${bl.length - 8}টি ব্যাংক`} — <a href="#/crep">সব দেখুন</a></div>` : ""}` : `<div class="mut sm">ডাটা নেই</div>`;
     } catch (e) { if ($("#d-bs", v)) { $("#d-bs", v).textContent = isNetErr(e) ? "অফলাইন" : "লোড হয়নি"; $("#d-tr", v).innerHTML = `<div class="mut sm">${isNetErr(e) ? "ইন্টারনেট নেই" : esc(e.message)}</div>`; $("#d-banks", v).innerHTML = ""; } }
   })();
   // cash figures

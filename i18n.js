@@ -293,7 +293,7 @@ Object.assign(I18N, {
   "ডিস্ট্রিবিউশন কালেকশন সামারি": "Distribution Collection Summary", "পার্টি": "Party", "সাবটোটাল": "Subtotal", "ইন্টারনেট নেই": "No internet", "ঠিক আছে": "OK", "কাজ": "Actions", "অবস্থা": "Status", "মন্তব্য": "Remarks",
   "মুছে ফেলবেন?": "Delete?", "নতুন": "New", "লিস্ট": "List", "ডাটা নেই": "No data", "এডিট": "Edit", "মুছুন": "Delete", "সেভ": "Save", "বন্ধ": "Close", "বাতিল": "Cancel", "সামারি": "Summary",
   // v6.30 — page names + Old data import
-  "নতুন চেক": "New Cheque", "চেক স্ট্যাটাস": "Cheque Status", "চেক রেজিস্টার": "Cheque Register",
+  "নতুন চেক": "New Cheque", "চেক পোস্টিং": "Cheque Posting", "চেক স্ট্যাটাস": "Cheque Status", "চেক রেজিস্টার": "Cheque Register",
   "ব্যাংক ক্লোজিং": "Bank Closing", "ব্যালেন্স স্ন্যাপশট": "Balance Snapshot", "ব্যাংক রিপোর্ট": "Bank Reports",
   "ক্যাশ এন্ট্রি": "Cash Entry", "ক্যাশ সামারি": "Cash Summary", "ক্যাশ রিপোর্ট": "Cash Reports",
   "কালেকশন এন্ট্রি": "Collection Entry", "কালেকশন সামারি": "Collection Summary", "কালেকশন রিপোর্ট": "Collection Reports",
@@ -310,7 +310,7 @@ Object.assign(I18N, {
   "ট্রেন্ড দেখাতে আরও ডাটা লাগবে": "More data is needed to show a trend",
   "৭ দিন": "7 days", "১৫ দিন": "15 days", "৩০ দিন": "30 days", "গড়": "avg", "সর্বোচ্চ": "Max", "সর্বনিম্ন": "Min",
   "আঙুল/মাউস দিয়ে দেখুন": "Touch / hover the chart",
-  "ব্যাংক-ওয়াইজ ব্যালেন্স": "Balance by bank", "বিস্তারিত": "Details", "আরও": "+", "টি ব্যাংক": "more banks", "সব দেখুন": "see all",
+  "ব্যাংক-ওয়াইজ ব্যালেন্স": "Balance by bank", "বিস্তারিত": "Details", "সব দেখুন": "see all",
   "চেক পাইপলাইন · এই মাস": "Cheque pipeline · this month", "এই মাসে এখনো কোনো চেক নেই": "No cheques this month yet",
   "সব Pending (মোট)": "All Pending (total)", "আজকের চেক": "Today's cheques", "Clear হয়েছে": "Cleared",
   "আজকের সব কাজ সম্পন্ন 🎉": "All of today's tasks are done 🎉", "আজকের কাজ": "Today's tasks", "সম্পন্ন": "done",
