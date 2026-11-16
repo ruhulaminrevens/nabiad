@@ -436,7 +436,7 @@ tr.tot td{font-weight:800;background:linear-gradient(90deg,#fff7d6,#fff2c2)!impo
 .bell .bb{position:absolute;top:-5px;right:-5px;display:none}
 .bell .bb.on{display:block;background:linear-gradient(135deg,#fb7185,#e11d48);color:#fff;border-radius:99px;font-size:10.5px;font-weight:800;line-height:17px;min-width:17px;padding:0 4px;text-align:center;box-shadow:0 2px 8px rgba(225,29,72,.45);animation:pulse 1.4s infinite}
 .bell .bb.dot{display:block;width:9px;height:9px;top:4px;right:4px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 2px var(--surface)}
-@media (max-width:520px){ #theme{display:none} .topbar{gap:6px} }
+@media (max-width:520px){ .topbar #theme{display:none} .topbar{gap:6px} }
 /* bank-branded account cards */
 .acc .hd{background:linear-gradient(135deg,var(--b1,#4f46e5),var(--b2,#7c3aed))}
 .acc .blogo{background:#fff;color:var(--b1,#4f46e5);font-weight:900;font-size:11px;letter-spacing:.3px;border-radius:7px;padding:2px 7px;box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -993,3 +993,13 @@ a.kpi{display:block;text-decoration:none!important;color:#fff;cursor:pointer}
 .pbcu{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pbcu .in{width:100%}
 @media (max-width:520px){ .pbm .chip{font-size:12.5px;padding:8px 0} }
+
+/* v6.37 — login theme toggle + install helper */
+.login .tl-l{position:absolute;top:16px;left:calc(52.38% + 16px);z-index:2}
+@media (max-width:900px){ .login .tl-l{left:16px} }
+.login .inst-link{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:16px;padding:11px 12px;border-radius:12px;border:1px dashed color-mix(in srgb,var(--pri) 50%,var(--line));background:var(--pri-soft);color:var(--pri);font-weight:700;font-size:13px;cursor:pointer}
+.login .inst-link svg{width:17px;height:17px}
+.sheet2 .sh-foot{grid-template-columns:repeat(4,1fr)}
+.inst-tabs .chip{justify-content:center;padding:7px 2px;font-size:12.5px}
+.inst-st{margin:12px 0 14px;padding-left:20px;display:grid;gap:8px;font-size:14px;line-height:1.5}
+.inst-st li::marker{color:var(--pri);font-weight:800}

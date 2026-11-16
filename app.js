@@ -511,11 +511,47 @@ const stTag = s => `<span class="st ${s}">${s}</span>`;
 const pendTag = c => c.pending || c.events?.some(e => e.pending) ? ` <span class="tag" style="background:var(--am-soft);color:var(--am)" title="সার্ভারে যাওয়া বাকি">⏳ সিঙ্ক বাকি</span>` : "";
 const chqIcons = c => `${c.photo ? ` <span class="ci" title="ছবি আছে">📷</span>` : ""}${(S.reminders || []).some(r => r.cheque_id === c.id && !r.done) ? ` <span class="ci" title="রিমাইন্ডার আছে">⏰</span>` : ""}`;
 
+/* ---------- v6.37: install-the-app helper (Android / iOS / Windows / Mac) ---------- */
+let installEvt = null; window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; });
+window.addEventListener("appinstalled", () => { installEvt = null; });
+const isStandalone = () => (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true;
+function osKey() {
+  const u = navigator.userAgent, p = navigator.platform || "";
+  if (/iPhone|iPad|iPod/.test(u) || (p === "MacIntel" && navigator.maxTouchPoints > 1)) return "ios";
+  if (/Android/.test(u)) return "android"; if (/Win/.test(p)) return "win"; if (/Mac/.test(p)) return "mac"; return "win";
+}
+function installModal() {
+  const en = LANG === "en", url = location.origin + "/", me = osKey();
+  const T = {
+    android: [en ? "Android" : "অ্যান্ড্রয়েড", en ? ["Open this site in <b>Chrome</b>", "Tap <b>⋮</b> (top right) → <b>Install app</b> (or <b>Add to Home screen</b>)", "Tap <b>Install</b> — the Nabiad icon appears on your home screen"] : ["এই সাইট <b>Chrome</b>-এ খুলুন", "উপরে ডানের <b>⋮</b> চাপুন → <b>Install app</b> (বা <b>Add to Home screen</b>)", "<b>Install</b> চাপুন — হোম স্ক্রিনে Nabiad আইকন চলে আসবে"]],
+    ios: ["iPhone / iPad", en ? ["Open this site in <b>Safari</b> (not Chrome)", "Tap the <b>Share</b> button (square with an arrow)", "Choose <b>Add to Home Screen</b> → <b>Add</b>"] : ["এই সাইট <b>Safari</b>-তে খুলুন (Chrome-এ নয়)", "নিচের <b>Share</b> বোতাম (তীর-সহ বক্স) চাপুন", "<b>Add to Home Screen</b> → <b>Add</b> চাপুন"]],
+    win: ["Windows", en ? ["Open this site in <b>Chrome</b> or <b>Edge</b>", "Click the <b>install icon</b> at the right end of the address bar (or menu → <b>Install Nabiad</b>)", "Click <b>Install</b> — it opens as its own app window and gets a desktop/Start menu shortcut"] : ["এই সাইট <b>Chrome</b> বা <b>Edge</b>-এ খুলুন", "অ্যাড্রেস বারের ডান প্রান্তের <b>install আইকন</b> চাপুন (বা মেনু → <b>Install Nabiad</b>)", "<b>Install</b> চাপুন — আলাদা অ্যাপ উইন্ডোতে খুলবে, ডেস্কটপ/Start মেনুতে শর্টকাট হবে"]],
+    mac: ["Mac", en ? ["Chrome / Edge: click the <b>install icon</b> in the address bar → <b>Install</b>", "Safari: <b>File → Add to Dock</b>"] : ["Chrome / Edge: অ্যাড্রেস বারের <b>install আইকন</b> → <b>Install</b>", "Safari: <b>File → Add to Dock</b>"]]
+  };
+  const tabs = Object.keys(T).map(k => `<span class="chip ${k === me ? "on" : ""}" data-os="${k}">${T[k][0]}</span>`).join("");
+  const steps = k => `<ol class="inst-st">${T[k][1].map(x => `<li>${x}</li>`).join("")}</ol>`;
+  modal(`<h2>📲 ${en ? "Install the Nabiad app" : "Nabiad অ্যাপ ইন্সটল করুন"}</h2>
+    <p class="mut" style="margin:0 0 12px">${en ? "No store needed — it installs straight from this page and updates itself." : "স্টোর লাগবে না — এই পেজ থেকেই ইন্সটল হয়, নিজে নিজে আপডেট হয়।"}</p>
+    ${isStandalone() ? `<div class="alert gr" style="margin-bottom:12px">✔ ${en ? "This device already runs the installed app." : "এই device-এ অ্যাপ ইন্সটল করাই আছে।"}</div>` : ""}
+    ${installEvt && !isStandalone() ? `<button class="btn pri lg" style="width:100%;margin-bottom:12px" id="in-go">${ico("dl")} ${en ? "Install on this device" : "এই device-এ এখনই ইন্সটল করুন"}</button>` : ""}
+    <div class="seg wrap inst-tabs" style="width:100%;display:grid;grid-template-columns:repeat(4,1fr)">${tabs}</div>
+    <div id="in-steps">${steps(me)}</div>
+    <label class="f">${en ? "App link (share with staff)" : "অ্যাপের লিংক (স্টাফদের পাঠান)"}</label>
+    <div class="row" style="flex-wrap:nowrap"><input class="in" id="in-url" value="${url}" readonly><button class="btn" id="in-cp">${ico("copyt")} Copy</button>${navigator.share ? `<button class="btn" id="in-sh">${ico("share")}</button>` : ""}</div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" data-x="close">${en ? "Close" : "বন্ধ করুন"}</button></div>`, (root, close) => {
+    $$("[data-os]", root).forEach(c => c.onclick = () => { $$("[data-os]", root).forEach(x => x.classList.toggle("on", x === c)); $("#in-steps", root).innerHTML = steps(c.dataset.os); });
+    $("#in-go", root) && ($("#in-go", root).onclick = async () => { try { installEvt.prompt(); const r = await installEvt.userChoice; installEvt = null; if (r.outcome === "accepted") { toast("✔ " + (en ? "Installing…" : "ইন্সটল হচ্ছে…")); close(); } } catch { } });
+    $("#in-cp", root).onclick = async () => { try { await navigator.clipboard.writeText(url); } catch { $("#in-url", root).select(); document.execCommand("copy"); } toast("✔ " + (en ? "Link copied" : "লিংক কপি হয়েছে")); };
+    $("#in-sh", root) && ($("#in-sh", root).onclick = () => navigator.share({ title: "Nabiad", url }).catch(() => { }));
+    $("[data-x=close]", root).onclick = close;
+  });
+}
+
 /* ---------- login ---------- */
 function loginView() {
   const demoBox = DEMO ? `<div class="alert am" style="margin-top:14px"><span>⚠ <b>DEMO মোড</b> — Supabase সেট করা হয়নি, ডাটা শুধু এই ব্রাউজারে থাকবে।</span></div>
     <div class="chips" style="margin-top:12px">${[["admin", "Ruhul"], ["staff", "Foysal"], ["boss", "Boss"]].map(([r, n]) => `<span class="chip" data-demo="${r}|${n}">${r} (${n})</span>`).join("")}</div>` : "";
-  $("#app").innerHTML = `<div class="login"><div class="tl">${langToggle()}</div>
+  $("#app").innerHTML = `<div class="login"><div class="tl-l"><button class="iconbtn th-ic" id="theme" title="Theme">${ico(getTheme() === "dark" ? "sun" : "moon")}</button></div><div class="tl">${langToggle()}</div>
     <div class="art"><div class="brand" style="padding:0"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Cheque &amp; Bank Control</span></div></div>
       <div><h1>চেক রেজিস্টার, দৈনিক ব্যাংক ক্লোজিং আর রিপোর্ট — এক জায়গায়</h1><p>প্রতিটি চেক পাতার হিসাব, মিসিং পাতা ধরা, আর Boss-এর জন্য তাৎক্ষণিক এনকোয়ারি।</p>
       <ul><li>Staff শুধু যোগ করতে পারে, বদলাতে পারে শুধু Admin</li><li>দৈনিক ক্লোজিং রিপোর্ট — ছবি, PDF, Excel, WhatsApp</li><li>মোবাইল ও কম্পিউটার দুটোতেই চলে</li></ul></div>
@@ -524,7 +560,8 @@ function loginView() {
     <h2>লগইন করুন</h2><p class="mut">আপনার অফিস ইমেইল ও পাসওয়ার্ড দিন</p>
     ${DEMO ? "" : `<form id="lf"><label class="f">ইমেইল</label><input class="in" id="em" type="email" autocomplete="username" required>
     <label class="f" style="margin-top:14px">পাসওয়ার্ড</label><input class="in" id="pw" type="password" autocomplete="current-password" required>
-    <button class="btn pri lg" style="width:100%;margin-top:20px" id="lb">লগইন</button><div class="hint" id="le"></div></form>`}${demoBox}</div></div></div>`;
+    <button class="btn pri lg" style="width:100%;margin-top:20px" id="lb">লগইন</button><div class="hint" id="le"></div></form>`}${demoBox}${isStandalone() ? "" : `<button class="inst-link" id="lg-inst" type="button">${ico("dl")} ${LANG === "en" ? "Install the app — Android · iPhone · Windows" : "অ্যাপ ইন্সটল করুন — Android · iPhone · Windows"}</button>`}</div></div></div>`;
+  $("#theme").onclick = () => setTheme(getTheme() === "dark" ? "light" : "dark"); $("#lg-inst") && ($("#lg-inst").onclick = installModal);
   $("#lang").onclick = () => setLang(LANG === "bn" ? "en" : "bn");
   const done = async u => { S.me = u; await boot(); };
   if (DEMO) $$("[data-demo]").forEach(c => c.onclick = async () => { const [r, n] = c.dataset.demo.split("|"); await done(await API.login(r, n)); });
@@ -1369,7 +1406,7 @@ function openMore(keys, mob, bd, lo) {
   const el = document.createElement("div"); el.className = "sheet sheet2";
   el.innerHTML = `<div class="box"><div class="sh-hd"><div class="grab"></div><b>সব পাতা</b><button class="iconbtn sh-x" data-x="close" title="বন্ধ">✕</button></div><div class="sh-body">
     ${groups.map(g => `<div class="sh-sec">${g.s === "more" ? "আরও" : SECS[g.s] || "মেনু"}</div><div class="sh-grid">${g.ks.map(k => `<a href="#/${k}" class="${k === cur ? "on" : ""}"><span class="ti">${ico(ROUTES[k].ic)}${bd[k] ? `<span class="badge">${bd[k]}</span>` : ""}</span><span class="tl">${k === "dash" ? "হোম" : ROUTES[k].t}</span></a>`).join("")}</div>`).join("")}
-    <div class="sh-foot"><button data-x="th">${ico(dark ? "sun" : "moon")}<span>${dark ? "লাইট থিম" : "ডার্ক থিম"}</span></button><button data-x="lg">${ico("copyt")}<span>${LANG === "bn" ? "English" : "বাংলা"}</span></button><button data-x="lo" class="lo">${ico("out")}<span>লগআউট</span></button></div>
+    <div class="sh-foot"><button data-x="th">${ico(dark ? "sun" : "moon")}<span>${dark ? "লাইট থিম" : "ডার্ক থিম"}</span></button><button data-x="lg">${ico("copyt")}<span>${LANG === "bn" ? "English" : "বাংলা"}</span></button><button data-x="ins">${ico("dl")}<span>${LANG === "en" ? "Install app" : "অ্যাপ ইন্সটল"}</span></button><button data-x="lo" class="lo">${ico("out")}<span>লগআউট</span></button></div>
     <div class="mut xs c" style="margin-top:8px">${esc(S.me.name)} · ${esc(S.me.role)}</div></div></div>`;
   document.body.appendChild(el); document.body.classList.add("noscroll");
   history.pushState({ more: 1 }, "");
@@ -1388,6 +1425,7 @@ function openMore(keys, mob, bd, lo) {
     const x = ev.target.closest("[data-x]"); if (!x) return;
     if (x.dataset.x === "close") close();
     else if (x.dataset.x === "th") { setTheme(dark ? "light" : "dark"); close(); }
+    else if (x.dataset.x === "ins") { close(); setTimeout(installModal, 60); }
     else if (x.dataset.x === "lg") { close(); setTimeout(() => setLang(LANG === "bn" ? "en" : "bn"), 60); }
     else if (x.dataset.x === "lo") lo();
   });
@@ -2054,7 +2092,6 @@ async function vRem(v) {
 }
 
 /* =================== v6: settings (everyone) =================== */
-let installEvt = null; window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; });
 async function vSettings(v) {
   const admin = S.me.role === "admin"; const sel = (id, opts, val) => `<select class="in" id="${id}">${opts.map(([k, l]) => `<option value="${k}" ${String(k) === String(val) ? "selected" : ""}>${l}</option>`).join("")}</select>`;
   const hours = Array.from({ length: 15 }, (_, i) => i + 9).map(h => [h, `${h > 12 ? h - 12 : h}:00 ${h >= 12 ? "PM" : "AM"}`]);
@@ -2080,7 +2117,7 @@ async function vSettings(v) {
      <div class="kv"><span>ইন্টারনেট</span><b class="${navigator.onLine ? "gr" : "rd"}">${navigator.onLine ? "অনলাইন" : "অফলাইন"}</b></div>
      <div class="kv"><span>সিঙ্ক বাকি</span><b>${DEMO ? "—" : Outbox.count()}</b></div>
      <div class="kv"><span>এই ডিভাইসে জমা ডাটা</span><b>${(used / 1024).toFixed(0)} KB</b></div>
-     <div class="row" style="margin-top:6px"><button class="btn fix" id="st-sync">${ico("clock")} এখনই সিঙ্ক</button><button class="btn fix" id="st-upd">↻ আপডেট দেখুন</button>${installEvt ? `<button class="btn pri fix" id="st-inst">⬇ অ্যাপ ইনস্টল</button>` : ""}<button class="btn bad fix" id="st-clr">ক্যাশ মুছে রিলোড</button></div>
+     <div class="row" style="margin-top:6px"><button class="btn fix" id="st-sync">${ico("clock")} এখনই সিঙ্ক</button><button class="btn fix" id="st-upd">↻ আপডেট দেখুন</button>${isStandalone() ? "" : `<button class="btn pri fix" id="st-inst">⬇ অ্যাপ ইনস্টল</button>`}<button class="btn bad fix" id="st-clr">ক্যাশ মুছে রিলোড</button></div>
      <div class="mut xs">"ক্যাশ মুছে রিলোড" শুধু এই ডিভাইসের জমা কপি মোছে — সার্ভারের ডাটা ঠিক থাকে। সিঙ্ক বাকি থাকলে আগে সিঙ্ক করুন।</div></div></div>
    ${admin ? `<div class="card" style="grid-column:1/-1"><h3>🛡 Admin শর্টকাট</h3><div class="row"><a class="btn fix" href="#/admin">${ico("gear")} ব্যবহারকারী ও অ্যাকাউন্ট</a><a class="btn fix" href="#/audit">${ico("shield")} Audit ও Backup</a><a class="btn fix" href="#/books">${ico("book")} চেক বই</a></div></div>` : ""}</div>`;
   const g = id => $("#" + id, v);
@@ -2094,7 +2131,7 @@ async function vSettings(v) {
   g("st-nt").onclick = () => { if (PREFS.sound) beep(); sysNotify("🔔 পরীক্ষা — Nabiad", "নোটিফিকেশন ঠিকমতো কাজ করছে", "test"); toast("পরীক্ষার নোটিফিকেশন পাঠানো হয়েছে"); };
   g("st-sync").onclick = async () => { if (DEMO) return toast("DEMO মোড"); await Outbox.flush(); await reload(); toast("✔ সিঙ্ক ও রিফ্রেশ হয়েছে"); };
   g("st-upd").onclick = async () => { try { const reg = await navigator.serviceWorker?.getRegistration(); await reg?.update(); } catch { } toast("নতুন সংস্করণ থাকলে রিলোড হচ্ছে…"); setTimeout(() => location.reload(), 900); };
-  g("st-inst") && (g("st-inst").onclick = async () => { installEvt.prompt(); await installEvt.userChoice; installEvt = null; });
+  g("st-inst") && (g("st-inst").onclick = installModal);
   g("st-clr").onclick = () => { if (Outbox.count() && !ask(`${Outbox.count()}টি এন্ট্রি এখনো সিঙ্ক হয়নি — মুছলে হারিয়ে যাবে। তবুও মুছবেন?`)) return; if (!ask("এই ডিভাইসের জমা কপি মুছে রিলোড করবেন?")) return; [CACHE_KEY, "nabiad_rem_seen"].forEach(k => localStorage.removeItem(k)); if (!Outbox.count()) localStorage.removeItem(OB_KEY); location.reload(); };
 }
 
