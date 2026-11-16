@@ -105,6 +105,7 @@ const ICON = {
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  chev: '<path d="M15 6l-6 6 6 6"/>',
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   card: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>',
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
@@ -476,16 +477,17 @@ let cleanup = null;
 const getTheme = () => document.documentElement.dataset.theme || "light";
 function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("nabiad_theme", t); } catch { } $$(".th-ic").forEach(e => e.innerHTML = ico(t === "dark" ? "sun" : "moon")); }
 function badges() { return { status: pendingOld().length, books: allMissing().length, rem: typeof dueList === "function" ? dueList().length : 0 }; }
+function sideMin(on, save = true) { document.documentElement.dataset.side = on ? "min" : ""; if (save) try { localStorage.setItem("nabiad_side", on ? "min" : "full"); } catch { } const b = $("#sbtog"); if (b) { const t = LANG === "en" ? (on ? "Expand sidebar" : "Minimize sidebar") : (on ? "সাইডবার বড় করুন" : "সাইডবার ছোট করুন"); b.title = t; b.setAttribute("aria-label", t); b.setAttribute("aria-expanded", on ? "false" : "true"); } }
 function shell() {
   const keys = allowed(), bd = badges();
-  const link = k => { const r = ROUTES[k]; const n = bd[k]; return `<a href="#/${k}" data-k="${k}">${ico(r.ic)}<span>${r.t}</span>${n ? `<span class="badge">${n}</span>` : ""}</a>`; };
+  const link = k => { const r = ROUTES[k]; const n = bd[k]; return `<a href="#/${k}" data-k="${k}" title="${esc(r.t)}">${ico(r.ic)}<span>${r.t}</span>${n ? `<span class="badge">${n}</span>` : ""}</a>`; };
   let nav = "", last = "";
   keys.forEach(k => { if (ROUTES[k].sec !== last) { last = ROUTES[k].sec; if (SECS[last]) nav += `<div class="sec">${SECS[last]}</div>`; } nav += link(k); });
   const TABS = (S.me.role === "boss" ? [["reports", "main", "চেক"], ["crep", "bank", "ব্যাংক"], ["cashsum", "cash", "ক্যাশ"], ["dsum", "dist", "কালেকশন"]] : [["entry", "main", "চেক"], ["closing", "bank", "ব্যাংক"], ["cash", "cash", "ক্যাশ"], ["dcol", "dist", "কালেকশন"]]).filter(t => keys.includes(t[0]));
   const mob = TABS.map(t => t[0]);
   const ini = (S.me.name || "?").trim().slice(0, 1).toUpperCase();
   $("#app").innerHTML = `<div class="shell">
-    <aside class="side"><div class="brand"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Cheque &amp; Bank Control</span></div></div>
+    <aside class="side"><div class="brand"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Cheque &amp; Bank Control</span></div><button class="sbtog" id="sbtog" type="button">${ico("chev")}</button></div>
       <nav class="nav">${nav}</nav>
       <div class="me"><div class="ava">${esc(ini)}</div><div class="who"><b>${esc(S.me.name)}</b><span class="mut">${esc(S.me.email)}</span></div><button class="iconbtn" id="logout" title="লগআউট">${ico("out")}</button></div></aside>
     <div class="mainwrap">
@@ -497,6 +499,8 @@ function shell() {
     <nav class="mnav">${TABS.map(([k, sec, lab]) => `<a href="#/${k}" data-tab="${k}" data-sec="${sec}"><span class="mi">${ico(ROUTES[k].ic)}</span><span class="ml">${lab}</span>${tabBadge(sec, bd)}</a>`).join("")}<a href="#" id="more" data-sec="more"><span class="mi">${ico("more")}</span><span class="ml">আরও</span>${tabBadge("more", bd)}</a></nav>`;
   const lo = async () => { await API.logout(); try { localStorage.removeItem(CACHE_KEY); } catch { } location.hash = ""; location.reload(); };
   $("#logout").onclick = lo;
+  $("#sbtog").onclick = () => sideMin(document.documentElement.dataset.side !== "min");
+  { let m = false; try { m = localStorage.getItem("nabiad_side") === "min"; } catch { } sideMin(m, false); }
   $("#theme").onclick = () => setTheme(getTheme() === "dark" ? "light" : "dark");
   $("#qs").onclick = palette; $("#bell").onclick = () => { const d = dueList(); if (d.length) dueModal(d); else location.hash = "#/rem"; }; updateBell();
   if ($("#sync")) { $("#sync").onclick = () => navigator.onLine ? Outbox.flush() : toast("ইন্টারনেট নেই — নেট এলে নিজে থেকে সিঙ্ক হবে", "err"); syncBadge(); }

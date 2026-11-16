@@ -1012,3 +1012,21 @@ a.kpi{display:block;text-decoration:none!important;color:#fff;cursor:pointer}
 .uh2{display:flex;align-items:center;gap:10px;margin-top:2px} .uh2 .ava{background:var(--grad);color:#fff}
 .cred{display:grid;gap:10px;padding:14px 16px} .cred>div{display:flex;flex-direction:column;gap:1px;min-width:0} .cred b{word-break:break-all;font-size:14px} .cred .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:16px;letter-spacing:.5px;color:var(--pri)}
 @media (max-width:520px){ .pwf{flex-wrap:wrap} .pwf .in{flex:1 1 100%} .ubar .btn{padding-inline:12px} }
+
+/* ---------- v6.38: collapsible sidebar ---------- */
+.shell{transition:grid-template-columns .24s var(--ease)}
+.brand{position:relative}
+.sbtog{margin-left:auto;flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;cursor:pointer;color:rgba(224,231,255,.85);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);padding:0;transition:background .18s,transform .24s var(--ease),color .18s}
+.sbtog:hover{background:rgba(255,255,255,.2);color:#fff} .sbtog svg{width:16px;height:16px}
+.sbtog:focus-visible{outline:2px solid #22d3ee;outline-offset:2px}
+@media (min-width:901px){
+  html[data-side=min]{--side:78px}
+  html[data-side=min] .brand{flex-direction:column;gap:10px;padding:4px 0 12px} html[data-side=min] .brand>div:nth-child(2){display:none}
+  html[data-side=min] .sbtog{margin:0} html[data-side=min] .sbtog svg{transform:rotate(180deg)}
+  html[data-side=min] .nav .sec{font-size:0;line-height:0;height:1px;padding:0;margin:10px 20px;background:rgba(255,255,255,.22);border-radius:1px}
+  html[data-side=min] .nav a{justify-content:center;padding:11px 0;gap:0} html[data-side=min] .nav a>span:not(.badge){display:none} html[data-side=min] .nav a svg{width:20px;height:20px}
+  html[data-side=min] .nav a:hover{transform:none}
+  html[data-side=min] .nav a .badge{position:absolute;top:3px;right:9px;margin:0;min-width:16px;font-size:9.5px;line-height:16px;padding:0 4px}
+  html[data-side=min] .me{flex-direction:column;padding:10px 6px;gap:8px} html[data-side=min] .me .who{display:none}
+}
+@media (prefers-reduced-motion:reduce){.shell,.sbtog{transition:none}}
