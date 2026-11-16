@@ -32,10 +32,10 @@ const I18N = {
   "A/C ও খাত ধরে রাখুন": "Keep A/C & purpose", "আজকের এন্ট্রি": "Today's entries", "আজ এখনো কোনো এন্ট্রি নেই": "No entries today yet",
   "শেষ এন্ট্রি:": "Last entry:", "এই অ্যাকাউন্টে এখনো এন্ট্রি নেই": "No entries for this account yet", "আগেই এন্ট্রি আছে (": "already entered (", "আগেই এন্ট্রি আছে": "already entered",
   "খাত বাছুন": "Choose purpose", "A/C Code বাছুন": "Choose A/C code", "চেক নং দিন": "Enter cheque no", "তারিখ দিন": "Enter date",
-  "টাকার অংক দিন (বাতিল পাতা হলে খাত 'বাতিল/নষ্ট পাতা' বাছুন)": "Enter the amount (for a cancelled leaf choose 'Cancelled/Spoiled')",
+  "টাকার অঙ্ক দিন (বাতিল পাতা হলে খাত 'বাতিল/নষ্ট পাতা' বাছুন)": "Enter the amount (for a cancelled leaf choose 'Cancelled/Spoiled')",
   "কে তুলেছে — বাছুন": "Choose who withdrew", "কোন A/C তে জমা — বাছুন": "Choose the deposit A/C", "From ও To একই A/C হতে পারে না": "From and To cannot be the same A/C",
   "এই চেক আগেই এন্ট্রি আছে": "This cheque is already entered", "এই চেক নম্বর এই অ্যাকাউন্টে আগেই এন্ট্রি আছে": "This cheque number is already entered for this account",
-  "✔ সেভ হয়েছে:": "✔ Saved:", "— আজ থেকে": "— from today", "দিন আগের": "days earlier", "দিন পরের": "days later", "। ঠিক আছে?": ". Is that right?", "— অংক ঠিক আছে?": "— is the amount right?",
+  "✔ সেভ হয়েছে:": "✔ Saved:", "— আজ থেকে": "— from today", "দিন আগের": "days earlier", "দিন পরের": "days later", "। ঠিক আছে?": ". Is that right?", "— অঙ্ক ঠিক আছে?": "— is the amount right?",
   "Cash Withdrawal (ক্যাশ উত্তোলন)": "Cash Withdrawal", "Own A/C Transfer (নিজ অ্যাকাউন্টে জমা)": "Own A/C Transfer", "Supplier/Party Payment (সাপ্লায়ার/পার্টি পেমেন্ট)": "Supplier/Party Payment",
   "Salary (বেতন)": "Salary", "Utility/Bills (বিদ্যুৎ/গ্যাস/বিল)": "Utility/Bills", "Rent (ভাড়া)": "Rent", "Loan/EMI (লোন কিস্তি)": "Loan/EMI", "LC/Import (এলসি)": "LC/Import",
   "Tax/VAT (ট্যাক্স/ভ্যাট)": "Tax/VAT", "Office Expense (অফিস খরচ)": "Office Expense", "Personal (বস/পরিবার)": "Personal", "Cancelled/Spoiled (বাতিল/নষ্ট পাতা)": "Cancelled/Spoiled", "Others (অন্যান্য)": "Others",
@@ -55,7 +55,7 @@ const I18N = {
   "দৈনিক ব্যাংক ক্লোজিং": "Daily Bank Closing", "‹ আগের দিন": "‹ Previous day", "পরের দিন ›": "Next day ›", "আগের ডাটা:": "Previous data:", "(মাঝে": "(gap of",
   "দিনের ডাটা নেই)": "days without data)", "আগের ক্লোজিং": "Prev closing", "চেক খরচ": "Cheque debit", "অন্য খরচ": "Other debit", "ট্রান্সফার জমা": "Transfer in",
   "অন্য জমা": "Other deposit", "হিসাব মতে": "Expected", "ব্যাংক ক্লোজিং": "Bank closing", "মোট": "Total", "আজকের": "Today's", "ব্যালেন্স সেভ": "balance save",
-  "ব্যাংক ক্লোজিং ঘর খালি রাখলে": "If Bank closing is left blank, the", "অংক ধরা হবে। Diff ≠ 0 হলে মন্তব্য বাধ্যতামূলক।": "amount is used. Remarks are required when Diff ≠ 0.",
+  "ব্যাংক ক্লোজিং ঘর খালি রাখলে": "If Bank closing is left blank, the", "অঙ্ক ধরা হবে। Diff ≠ 0 হলে মন্তব্য বাধ্যতামূলক।": "amount is used. Remarks are required when Diff ≠ 0.",
   "🔒 এই তারিখের ব্যালেন্স আগেই সেভ হয়েছে। বদলাতে Admin কে বলুন।": "🔒 Balances for this date are already saved. Ask Admin to change them.",
   "⚠ এই তারিখ আগেই সেভ আছে — সেভ করলে Admin হিসেবে নতুন মান বসবে।": "⚠ This date is already saved — saving again (as Admin) will overwrite it.",
   "Diff আছে কিন্তু মন্তব্য নেই:": "Diff without remarks:", "— মোট ক্লোজিং ৳": "— total closing ৳", "।\nসেভ করবেন?": ".\nSave?", "\n(সেভের পর শুধু Admin বদলাতে পারবে)": "\n(after saving only Admin can change it)",
@@ -125,7 +125,7 @@ const I18N = {
   "শেয়ার": "Share", "Boss-কে ইমেইল": "Email Boss", "খোঁজার সাথে কিছু মেলেনি": "Nothing matches the search", "শেয়ার করা যায়নি:": "Could not share:",
   // reminders
   "রিমাইন্ডার": "Reminders", "রিমাইন্ডার ও সতর্কতা": "Reminders & alerts", "নতুন রিমাইন্ডার": "New reminder", "⏰ নতুন রিমাইন্ডার": "⏰ New reminder", "রিমাইন্ডার এডিট": "Edit reminder",
-  "কী মনে করাবে *": "Remind me to *", "যেমন: PBL-483 চেক পাস হয়েছে কিনা দেখুন": "e.g. Check whether PBL-483 cheque has cleared", "বিস্তারিত": "Details",
+  "কী মনে করাবে *": "Remind me to *", "যেমন: PBL-483 চেক পাস হয়েছে কি না দেখুন": "e.g. Check whether PBL-483 cheque has cleared", "বিস্তারিত": "Details",
   "১ ঘণ্টা পরে": "In 1 hour", "কাল সকাল ১০টা": "Tomorrow 10 AM", "৩ দিন পরে": "In 3 days", "১ সপ্তাহ পরে": "In 1 week", "সময়": "Time", "পুনরাবৃত্তি": "Repeat", "কার জন্য": "For whom",
   "একবার": "Once", "প্রতি ঘণ্টা": "Hourly", "প্রতিদিন": "Daily", "প্রতি সপ্তাহ": "Weekly", "প্রতি মাস": "Monthly", "শুধু আমি": "Only me", "সবাই": "Everyone", "শুধু Admin": "Admin only",
   "কী মনে করাবে লিখুন": "Enter what to remind", "তারিখ/সময় ঠিক করুন": "Fix the date/time", "✔ রিমাইন্ডার সেভ হয়েছে": "✔ Reminder saved",
@@ -136,12 +136,12 @@ const I18N = {
   "কোনো রিমাইন্ডার নেই — \"+ নতুন রিমাইন্ডার\" চাপুন। চেকের পাতা থেকেও রিমাইন্ডার দেওয়া যায়।": "No reminders — press \"+ New reminder\". You can also set one from a cheque.",
   "💡 অ্যাপ পুরো বন্ধ থাকলেও অ্যালার্ম চাইলে \"ক্যালেন্ডার\" চাপুন — ফোনের ক্যালেন্ডারে অ্যালার্মসহ যোগ হবে।": "💡 For an alarm even when the app is closed, press \"Calendar\" — it is added to your phone calendar with an alarm.",
   "ফোন/কম্পিউটারে নোটিফিকেশন পেতে অনুমতি দিন (অ্যাপ খোলা বা background-এ থাকলে আসবে)।": "Allow notifications on this phone/computer (shown while the app is open or in the background).",
-  "নোটিফিকেশন চালু": "Enable notifications", "ব্রাউজারে নোটিফিকেশন বন্ধ করা আছে — ব্রাউজারের সাইট সেটিং থেকে চালু করুন। অ্যাপের ভিতরে রিমাইন্ডার তবুও আসবে।": "Notifications are blocked in the browser — enable them in site settings. In-app reminders still work.",
+  "নোটিফিকেশন চালু": "Enable notifications", "ব্রাউজারে নোটিফিকেশন বন্ধ করা আছে — ব্রাউজারের সাইট সেটিং থেকে চালু করুন। অ্যাপের ভেতরে রিমাইন্ডার তবুও আসবে।": "Notifications are blocked in the browser — enable them in site settings. In-app reminders still work.",
   "✔ নোটিফিকেশন চালু হয়েছে": "✔ Notifications enabled", "রিমাইন্ডারের সময় এখানে জানাবে": "You'll be alerted here at reminder time", "⏰ পরে মনে করিয়ে দেবে": "⏰ Will remind you later",
   "✔ পরের রিমাইন্ডার:": "✔ Next reminder:", "আজকের দৈনিক ক্লোজিং এখনো সেভ হয়নি": "Today's daily closing is not saved yet", "কর্মদিবসের ক্লোজিং বাকি (শেষ সেভ:": "working days of closing pending (last saved:",
   "ড্রাফট আছে, ফাইনাল সেভ বাকি:": "Draft exists, final save pending:", "টি অফলাইন এন্ট্রি সিঙ্ক বাকি": " offline entries waiting to sync", "দিনের বেশি Pending": "days+ pending", "মিসিং চেক পাতা আছে:": "Missing cheque leaves:",
   "মিনিট": "min", "ঘণ্টা": "h", "আগে": "ago", "পরে": "later", "এখন": "now",
-  "চেক পাস হয়েছে কিনা দেখুন": "check whether it has cleared",
+  "চেক পাস হয়েছে কি না দেখুন": "check whether it has cleared",
   // photos / entry
   "চেকের ছবি": "Cheque photo", "(ঐচ্ছিক)": "(optional)", "ছবি তুলুন / বাছুন": "Take / choose photo", "ছবি বাদ": "Remove photo", "পাস হওয়ার রিমাইন্ডার": "Clearing reminder", "(ঐচ্ছিক — যেমন পার্টি চেক)": "(optional — e.g. party cheque)",
   "দিন বাছুন": "Pick days", "২ দিন পরে": "In 2 days", "৭ দিন পরে": "In 7 days", "১৫ দিন পরে": "In 15 days", "রিমাইন্ডারের তারিখ চেকের তারিখের আগে হতে পারে না": "Reminder date cannot be before the cheque date",
@@ -170,15 +170,15 @@ const I18N = {
   "আজকের রেকর্ড": "Today's record", "সামারি": "Summary", "ক্যাশ টেবিল নেই — Supabase-এ schema_v3.sql চালাতে হবে": "Cash table missing — run schema_v3.sql in Supabase",
   "🔒 এই তারিখের ক্যাশ রেকর্ড ফাইনাল সেভ হয়েছে।": "🔒 This date's cash record is final-saved.", "⚠ ফাইনাল সেভ করা আছে — Admin হিসেবে বদলাতে পারবেন।": "⚠ Final-saved — you can change it as Admin.", "ড্রাফট লোড হয়েছে": "Draft loaded",
   "Opening নেওয়া হয়েছে": "Opening taken from", "-এর ক্লোজিং থেকে": " closing", "কর্মদিবসের রেকর্ড নেই": "working days without a record", "এটা প্রথম রেকর্ড — Opening Cash ও Bank নিজে লিখুন।": "This is the first record — enter Opening Cash and Bank yourself.",
-  "এই তারিখের ড্রাফট মুছবেন?": "Delete this date's draft?", "নোট": "Note", "একাধিক অংক যোগ করতে + লিখুন, যেমন 5000+12000+800": "To add several amounts type +, e.g. 5000+12000+800",
-  "(গুনে লিখুন)": "(count and enter)", "হাতে নগদ": "Cash in hand", "(Closing − Cash)": "(Closing − Cash)", "ক্যাশ ফাইনাল সেভ": "cash final save", "ভুল অংক:": "Invalid amount:", "— শুধু সংখ্যা আর + / − লিখুন": "— use only digits and + / −",
+  "এই তারিখের ড্রাফট মুছবেন?": "Delete this date's draft?", "নোট": "Note", "একাধিক অঙ্ক যোগ করতে + লিখুন, যেমন 5000+12000+800": "To add several amounts type +, e.g. 5000+12000+800",
+  "(গুনে লিখুন)": "(count and enter)", "হাতে নগদ": "Cash in hand", "(Closing − Cash)": "(Closing − Cash)", "ক্যাশ ফাইনাল সেভ": "cash final save", "ভুল অঙ্ক:": "Invalid amount:", "— শুধু সংখ্যা আর + / − লিখুন": "— use only digits and + / −",
   "Cash in hand লিখুন (হাতে কত নগদ আছে)": "Enter Cash in hand", "✔ ক্যাশ রেকর্ড ফাইনাল সেভ হয়েছে": "✔ Cash record final-saved", "ইন্টারনেট নেই — এই ডিভাইসে জমা আছে, নেট এলে আবার সেভ করুন": "No internet — kept on this device, save again when online",
   "দিনের ফাইনাল রেকর্ড": "days of final records", "টি ড্রাফট": " drafts", "মোট Receipt": "Total receipt", "মোট Payment": "Total payment", "দৈনিক গড়": "Daily avg", "নিট (Receipt − Payment)": "Net (Receipt − Payment)", "সর্বশেষ Closing": "Latest closing", "রেকর্ড নেই": "No record",
   "দৈনিক Receipt বনাম Payment": "Daily receipt vs payment", "Closing ও হাতে নগদ": "Closing & cash in hand", "দৈনিক ইতিহাস": "Daily history", "অবস্থা": "Status", "ফাইনাল": "Final", "ড্রাফট": "Draft",
   "এই সময়ে কোনো ক্যাশ রেকর্ড নেই": "No cash records in this period", "ক্যাশ রেকর্ড শুরু করুন": "Start a cash record", "এই সময়ে কোনো ফাইনাল ক্যাশ রেকর্ড নেই": "No final cash records in this period",
-  "Receipt — খাত অনুযায়ী": "Receipts by category", "Payment — খাত অনুযায়ী": "Payments by category", "নিট": "Net", "খুঁজুন (নোট, খাত, অংক)": "Search (note, category, amount)", "ধরন": "Type", "টি লাইন": " lines", "৩০ দিন ": "30 days ",
+  "Receipt — খাত অনুযায়ী": "Receipts by category", "Payment — খাত অনুযায়ী": "Payments by category", "নিট": "Net", "খুঁজুন (নোট, খাত, অঙ্ক)": "Search (note, category, amount)", "ধরন": "Type", "টি লাইন": " lines", "৩০ দিন ": "30 days ",
   // reminders
-  "যেমন: পার্টির চেক জমা দিন / পাস হয়েছে কিনা দেখুন": "e.g. deposit party cheque / check if cleared", "বিস্তারিত (পার্টি, টাকা, ব্যাংক…)": "Details (party, amount, bank…)", "চেক / কাগজের ছবি": "Cheque / document photo",
+  "যেমন: পার্টির চেক জমা দিন / পাস হয়েছে কি না দেখুন": "e.g. deposit party cheque / check if cleared", "বিস্তারিত (পার্টি, টাকা, ব্যাংক…)": "Details (party, amount, bank…)", "চেক / কাগজের ছবি": "Cheque / document photo",
   "ছবি আছে — নতুন দিলে বদলাবে": "Has photo — a new one will replace it", "কত দিন পরে (Pick days)": "In how many days (Pick days)", "আমাদের চেকের সাথে যুক্ত করুন": "Link to one of our cheques", "A/C বা চেক নং লিখুন": "Type A/C or cheque no",
   "ছবি সেভ করতে ইন্টারনেট লাগবে": "Internet needed to save a photo", "✔ রিমাইন্ডার:": "✔ Reminder:", "নোটিফিকেশন চালু করলে সময় হলে ফোনে জানাবে।": "Turn on notifications to be alerted on your phone.", "চালু করুন": "Turn on",
   "টির সময় হয়েছে": " due now", "পার্টির চেক, পেমেন্ট, অডিট বা যেকোনো কাজ — ছবি ও দিন বেছে দিন": "Party cheque, payment, audit or any task — add a photo and pick days",
@@ -209,7 +209,7 @@ const I18N = {
   "schema_v2.sql চালাতে হবে": "run schema_v2.sql", "schema_v3.sql চালাতে হবে": "run schema_v3.sql", "রাত ১২টার Backup": "12 AM backup", "অফলাইন মোড (PWA)": "Offline mode (PWA)", "রিলোড দিলে চালু হবে": "Active after reload",
   "👮 কে কী পারে": "👮 Who can do what", "চেক / ক্লোজিং / ক্যাশ যোগ": "Add cheque / closing / cash", "ফাইনাল সেভের পর বদলানো": "Change after final save", "মুছে ফেলা": "Delete", "রিপোর্ট দেখা": "View reports", "Backup ও ব্যবহারকারী": "Backup & users",
   "ভুল স্ট্যাটাস দিলে নতুন স্ট্যাটাস দিন — ইতিহাস থেকে যায়। এই নিয়ম ডাটাবেস (RLS) নিজেই আটকায়।": "If a status is wrong, add a new one — history is kept. The database (RLS) enforces these rules.", "⚡ দ্রুত লিংক": "⚡ Quick links", "Supabase ড্যাশবোর্ড ↗": "Supabase dashboard ↗", "GitHub কোড ↗": "GitHub code ↗",
-  "💡 একই খাতে কয়েকটা অংক থাকলে + দিয়ে লিখুন, যেমন 5000+12000": "💡 Several amounts in one category? Type them with +, e.g. 5000+12000",
+  "💡 একই খাতে কয়েকটা অঙ্ক থাকলে + দিয়ে লিখুন, যেমন 5000+12000": "💡 Several amounts in one category? Type them with +, e.g. 5000+12000",
   "ডাউনলোড ▾": "Download ▾", "প্রিন্ট / PDF": "Print / PDF", "লগ পরিষ্কার": "Clear log", "তারিখ": "Date", "খুঁজুন — A/C, চেক নং, ইমেইল…": "Search — A/C, cheque no, email…", "সব জায়গা": "All places", "সব কাজ": "All actions", "সবাই": "Everyone",
   "মোট পরিবর্তন": "Total changes", "সবচেয়ে বেশি:": "Most:", "আরও লোড করুন": "Load more", "৯০ দিন": "90 days",
   "🧹 Audit log পরিষ্কার": "🧹 Clear audit log", "পুরনো লগ মুছে জায়গা খালি করুন। মোছার পরেও \"কে কখন পরিষ্কার করেছে\" তার একটা রেকর্ড থেকে যাবে।": "Delete old log entries to free space. A record of who cleared it, and when, is always kept.",
@@ -276,7 +276,7 @@ Object.assign(I18N, {
   "নিশ্চিত করুন": "Confirm", "নতুন পার্টি": "New party", "পার্টি এডিট": "Edit party", "পার্টির নাম *": "Party name *", "(নাম-এলাকা, যেমন: Alam Store-Nawabagonj, Dinajpur)": "(name-area, e.g. Alam Store-Nawabagonj, Dinajpur)",
   "সাধারণত যে Account-এ জমা দেয়": "Usual deposit account", "সক্রিয় পার্টি": "Active party", "(বন্ধ করলে এন্ট্রির সাজেশনে আসবে না)": "(if off, not suggested in entry)", "পার্টির নাম লিখুন": "Enter the party name",
   "পার্টি মুছে ফেলবেন?": "Delete party?", "মুছে ফেলবেন? (আগের কালেকশন রেকর্ড থেকে যাবে)": "delete? (earlier collection records stay)", "✔ পার্টি সেভ হয়েছে": "✔ Party saved", "✔ মুছে ফেলা হয়েছে": "✔ Deleted", "✔ সেভ হয়েছে": "✔ Saved",
-  "কালেকশন এডিট": "Edit collection", "পার্টির নাম দিন": "Enter the party name", "টাকার অংক ঠিক নেই": "Amount is not valid", "তারিখ দিন": "Enter the date", "অংক ঠিক নেই": "Invalid amount",
+  "কালেকশন এডিট": "Edit collection", "পার্টির নাম দিন": "Enter the party name", "টাকার অঙ্ক ঠিক নেই": "Amount is not valid", "তারিখ দিন": "Enter the date", "অঙ্ক ঠিক নেই": "Invalid amount",
   "পার্টি *": "Party *", "(টাইপ করুন, লিস্ট থেকে বাছুন)": "(type, pick from the list)", "পার্টির নাম…": "Party name…", "পার্টির নাম টাইপ করুন…": "Type party name…", "টাকা *": "Amount *", "(50000+300 চলবে)": "(50000+300 works)",
   "মন্তব্য (ঐচ্ছিক)": "Remarks (optional)", "স্লিপ নং / নোট": "Slip no / note", "যোগ করুন": "Add", "আজকের কালেকশন লিস্ট": "Collection list for the day", "খুঁজুন — পার্টি, ASM, Account, টাকা, মন্তব্য…": "Search — party, ASM, account, amount, remarks…",
   "নতুন পার্টি তৈরি করুন": "create new party", "পার্টি বাছুন": "Pick a party", "পার্টি তালিকায় নেই। নতুন পার্টি তৈরি করবেন?": "is not in the party list. Create a new party?", "Account লিখুন (যেমন DBBL-17)": "Enter the account (e.g. DBBL-17)",
@@ -319,11 +319,19 @@ Object.assign(I18N, {
   "ডিস্ট্রিবিউশন কালেকশন": "Distribution collection", "আজ": "Today", "৭ দিনে মোট": "7-day total", "এন্ট্রি": "entries",
   "গত ৭ দিনে কোনো কালেকশন এন্ট্রি নেই": "No collection entries in the last 7 days", "কালেকশন ডাটা পাওয়া যায়নি": "Collection data not available",
   "মনোযোগ দরকার": "Needs attention", "সব ঠিক আছে!": "All good!", "কোনো জরুরি কাজ বা সতর্কতা নেই — দারুণ চলছে।": "No urgent tasks or alerts — going great.",
-  "দেখুন": "View", "খুলুন →": "Open →", "Pending/Hold": "Pending/Hold"
+  "দেখুন": "View", "খুলুন →": "Open →", "Pending/Hold": "Pending/Hold",
+  // v6.48 — English-mode leak fixes (exact whole-string entries)
+  "ব্যাংক মিলান": "Bank reconciliation", "ক্লোজিং": "Closing", "ভাষা": "Language", "ঘটনা": "Event", "শুধু ২০২৬": "2026 only",
+  "মোছা যায়নি": "Could not delete", "চেক পাওয়া যায়নি": "Cheque not found", "লোড হয়নি": "Not loaded",
+  "কপি হয়েছে": "Copied", "✔ কপি হয়েছে": "✔ Copied", "কোনো ব্যালেন্স সেভ নেই": "No balance saved",
+  "2FA রিসেট": "Reset 2FA", "সাইডবার বড় করুন": "Expand sidebar", "সাইডবার ছোট করুন": "Minimize sidebar",
+  "বড় করে দেখুন": "View larger", "চাপুন": "Tap", "ব্যবহারকারী পাওয়া যায়নি": "User not found",
 });
-const I18N_KEYS = Object.keys(I18N).filter(k => k.length >= 6).sort((a, b) => b.length - a.length);
+/* short words are replaced inside a longer sentence only when listed here (whole-word match, see subBound) */
+const I18N_SHORT = new Set(["মোট", "আজ", "আজকের", "সব", "তারিখ", "টাকা", "বিবরণ", "ছবি", "দিন", "সময়", "নাম", "চেক", "মাস", "বাকি", "নোট", "শাখা", "ধরন", "ক্যাশ", "হোম", "মিনিট", "ঘণ্টা", "খাত", "ইমেইল", "সেভ", "বাতিল", "মুছুন", "এডিট", "বন্ধ", "কপি", "খরচ", "জমা", "চালু", "সবাই", "একবার", "ক্রম", "সিরিজ", "লগইন", "লগআউট", "থিম", "পাতা", "আরও", "দেখান", "যোগ", "ডিজিট", "ক্লোজিং", "আগে", "পরে", "এখন", "ব্যালেন্স", "ব্যাংক", "পার্টি", "ডাটা", "অবস্থা", "ফাইনাল", "ড্রাফট", "এন্ট্রি", "রেকর্ড", "রিপোর্ট", "অ্যাকাউন্ট", "ব্যবহারকারী", "মুছে", "সম্পূর্ণ", "সম্পন্ন", "প্রিন্ট", "ডাউনলোড"]);
+const I18N_KEYS = Object.keys(I18N).filter(k => k.length >= 6 || I18N_SHORT.has(k)).sort((a, b) => b.length - a.length);
 const BN_DIG = { "০": "0", "১": "1", "২": "2", "৩": "3", "৪": "4", "৫": "5", "৬": "6", "৭": "7", "৮": "8", "৯": "9" };
-const HAS_BN = /[ঀ-৿]/;
+const HAS_BN = /[\u0980-\u09F1\u09FC-\u09FF]/;  // ৳ (U+09F3) is a currency sign, not text
 /* replace a phrase only when it is a whole word — never inside a longer Bangla word ("পরিবর্তনের" must not become "Changeের") */
 const BNL = /[\u0980-\u09FF]/;
 function subBound(s, k, v) {
@@ -356,5 +364,5 @@ function translateTree(root) {
 }
 const i18nObserver = new MutationObserver(ms => { if (LANG !== "en") return; for (const m of ms) { if (m.type === "characterData") translateTree(m.target); else m.addedNodes.forEach(translateTree); } });
 function startI18n() { document.documentElement.lang = LANG; i18nObserver.observe(document.body, { childList: true, subtree: true, characterData: true }); translateTree(document.body); }
-const langToggle = () => `<span class="lang" id="lang" title="ভাষা / Language" data-nt><span class="${LANG === "bn" ? "on" : ""}">বাং</span><span class="${LANG === "en" ? "on" : ""}">EN</span></span>`;
+const langToggle = () => `<span class="lang" id="lang" title="${LANG === "en" ? "Language" : "ভাষা / Language"}" data-nt><span class="${LANG === "bn" ? "on" : ""}">${LANG === "en" ? "BN" : "বাং"}</span><span class="${LANG === "en" ? "on" : ""}">EN</span></span>`;
 function setLang(l) { LANG = l; try { localStorage.setItem("nabiad_lang", l); } catch { } document.documentElement.lang = l; if (typeof onLangChange === "function") onLangChange(); }

@@ -319,7 +319,7 @@ const SbAPI = {
     for (const k in p) row[m[k]] = p[k] === "" ? null : p[k];
     const { data, error } = await sb.from("cheques").update(row).eq("id", id).select("id"); if (error) throw error; if (!data || !data.length) throw new Error(LANG === "en" ? "Edit not allowed — your edit window is closed or switched off" : "এডিট করা যাবে না — আপনার এডিটের সময় শেষ বা বন্ধ আছে");
   },
-  async deleteCheque(id) { const { error } = await sb.from("cheques").delete().eq("id", id); if (error) throw /in_use/.test(error.message || "") ? new Error("এই চেকের স্ট্যাটাস রেকর্ড আছে — মুছা যাবে না। \"Cancelled\" স্ট্যাটাস দিন") : error; },
+  async deleteCheque(id) { const { error } = await sb.from("cheques").delete().eq("id", id); if (error) throw /in_use/.test(error.message || "") ? new Error(bi("এই চেকের স্ট্যাটাস রেকর্ড আছে — মুছা যাবে না। \"Cancelled\" স্ট্যাটাস দিন", "This cheque has status records — it cannot be deleted. Set the status to \"Cancelled\" instead.")) : error; },
   async deleteStatus(id) { const { error } = await sb.from("cheque_status").delete().eq("id", id); if (error) throw error; },
   async lastBalDate() { const { data } = await sb.from("balances").select("date").order("date", { ascending: false }).limit(1); return data?.[0]?.date || null; },
   async balancesOn(d) { const { data, error } = await sb.from("balances").select("*").eq("date", d).limit(2000); if (error) throw error; return Object.fromEntries(data.map(r => [r.code, { total: r.total == null ? null : Number(r.total), block: r.block == null ? null : Number(r.block), remark: r.remark, od: r.other_debit, odp: r.other_deposit, by: r.entered_by }])); },
@@ -354,7 +354,7 @@ const SbAPI = {
     const row = { code: b.code, series: b.series || null, first_leaf: b.first, last_leaf: b.last, track_from: b.track, status: b.status, note: b.note || null }; if (b.id) row.id = b.id;
     const { data, error } = await sb.from("books").upsert(row).select().single(); if (error) throw error; return data.id;
   },
-  async deleteBook(id) { const { error } = await sb.from("books").delete().eq("id", id); if (error) throw /in_use/.test(error.message || "") ? new Error("এই বইয়ের পাতায় চেক এন্ট্রি আছে — মুছা যাবে না। স্ট্যাটাস Finished বা Lost দিন") : error; },
+  async deleteBook(id) { const { error } = await sb.from("books").delete().eq("id", id); if (error) throw /in_use/.test(error.message || "") ? new Error(bi("এই বইয়ের পাতায় চেক এন্ট্রি আছে — মুছা যাবে না। স্ট্যাটাস Finished বা Lost দিন", "This book has cheque entries — it cannot be deleted. Set the status to Finished or Lost instead.")) : error; },
   async dataKey() { const { data, error } = await sb.from("app_secrets").select("v").eq("k", "data_key").maybeSingle(); if (error || !data) throw new Error("ডাটা কী পাওয়া যায়নি"); return data.v; },
   async users() { const { data, error } = await sb.from("profiles").select("*").order("role"); if (error) throw error; return data; },
   async updateProfile(id, p) { const { error } = await sb.from("profiles").update(p).eq("id", id); if (error) throw error; },
@@ -476,13 +476,13 @@ const Outbox = {
         else if (error) {
           if (it.k === "cheque") { dropped.push(`${it.p.code} · ${it.p.chq_no} — আগেই অন্য কেউ এন্ট্রি করেছে`); a = a.filter((x, i) => i === 0 || !(x.k === "status" && x.p.cheque_id === it.p.id)); }
           else if (it.k === "bal") dropped.push(`${it.p[0]?.date} ব্যালেন্স — আগেই সেভ করা আছে`);
-          else if (it.k === "dcol") dropped.push(`${it.p.party} কালেকশন — আগেই সেভ হয়েছে`);
+          else if (it.k === "dcol") dropped.push(`${it.p.party} ${bi("কালেকশন — আগেই সেভ হয়েছে", "collection — already saved")}`);
         } else done++;
         a.shift(); this.save(a);
       }
     } finally { this.busy = false; syncBadge(); }
-    if (done) { toast(`✔ ${done}টি অফলাইন এন্ট্রি সিঙ্ক হয়েছে`); balCache.clear(); try { await reload(); refreshBadges(); if (CUR === "dcol" && window.__dcolRefresh) window.__dcolRefresh(); else if (CUR !== "closing") route(); } catch { } }
-    dropped.forEach(m => toast("সিঙ্ক হয়নি: " + m, "err"));
+    if (done) { toast(bi(`✔ ${done}টি অফলাইন এন্ট্রি সিঙ্ক হয়েছে`, `✔ ${done} offline ${done === 1 ? "entry" : "entries"} synced`)); balCache.clear(); try { await reload(); refreshBadges(); if (CUR === "dcol" && window.__dcolRefresh) window.__dcolRefresh(); else if (CUR !== "closing") route(); } catch { } }
+    dropped.forEach(m => toast(bi("সিঙ্ক হয়নি: ", "Not synced: ") + m, "err"));
   }
 };
 function syncBadge() {
@@ -658,7 +658,7 @@ async function route() {
   $$("[data-k]").forEach(a => a.classList.toggle("on", a.dataset.k === k)); setTabActive(k);
   try { const on = $(".side .nav a.on"); if (on) { const n = on.closest(".nav"), r = on.getBoundingClientRect(), nr = n.getBoundingClientRect(); if (r.top < nr.top + 8 || r.bottom > nr.bottom - 16) n.scrollTop += (r.top < nr.top + 8 ? r.top - nr.top - 40 : r.bottom - nr.bottom + 40); } } catch { }
   const cr = $("#crumb"); if (cr) cr.textContent = ROUTES[k].t;
-  document.title = ROUTES[k].t + " · Nabiad";
+  document.title = tr(ROUTES[k].t) + " · Nabiad";
   const v = $("#view"); v.innerHTML = `<div class="card"><div class="skel" style="width:40%"></div><div class="skel" style="margin-top:12px"></div><div class="skel" style="margin-top:12px;width:70%"></div></div>`;
   try { cleanup = await ROUTES[k].f()(v) || null; } catch (e) { console.error(e); v.innerHTML = `<div class="alert rd">ত্রুটি: ${esc(e.message || e)}</div>`; }
   window.scrollTo(0, 0);
@@ -721,17 +721,17 @@ function installModal() {
   };
   const tabs = Object.keys(T).map(k => `<span class="chip ${k === me ? "on" : ""}" data-os="${k}">${T[k][0]}</span>`).join("");
   const steps = k => `<ol class="inst-st">${T[k][1].map(x => `<li>${x}</li>`).join("")}</ol>`;
-  modal(`<h2>📲 ${en ? "Install the Nabiad app" : "Nabiad অ্যাপ ইন্সটল করুন"}</h2>
-    <p class="mut" style="margin:0 0 12px">${en ? "No store needed — it installs straight from this page and updates itself." : "স্টোর লাগবে না — এই পেজ থেকেই ইন্সটল হয়, নিজে নিজে আপডেট হয়।"}</p>
-    ${isStandalone() ? `<div class="alert gr" style="margin-bottom:12px">✔ ${en ? "This device already runs the installed app." : "এই device-এ অ্যাপ ইন্সটল করাই আছে।"}</div>` : ""}
-    ${installEvt && !isStandalone() ? `<button class="btn pri lg" style="width:100%;margin-bottom:12px" id="in-go">${ico("dl")} ${en ? "Install on this device" : "এই device-এ এখনই ইন্সটল করুন"}</button>` : ""}
+  modal(`<h2>📲 ${en ? "Install the Nabiad app" : "Nabiad অ্যাপ ইনস্টল করুন"}</h2>
+    <p class="mut" style="margin:0 0 12px">${en ? "No store needed — it installs straight from this page and updates itself." : "স্টোর লাগবে না — এই পেজ থেকেই ইনস্টল হয়, নিজে নিজে আপডেট হয়।"}</p>
+    ${isStandalone() ? `<div class="alert gr" style="margin-bottom:12px">✔ ${en ? "This device already runs the installed app." : "এই device-এ অ্যাপ ইনস্টল করাই আছে।"}</div>` : ""}
+    ${installEvt && !isStandalone() ? `<button class="btn pri lg" style="width:100%;margin-bottom:12px" id="in-go">${ico("dl")} ${en ? "Install on this device" : "এই device-এ এখনই ইনস্টল করুন"}</button>` : ""}
     <div class="seg wrap inst-tabs" style="width:100%;display:grid;grid-template-columns:repeat(4,1fr)">${tabs}</div>
     <div id="in-steps">${steps(me)}</div>
     <label class="f">${en ? "App link (share with staff)" : "অ্যাপের লিংক (স্টাফদের পাঠান)"}</label>
     <div class="row" style="flex-wrap:nowrap"><input class="in" id="in-url" value="${url}" readonly><button class="btn" id="in-cp">${ico("copyt")} Copy</button>${navigator.share ? `<button class="btn" id="in-sh">${ico("share")}</button>` : ""}</div>
     <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" data-x="close">${en ? "Close" : "বন্ধ করুন"}</button></div>`, (root, close) => {
     $$("[data-os]", root).forEach(c => c.onclick = () => { $$("[data-os]", root).forEach(x => x.classList.toggle("on", x === c)); $("#in-steps", root).innerHTML = steps(c.dataset.os); });
-    $("#in-go", root) && ($("#in-go", root).onclick = async () => { try { installEvt.prompt(); const r = await installEvt.userChoice; installEvt = null; if (r.outcome === "accepted") { toast("✔ " + (en ? "Installing…" : "ইন্সটল হচ্ছে…")); close(); } } catch { } });
+    $("#in-go", root) && ($("#in-go", root).onclick = async () => { try { installEvt.prompt(); const r = await installEvt.userChoice; installEvt = null; if (r.outcome === "accepted") { toast("✔ " + (en ? "Installing…" : "ইনস্টল হচ্ছে…")); close(); } } catch { } });
     $("#in-cp", root).onclick = async () => { try { await navigator.clipboard.writeText(url); } catch { $("#in-url", root).select(); document.execCommand("copy"); } toast("✔ " + (en ? "Link copied" : "লিংক কপি হয়েছে")); };
     $("#in-sh", root) && ($("#in-sh", root).onclick = () => navigator.share({ title: "Nabiad", url }).catch(() => { }));
     $("[data-x=close]", root).onclick = close;
@@ -740,7 +740,7 @@ function installModal() {
 
 /* ---------- login ---------- */
 function loginView() {
-  const demoBox = DEMO ? `<div class="alert am" style="margin-top:14px"><span>⚠ <b>DEMO মোড</b> — Supabase সেট করা হয়নি, ডাটা শুধু এই ব্রাউজারে থাকবে।</span></div>
+  const demoBox = DEMO ? `<div class="alert am" style="margin-top:14px"><span>⚠ <b>${bi("DEMO মোড", "DEMO mode")}</b> — ${bi("Supabase সেট করা হয়নি, ডাটা শুধু এই ব্রাউজারে থাকবে।", "Supabase is not configured; data stays in this browser only.")}</span></div>
     <div class="chips" style="margin-top:12px">${[["admin", "Ruhul"], ["staff", "Foysal"], ["boss", "Boss"]].map(([r, n]) => `<span class="chip" data-demo="${r}|${n}">${r} (${n})</span>`).join("")}</div>` : "";
   $("#app").innerHTML = `<div class="login"><div class="tl-l"><button class="iconbtn th-ic" id="theme" title="Theme">${ico(getTheme() === "dark" ? "sun" : "moon")}</button></div><div class="tl">${langToggle()}</div>
     <div class="art"><div class="brand" style="padding:0"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Cheque &amp; Bank Control</span></div></div>
@@ -751,7 +751,7 @@ function loginView() {
     <h2>লগইন করুন</h2><p class="mut">আপনার অফিস ইমেইল ও পাসওয়ার্ড দিন</p>
     ${DEMO ? "" : `<form id="lf"><label class="f">ইমেইল</label><input class="in" id="em" type="email" autocomplete="username" required>
     <label class="f" style="margin-top:14px">পাসওয়ার্ড</label><input class="in" id="pw" type="password" autocomplete="current-password" required>
-    <button class="btn pri lg" style="width:100%;margin-top:20px" id="lb">লগইন</button><div class="hint" id="le"></div></form>`}${demoBox}${isStandalone() ? "" : `<button class="inst-link" id="lg-inst" type="button">${ico("dl")} ${LANG === "en" ? "Install the app — Android · iPhone · Windows" : "অ্যাপ ইন্সটল করুন — Android · iPhone · Windows"}</button>`}</div></div></div>`;
+    <button class="btn pri lg" style="width:100%;margin-top:20px" id="lb">লগইন</button><div class="hint" id="le"></div></form>`}${demoBox}${isStandalone() ? "" : `<button class="inst-link" id="lg-inst" type="button">${ico("dl")} ${LANG === "en" ? "Install the app — Android · iPhone · Windows" : "অ্যাপ ইনস্টল করুন — Android · iPhone · Windows"}</button>`}</div></div></div>`;
   $("#theme").onclick = () => setTheme(getTheme() === "dark" ? "light" : "dark"); $("#lg-inst") && ($("#lg-inst").onclick = installModal);
   $("#lang").onclick = () => setLang(LANG === "bn" ? "en" : "bn");
   const done = async u => { S.me = u; await boot(); };
@@ -771,7 +771,7 @@ async function vEntry(v) {
   <div class="split">
    <div class="card">
     <div class="fgrid">
-     <div class="s4 daterow"><div class="dr-d"><label class="f">চেকের তারিখ</label><input class="in big" type="date" id="e-date" value="${today()}"></div><div class="dr-p"><label class="f">চেকের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn big" for="e-ph-c" title="ক্যামেরায় ছবি তুলুন">${ico("cam")} <span class="lbl">তুলুন</span></label><label class="btn big" for="e-ph" title="গ্যালারি থেকে বাছুন">${ico("img")} <span class="lbl">বাছুন</span></label><input type="file" id="e-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="e-ph" accept="image/*" hidden><img id="e-phv" class="hide" alt=""><button class="btn sm ghost hide" id="e-phx" title="ছবি বাদ">✕</button></div></div></div>
+     <div class="s4 daterow"><div class="dr-d"><label class="f">চেকের তারিখ</label><input class="in big" type="date" id="e-date" value="${today()}"></div><div class="dr-p"><label class="f">চেকের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn big" for="e-ph-c" title="${bi("ক্যামেরায় ছবি তুলুন", "Take a photo with the camera")}">${ico("cam")} <span class="lbl">তুলুন</span></label><label class="btn big" for="e-ph" title="${bi("গ্যালারি থেকে বাছুন", "Choose from the gallery")}">${ico("img")} <span class="lbl">বাছুন</span></label><input type="file" id="e-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="e-ph" accept="image/*" hidden><img id="e-phv" class="hide" alt=""><button class="btn sm ghost hide" id="e-phx" title="ছবি বাদ">✕</button></div></div></div>
      <div class="s4"><label class="f">A/C Code <span class="mut">(টাইপ করুন: pbl, 483, nabiad…)</span></label><div><input class="in big" id="e-ac" autocomplete="off" placeholder="PBL-483" autofocus></div><div class="hint" id="e-achint"></div></div>
      <div class="s2"><label class="f">চেক নং (শুধু সংখ্যা)</label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off"><div class="hint" id="e-nohint"></div><div id="e-ocrw" class="hide noprint" style="margin-top:4px"><button type="button" class="btn sm" id="e-ocr">🔍 ${bi("ছবি থেকে পড়ুন", "Read from photo")}</button><div id="e-ocro" style="margin-top:4px"></div></div></div>
      <div class="s2"><label class="f">টাকা (বাতিল পাতা হলে 0)</label><input class="in big num" id="e-amt" inputmode="decimal" autocomplete="off"><div class="hint num" id="e-amthint"></div></div>
@@ -796,7 +796,7 @@ async function vEntry(v) {
   $e("e-ocr").onclick = () => runOcr(st, $e("e-ocro"), val => { $e("e-no").value = val; $e("e-no").dispatchEvent(new Event("input")); }, val => { $e("e-amt").value = val; $e("e-amt").dispatchEvent(new Event("input")); });
   const purpKey = () => st.purpose ? purposeKey(st.purpose) : "";
   function drawPurp() {
-    $e("e-purp").innerHTML = allPurposes().map(p => `<span class="chip" data-p="${esc(p)}">${esc(p.split(" (")[0])}</span>`).join("") + `<span class="chip add" id="e-padd" title="নতুন খাত যোগ করুন">＋ নতুন</span>` + (S.me.role === "admin" ? `<span class="chip add" id="e-pmg" title="${LANG === "en" ? "Edit / delete purposes" : "খাত এডিট / মুছুন"}">⚙ ${LANG === "en" ? "Manage" : "ম্যানেজ"}</span>` : "");
+    $e("e-purp").innerHTML = allPurposes().map(p => `<span class="chip" data-p="${esc(p)}">${esc(p.split(" (")[0])}</span>`).join("") + `<span class="chip add" id="e-padd" title="${bi("নতুন খাত যোগ করুন", "Add a new purpose")}">＋ নতুন</span>` + (S.me.role === "admin" ? `<span class="chip add" id="e-pmg" title="${LANG === "en" ? "Edit / delete purposes" : "খাত এডিট / মুছুন"}">⚙ ${LANG === "en" ? "Manage" : "ম্যানেজ"}</span>` : "");
     if ($e("e-pmg")) $e("e-pmg").onclick = () => purposeManage(() => { if (st.purpose && !allPurposes().includes(st.purpose)) st.purpose = ""; drawPurp(); });
     $$(".chip[data-p]", v).forEach(c => c.onclick = () => { st.purpose = c.dataset.p; applyPurpose(); if (purpKey() === "cash") $e("e-taker").focus(); else if (purpKey() === "own") $e("e-toac").focus(); else $e("e-rem").focus(); });
     $e("e-padd").onclick = () => askText("নতুন খাত (Purpose)", "খাতের নাম লিখুন (যেমন: Salary)", "", async n => {
@@ -845,20 +845,20 @@ async function vEntry(v) {
     if (!no || no < 1) return err.textContent = "চেক নং দিন", $e("e-no").focus();
     if (!st.purpose) return err.textContent = "খাত বাছুন";
     if (!date) return err.textContent = "তারিখ দিন";
-    if (k !== "cancel" && !(amount > 0)) return err.textContent = "টাকার অংক দিন (বাতিল পাতা হলে খাত 'বাতিল/নষ্ট পাতা' বাছুন)", $e("e-amt").focus();
+    if (k !== "cancel" && !(amount > 0)) return err.textContent = "টাকার অঙ্ক দিন (বাতিল পাতা হলে খাত 'বাতিল/নষ্ট পাতা' বাছুন)", $e("e-amt").focus();
     if (k === "cash" && !$e("e-taker").value) return err.textContent = "কে তুলেছে — বাছুন", $e("e-taker").focus();
     if (k === "own" && !toac.get()) return err.textContent = "কোন A/C তে জমা — বাছুন", $e("e-toac").focus();
     if (k === "own" && toac.get().value === code) return err.textContent = "From ও To একই A/C হতে পারে না";
     if (S.cheques.some(c => c.code === code && c.no === no)) return err.textContent = "এই চেক আগেই এন্ট্রি আছে";
     const diff = daysBetween(date, today());
-    if ((diff > 7 || diff < 0) && !ask(`তারিখ ${dmy(date)} — আজ থেকে ${Math.abs(diff)} দিন ${diff > 0 ? "আগের" : "পরের"}। ঠিক আছে?`)) return;
-    if (amount >= 1000000 && !ask(`৳ ${money(amount)} — অংক ঠিক আছে?`)) return;
+    if ((diff > 7 || diff < 0) && !ask(bi(`তারিখ ${dmy(date)} — আজ থেকে ${Math.abs(diff)} দিন ${diff > 0 ? "আগের" : "পরের"}। ঠিক আছে?`, `Date ${dmy(date)} is ${Math.abs(diff)} day(s) ${diff > 0 ? "before" : "after"} today. Is that right?`))) return;
+    if (amount >= 1000000 && !ask(bi(`৳ ${money(amount)} — অঙ্ক ঠিক আছে?`, `৳ ${money(amount)} — is the amount right?`))) return;
     busy = true; $e("e-save").disabled = true;
     try {
       const id = crypto.randomUUID(); let photo = null, warn = "";
       if (st.photo) {
         if (!navigator.onLine && !DEMO) warn = " · ইন্টারনেট নেই, তাই ছবি সেভ হয়নি (পরে চেকের পাতা থেকে যোগ করুন)";
-        else { try { const p = photoPath(id, code, no, date); await API.uploadPhoto(p, st.photo); photo = p; } catch (e) { if (!ask("ছবি আপলোড হয়নি (" + (e.message || e) + ")।\nছবি ছাড়া চেক সেভ করবেন?")) throw new Error("ছবি আপলোড হয়নি — আবার চেষ্টা করুন"); warn = " · ছবি সেভ হয়নি"; } }
+        else { try { const p = photoPath(id, code, no, date); await API.uploadPhoto(p, st.photo); photo = p; } catch (e) { if (!ask(bi("ছবি আপলোড হয়নি (", "Photo upload failed (") + (e.message || e) + bi(")।\nছবি ছাড়া চেক সেভ করবেন?", ").\nSave the cheque without a photo?"))) throw new Error(bi("ছবি আপলোড হয়নি — আবার চেষ্টা করুন", "Photo upload failed — try again")); warn = bi(" · ছবি সেভ হয়নি", " · photo not saved"); } }
       }
       const party = "";
       const row = await API.addCheque({ id, photo, date, code, no, amount: k === "cancel" ? 0 : amount, purpose: st.purpose, taker: k === "cash" ? $e("e-taker").value : "", party, toac: k === "own" ? toac.get().value : "", remarks: $e("e-rem").value.trim() });
@@ -928,11 +928,11 @@ function chequeModal(c, after) {
    ${c.events.length ? c.events.map(e => `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">${stTag(e.status)} <span>${dmy(e.date)}</span> <span class="mut sm">${esc(e.by || "")} ${esc(e.remarks || "")}</span>${admin ? `<button class="btn bad sm" style="margin-left:auto" data-de="${e.id}">মুছুন</button>` : ""}</div>`).join("") : `<div class="mut sm">কোনো আপডেট নেই (ডিফল্ট: ${c.status})</div>`}
    <div class="row" style="margin-top:16px">${S.me.role !== "boss" ? `<button class="btn pri" id="c-st">স্ট্যাটাস দিন</button>` : ""}<button class="btn" id="c-rm">${ico("bell")} রিমাইন্ডার</button>${admin || (S.me.role === "staff" && (!c.photo || canEditChq(c))) ? `<button class="btn" id="c-ap">${ico("cam")} ${c.photo ? "ছবি বদলান" : "ছবি যোগ"}</button>` : ""}${admin ? `<button class="btn" id="c-ed">✎ এডিট</button><button class="btn bad" id="c-dl">🗑 মুছুন</button>` : canEditChq(c) ? `<button class="btn" id="c-ed">✎ এডিট</button>` : ""}<button class="btn" id="c-x">বন্ধ</button></div>${!admin && canEditChq(c) ? `<div class="mut xs" style="margin-top:8px">⏳ ${LANG === "en" ? "You can edit this entry for another " : "এই এন্ট্রি আরও এডিট করতে পারবেন: "}${leftTxt(chqEditLeft(c))}</div>` : ""}`, (root, close) => {
     $("#c-x", root).onclick = close; showPhoto($("#c-ph", root), c);
-    $("#c-rm", root).onclick = () => { close(); reminderModal(null, { title: `চেক ${c.code} · ${c.no} পাস হয়েছে কিনা দেখুন`, note: `৳ ${money(c.amount)}${c.party ? " · " + c.party : ""} · চেকের তারিখ ${dmy(c.date)}`, due: (() => { const d = new Date(addDays(c.date < today() ? today() : c.date, 3) + "T10:00"); return d; })(), kind: "cheque", cheque_id: c.id, for_role: "all" }, after); };
+    $("#c-rm", root).onclick = () => { close(); reminderModal(null, { title: bi(`চেক ${c.code} · ${c.no} পাস হয়েছে কি না দেখুন`, `Check whether cheque ${c.code} · ${c.no} has cleared`), note: `৳ ${money(c.amount)}${c.party ? " · " + c.party : ""} · ${bi("চেকের তারিখ", "Cheque date")} ${dmy(c.date)}`, due: (() => { const d = new Date(addDays(c.date < today() ? today() : c.date, 3) + "T10:00"); return d; })(), kind: "cheque", cheque_id: c.id, for_role: "all" }, after); };
     $("#c-ap", root) && ($("#c-ap", root).onclick = () => { close(); addPhotoModal(c, after); });
     $("#c-st", root) && ($("#c-st", root).onclick = () => { close(); statusModal(c, after); });
     $$("[data-de]", root).forEach(b => b.onclick = async () => { if (!ask("এই স্ট্যাটাস এন্ট্রি স্থায়ীভাবে মুছবেন?")) return; await API.deleteStatus(b.dataset.de); await reload(); close(); after && after(); toast("মুছে ফেলা হয়েছে"); });
-    $("#c-dl", root) && ($("#c-dl", root).onclick = async () => { if (c.events.length) return toast(`এই চেকের ${c.events.length}টি স্ট্যাটাস রেকর্ড আছে — মুছা যাবে না। ভুল এন্ট্রি হলে "Cancelled" স্ট্যাটাস দিন`, "err"); if (!ask(`চেক ${c.code} · ${c.no} স্থায়ীভাবে মুছবেন? (ফেরানো যাবে না)`)) return; try { await API.deleteCheque(c.id); await reload(); close(); after && after(); toast("চেক মুছে ফেলা হয়েছে"); } catch (e) { toast(e.message, "err"); } });
+    $("#c-dl", root) && ($("#c-dl", root).onclick = async () => { if (c.events.length) return toast(bi(`এই চেকের ${c.events.length}টি স্ট্যাটাস রেকর্ড আছে — মুছা যাবে না। ভুল এন্ট্রি হলে "Cancelled" স্ট্যাটাস দিন`, `This cheque has ${c.events.length} status record(s) — it cannot be deleted. If it was entered by mistake, set the status to "Cancelled".`), "err"); if (!ask(bi(`চেক ${c.code} · ${c.no} স্থায়ীভাবে মুছবেন? (ফেরানো যাবে না)`, `Permanently delete cheque ${c.code} · ${c.no}? (cannot be undone)`))) return; try { await API.deleteCheque(c.id); await reload(); close(); after && after(); toast("চেক মুছে ফেলা হয়েছে"); } catch (e) { toast(e.message, "err"); } });
     $("#c-ed", root) && ($("#c-ed", root).onclick = () => { close(); editChequeModal(c, after); });
   });
 }
@@ -1042,7 +1042,7 @@ async function vClosing(v) {
     const gap = prev.date ? workGap(prev.date, date) : 0;
     const msgs = [];
     if (has) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 এই তারিখের ব্যালেন্স ফাইনাল সেভ হয়েছে। বদলাতে Admin কে বলুন।" : "⚠ এই তারিখ আগেই ফাইনাল সেভ আছে — সেভ করলে Admin হিসেবে নতুন মান বসবে।"}</div>`);
-    else if (prev.date) msgs.push(`<div class="mut sm">আগের ডাটা: <b>${dmy(prev.date)}</b>${gap ? ` <b class="am">(মাঝে ${gap} কর্মদিবসের ডাটা নেই)</b>` : ""} · আগের দিনের ক্লোজিং নিজে থেকে বসানো আছে — শুধু যেগুলো বদলেছে সেগুলো লিখুন।</div>`);
+    else if (prev.date) msgs.push(`<div class="mut sm">আগের ডাটা: <b>${dmy(prev.date)}</b>${gap ? ` <b class="am">(${bi("মাঝে " + gap + " কর্মদিবসের ডাটা নেই", gap + " working days of data missing in between")})</b>` : ""} · ${bi("আগের দিনের ক্লোজিং নিজে থেকে বসানো আছে — শুধু যেগুলো বদলেছে সেগুলো লিখুন।", "Previous day's closing is pre-filled — only edit what changed.")}</div>`);
     if (draft) msgs.push(`<div class="alert vi">📝 <span>ড্রাফট লোড হয়েছে — ${esc(draft.by || "")} · ${new Date(draft.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}${draft.local ? " (এই ডিভাইস)" : ""}</span><button class="btn sm" id="c-dd" style="margin-left:auto">ড্রাফট বাদ দিন</button></div>`);
     if (isFri(date) && !has) msgs.push(`<div class="alert am">শুক্রবার — সাধারণত ব্যাংক বন্ধ থাকে। দরকার না হলে "পরের ›" চাপুন।</div>`);
     $("#c-msg", v).innerHTML = msgs.join("");
@@ -1110,7 +1110,7 @@ async function vClosing(v) {
       const bad = rows.filter(r => Math.abs(r._diff) > 0.001 && !r._rem);
       if (bad.length) { err.textContent = `Diff আছে কিন্তু মন্তব্য নেই: ${bad.map(r => r.code).join(", ")}`; $("#c-q", v).value = ""; $("#c-f", v).value = ""; filter(); trs[rows.indexOf(bad[0])].scrollIntoView({ block: "center" }); $(".rem", trs[rows.indexOf(bad[0])]).focus(); return; }
       const tot = rows.reduce((s, r) => s + r._tot, 0), blk = rows.reduce((s, r) => s + r._blk, 0), nChg = rows.filter(r => r._chg).length;
-      if (!ask(`${dmy(date)} — ফাইনাল সেভ\nমোট ক্লোজিং ৳ ${money0(tot)}, Block ${money0(blk)}, Usable ${money0(tot - blk)}\n${nChg}টি অ্যাকাউন্ট আপডেট, ${rows.length - nChg}টি আগের মতো।${S.me.role !== "admin" ? "\n\nসেভের পর আর বদলানো যাবে না (শুধু Admin পারবে)।" : ""}`)) return;
+      if (!ask(bi(`${dmy(date)} — ফাইনাল সেভ\nমোট ক্লোজিং ৳ ${money0(tot)}, Block ${money0(blk)}, Usable ${money0(tot - blk)}\n${nChg}টি অ্যাকাউন্ট আপডেট, ${rows.length - nChg}টি আগের মতো।${S.me.role !== "admin" ? "\n\nসেভের পর আর বদলানো যাবে না (শুধু Admin পারবে)।" : ""}`, `${dmy(date)} — final save\nTotal closing ৳ ${money0(tot)}, Block ${money0(blk)}, Usable ${money0(tot - blk)}\n${nChg} account(s) updated, ${rows.length - nChg} unchanged.${S.me.role !== "admin" ? "\n\nAfter saving it cannot be changed (only an Admin can)." : ""}`))) return;
       $("#c-save", body).disabled = true;
       try {
         await API.saveBalances(date, rows.map(r => ({ code: r.code, total: r._tot, block: r._blk || null, remark: r._rem, od: r._od, odp: r._odp })), has && S.me.role === "admin");
@@ -1167,7 +1167,7 @@ async function vCrep(v) {
   $("#r-em", v).onclick = () => {
     if (!data?.rows.length) return toast("ডাটা নেই", "err"); const T = data.T;
     const L = [`Bank Closing — ${dmy(date)}`, "", `Total Balance: ${money0(T.t)}`, `Block / Lien: ${money0(T.b)}`, `Usable: ${money0(T.t - T.b)}`, `Accounts: ${data.rows.length}`, "", ...data.rows.map(r => `${r.n}. ${r.a.code} — ${r.a.holder}: ${money0(r.total)}${r.block ? ` (Block ${money0(r.block)})` : ""}${r.remark ? " · " + r.remark : ""}`), "", `— ${S.me.name}, NABIAD Cheque & Bank Control`];
-    let body = L.join("\n"); if (body.length > 1800) body = L.slice(0, 7).join("\n") + "\n\n(পূর্ণ রিপোর্ট PDF/ছবি সংযুক্ত করুন)\n— " + S.me.name;
+    let body = L.join("\n"); if (body.length > 1800) body = L.slice(0, 7).join("\n") + "\n\n" + bi("(পূর্ণ রিপোর্ট PDF/ছবি সংযুক্ত করুন)", "(attach the full report PDF/image)") + "\n— " + S.me.name;
     location.href = `mailto:${encodeURIComponent(CFG.BOSS_EMAIL || "")}?subject=${encodeURIComponent(`Bank Closing ${dmy(date)} — Usable ${money0(T.t - T.b)}`)}&body=${encodeURIComponent(body)}`;
   };
   $("#r-xl", v).onclick = () => data?.rows.length ? exportXlsx({ Closing: [[dmy2(date), "A/C", "Code", "TOTAL", "BLOCK", "USABLE", "REMARKS"], ...data.rows.map(r => [r.n, r.a.holder, r.a.code, r.total, r.block, r.total - r.block, r.remark]), ["", "TOTAL", "", data.T.t, data.T.b, data.T.t - data.T.b, ""]] }, `Closing_${date}.xlsx`) : toast("ডাটা নেই", "err");
@@ -1257,7 +1257,7 @@ function bookModal(b, after) {
    <div class="row"><button class="btn pri" id="b-ok">সেভ</button>${b.id ? `<button class="btn bad" id="b-dl">মুছুন</button>` : ""}<button class="btn" id="b-x">বাতিল</button></div></div>`, (root, close) => {
     $("#b-x", root).onclick = close;
     $("#b-ok", root).onclick = async () => { const first = parseInt($("#b-f", root).value); if (!first) return toast("প্রথম পাতা দিন", "err"); try { await API.upsertBook({ id: b.id, code: $("#b-c", root).value, series: $("#b-s", root).value.trim(), first, last: parseInt($("#b-l", root).value) || null, track: parseInt($("#b-t", root).value) || null, status: $("#b-st", root).value, note: $("#b-n", root).value.trim() }); await reload(); close(); after(); toast("সেভ হয়েছে"); } catch (e) { toast(e.message, "err"); } };
-    $("#b-dl", root) && ($("#b-dl", root).onclick = async () => { const u = bookStats(b).used; if (u) return toast(`এই বইয়ের ${u}টি পাতায় চেক এন্ট্রি আছে — মুছা যাবে না। এর বদলে বইয়ের স্ট্যাটাস Finished বা Lost দিন`, "err"); if (!ask("এই বই মুছবেন?")) return; try { await API.deleteBook(b.id); await reload(); close(); after(); } catch (e) { toast(e.message || "মোছা যায়নি", "err"); } });
+    $("#b-dl", root) && ($("#b-dl", root).onclick = async () => { const u = bookStats(b).used; if (u) return toast(bi(`এই বইয়ের ${u}টি পাতায় চেক এন্ট্রি আছে — মুছা যাবে না। এর বদলে বইয়ের স্ট্যাটাস Finished বা Lost দিন`, `${u} leaf(s) of this book have cheque entries — it cannot be deleted. Set the book status to Finished or Lost instead.`), "err"); if (!ask("এই বই মুছবেন?")) return; try { await API.deleteBook(b.id); await reload(); close(); after(); } catch (e) { toast(e.message || "মোছা যায়নি", "err"); } });
   });
 }
 async function vBooks(v) {
@@ -1266,7 +1266,7 @@ async function vBooks(v) {
     const am = accMap(), rows = S.books.map(b => ({ b, st: bookStats(b) })), miss = rows.reduce((s, r) => s + (r.b.status === "Active" ? r.st.missing.length : 0), 0);
     v.innerHTML = head("চেক বই ও মিসিং পাতা", admin ? `<button class="btn pri" id="bk-add">${ico("plus")} নতুন বই</button>` : "") + (miss ? `<div class="alert rd" style="margin-bottom:14px">📚 মোট <b>${miss}</b>টি পাতা মিসিং — নিচের লাল তালিকা দেখুন।</div>` : `<div class="alert gr" style="margin-bottom:14px">✔ কোনো মিসিং পাতা নেই</div>`) +
       `<div class="card flush">${rows.length ? `<div class="tw cards"><table><thead><tr><th>A/C</th><th>সিরিজ</th><th class="r">প্রথম–শেষ</th><th class="r">ট্র্যাক</th><th class="r">ব্যবহৃত</th><th class="r">সর্বশেষ</th><th class="r">বাকি</th><th>মিসিং পাতা</th><th>Status</th>${admin ? "<th></th>" : ""}</tr></thead><tbody>${rows.map(({ b, st }) => `<tr><td><b>${esc(b.code)}</b><div class="mut sm">${esc((am[b.code] || {}).holder || "")}</div></td><td>${esc(b.series || "")}</td><td class="r num">${b.first}–${b.last ?? "?"}</td><td class="r num">${b.track ?? "—"}</td><td class="r num">${st.used}</td><td class="r num">${st.maxUsed ?? "—"}</td><td class="r num">${st.remaining ?? "—"}</td>
-       <td>${st.missing.length ? `<span class="rd b">${st.missing.length}টি:</span> <span class="sm">${st.missing.slice(0, 30).join(", ")}${st.missing.length > 30 ? "…" : ""}</span>` : `<span class="mut">—</span>`}</td><td>${esc(b.status)}</td>${admin ? `<td><button class="btn sm" data-e="${b.id}">✎</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<div class="empty">এখনো কোনো চেক বই যোগ করা হয়নি${admin ? ' — "+ নতুন বই" চাপুন' : ""}</div>`}</div>`;
+       <td>${st.missing.length ? `<span class="rd b">${st.missing.length}টি:</span> <span class="sm">${st.missing.slice(0, 30).join(", ")}${st.missing.length > 30 ? "…" : ""}</span>` : `<span class="mut">—</span>`}</td><td>${esc(b.status)}</td>${admin ? `<td><button class="btn sm" data-e="${b.id}">✎</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<div class="empty">${bi("এখনো কোনো চেক বই যোগ করা হয়নি", "No cheque books added yet")}${admin ? bi(' — "+ নতুন বই" চাপুন', ' — tap "+ New book"') : ""}</div>`}</div>`;
     $("#bk-add", v) && ($("#bk-add", v).onclick = () => bookModal(null, draw)); $$("[data-e]", v).forEach(b => b.onclick = () => bookModal(S.books.find(x => x.id === b.dataset.e), draw));
   };
   draw();
@@ -1295,7 +1295,7 @@ const pngOf = async blob => { const bm = await createImageBitmap(blob), cv = doc
 const dlBlob = (blob, name) => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
 function viewBookPhoto(a) {
   modal(`<h2>${ico("img")} Cheque book · ${esc(a.code)}</h2><div class="mut sm">${esc(a.holder || "")} · ${esc(a.bank || "")}</div><div id="bk-i" style="margin-top:10px"><div class="skel" style="height:200px"></div></div><div class="row" style="margin-top:12px"><button class="btn pri" id="bk-s">${ico("share")} শেয়ার</button><button class="btn fix" id="bk-x">বন্ধ</button></div>`, (root, close) => {
-    API.photoUrl(a.book_photo).then(u => $("#bk-i", root).innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="cheque book" style="width:100%;border-radius:12px;border:1px solid var(--line)"></a>`).catch(e => $("#bk-i", root).innerHTML = `<div class="mut">ছবি লোড হয়নি: ${esc(e.message || e)}</div>`);
+    API.photoUrl(a.book_photo).then(u => $("#bk-i", root).innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="cheque book" style="width:100%;border-radius:12px;border:1px solid var(--line)"></a>`).catch(e => $("#bk-i", root).innerHTML = `<div class="mut">${bi("ছবি লোড হয়নি: ", "Photo failed to load: ")}${esc(e.message || e)}</div>`);
     $("#bk-x", root).onclick = close; $("#bk-s", root).onclick = () => { close(); shareAccounts([a], "chq"); };
   });
 }
@@ -1360,7 +1360,7 @@ function shareAccounts(list, startMode) {
           if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: "Bank details" }); } catch (e) { if (e.name !== "AbortError") throw e; } }
           else { dlBlob(blob, file.name); toast("ছবি ডাউনলোড হয়েছে"); }
         }
-      } catch (e) { toast("ব্যর্থ: " + (e.message || e), "err"); }
+      } catch (e) { toast(bi("ব্যর্থ: ", "Failed: ") + (e.message || e), "err"); }
       b.disabled = false;
     };
   });
@@ -1377,7 +1377,7 @@ function accountModal(a, after) {
      <div class="fr2"><div><label class="f">ব্যাংক *</label><div><input class="in" id="a-b" value="${esc(a.bank || "")}" placeholder="টাইপ করুন: brac, dbbl, pubali…" autocomplete="off"></div></div>
      <div><label class="f">শাখা</label><input class="in" id="a-br" list="dl-branch" value="${esc(a.branch || "")}" placeholder="যেমন: Gulshan Branch, Dhaka" autocomplete="off"></div></div>
      <div class="fr2"><div><label class="f">Routing নং <span class="mut">(৯ ডিজিট)</span></label><input class="in num" id="a-r" value="${esc(a.routing || "")}" inputmode="numeric" maxlength="9" placeholder="চেকের নিচে / স্টেটমেন্টে থাকে" autocomplete="off"><div class="hint" id="a-rh"></div></div>
-     <div><label class="f">SWIFT <span class="mut">(বিদেশি লেনদেনে)</span></label><input class="in" id="a-w" value="${esc(a.swift || "")}" placeholder="যেমন: BRAKBDDH" autocomplete="off" style="text-transform:uppercase"><div class="hint" id="a-wh"></div></div></div></div>
+     <div><label class="f">SWIFT <span class="mut">(বিদেশি লেনদেনে)</span></label><input class="in" id="a-w" value="${esc(a.swift || "")}" placeholder="${bi("যেমন: ", "e.g. ")}BRAKBDDH" autocomplete="off" style="text-transform:uppercase"><div class="hint" id="a-wh"></div></div></div></div>
     <div class="fsec"><div class="fst"><i>2</i>অ্যাকাউন্ট</div>
      <div><label class="f">হোল্ডার (অ্যাকাউন্টের নাম) *</label><input class="in" id="a-h" list="dl-holder" value="${esc(a.holder || "")}" autocomplete="off"></div>
      <div class="fr2"><div><label class="f">A/C নং *</label><input class="in num" id="a-n" value="${esc(a.acno || "")}" inputmode="numeric" autocomplete="off"><div class="hint" id="a-nh"></div></div>
@@ -1406,12 +1406,12 @@ function accountModal(a, after) {
       g("a-ch").innerHTML = dup ? `<span class="rd">এই Code আগেই আছে (${esc(dup.holder)})</span>` : "";
       g("a-nh").innerHTML = dupNo ? `<span class="am">⚠ এই A/C নং আগেই আছে: ${esc(dupNo.code)}</span>` : d ? `<span class="mut">${esc(fmtAcno(d))} · ${d.length} ডিজিট</span>` : "";
       g("a-rh").innerHTML = !c.routing ? "" : c.routing.length === 9 ? `<span class="gr">✓ ঠিক আছে</span>` : `<span class="am">${c.routing.length}/9 ডিজিট</span>`;
-      const sw = SWIFT[pre]; g("a-wh").innerHTML = sw && c.swift !== sw ? `<button class="btn sm ghost" id="a-ws">💡 ${sw} বসান</button> <span class="mut xs">ব্যাংক থেকে নিশ্চিত হয়ে নিন</span>` : "";
+      const sw = SWIFT[pre]; g("a-wh").innerHTML = sw && c.swift !== sw ? `<button class="btn sm ghost" id="a-ws">💡 ${bi(sw + " বসান", "Use " + sw)}</button> <span class="mut xs">${bi("ব্যাংক থেকে নিশ্চিত হয়ে নিন", "Confirm with the bank")}</span>` : "";
       $("#a-ws", root) && ($("#a-ws", root).onclick = e => { e.preventDefault(); g("a-w").value = sw; upd(); });
       $$("#a-tq .chip", root).forEach(x => x.classList.toggle("on", x.dataset.ty === c.type));
       const b = brandOf(c.code ? c : { bank: c.bank }), miss = accMissing(c), pct = accPct(c);
       g("a-prev").innerHTML = `<div class="card acc" style="--b1:${b.c1};--b2:${b.c2};margin:0"><div class="hd"><span class="blogo">${esc(b.s)}</span><span class="code">${esc(c.code || "CODE")}</span>${c.type ? `<span class="tag">${esc(c.type)}</span>` : ""}</div><div class="bd"><div class="b">${esc(c.holder || "হোল্ডারের নাম")}</div><div class="bk">${esc(c.bank || "ব্যাংক")}${c.branch ? " · " + esc(c.branch) : ""}</div><div class="no"><span>${esc(fmtAcno(c.acno) || "A/C নং")}</span></div><div class="mut xs">${[c.routing && "Routing " + c.routing, c.swift && "SWIFT " + c.swift].filter(Boolean).map(esc).join(" · ") || "&nbsp;"}</div></div></div>`;
-      g("a-comp").innerHTML = `<div class="cmp"><div class="cmp-t"><b>তথ্য ${pct}% সম্পূর্ণ</b></div><div class="bar"><i style="width:${pct}%;background:${pct === 100 ? "var(--g-green)" : pct >= 60 ? "var(--g-amber)" : "var(--g-red)"}"></i></div>${miss.length ? `<div class="mut xs" style="margin-top:6px">বাকি: ${miss.map(m => `<span>${m.l}</span>`).join(", ")}</div>` : `<div class="gr xs" style="margin-top:6px">✓ পার্টিকে শেয়ার করার জন্য প্রস্তুত</div>`}</div>`;
+      g("a-comp").innerHTML = `<div class="cmp"><div class="cmp-t"><b>${bi("তথ্য " + pct + "% সম্পূর্ণ", "Details " + pct + "% complete")}</b></div><div class="bar"><i style="width:${pct}%;background:${pct === 100 ? "var(--g-green)" : pct >= 60 ? "var(--g-amber)" : "var(--g-red)"}"></i></div>${miss.length ? `<div class="mut xs" style="margin-top:6px">বাকি: ${miss.map(m => `<span>${m.l}</span>`).join(", ")}</div>` : `<div class="gr xs" style="margin-top:6px">✓ পার্টিকে শেয়ার করার জন্য প্রস্তুত</div>`}</div>`;
     }
     $$("input", root).forEach(i => i.addEventListener("input", upd)); g("a-d").addEventListener("change", upd); upd();
     const ph = { blob: null, remove: false }, showPh = src => { g("a-bphi").src = src; g("a-bphw").classList.remove("hide"); g("a-bpx").classList.remove("hide"); }, hidePh = () => { g("a-bphw").classList.add("hide"); g("a-bpx").classList.add("hide"); g("a-bphi").removeAttribute("src"); };
@@ -1448,7 +1448,7 @@ function matchBookFile(fname) {
 function bookImportModal(after) {
   let items = [];
   modal(`<h2>${ico("cam")} Cheque book ছবি ইমপোর্ট</h2>
-   <div class="mut sm" style="margin-bottom:10px">ফাইলের নাম <b>BANK-BRANCH-HOLDER-শেষ৩ডিজিট.jpg</b> ধরনের হলে নিজে নিজে অ্যাকাউন্ট খুঁজে নেবে। একসাথে অনেক ছবি বাছুন।</div>
+   <div class="mut sm" style="margin-bottom:10px">ফাইলের নাম <b>${bi("BANK-BRANCH-HOLDER-শেষ৩ডিজিট.jpg", "BANK-BRANCH-HOLDER-last3digits.jpg")}</b> ${bi("ধরনের হলে নিজে নিজে অ্যাকাউন্ট খুঁজে নেবে। একসাথে অনেক ছবি বাছুন।", "style names are matched to the account automatically. Select many photos at once.")}</div>
    <label class="btn" for="bi-f">${ico("cam")} ছবি বাছুন (একাধিক)</label><input type="file" id="bi-f" accept="image/*" multiple hidden>
    <div id="bi-l" style="margin-top:12px;max-height:48vh;overflow:auto"></div>
    <label class="sw2 hide" id="bi-rw" style="margin-top:8px"><input type="checkbox" id="bi-r"><i></i><span>যাদের ছবি আছে তাদেরটাও বদলান</span></label>
@@ -1458,7 +1458,7 @@ function bookImportModal(after) {
       const ok = items.filter(x => x.m.st === "ok" && (g("bi-r").checked || !x.m.a.book_photo));
       g("bi-l").innerHTML = `<table class="tbl"><tbody>${items.map(x => `<tr><td class="sm">${esc(x.f.name.slice(0, 44))}</td><td>${x.m.st === "ok" ? `<b>${esc(x.m.a.code)}</b> <span class="mut xs">${esc(x.m.a.holder)}</span>${x.m.a.book_photo ? ` <span class="am xs">(ছবি আছে)</span>` : ""}` : x.m.st === "dup" ? `<span class="mut xs">ডুপ্লিকেট — বাদ</span>` : `<span class="rd xs">${x.m.st === "amb" ? "একাধিক মিলেছে" : "অ্যাকাউন্ট মেলেনি"}</span>`}</td><td>${x.done ? "✅" : x.err ? "❌" : ""}</td></tr>`).join("")}</tbody></table>`;
       g("bi-rw").classList.toggle("hide", !items.some(x => x.m.st === "ok" && x.m.a.book_photo)); g("bi-ok").classList.toggle("hide", !items.length);
-      g("bi-ok").textContent = `আপলোড (${ok.length}টি)`; g("bi-ok").disabled = !ok.length; return ok;
+      g("bi-ok").textContent = bi(`আপলোড (${ok.length}টি)`, `Upload (${ok.length})`); g("bi-ok").disabled = !ok.length; return ok;
     };
     g("bi-f").onchange = () => { items = [...g("bi-f").files].map(f => ({ f, m: matchBookFile(f.name) })); list(); };
     g("bi-r").onchange = list;
@@ -1467,9 +1467,9 @@ function bookImportModal(after) {
       for (const x of ok) {
         try { const blob = await compressImage(x.f), pth = `books/${norm(x.m.a.code)}_${Date.now()}.jpg`; await API.uploadPhoto(pth, blob); await API.upsertAccount({ ...x.m.a, book_photo: pth }); x.done = true; n++; }
         catch (e) { x.err = true; console.warn(e); if (/book_photo|column/i.test(e.message || "")) { toast("schema_v5.sql চালাতে হবে", "err"); break; } }
-        g("bi-ok").textContent = `আপলোড হচ্ছে… ${n}/${ok.length}`; list();
+        g("bi-ok").textContent = bi(`আপলোড হচ্ছে… ${n}/${ok.length}`, `Uploading… ${n}/${ok.length}`); list();
       }
-      await reload(); toast(`✔ ${n}টি ছবি যোগ হয়েছে`); after && after(); g("bi-ok").textContent = "হয়ে গেছে"; 
+      await reload(); toast(bi(`✔ ${n}টি ছবি যোগ হয়েছে`, `✔ ${n} photo(s) added`)); after && after(); g("bi-ok").textContent = "হয়ে গেছে"; 
     };
   });
 }
@@ -1545,7 +1545,7 @@ async function vAdmin(v) {
       let st = { n: 0, first: null, last: null }; try { st = await API.balanceStats(); } catch { }
       out.innerHTML = `<div class="card"><h3>📥 পুরনো ব্যাংক ব্যালেন্স ইতিহাস</h3>
         <div class="grid g3" style="margin:12px 0"><div class="kv"><span>ডাটাবেসে রেকর্ড</span><b class="num">${money0(st.n)}</b></div><div class="kv"><span>সবচেয়ে পুরনো তারিখ</span><b>${st.first ? dmy(st.first) : "—"}</b></div><div class="kv"><span>সর্বশেষ তারিখ</span><b>${st.last ? dmy(st.last) : "—"}</b></div></div>
-        ${DEMO ? `<div class="alert gr">DEMO মোডে পুরনো ডাটা আগে থেকেই লোড আছে।</div>` : `<div class="imopt"><div><b>২০২৬ ডাটা পুনরুদ্ধার</b><div class="mut xs">২০২৬-এর সব রেকর্ড + ২০২৬-এর ঠিক আগের শেষ দিনটি (ওটাই ১ জানুয়ারির Opening)</div></div><button class="btn pri" id="im-26">⬆ শুধু ২০২৬</button></div>
+        ${DEMO ? `<div class="alert gr">${bi("DEMO মোডে পুরনো ডাটা আগে থেকেই লোড আছে।", "In DEMO mode the old data is already loaded.")}</div>` : `<div class="imopt"><div><b>২০২৬ ডাটা পুনরুদ্ধার</b><div class="mut xs">২০২৬-এর সব রেকর্ড + ২০২৬-এর ঠিক আগের শেষ দিনটি (ওটাই ১ জানুয়ারির Opening)</div></div><button class="btn pri" id="im-26">⬆ শুধু ২০২৬</button></div>
         <div class="imopt"><div><b>সম্পূর্ণ ইতিহাস</b><div class="mut xs">০২-০৯-২০২৩ (প্রথম দিন) থেকে ফাইলের শেষ তারিখ পর্যন্ত সব</div></div><button class="btn" id="im-all">⬆ সম্পূর্ণ import</button></div>`}
         <div class="bar" style="margin-top:12px"><i id="im-bar" style="width:0"></i></div><div class="hint" id="im-t"></div>
         <div class="mut xs" style="margin-top:8px">শুধু যে তারিখ+A/C ডাটাবেসে নেই সেগুলোই যোগ হয় — আপনার app-এ সেভ/এডিট করা কোনো ব্যালেন্স বদলায় না, ডুপ্লিকেটও হয় না।</div></div>`;
@@ -1554,7 +1554,7 @@ async function vAdmin(v) {
         try {
           const all = await loadEncrypted("history.enc"); const anchor = all.map(r => r[0]).filter(d => d < "2026-01-01").sort().pop() || "2026-01-01";
           const rows = mode === "26" ? all.filter(r => r[0] >= anchor) : all;
-          if (!ask(`${money0(rows.length)}টি রেকর্ড (${dmy(rows.reduce((m, r) => r[0] < m ? r[0] : m, rows[0][0]))} থেকে) import করবেন? যেগুলো আগে থেকেই আছে সেগুলো বদলাবে না।`)) return;
+          if (!ask(bi(`${money0(rows.length)}টি রেকর্ড (${dmy(rows.reduce((m, r) => r[0] < m ? r[0] : m, rows[0][0]))} থেকে) import করবেন? যেগুলো আগে থেকেই আছে সেগুলো বদলাবে না।`, `Import ${money0(rows.length)} record(s) (from ${dmy(rows.reduce((m, r) => r[0] < m ? r[0] : m, rows[0][0]))})? Existing records will not be changed.`))) return;
           b26.disabled = ball.disabled = true;
           await API.importBalances(rows, (a, b) => { $("#im-bar", out).style.width = a / b * 100 + "%"; $("#im-t", out).textContent = `${a} / ${b}`; });
           balCache.clear(); toast("✔ import সম্পূর্ণ"); S.lastBal = await API.lastBalDate(); draw();
@@ -1566,7 +1566,7 @@ async function vAdmin(v) {
       const chk = await API.health().catch(() => ({}));
       const row = (ok, l, sub) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "✗"}</i><div><b>${l}</b>${sub ? `<div class="mut xs">${sub}</div>` : ""}</div></div>`;
       out.innerHTML = `<div class="grid g2"><div class="card"><h3>🩺 সিস্টেম অবস্থা</h3><div class="hcl">
-        ${row(chk.db, "ডাটাবেস সংযোগ", DEMO ? "DEMO মোড" : "Supabase")}${row(chk.v2, "v2: ড্রাফট · রিমাইন্ডার · Audit · ছবি", chk.v2 ? "চালু" : "schema_v2.sql চালাতে হবে")}
+        ${row(chk.db, "ডাটাবেস সংযোগ", DEMO ? bi("DEMO মোড", "DEMO mode") : "Supabase")}${row(chk.v2, "v2: ড্রাফট · রিমাইন্ডার · Audit · ছবি", chk.v2 ? "চালু" : "schema_v2.sql চালাতে হবে")}
         ${row(chk.v3, "v3: ক্যাশ · Backup · নিজের নাম", chk.v3 ? "চালু" : "schema_v3.sql চালাতে হবে")}${row(chk.v6, "v6: ডিস্ট্রিবিউশন কালেকশন", chk.v6 ? "চালু" : "schema_v6.sql চালাতে হবে")}${row(chk.backup, "রাত ১২টার Backup", chk.backupAt ? "শেষ: " + new Date(chk.backupAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "এখনো হয়নি")}
         ${row(location.protocol === "https:" || DEMO, "HTTPS", location.host)}${row(!!navigator.serviceWorker?.controller || DEMO, "অফলাইন মোড (PWA)", navigator.serviceWorker?.controller ? "চালু" : "রিলোড দিলে চালু হবে")}</div>
         <div class="mut xs" style="margin-top:10px">সংস্করণ v6 · ${esc(document.querySelector('script[src^="app.js"]')?.getAttribute("src")?.split("v=")[1] || "")}</div></div>
@@ -1599,7 +1599,7 @@ function openMore(keys, mob, bd, lo) {
   const el = document.createElement("div"); el.className = "sheet sheet2";
   el.innerHTML = `<div class="box"><div class="sh-hd"><div class="grab"></div><b>সব পাতা</b><button class="iconbtn sh-x" data-x="close" title="বন্ধ">✕</button></div><div class="sh-body">
     ${groups.map(g => `<div class="sh-sec">${g.s === "more" ? "আরও" : SECS[g.s] || "মেনু"}</div><div class="sh-grid">${g.ks.map(k => `<a href="#/${k}" class="${k === cur ? "on" : ""}"><span class="ti">${ico(ROUTES[k].ic)}${bd[k] ? `<span class="badge">${bd[k]}</span>` : ""}</span><span class="tl">${k === "dash" ? "হোম" : ROUTES[k].t}</span></a>`).join("")}</div>`).join("")}
-    <div class="sh-foot"><button data-x="th">${ico(dark ? "sun" : "moon")}<span>${dark ? "লাইট থিম" : "ডার্ক থিম"}</span></button><button data-x="lg">${ico("copyt")}<span>${LANG === "bn" ? "English" : "বাংলা"}</span></button><button data-x="ins">${ico("dl")}<span>${LANG === "en" ? "Install app" : "অ্যাপ ইন্সটল"}</span></button><button data-x="lo" class="lo">${ico("out")}<span>লগআউট</span></button></div>
+    <div class="sh-foot"><button data-x="th">${ico(dark ? "sun" : "moon")}<span>${dark ? "লাইট থিম" : "ডার্ক থিম"}</span></button><button data-x="lg">${ico("copyt")}<span>${LANG === "bn" ? "English" : "বাংলা"}</span></button><button data-x="ins">${ico("dl")}<span>${LANG === "en" ? "Install app" : "অ্যাপ ইনস্টল"}</span></button><button data-x="lo" class="lo">${ico("out")}<span>লগআউট</span></button></div>
     <div class="mut xs c" style="margin-top:8px">${esc(S.me.name)} · ${esc(S.me.role)}</div></div></div>`;
   document.body.appendChild(el); document.body.classList.add("noscroll");
   history.pushState({ more: 1 }, "");
@@ -1664,7 +1664,7 @@ const leftTxt = ms => { const h = Math.floor(ms / 36e5); return h >= 24 ? Math.f
 async function showPhoto(el, c) {
   if (!c.photo) return; el.innerHTML = `<div class="skel" style="height:120px"></div>`;
   try { const u = await API.photoUrl(c.photo); el.innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener" class="chq-ph"><img src="${esc(u)}" alt="cheque"></a>`; }
-  catch (e) { el.innerHTML = `<div class="mut sm">ছবি লোড হয়নি: ${esc(e.message || e)}</div>`; }
+  catch (e) { el.innerHTML = `<div class="mut sm">${bi("ছবি লোড হয়নি: ", "Photo failed to load: ")}${esc(e.message || e)}</div>`; }
 }
 /* v6.43 — admin: rename / delete cheque purposes (staff can only add) */
 function purposeManage(onChange) {
@@ -1748,7 +1748,7 @@ function sysAlerts() {
   const o = [], t = today(), h = new Date().getHours();
   if (S.me.role !== "boss") {
     if (!isFri(t) && h >= (CFG.CLOSING_REMIND_HOUR ?? 17) && (!S.lastBal || S.lastBal < t)) o.push({ id: "closing-" + t, k: "rd", ic: "bank", t: "আজকের দৈনিক ক্লোজিং এখনো সেভ হয়নি", go: "#/closing", notify: true });
-    if (!isFri(t) && h >= (CFG.CASH_REMIND_HOUR ?? 19) && S.lastCash !== t && !S.cashOff) o.push({ id: "cash-" + t, k: "rd", ic: "wallet", t: "আজকের ক্যাশ এন্ট্রি এখনো সেভ হয়নি", go: "#/cash", notify: true });
+    if (!isFri(t) && h >= (CFG.CASH_REMIND_HOUR ?? 19) && S.lastCash !== t && !S.cashOff) o.push({ id: "cash-" + t, k: "rd", ic: "wallet", t: bi("আজকের ক্যাশ এন্ট্রি এখনো সেভ হয়নি", "Today's cash entry is not saved yet"), go: "#/cash", notify: true });
     if (S.lastBal) { const g = workGap(S.lastBal, t); if (g > 0) o.push({ k: "am", ic: "bank", t: LANG === "en" ? `${g} working day${g > 1 ? "s" : ""} of closing pending (last saved: ${dmy(S.lastBal)})` : `${g} কর্মদিবসের ক্লোজিং বাকি (শেষ সেভ: ${dmy(S.lastBal)})`, go: "#/closing" }); }
     const dd = Draft.localDates().filter(d => !S.lastBal || d > S.lastBal); if (dd.length) o.push({ k: "vi", ic: "edit", t: `ড্রাফট আছে, ফাইনাল সেভ বাকি: ${dd.map(dmy).join(", ")}`, go: "#/closing" });
     if (!DEMO && Outbox.count()) o.push({ k: "am", ic: "clock", t: `${Outbox.count()}টি অফলাইন এন্ট্রি সিঙ্ক বাকি`, go: "" });
@@ -1760,7 +1760,7 @@ function sysAlerts() {
 function updateBell() {
   const b = $("#bell"); if (!b || !S.me) return; const n = dueList().length, sys = sysAlerts();
   const bb = $(".bb", b); bb.textContent = n || ""; bb.className = "bb" + (n ? " on" : sys.length ? " dot" : "");
-  b.title = `${n}টি রিমাইন্ডার সময় হয়েছে · ${sys.length}টি সতর্কতা`;
+  b.title = bi(`${n}টি রিমাইন্ডার সময় হয়েছে · ${sys.length}টি সতর্কতা`, `${n} reminder(s) due · ${sys.length} alert(s)`);
 }
 function beep() { try { const C = new (window.AudioContext || window.webkitAudioContext)(); [0, 0.22].forEach(t0 => { const o = C.createOscillator(), g = C.createGain(); o.frequency.value = 880; o.connect(g); g.connect(C.destination); g.gain.setValueAtTime(0.0001, C.currentTime + t0); g.gain.exponentialRampToValueAtTime(0.25, C.currentTime + t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, C.currentTime + t0 + 0.18); o.start(C.currentTime + t0); o.stop(C.currentTime + t0 + 0.2); }); } catch { } }
 async function sysNotify(title, body, tag) {
@@ -1961,7 +1961,7 @@ async function vDash(v) {
        <a class="kpi card k-am" href="#/cheques"><div class="l">চেক · এই মাস<span class="ki">${ico("list")}</span></div><div class="v num">${mon.length}</div><div class="s num">৳ ${money0(sumAmt(mon))} · <span>আজ</span> ${todayC.length} · Pending ${pend.length}</div><div class="kbar"><i style="width:${clearedPct}%"></i></div><div class="s" style="margin-top:3px">${clearedPct}% Clear</div></a>
      </div>
      <div class="grid g2 dgap">
-       <div class="card"><div class="ch" style="padding:0 0 8px"><h3>ব্যাংক ব্যালেন্স ট্রেন্ড</h3><div class="sp" style="flex:1"></div><div class="seg mini-seg" id="d-rng">${[[7, "৭দি"], [15, "১৫দি"], [30, "৩০দি"]].map(([n, l]) => `<span class="chip ${n === 30 ? "on" : ""}" data-n="${n}">${l}</span>`).join("")}</div></div>
+       <div class="card"><div class="ch" style="padding:0 0 8px"><h3>ব্যাংক ব্যালেন্স ট্রেন্ড</h3><div class="sp" style="flex:1"></div><div class="seg mini-seg" id="d-rng">${[[7, bi("৭দি", "7d")], [15, bi("১৫দি", "15d")], [30, bi("৩০দি", "30d")]].map(([n, l]) => `<span class="chip ${n === 30 ? "on" : ""}" data-n="${n}">${l}</span>`).join("")}</div></div>
          <div id="d-tr"><div class="skel" style="height:110px"></div></div><div class="mut sm" id="d-tr-s"></div><div class="lgd"><span><i style="background:#6366f1"></i>Total</span><span><i style="background:#10b981"></i>Usable</span><span class="mut" style="margin-left:auto">আঙুল/মাউস দিয়ে দেখুন</span><a class="sm" href="#/reports">রিপোর্ট →</a></div></div>
        <div class="card"><div class="ch" style="padding:0 0 8px"><h3>ক্যাশ: আয় বনাম ব্যয়</h3><span class="mut sm">১৪ দিন</span><div class="sp" style="flex:1"></div><a class="sm" href="#/cashsum">সামারি →</a></div><div id="d-cash"><div class="skel" style="height:90px"></div></div><div class="lgd"><span><i style="background:#10b981"></i>Receipt</span><span><i style="background:#ef4444"></i>Payment</span></div></div>
      </div>
@@ -1999,7 +1999,7 @@ async function vDash(v) {
       // streak of consecutive working days with a saved closing
       const have = new Set(ser.map(x => x.date)); let d = t, n = 0; if (!have.has(d) && !isFri(d)) d = addDays(d, -1);
       for (let i = 0; i < 45; i++) { if (isFri(d)) { d = addDays(d, -1); continue; } if (!have.has(d)) break; n++; d = addDays(d, -1); }
-      if (n >= 2 && $("#d-streak", v)) $("#d-streak", v).textContent = `🔥 টানা ${n} কর্মদিবস ব্যাংক ক্লোজিং সম্পন্ন`;
+      if (n >= 2 && $("#d-streak", v)) $("#d-streak", v).textContent = bi(`🔥 টানা ${n} কর্মদিবস ব্যাংক ক্লোজিং সম্পন্ন`, `🔥 ${n} working days of bank closing in a row`);
       // bank-wise
       const bm = await balancesOn(last.date), am = accMap(), by = new Map();
       Object.entries(bm).forEach(([c, r]) => { const a = am[c]; if (!a || !a.daily || r.total == null) return; const k = (a.bank || "—").trim(), o = by.get(k) || { k, t: 0, b: 0, l: [] }; o.t += Number(r.total); o.b += Number(r.block || 0); o.l.push({ c, h: a.holder || "", t: Number(r.total) }); by.set(k, o); });
@@ -2075,7 +2075,7 @@ async function vReports(v) {
     const monRows = group(live, c => c.date.slice(0, 7)).sort((a, b) => a.k.localeCompare(b.k)).map(r => ({ ...r, k: (LANG === "en" ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] : BN_M)[+r.k.slice(5) - 1] + " " + r.k.slice(0, 4) }));
     const T = { pur: group(live, c => c.purpose.split(" (")[0]).sort((a, b) => b.amt - a.amt), tak: group(live.filter(c => c.taker), c => c.taker).sort((a, b) => b.amt - a.amt), st: group(all, c => c.status).sort((a, b) => b.amt - a.amt), bank: group(live, c => (am[c.code] || {}).bank).sort((a, b) => b.amt - a.amt), acc: group(live, c => `${c.code} <span class="mut sm">${esc((am[c.code] || {}).holder || "")}</span>`).sort((a, b) => b.amt - a.amt), day: group(live, c => c.date).sort((a, b) => a.k.localeCompare(b.k)).map(r => ({ ...r, k: dmy(r.k) })), mon: monRows };
     cur = { kind: "chq", from, to, all, live, T };
-    if (!all.length) { out.innerHTML = label + `<div class="card empty">এই সময়ে কোনো চেক এন্ট্রি নেই।<div class="mut sm" style="margin-top:6px">ডাটাবেসে মোট <b>${S.cheques.length}</b>টি চেক আছে। চেক এন্ট্রি করলে এখানে খাত, ব্যাংক, অ্যাকাউন্ট আর দিন অনুযায়ী হিসাব আসবে।</div>${S.me.role !== "boss" ? `<div style="margin-top:12px"><a class="btn pri sm" href="#/entry">${ico("plus")} চেক এন্ট্রি</a></div>` : ""}</div>`; return; }
+    if (!all.length) { out.innerHTML = label + `<div class="card empty">${bi("এই সময়ে কোনো চেক এন্ট্রি নেই।", "No cheque entries in this period.")}<div class="mut sm" style="margin-top:6px">${bi(`ডাটাবেসে মোট <b>${S.cheques.length}</b>টি চেক আছে। চেক এন্ট্রি করলে এখানে খাত, ব্যাংক, অ্যাকাউন্ট আর দিন অনুযায়ী হিসাব আসবে।`, `There are <b>${S.cheques.length}</b> cheque(s) in the database. Once cheques are entered, totals by purpose, bank, account and day will appear here.`)}</div>${S.me.role !== "boss" ? `<div style="margin-top:12px"><a class="btn pri sm" href="#/entry">${ico("plus")} চেক এন্ট্রি</a></div>` : ""}</div>`; return; }
     out.innerHTML = repSheet("p-in", "Cheque Report · চেক রিপোর্ট" + hold, from, to,
       repKpi([[`Live Cheques · ৳ ${money0(sumAmt(live))}`, live.length, "k1"], [`Cleared · ৳ ${money0(sumAmt(by("Cleared")))}`, by("Cleared").length, "k3"], [`Pending · ৳ ${money0(sumAmt(by("Pending")))}`, by("Pending").length, ""], [`Bounced / Cancelled · ৳ ${money0(sumAmt(by("Bounced")))}`, `${by("Bounced").length} / ${by("Cancelled").length}`, "k2"]]),
       repTwo(tbl("By Purpose", T.pur, ["Purpose", "Cheque", "Amount"]), tbl("Cash Taken By", T.tak, ["Name", "Cheque", "Amount"])) +
@@ -2131,7 +2131,7 @@ async function vCash(v) {
     else if (src) msgs.push(`<div class="alert vi">📝 <span>ড্রাফট লোড হয়েছে${fromLocal ? " (এই ডিভাইস)" : ""} — ${esc(src.entered_by || S.me.name)} · ${new Date(src.updated_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>${!locked ? `<button class="btn sm" id="cs-dd" style="margin-left:auto">ড্রাফট বাদ দিন</button>` : ""}</div>`);
     if (!src && prev) msgs.push(`<div class="mut sm">Opening নেওয়া হয়েছে <b>${dmy(prev.date)}</b>-এর ক্লোজিং থেকে${workGap(prev.date, date) ? ` · <b class="am">মাঝে ${workGap(prev.date, date)} কর্মদিবসের রেকর্ড নেই</b>` : ""}</div>`);
     if (!src && !prev) msgs.push(`<div class="mut sm">এটা প্রথম রেকর্ড — Opening Cash ও Bank নিজে লিখুন।</div>`);
-    if (!locked) msgs.push(`<div class="mut xs">💡 একই খাতে কয়েকটা অংক থাকলে + দিয়ে লিখুন, যেমন 5000+12000</div>`);
+    if (!locked) msgs.push(`<div class="mut xs">💡 একই খাতে কয়েকটা অঙ্ক থাকলে + দিয়ে লিখুন, যেমন 5000+12000</div>`);
     $("#cs-msg", v).innerHTML = msgs.join("");
     $("#cs-dd", v) && ($("#cs-dd", v).onclick = async () => { if (!ask("এই তারিখের ড্রাফট মুছবেন?")) return; localStorage.removeItem(CASH_DRAFT(date)); if (ex && !final) { try { await API.cashSave({ date, opening_cash: oc, opening_bank: ob, items: {}, total_receipt: 0, total_payment: 0, closing: oc + ob, cash_in_hand: null, remarks: null, status: "draft" }); } catch { } } draw(); });
     const dis = locked ? "disabled" : "";
@@ -2168,11 +2168,11 @@ async function vCash(v) {
     if (locked) return;
     const save = async status => {
       const { row, bad } = collect(), err = $("#cs-err", body); err.className = "hint rd"; err.textContent = "";
-      if (bad) { err.textContent = `ভুল অংক: ${cashLabel(bad)} — শুধু সংখ্যা আর + / − লিখুন`; return; }
+      if (bad) { err.textContent = `ভুল অঙ্ক: ${cashLabel(bad)} — শুধু সংখ্যা আর + / − লিখুন`; return; }
       if (status === "final") {
         if (row.cash_in_hand == null) { err.textContent = "Cash in hand লিখুন (হাতে কত নগদ আছে)"; $("#cs-ch", body).focus(); return; }
-        if (row.cash_in_hand > row.closing && !ask("Cash in hand Closing-এর চেয়ে বেশি — Bank ঋণাত্মক হবে। তবুও সেভ করবেন?")) return;
-        if (!ask(`${dmy(date)} — ক্যাশ ফাইনাল সেভ\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nClosing ৳ ${money0(row.closing)} · Cash in hand ৳ ${money0(row.cash_in_hand)}${S.me.role !== "admin" ? "\n\nসেভের পর আর বদলানো যাবে না (শুধু Admin পারবে)।" : ""}`)) return;
+        if (row.cash_in_hand > row.closing && !ask(bi("Cash in hand Closing-এর চেয়ে বেশি — Bank ঋণাত্মক হবে। তবুও সেভ করবেন?", "Cash in hand is more than Closing — Bank will be negative. Save anyway?"))) return;
+        if (!ask(bi(`${dmy(date)} — ক্যাশ ফাইনাল সেভ\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nClosing ৳ ${money0(row.closing)} · Cash in hand ৳ ${money0(row.cash_in_hand)}${S.me.role !== "admin" ? "\n\nসেভের পর আর বদলানো যাবে না (শুধু Admin পারবে)।" : ""}`, `${dmy(date)} — cash final save\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nClosing ৳ ${money0(row.closing)} · Cash in hand ৳ ${money0(row.cash_in_hand)}${S.me.role !== "admin" ? "\n\nAfter saving it cannot be changed (only an Admin can)." : ""}`))) return;
       }
       const b = $(status === "final" ? "#cs-save" : "#cs-draft", body); b.disabled = true;
       try {
@@ -2241,7 +2241,7 @@ async function vCashRep(v) {
 /* =================== v6: Cash Register (every line of every day) =================== */
 async function vRegister(v) {
   const F = { ...pbInit("month"), q: "", type: "", k: "" };
-  v.innerHTML = head("ক্যাশ রেজিস্টার", `<button class="btn" id="rg-x">${ico("dl")} Excel</button>`) + `<div class="card noprint" style="margin-bottom:14px">${pbBar("rg", F)}<div class="row" style="margin-top:10px"><div style="flex:2 1 220px"><label class="f">খুঁজুন (নোট, খাত, অংক)</label><input class="in" id="rg-q" type="search" autocomplete="off"></div><div><label class="f">ধরন</label><select class="in" id="rg-t"><option value="">সব</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div><div><label class="f">খাত</label><select class="in" id="rg-k"><option value="">সব</option>${[...CASH_KEYS("receipt"), ...CASH_KEYS("payment")].map(k => `<option value="${k}">${esc(cashLabel(k))}</option>`).join("")}</select></div></div></div><div id="rg-sum" class="mut sm" style="margin-bottom:8px"></div><div class="card flush" id="rg-out"></div>`;
+  v.innerHTML = head("ক্যাশ রেজিস্টার", `<button class="btn" id="rg-x">${ico("dl")} Excel</button>`) + `<div class="card noprint" style="margin-bottom:14px">${pbBar("rg", F)}<div class="row" style="margin-top:10px"><div style="flex:2 1 220px"><label class="f">খুঁজুন (নোট, খাত, অঙ্ক)</label><input class="in" id="rg-q" type="search" autocomplete="off"></div><div><label class="f">ধরন</label><select class="in" id="rg-t"><option value="">সব</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div><div><label class="f">খাত</label><select class="in" id="rg-k"><option value="">সব</option>${[...CASH_KEYS("receipt"), ...CASH_KEYS("payment")].map(k => `<option value="${k}">${esc(cashLabel(k))}</option>`).join("")}</select></div></div></div><div id="rg-sum" class="mut sm" style="margin-bottom:8px"></div><div class="card flush" id="rg-out"></div>`;
   let lines = [], shown = [];
   async function load() {
     const [f, t] = cashPeriod(F); $("#rg-out", v).innerHTML = `<div class="empty">লোড হচ্ছে…</div>`;
@@ -2271,7 +2271,7 @@ function reminderModal(r, opts = {}, after) {
   const [d0, t0] = localDT(r.due_at), admin = S.me.role === "admin", canPhoto = S.me.role !== "boss", st = { photo: null };
   const chq = r.cheque_id && S.cheques.find(c => c.id === r.cheque_id);
   modal(`<h2>${isNew ? "⏰ নতুন রিমাইন্ডার" : "রিমাইন্ডার এডিট"}</h2><div class="grid" style="gap:12px">
-   <div><label class="f">কী মনে করাবে *</label><input class="in" id="m-t" value="${esc(r.title)}" placeholder="যেমন: পার্টির চেক জমা দিন / পাস হয়েছে কিনা দেখুন" autocomplete="off"></div>
+   <div><label class="f">কী মনে করাবে *</label><input class="in" id="m-t" value="${esc(r.title)}" placeholder="${bi("যেমন: পার্টির চেক জমা দিন / পাস হয়েছে কি না দেখুন", "e.g. Deposit the party's cheque / check if it has cleared")}" autocomplete="off"></div>
    <div><label class="f">বিস্তারিত (পার্টি, টাকা, ব্যাংক…)</label><input class="in" id="m-n" value="${esc(r.note || "")}" autocomplete="off"></div>
    ${canPhoto ? `<div><label class="f">চেক / কাগজের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn" for="m-ph-c">${ico("cam")} ছবি তুলুন</label><label class="btn" for="m-ph">${ico("img")} গ্যালারি</label><input type="file" id="m-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="m-ph" accept="image/*" hidden><img id="m-phv" class="hide" alt=""><button class="btn sm ghost hide" id="m-phx">✕</button>${r.photo ? `<span class="mut sm">ছবি আছে — নতুন দিলে বদলাবে</span>` : ""}</div></div>` : ""}
    <div><label class="f">কত দিন পরে (Pick days)</label><div class="chips" id="m-pd">${PICK_DAYS.map(n => `<span class="chip" data-pd="${n}">${n} ${bi("দিন", "days")}</span>`).join("")}</div></div>
@@ -2296,7 +2296,7 @@ function reminderModal(r, opts = {}, after) {
         const p = { title, note: g("m-n").value.trim(), due_at: due.toISOString(), repeat: g("m-r").value, for_role: g("m-f").value, snooze_until: null, cheque_id: cs.get()?.id || null, kind: cs.get() ? "cheque" : (r.kind || "custom"), ...(photo ? { photo } : {}) };
         if (isNew) { const row = await API.addReminder({ ...p, id }); (S.reminders ||= []).push(row); }
         else { await API.updateReminder(r.id, p); Object.assign(r, p); }
-        S.reminders.sort((a, b) => remDue(a) - remDue(b)); saveCache(); updateBell(); close(); toast(`✔ রিমাইন্ডার: ${due.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}`); after && after();
+        S.reminders.sort((a, b) => remDue(a) - remDue(b)); saveCache(); updateBell(); close(); toast(`✔ ${bi("রিমাইন্ডার", "Reminder")}: ${due.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}`); after && after();
       } catch (e) { toast(remErrMsg(e), "err"); b.disabled = false; }
     };
   });
@@ -2309,12 +2309,12 @@ async function vRem(v) {
     const perm = "Notification" in window ? Notification.permission : "na", nUp = all.filter(r => !r.done).length, nDue = all.filter(r => !r.done && remDue(r) <= now).length;
     v.innerHTML = head("রিমাইন্ডার ও সতর্কতা") +
       (S.remErr ? `<div class="alert rd" style="margin-bottom:12px">${esc(remErrMsg({ message: S.remErr }))}</div>` : "") +
-      (perm === "default" ? `<div class="alert vi" style="margin-bottom:12px">🔔 <span>নোটিফিকেশন চালু করলে সময় হলে ফোনে জানাবে।</span><button class="btn sm pri" id="rm-perm" style="margin-left:auto">চালু করুন</button></div>` : perm === "denied" ? `<div class="alert am" style="margin-bottom:12px">ব্রাউজারে নোটিফিকেশন বন্ধ — সাইট সেটিং থেকে চালু করুন। অ্যাপের ভিতরে রিমাইন্ডার তবুও আসবে।</div>` : "") +
+      (perm === "default" ? `<div class="alert vi" style="margin-bottom:12px">🔔 <span>নোটিফিকেশন চালু করলে সময় হলে ফোনে জানাবে।</span><button class="btn sm pri" id="rm-perm" style="margin-left:auto">চালু করুন</button></div>` : perm === "denied" ? `<div class="alert am" style="margin-bottom:12px">${bi("ব্রাউজারে নোটিফিকেশন বন্ধ — সাইট সেটিং থেকে চালু করুন। অ্যাপের ভেতরে রিমাইন্ডার তবুও আসবে।", "Notifications are blocked in the browser — enable them in site settings. Reminders will still appear inside the app.")}</div>` : "") +
       `<div class="remtop"><div class="tabs" style="margin:0">${[["up", "চালু", nUp], ["done", "সম্পন্ন", null], ["all", "সব", null]].map(([k, l, n]) => `<span class="chip ${k === tab ? "on" : ""}" data-t="${k}"><span>${l}</span>${n != null ? ` <b>${n}</b>` : ""}</span>`).join("")}</div>${nDue ? `<span class="tag t-due">${nDue} <span>টির সময় হয়েছে</span></span>` : ""}</div>
       <div class="rem-list" style="margin-top:12px">${tab !== "done" ? `<button class="card rem-add" id="rm-add"><span class="ri">${ico("plus")}</span><span><b>নতুন রিমাইন্ডার</b><small>পার্টির চেক, পেমেন্ট, অডিট বা যেকোনো কাজ — ছবি ও দিন বেছে দিন</small></span></button>` : ""}
       ${list.length ? list.map(r => { const due = !r.done && remDue(r) <= now; const ch = r.cheque_id && S.cheques.find(c => c.id === r.cheque_id); return `<div class="card rem ${due ? "due" : ""} ${r.done ? "dn" : ""}"><div class="ri">${ico(r.kind === "cheque" ? "list" : r.photo ? "cam" : "bell")}</div><div class="rt"><b>${esc(r.title)}</b>${r.note ? `<div class="mut sm">${esc(r.note)}</div>` : ""}
         <div class="rmeta"><span class="tag ${due ? "t-due" : ""}">${ico("clock").replace("<svg", '<svg width="12" height="12"')} ${new Date(remDue(r)).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · ${r.done ? "সম্পন্ন" : relTime(remDue(r))}</span>${r.repeat !== "none" ? `<span class="tag">${REPEATS[r.repeat] || ""}</span>` : ""}<span class="tag">${FOR_ROLE[r.for_role] || ""}</span>${ch ? `<span class="tag t-mv">${esc(ch.code)} · ${ch.no} ${stTag(ch.status)}</span>` : ""}<span class="mut xs">${esc(r.created_by || "")}</span></div>${r.photo ? `<div class="rph" data-ph="${esc(r.photo)}"></div>` : ""}</div>
-        <div class="ra">${r.done ? "" : `<button class="btn ok sm" data-dn="${r.id}">✓ সম্পন্ন</button>${due ? snoozeBtns(r.id) : ""}`}${r.cheque_id ? `<button class="btn sm" data-oc="${r.cheque_id}">চেক</button>` : ""}<button class="btn sm" data-ics="${r.id}" title="ফোনের ক্যালেন্ডারে অ্যালার্ম সহ যোগ করুন">${ico("cal")}</button><button class="btn sm ghost" data-ed="${r.id}" title="এডিট">${ico("edit")}</button>${S.me.role === "admin" ? `<button class="btn sm ghost" data-rm="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></div>`; }).join("") : `<div class="card empty">${tab === "done" ? "কোনো সম্পন্ন রিমাইন্ডার নেই" : "এখনো কোনো রিমাইন্ডার নেই — উপরের \"নতুন রিমাইন্ডার\" চাপুন।"}</div>`}</div>
+        <div class="ra">${r.done ? "" : `<button class="btn ok sm" data-dn="${r.id}">✓ সম্পন্ন</button>${due ? snoozeBtns(r.id) : ""}`}${r.cheque_id ? `<button class="btn sm" data-oc="${r.cheque_id}">চেক</button>` : ""}<button class="btn sm" data-ics="${r.id}" title="ফোনের ক্যালেন্ডারে অ্যালার্ম সহ যোগ করুন">${ico("cal")}</button><button class="btn sm ghost" data-ed="${r.id}" title="এডিট">${ico("edit")}</button>${S.me.role === "admin" ? `<button class="btn sm ghost" data-rm="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></div>`; }).join("") : `<div class="card empty">${tab === "done" ? bi("কোনো সম্পন্ন রিমাইন্ডার নেই", "No completed reminders") : bi("এখনো কোনো রিমাইন্ডার নেই — উপরের \"নতুন রিমাইন্ডার\" চাপুন।", "No reminders yet — tap \"New reminder\" above.")}</div>`}</div>
       <div class="card" style="margin-top:14px"><div class="ch" style="padding:0 0 10px"><h3>সিস্টেম সতর্কতা</h3><span class="tag">${sys.length}</span></div>${sys.length ? `<div class="grid" style="gap:8px">${sys.map(a => `<div class="alert ${a.k}">${ico(a.ic).replace("<svg", '<svg width="18" height="18"')}<span>${esc(a.t)}</span>${a.go ? `<a class="btn sm" style="margin-left:auto" href="${a.go}">খুলুন →</a>` : ""}</div>`).join("")}</div>` : `<div class="alert gr">✔ কোনো সতর্কতা নেই</div>`}</div>
       <div class="mut sm" style="margin-top:12px">💡 অ্যাপ পুরো বন্ধ থাকলেও অ্যালার্ম চাইলে ${ico("cal").replace("<svg", '<svg width="13" height="13" style="vertical-align:-2px"')} বাটন চাপুন — ফোনের ক্যালেন্ডারে অ্যালার্মসহ যোগ হবে।</div>`;
     $$("[data-t]", v).forEach(c => c.onclick = () => { tab = c.dataset.t; draw(); });
@@ -2343,7 +2343,7 @@ async function vSettings(v) {
      <div class="mut sm">${esc(S.me.email)} · <span class="pill">${esc(S.me.role)}</span></div>
      ${DEMO ? "" : `<div><label class="f">নতুন পাসওয়ার্ড</label><div class="row" style="flex-wrap:nowrap"><input class="in" type="password" id="st-pw" autocomplete="new-password" placeholder="কমপক্ষে ১০ অক্ষর"><button class="btn fix" id="st-pw-s">বদলান</button></div></div>`}</div></div>
    <div class="card"><h3>🎨 দেখতে কেমন</h3><div class="grid" style="gap:12px">
-     <div class="row"><div><label class="f">থিম</label>${sel("st-th", [["light", "লাইট"], ["dark", "ডার্ক"]], getTheme())}</div><div><label class="f">ভাষা</label>${sel("st-lg", [["bn", "বাংলা"], ["en", "English"]], LANG)}</div></div>
+     <div class="row"><div><label class="f">থিম</label>${sel("st-th", [["light", "লাইট"], ["dark", "ডার্ক"]], getTheme())}</div><div><label class="f">${bi("ভাষা", "Language")}</label>${sel("st-lg", [["bn", bi("বাংলা", "Bangla")], ["en", "English"]], LANG)}</div></div>
      <div class="row"><div><label class="f">লেখার আকার</label>${sel("st-fs", [["small", "ছোট"], ["normal", "স্বাভাবিক"], ["large", "বড়"]], PREFS.font)}</div><div><label class="f">টেবিল</label>${sel("st-cp", [["0", "আরামদায়ক"], ["1", "ঘন (বেশি সারি)"]], PREFS.compact ? 1 : 0)}</div></div>
      <div><label class="f">অ্যাপ খুললে কোন পাতা</label>${sel("st-start", starts, PREFS.start)}</div></div></div>
    <div class="card"><h3>🔔 রিমাইন্ডার ও সতর্কতা</h3><div class="grid" style="gap:12px">
@@ -2366,10 +2366,10 @@ async function vSettings(v) {
    ${admin ? `<div class="card" style="grid-column:1/-1"><h3>🛡 Admin শর্টকাট</h3><div class="row"><a class="btn fix" href="#/admin">${ico("gear")} ব্যবহারকারী ও অ্যাকাউন্ট</a><a class="btn fix" href="#/audit">${ico("shield")} Audit ও Backup</a><a class="btn fix" href="#/books">${ico("book")} চেক বই</a></div></div>` : ""}</div>`;
   const g = id => $("#" + id, v);
   { const f = g("pf-f"), rm = g("pf-rm"); g("pf-up").onclick = () => f.click();
-    f.onchange = async () => { const f0 = f.files[0]; f.value = ""; if (!f0) return; const file = await pickImage(f0, { title: LANG === "en" ? "Crop profile picture" : "প্রোফাইল ছবি ক্রপ", aspect: 1, aspects: [], circle: true, face: true, allowFull: false, maxSide: 512 }, f); if (!file) return; const b = g("pf-up"); b.disabled = true; try { const img = await imgToAvatar(file); await API.setAvatar(img); avaMap()[S.me.id] = img; try { localStorage.setItem("nabiad_ava_" + S.me.id, img); } catch { } refreshAvatars(); rm.classList.remove("hide"); toast(LANG === "en" ? "✔ Photo updated" : "✔ ছবি সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? "schema_v6.sql-এর v6.41 অংশ চালানো হয়নি" : e.message, "err"); } b.disabled = false; };
+    f.onchange = async () => { const f0 = f.files[0]; f.value = ""; if (!f0) return; const file = await pickImage(f0, { title: LANG === "en" ? "Crop profile picture" : "প্রোফাইল ছবি ক্রপ", aspect: 1, aspects: [], circle: true, face: true, allowFull: false, maxSide: 512 }, f); if (!file) return; const b = g("pf-up"); b.disabled = true; try { const img = await imgToAvatar(file); await API.setAvatar(img); avaMap()[S.me.id] = img; try { localStorage.setItem("nabiad_ava_" + S.me.id, img); } catch { } refreshAvatars(); rm.classList.remove("hide"); toast(LANG === "en" ? "✔ Photo updated" : "✔ ছবি সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? bi("schema_v6.sql-এর v6.41 অংশ চালানো হয়নি", "The v6.41 part of schema_v6.sql has not been run") : e.message, "err"); } b.disabled = false; };
     rm.onclick = async () => { if (!ask(LANG === "en" ? "Remove your profile picture?" : "প্রোফাইল ছবি মুছে ফেলবেন?")) return; try { await API.setAvatar(null); delete avaMap()[S.me.id]; try { localStorage.removeItem("nabiad_ava_" + S.me.id); } catch { } refreshAvatars(); rm.classList.add("hide"); toast(LANG === "en" ? "✔ Photo removed" : "✔ ছবি মুছে ফেলা হয়েছে"); } catch (e) { toast(e.message, "err"); } }; }
-  g("st-nm-s").onclick = async () => { const n = g("st-nm").value.trim(); if (!n) return toast("নাম লিখুন", "err"); try { await API.setMyName(n); S.me.name = n; saveCache(); shell(); route(); toast("✔ নাম সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? "schema_v3.sql চালানো বাকি" : e.message, "err"); } };
-  g("st-pw-s") && (g("st-pw-s").onclick = async () => { const p = g("st-pw").value; if (p.length < 10) return toast("পাসওয়ার্ড কমপক্ষে ১০ অক্ষর", "err"); try { await API.changePassword(p); g("st-pw").value = ""; toast("✔ পাসওয়ার্ড বদলানো হয়েছে"); } catch (e) { toast(e.message, "err"); } });
+  g("st-nm-s").onclick = async () => { const n = g("st-nm").value.trim(); if (!n) return toast("নাম লিখুন", "err"); try { await API.setMyName(n); S.me.name = n; saveCache(); shell(); route(); toast("✔ নাম সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? bi("schema_v3.sql চালানো বাকি", "schema_v3.sql has not been run yet") : e.message, "err"); } };
+  g("st-pw-s") && (g("st-pw-s").onclick = async () => { const p = g("st-pw").value; if (p.length < 10) return toast(bi("পাসওয়ার্ড কমপক্ষে ১০ অক্ষর", "Password must be at least 10 characters"), "err"); try { await API.changePassword(p); g("st-pw").value = ""; toast("✔ পাসওয়ার্ড বদলানো হয়েছে"); } catch (e) { toast(e.message, "err"); } });
   g("st-th").onchange = e => setTheme(e.target.value); g("st-lg").onchange = e => setLang(e.target.value);
   g("st-lk").onchange = e => { try { localStorage.setItem(LOCK_KEY, e.target.value); } catch { } lastAct = Date.now(); toast(LANG === "en" ? "✔ Saved" : "✔ সেভ হয়েছে"); };
   g("st-lock").onclick = () => lockNow();
@@ -2385,11 +2385,11 @@ async function vSettings(v) {
   g("st-ch").onchange = e => { savePrefs({ closingHour: +e.target.value }); updateBell(); }; g("st-cs").onchange = e => { savePrefs({ cashHour: +e.target.value }); updateBell(); };
   g("st-pd").onchange = e => { savePrefs({ pendDays: +e.target.value }); refreshBadges(); }; g("st-snd").onchange = e => savePrefs({ sound: e.target.value === "1" }); g("st-fri").onchange = e => savePrefs({ skipFri: e.target.value === "1" });
   g("st-np").onclick = async () => { await Notification.requestPermission(); vSettings(v); };
-  g("st-nt").onclick = () => { if (PREFS.sound) beep(); sysNotify("🔔 পরীক্ষা — Nabiad", "নোটিফিকেশন ঠিকমতো কাজ করছে", "test"); toast("পরীক্ষার নোটিফিকেশন পাঠানো হয়েছে"); };
-  g("st-sync").onclick = async () => { if (DEMO) return toast("DEMO মোড"); await Outbox.flush(); await reload(); toast("✔ সিঙ্ক ও রিফ্রেশ হয়েছে"); };
+  g("st-nt").onclick = () => { if (PREFS.sound) beep(); sysNotify(bi("🔔 পরীক্ষা — Nabiad", "🔔 Test — Nabiad"), bi("নোটিফিকেশন ঠিকমতো কাজ করছে", "Notifications are working"), "test"); toast(bi("পরীক্ষার নোটিফিকেশন পাঠানো হয়েছে", "Test notification sent")); };
+  g("st-sync").onclick = async () => { if (DEMO) return toast(bi("DEMO মোড", "DEMO mode")); await Outbox.flush(); await reload(); toast("✔ সিঙ্ক ও রিফ্রেশ হয়েছে"); };
   g("st-upd").onclick = async () => { try { const reg = await navigator.serviceWorker?.getRegistration(); await reg?.update(); } catch { } toast("নতুন সংস্করণ থাকলে রিলোড হচ্ছে…"); setTimeout(() => location.reload(), 900); };
   g("st-inst") && (g("st-inst").onclick = installModal);
-  g("st-clr").onclick = () => { if (Outbox.count() && !ask(`${Outbox.count()}টি এন্ট্রি এখনো সিঙ্ক হয়নি — মুছলে হারিয়ে যাবে। তবুও মুছবেন?`)) return; if (!ask("এই ডিভাইসের জমা কপি মুছে রিলোড করবেন?")) return; [CACHE_KEY, "nabiad_rem_seen"].forEach(k => localStorage.removeItem(k)); if (!Outbox.count()) localStorage.removeItem(OB_KEY); location.reload(); };
+  g("st-clr").onclick = () => { if (Outbox.count() && !ask(bi(`${Outbox.count()}টি এন্ট্রি এখনো সিঙ্ক হয়নি — মুছলে হারিয়ে যাবে। তবুও মুছবেন?`, `${Outbox.count()} entries are not synced yet — they will be lost if cleared. Clear anyway?`))) return; if (!ask(bi("এই ডিভাইসের জমা কপি মুছে রিলোড করবেন?", "Clear this device's saved copy and reload?"))) return; [CACHE_KEY, "nabiad_rem_seen"].forEach(k => localStorage.removeItem(k)); if (!Outbox.count()) localStorage.removeItem(OB_KEY); location.reload(); };
 }
 
 /* =================== v6: audit & security (tabs) =================== */
@@ -2454,7 +2454,7 @@ async function vAudit(v) {
 }
 function clearAuditModal(after) {
   modal(`<h2>🧹 Audit log পরিষ্কার</h2><p class="mut sm" style="margin-top:-6px">পুরনো লগ মুছে জায়গা খালি করুন। মোছার পরেও "কে কখন পরিষ্কার করেছে" তার একটা রেকর্ড থেকে যাবে।</p>
-   <div class="grid" style="gap:8px">${[["90", "৯০ দিনের বেশি পুরনো"], ["30", "৩০ দিনের বেশি পুরনো"], ["7", "৭ দিনের বেশি পুরনো"], ["all", "সব লগ"]].map(([k, l], i) => `<label class="rad"><input type="radio" name="clr" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
+   <div class="grid" style="gap:8px">${[["90", bi("৯০ দিনের বেশি পুরনো", "Older than 90 days")], ["30", bi("৩০ দিনের বেশি পুরনো", "Older than 30 days")], ["7", bi("৭ দিনের বেশি পুরনো", "Older than 7 days")], ["all", bi("সব লগ", "All logs")]].map(([k, l], i) => `<label class="rad"><input type="radio" name="clr" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
    <label class="rad" style="margin-top:12px"><input type="checkbox" id="clr-dl" checked><span>মোছার আগে Excel কপি ডাউনলোড করুন</span></label>
    <div id="clr-all" class="hide" style="margin-top:10px"><label class="f">নিশ্চিত করতে <b>CLEAR</b> লিখুন</label><input class="in" id="clr-t" autocomplete="off"></div>
    <div class="row" style="margin-top:16px"><button class="btn bad fix" id="clr-ok">${ico("trash")} পরিষ্কার করুন</button><button class="btn fix" id="clr-x">বাতিল</button></div>`, (root, close) => {
@@ -2466,7 +2466,7 @@ function clearAuditModal(after) {
       const b = $("#clr-ok", root); b.disabled = true;
       try {
         if ($("#clr-dl", root).checked) { const old = await API.audit({ from: "2000-01-01", to: k === "all" ? today() : addDays(today(), -+k - 1), limit: 20000 }); if (old.length) await exportXlsx({ Audit: [["Time", "User", "Where", "Action", "Item", "Changes"], ...old.map(r => [new Date(r.at).toLocaleString("en-GB"), r.user_name || "", r.tbl, r.action, r.row_key || "", auText(r)])] }, `Audit_archive_${today()}.xlsx`); }
-        const n = await API.clearAudit(before); close(); toast(`✔ ${n}টি পুরনো লগ মুছে ফেলা হয়েছে`); after && after();
+        const n = await API.clearAudit(before); close(); toast(bi(`✔ ${n}টি পুরনো লগ মুছে ফেলা হয়েছে`, `✔ ${n} old log(s) deleted`)); after && after();
       } catch (e) { toast(/function|does not exist/i.test(e.message || "") ? "schema_v4.sql চালানো বাকি" : e.message, "err"); b.disabled = false; }
     };
   });
@@ -2524,7 +2524,7 @@ async function vSec(out) {
     <div class="card flush" style="grid-column:1/-1"><div class="ch"><h3>👥 ব্যবহারকারী ও শেষ লগইন</h3><span class="tag">${us.length}</span><div class="sp" style="flex:1"></div><a class="sm" href="#/admin" onclick="sessionStorage.setItem('nabiad_admin_tab','usr')">বদলান →</a></div>
       <div class="ulr">${us.map(u => `<div class="ur">${avaEl(u.id, u.name, u.email)}<div class="ub"><b>${esc(u.name || "—")}</b> <span class="pill sm">${esc(u.role)}</span>${u.active ? "" : ` <span class="tag cl">নিষ্ক্রিয়</span>`}<div class="mut xs">${esc(u.email)}</div></div><div class="ut"><span class="mut xs">শেষ লগইন</span><b class="sm">${u.last_sign_in_at ? relTime(u.last_sign_in_at) : "—"}</b></div></div>`).join("")}</div>
       ${logins ? "" : `<div class="mut xs" style="padding:0 16px 12px">শেষ লগইনের সময় দেখাতে schema_v4.sql চালাতে হবে।</div>`}</div></div>`;
-  $("#sc-oth", out).onclick = async () => { if (!ask("অন্য সব ডিভাইস থেকে লগআউট করবেন? (এই ডিভাইস লগইন থাকবে)")) return; try { await API.signOutOthers(); toast("✔ অন্য ডিভাইস থেকে লগআউট হয়েছে"); } catch (e) { toast(e.message, "err"); } };
+  $("#sc-oth", out).onclick = async () => { if (!ask(bi("অন্য সব ডিভাইস থেকে লগআউট করবেন? (এই ডিভাইস লগইন থাকবে)", "Sign out all other devices? (This device stays signed in)"))) return; try { await API.signOutOthers(); toast(bi("✔ অন্য ডিভাইস থেকে লগআউট হয়েছে", "✔ Other devices signed out")); } catch (e) { toast(e.message, "err"); } };
 }
 Object.assign(SbAPI, {
   async audit(f) { const lim = f.limit || 500, off = f.offset || 0; let q = sb.from("audit_log").select("*").order("at", { ascending: false }).range(off, off + lim - 1); if (f.tbl) q = q.eq("tbl", f.tbl); if (f.act) q = q.eq("action", f.act); if (f.from) q = q.gte("at", new Date(f.from + "T00:00:00").toISOString()); if (f.to) q = q.lt("at", new Date(addDays(f.to, 1) + "T00:00:00").toISOString()); const { data, error } = await q; if (error) throw error; return data; },
@@ -2602,7 +2602,7 @@ Object.assign(SbAPI, {
   async purposes() { try { const r = (await fetchAll("cheque_purposes", "created_at")).sort((a, b) => (a.sort ?? 100) - (b.sort ?? 100) || String(a.created_at).localeCompare(String(b.created_at))); return r.map(a => a.name); } catch (e) { if (/cheque_purposes|relation|schema cache/i.test(e.message || "")) return PURP_X; throw e; } },
   async purposeDelete(name) { const { data, error } = await sb.from("cheque_purposes").delete().eq("name", name).select(); if (error) throw error; if (!data.length) throw new Error("admin_only"); },
   async purposeRename(o, n) { const { data, error } = await sb.rpc("purpose_rename", { p_old: o, p_new: n }); if (error) throw error; return data; },
-  async purposeAdd(name) { const { error } = await sb.from("cheque_purposes").insert({ name, entered_by: S.me.name }); if (error) throw error.code === "23505" ? new Error("এই খাত আগেই আছে") : /cheque_purposes|relation|schema cache/i.test(error.message || "") ? new Error("Supabase-এ schema_v6.sql-এর v6.24 অংশ run করা হয়নি") : error; },
+  async purposeAdd(name) { const { error } = await sb.from("cheque_purposes").insert({ name, entered_by: S.me.name }); if (error) throw error.code === "23505" ? new Error("এই খাত আগেই আছে") : /cheque_purposes|relation|schema cache/i.test(error.message || "") ? new Error(bi("Supabase-এ schema_v6.sql-এর v6.24 অংশ চালানো হয়নি", "The v6.24 part of schema_v6.sql has not been run in Supabase")) : error; },
   async asmAdd(name) { const { data, error } = await sb.from("dist_asms").insert({ name, entered_by: S.me.name }).select().single(); if (error) throw error.code === "23505" ? new Error("এই নামে ASM আগেই আছে") : error; return { id: data.id, name: data.name, active: true }; },
   async asmRename(a, to) { if (a.id) { const { error } = await sb.from("dist_asms").update({ name: to }).eq("id", a.id); if (error) throw error.code === "23505" ? new Error("এই নামে ASM আগেই আছে") : error; } await this.dpartyRenameAsm(a.name, to); },
   async asmActive(id, on) { const { error } = await sb.from("dist_asms").update({ active: on }).eq("id", id); if (error) throw error; },
@@ -2707,8 +2707,8 @@ function dcDecide(ids, st, after) {
   const run = async note => {
     try {
       const n = await API.dcolStatus(ids, st, note);
-      if (n < ids.length) toast(`${ids.length - n}টি রো বদলানো যায়নি (অনুমতি নেই)`, "err");
-      if (n) toast(`✔ ${n}টি ${DC_ST[st]} করা হয়েছে`);
+      if (n < ids.length) toast(bi(`${ids.length - n}টি রো বদলানো যায়নি (অনুমতি নেই)`, `${ids.length - n} row(s) could not be changed (no permission)`), "err");
+      if (n) toast(bi(`✔ ${n}টি ${DC_ST[st]} করা হয়েছে`, `✔ ${n} marked ${DC_ST[st]}`));
       DCACHE.dcol = null; after && after(n);
     } catch (e) { toast(dcErr(e), "err"); }
   };
@@ -2732,7 +2732,7 @@ function dpartyModal(p, after) {
    <div class="s1"><label class="f">Contact No.</label><input class="in" id="dp-p" inputmode="tel" autocomplete="off" value="${esc(p.phone || "")}"></div>
    <div class="s3"><label class="f">Full Address</label><input class="in" id="dp-ad" autocomplete="off" value="${esc(p.address || "")}"></div>
    <div class="s2"><label class="f">জেলা <span class="mut">(নাম থেকে নিজে বসে)</span></label><input class="in" id="dp-d" list="dp-dl-d" autocomplete="off" value="${esc(p.district || "")}"></div>
-   <div class="s2"><label class="f">বিভাগ <span class="mut">(জেলা থেকে নিজে বসে)</span></label><input class="in" id="dp-v" readonly tabindex="-1" value="${esc(p.district ? BD_DIV[p.district] || "" : "")}"></div>
+   <div class="s2"><label class="f">বিভাগ <span class="mut">${bi("(জেলা থেকে নিজে বসে)", "(filled in from the district)")}</span></label><input class="in" id="dp-v" readonly tabindex="-1" value="${esc(p.district ? BD_DIV[p.district] || "" : "")}"></div>
    ${isNew ? "" : `<div class="s4"><label class="keep"><input type="checkbox" id="dp-act" ${p.active !== false ? "checked" : ""}> সক্রিয় পার্টি <span class="mut">(বন্ধ করলে নতুন এন্ট্রির সাজেশনে আসবে না; আগের রেকর্ড যেমন আছে থাকবে)</span></label></div>`}
   </div>${datalist("dp-dl-d", BD_DIST)}<div class="hint rd" id="dp-err"></div>
   <div class="row" style="margin-top:14px"><button class="btn pri" id="dp-ok">${ico("save")} সেভ</button><button class="btn" id="dp-x">বন্ধ</button>${!isNew && admin ? `<button class="btn dg" id="dp-del" style="margin-left:auto">${ico("trash")} মুছুন</button>` : ""}</div>`, (root, close) => {
@@ -2761,8 +2761,8 @@ function dpartyModal(p, after) {
       err("");
       try {
         const n = await API.dpartyUsage(p.id);
-        if (n > 0) return err(`এই পার্টির ${n}টি কালেকশন রেকর্ড আছে — মুছা যাবে না। এর বদলে উপরের "সক্রিয় পার্টি" টিক তুলে সেভ করুন (আগের রেকর্ড অক্ষত থাকবে)।`);
-        if (!ask(`"${p.name}" মুছে ফেলবেন? (কোনো কালেকশন রেকর্ড নেই, তাই নিরাপদ)`)) return;
+        if (n > 0) return err(bi(`এই পার্টির ${n}টি কালেকশন রেকর্ড আছে — মুছা যাবে না। এর বদলে উপরের "সক্রিয় পার্টি" টিক তুলে সেভ করুন (আগের রেকর্ড অক্ষত থাকবে)।`, `This party has ${n} collection record(s) — it cannot be deleted. Untick "Active party" above and save instead (old records stay intact).`));
+        if (!ask(bi(`"${p.name}" মুছে ফেলবেন? (কোনো কালেকশন রেকর্ড নেই, তাই নিরাপদ)`, `Delete "${p.name}"? (No collection records, so it is safe)`))) return;
         await API.dpartyDelete(p.id); await dpLoad(true); close(); toast("✔ মুছে ফেলা হয়েছে"); after && after(null);
       } catch (e) { err(dcErr(e)); }
     };
@@ -2776,7 +2776,7 @@ async function vDcol(v) {
   v.innerHTML = head("কালেকশন এন্ট্রি", `<a class="btn" href="#/dsum">${ico("clock")} সামারি</a><a class="btn" href="#/drep">${ico("chart")} রিপোর্ট</a>`) + `
    <div class="card dcx-bar"><div class="dcx-date">${dateNav("dc", date)}</div><div class="dcx-stats" id="dc-kpi"></div></div>
    <div class="dcx-split">
-   <div class="card dcx-entry"><div class="dcx-et"><h3>${ico("plus")} নতুন এন্ট্রি</h3><span class="mut xs">শুধু Enter চাপুন: পার্টি → Account → টাকা → যোগ হবে · টাকার ঘরে <b>50000+300</b> লেখা যায়</span></div>
+   <div class="card dcx-entry"><div class="dcx-et"><h3>${ico("plus")} নতুন এন্ট্রি</h3><span class="mut xs">${bi("শুধু Enter চাপুন: পার্টি → Account → টাকা → যোগ হবে · টাকার ঘরে <b>50000+300</b> লেখা যায়", "Just press Enter: Party → Account → Amount → Add · you can type <b>50000+300</b> in the amount box")}</span></div>
     <div class="dcx-grid">
      <div class="dcx-p"><label class="f">পার্টি *</label><div><input class="in big" id="dc-pty" autocomplete="off" placeholder="পার্টির নাম লিখুন…"></div><div class="dcx-h" id="dc-ph"></div></div>
      <div class="dcx-a"><label class="f">ASM / Salesman</label><input class="in" id="dc-a" list="dc-dl-a" autocomplete="off" placeholder="অটো বসবে"></div>
@@ -2812,7 +2812,7 @@ async function vDcol(v) {
   aIn.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); cIn.focus(); } });
   const newBtn = () => { const t = pIn.value.trim(); $("#dc-ph", v).innerHTML = t && !picker.get() && !byName(t) ? `<a href="#" id="dc-new" class="rd">+ "${esc(t.slice(0, 30))}" নতুন পার্টি তৈরি করুন</a>` : ($("#dc-ph", v).innerHTML && picker.get() ? $("#dc-ph", v).innerHTML : ""); const a = $("#dc-new", v); if (a) a.onclick = e => { e.preventDefault(); createParty(t); }; };
   pIn.addEventListener("input", newBtn);
-  mIn.addEventListener("input", () => { const n = evalAmt(mIn.value); $("#dc-mh", v).textContent = mIn.value && !isNaN(n) && /[+-]/.test(mIn.value.replace(/^[-+]/, "")) ? "= " + money0(n) : isNaN(n) ? "অংক ঠিক নেই" : ""; });
+  mIn.addEventListener("input", () => { const n = evalAmt(mIn.value); $("#dc-mh", v).textContent = mIn.value && !isNaN(n) && /[+-]/.test(mIn.value.replace(/^[-+]/, "")) ? "= " + money0(n) : isNaN(n) ? "অঙ্ক ঠিক নেই" : ""; });
   [mIn, rIn].forEach(x => x.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); add(); } }));
   $("#dc-add", v).onclick = add;
   function createParty(name) { dpartyModal({ name, asm: aIn.value, account: cIn.value }, saved => { if (!saved) return; parties = DPARTY; picker.set({ value: saved.name, label: saved.asm || "", sub: saved.account || "" }); fill(saved); mIn.focus(); }); }
@@ -2820,16 +2820,16 @@ async function vDcol(v) {
     if (busy) return; err("");
     const typed = pIn.value.trim(); let party = picker.get() ? byName(picker.get().value) : byName(typed);
     if (!typed) return err("পার্টি বাছুন"), pIn.focus();
-    if (!party) { if (ask(`"${typed}" পার্টি তালিকায় নেই। নতুন পার্টি তৈরি করবেন?`)) createParty(typed); return; }
+    if (!party) { if (ask(bi(`"${typed}" পার্টি তালিকায় নেই। নতুন পার্টি তৈরি করবেন?`, `"${typed}" is not in the party list. Create a new party?`))) createParty(typed); return; }
     const amount = evalAmt(mIn.value), account = cIn.value.trim(), d = $("#dc-d", v).value;
     if (!d) return err("তারিখ দিন");
     if (!account) return err("Account লিখুন (যেমন DBBL-17)"), cIn.focus();
-    if (isNaN(amount) || amount <= 0) return err("টাকার অংক ঠিক নেই"), mIn.focus();
+    if (isNaN(amount) || amount <= 0) return err("টাকার অঙ্ক ঠিক নেই"), mIn.focus();
     if (rows.some(r => r.party_id === party.id && r.amount === amount && r.status !== "cancelled") && !ask("এই তারিখে একই পার্টি, একই টাকা আগেই আছে। আবার যোগ করবেন?")) return;
     busy = true;
     try {
       const r = await API.dcolAdd({ date: d, party_id: party.id, party: party.name, asm: aIn.value.trim(), account, amount, remarks: rIn.value.trim() });
-      rows.push(r); toast(`✔ ${party.name} — ৳ ${money0(amount)} যোগ হয়েছে`); picker.set(null); cPick.set(null); pIn.value = ""; aIn.value = ""; cIn.value = ""; mIn.value = ""; rIn.value = ""; $("#dc-mh", v).textContent = ""; $("#dc-ph", v).innerHTML = ""; qa();
+      rows.push(r); toast(bi(`✔ ${party.name} — ৳ ${money0(amount)} যোগ হয়েছে`, `✔ ${party.name} — ৳ ${money0(amount)} added`)); picker.set(null); cPick.set(null); pIn.value = ""; aIn.value = ""; cIn.value = ""; mIn.value = ""; rIn.value = ""; $("#dc-mh", v).textContent = ""; $("#dc-ph", v).innerHTML = ""; qa();
       DCACHE.dcol = null; draw(); pIn.focus();
     } catch (e) { err(dcErr(e)); } finally { busy = false; }
   }
@@ -2849,7 +2849,7 @@ async function vDcol(v) {
   function draw() {
     const live = rows.filter(r => r.status !== "cancelled"), by = s => rows.filter(r => r.status === s);
     const stat = (k, cls, ic, lab, arr) => `<button type="button" class="dcx-stat ${cls} ${F.st === k && k ? "on" : ""}" data-k="${k}"><span class="si">${ico(ic)}</span><span class="tx"><small>${lab}</small><b class="num">৳ ${money0(dcSum(arr))}</b><i>${arr.length}টি</i></span></button>`;
-    $("#dc-kpi", v).innerHTML = stat("", "t", "wallet", "মোট" + (by("cancelled").length ? ` · ${by("cancelled").length} Cancelled বাদে` : ""), live) + stat("approved", "a", "check", "Approved", by("approved")) + stat("pending", "p", "clock", "Pending", by("pending"));
+    $("#dc-kpi", v).innerHTML = stat("", "t", "wallet", bi("মোট", "Total") + (by("cancelled").length ? bi(` · ${by("cancelled").length} Cancelled বাদে`, ` · excl. ${by("cancelled").length} Cancelled`) : ""), live) + stat("approved", "a", "check", "Approved", by("approved")) + stat("pending", "p", "clock", "Pending", by("pending"));
     $$("#dc-kpi [data-k]", v).forEach(b => b.onclick = () => { F.st = F.st === b.dataset.k ? "" : b.dataset.k; draw(); });
     $("#dc-sc", v).innerHTML = [["", "সব"], ...Object.entries(DC_ST)].map(([k, l]) => `<span class="chip ${F.st === k ? "on" : ""}" data-s="${k}">${k ? `<i class="sdot ${k}"></i>` : ""}${l} <span class="cnt">${k ? by(k).length : rows.length}</span></span>`).join("");
     const acs = dcGroup(live, r => r.account); $("#dc-ac", v).innerHTML = acs.length ? `<span class="mut xs lbl">Account:</span>` + acs.map(a => `<span class="chip ${F.ac === a.k ? "on" : ""}" data-a="${esc(a.k)}"><i class="bdot" style="background:${dcBrand(a.k)}"></i>${esc(a.k)} · ${money0(a.amt)} <span class="mut">(${a.n})</span></span>`).join("") : "";
@@ -2859,13 +2859,13 @@ async function vDcol(v) {
     list.innerHTML = vis.length ? `<div class="tw cards"><table><thead><tr><th style="width:34px">${actionable.length ? `<input type="checkbox" id="dc-all" title="সব বাছুন">` : ""}</th><th class="r">#</th><th>পার্টি</th><th>Account</th><th class="r">টাকা</th><th>অবস্থা</th><th>মন্তব্য</th><th class="r noprint">কাজ</th></tr></thead><tbody>${vis.map((r, i) => {
       const acts = [["approved", "check", "gr", "Approve (ঠিক আছে)"], ["cancelled", "xmark", "rd", "Cancel"]].filter(([s]) => dcCan(r, s)).map(([s, ic, c, t]) => `<button class="iconbtn sm dca ${c}" data-st="${s}" data-id="${r.id}" title="${t}">${ico(ic)}</button>`).join("") + (r.status !== "pending" && dcCan(r, "pending") ? `<button class="btn sm" data-st="pending" data-id="${r.id}" title="Pending-এ ফেরত">↺</button>` : "");
       return `<tr class="dcr ${r.status}"><td>${dcCan(r, "approved") || dcCan(r, "cancelled") ? `<input type="checkbox" data-sel="${r.id}" ${sel.has(r.id) ? "checked" : ""}>` : ""}</td><td class="r mut">${i + 1}</td><td><b>${esc(r.party)}</b><div class="mut xs">${esc([r.asm || "—", dpGeoOf(gm, r).district].filter(Boolean).join(" · "))}</div></td><td class="b"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account || "—")}</td><td class="r num b">${money0(r.amount)}</td><td>${dcStTag(r)}${r.decided_by ? `<div class="mut xs">${esc(r.decided_by)}${r.decision_note ? " · " + esc(r.decision_note) : ""}</div>` : ""}</td><td class="sm">${esc(r.remarks)}</td><td class="r noprint"><div class="dcacts">${acts}${dcCanEdit(r) ? `<button class="iconbtn sm" data-ed="${r.id}" title="এডিট">${ico("edit")}</button>` : ""}${S.me.role === "admin" && !r.pending_sync ? `<button class="iconbtn sm rd" data-dl="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></td></tr>`;
-    }).join("")}<tr class="tot"><td></td><td></td><td colspan="2">মোট (${vis.filter(r => r.status !== "cancelled").length}টি, Cancelled বাদে)</td><td class="r num">${money0(dcSum(vis.filter(r => r.status !== "cancelled")))}</td><td colspan="3"></td></tr></tbody></table></div>` : `<div class="dcx-empty"><span class="ei">${ico("wallet")}</span><b>${rows.length ? "খোঁজার সাথে কিছু মেলেনি" : "এই তারিখে এখনো কোনো এন্ট্রি নেই"}</b><span class="mut">${rows.length ? "ফিল্টার বা সার্চ বদলে দেখুন" : "উপরের ফর্ম থেকে প্রথম কালেকশনটি যোগ করুন"}</span>${rows.length ? `<button class="btn sm" id="dc-clr">ফিল্টার মুছুন</button>` : ""}</div>`;
+    }).join("")}<tr class="tot"><td></td><td></td><td colspan="2">${bi("মোট (" + vis.filter(r => r.status !== "cancelled").length + "টি, Cancelled বাদে)", "Total (" + vis.filter(r => r.status !== "cancelled").length + " entries, excl. Cancelled)")}</td><td class="r num">${money0(dcSum(vis.filter(r => r.status !== "cancelled")))}</td><td colspan="3"></td></tr></tbody></table></div>` : `<div class="dcx-empty"><span class="ei">${ico("wallet")}</span><b>${rows.length ? "খোঁজার সাথে কিছু মেলেনি" : "এই তারিখে এখনো কোনো এন্ট্রি নেই"}</b><span class="mut">${rows.length ? "ফিল্টার বা সার্চ বদলে দেখুন" : "উপরের ফর্ম থেকে প্রথম কালেকশনটি যোগ করুন"}</span>${rows.length ? `<button class="btn sm" id="dc-clr">ফিল্টার মুছুন</button>` : ""}</div>`;
     labelTables(list); const cl = $("#dc-clr", list); if (cl) cl.onclick = () => { F.st = ""; F.ac = ""; F.q = ""; $("#dc-q", v).value = ""; draw(); };
     $$("[data-sel]", list).forEach(x => x.onchange = () => { x.checked ? sel.add(x.dataset.sel) : sel.delete(x.dataset.sel); selbar(); });
     const all = $("#dc-all", list); if (all) all.onchange = () => { actionable.forEach(r => all.checked ? sel.add(r.id) : sel.delete(r.id)); $$("[data-sel]", list).forEach(x => x.checked = all.checked); selbar(); };
     $$("[data-st]", list).forEach(b => b.onclick = () => dcDecide([b.dataset.id], b.dataset.st, load));
     $$("[data-ed]", list).forEach(b => b.onclick = () => dcEditModal(rows.find(r => r.id === b.dataset.ed), load));
-    $$("[data-dl]", list).forEach(b => b.onclick = async () => { const r = rows.find(x => x.id === b.dataset.dl); if (!ask(`"${r.party}" — ৳ ${money0(r.amount)} মুছে ফেলবেন?`)) return; try { await API.dcolDelete(r.id); DCACHE.dcol = null; toast("✔ মুছে ফেলা হয়েছে"); load(); } catch (e) { toast(dcErr(e), "err"); } });
+    $$("[data-dl]", list).forEach(b => b.onclick = async () => { const r = rows.find(x => x.id === b.dataset.dl); if (!ask(bi(`"${r.party}" — ৳ ${money0(r.amount)} মুছে ফেলবেন?`, `Delete "${r.party}" — ৳ ${money0(r.amount)}?`))) return; try { await API.dcolDelete(r.id); DCACHE.dcol = null; toast("✔ মুছে ফেলা হয়েছে"); load(); } catch (e) { toast(dcErr(e), "err"); } });
     selbar(); qa();
   }
   $("#dc-q", v).oninput = e => { F.q = e.target.value; draw(); };
@@ -2880,7 +2880,7 @@ const dcPeriodBar = pbBar;
 const dcEmptyPeriod = msg => `<div class="dcx-empty big"><span class="ei">${ico("chart")}</span><b>${msg}</b><span class="mut">${LANG === "en" ? "Try another period" : "অন্য সময় বেছে দেখুন"}</span><div class="chips" style="justify-content:center">${PB_M().filter(x => x[0] !== "day" && x[0] !== "week").map(([k, l]) => `<span class="chip" data-qp="${k}">${l}</span>`).join("")}</div></div>`;
 const dcRange = pbRange, dcBindPeriod = pbBind;
 const dcRangeLabel = (f, t) => f === t ? new Date(f + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : `${dmy(f)} → ${dmy(t)}`;
-const dcStatLabel = s => ({ approved: "Approved", pending: "Pending", cancelled: "Cancelled", live: "All (Cancelled বাদে)" }[s]);
+const dcStatLabel = s => ({ approved: "Approved", pending: "Pending", cancelled: "Cancelled", live: bi("All (Cancelled বাদে)", "All (excl. Cancelled)") }[s]);
 const dcStatPass = (r, s) => s === "live" ? r.status !== "cancelled" : r.status === s;
 const dcStatOpts = cur => ["approved", "pending", "live", "cancelled"].map(s => `<option value="${s}" ${s === cur ? "selected" : ""}>${dcStatLabel(s)}</option>`).join("");
 async function dcCanvas(el) { await loadScript("vendor/html2canvas.min.js"); const z = el.style.zoom; el.style.zoom = ""; try { return await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", width: el.offsetWidth, windowWidth: 1200 }); } finally { el.style.zoom = z; } }
@@ -3049,7 +3049,7 @@ async function vDparty(v) {
     const canAdd = S.me.role !== "boss";
     const names = new Map(); DASM.forEach(a => names.set(a.name, { ...a, n: 0 })); list.forEach(p => { if (!p.asm) return; const o = names.get(p.asm) || { id: null, name: p.asm, active: true, n: 0 }; o.n++; names.set(p.asm, o); });
     const rows = [...names.values()].sort((a, b) => a.name.localeCompare(b.name));
-    modal(`<h2>ASM / Salesman তালিকা</h2><div class="mut sm" style="margin-bottom:8px">${admin ? "নাম বদলালে ওই ASM-এর সব পার্টির ASM বদলে যাবে (আগের কালেকশন রেকর্ড আগের নামেই থাকবে)। যে ASM-এর পার্টি বা রেকর্ড আছে তাকে মুছা যায় না — নিষ্ক্রিয় করুন।" : ""}</div>${canAdd ? `<button class="btn pri sm" id="am-add" style="margin-bottom:10px">${ico("plus")} নতুন ASM</button>` : ""}<div class="tw"><table><thead><tr><th>ASM</th><th class="r">পার্টি</th><th>অবস্থা</th>${admin ? "<th></th>" : ""}</tr></thead><tbody>${rows.map((r, i) => `<tr class="${r.active ? "" : "dim"}"><td>${esc(r.name)}</td><td class="r num">${r.n}</td><td>${r.active ? '<span class="dst approved">সক্রিয়</span>' : '<span class="dst cancelled">নিষ্ক্রিয়</span>'}</td>${admin ? `<td class="r"><div class="dcacts"><button class="btn sm" data-rn="${i}">নাম বদলান</button>${r.id ? `<button class="btn sm" data-ac="${i}">${r.active ? "নিষ্ক্রিয়" : "সক্রিয়"}</button><button class="iconbtn sm rd" data-dl="${i}" title="মুছুন">${ico("trash")}</button>` : ""}</div></td>` : ""}</tr>`).join("") || `<tr><td colspan="4" class="mut" style="text-align:center">কোনো ASM নেই</td></tr>`}</tbody></table></div><div class="hint rd" id="am-e"></div><div class="row" style="margin-top:14px"><button class="btn" id="am-x">বন্ধ</button></div>`, (root, close) => {
+    modal(`<h2>ASM / Salesman তালিকা</h2><div class="mut sm" style="margin-bottom:8px">${admin ? bi("নাম বদলালে ওই ASM-এর সব পার্টির ASM বদলে যাবে (আগের কালেকশন রেকর্ড আগের নামেই থাকবে)। যে ASM-এর পার্টি বা রেকর্ড আছে তাকে মুছা যায় না — নিষ্ক্রিয় করুন।", "Renaming changes the ASM of all that ASM's parties (earlier collection records keep the old name). An ASM with parties or records cannot be deleted — mark it Inactive.") : ""}</div>${canAdd ? `<button class="btn pri sm" id="am-add" style="margin-bottom:10px">${ico("plus")} নতুন ASM</button>` : ""}<div class="tw"><table><thead><tr><th>ASM</th><th class="r">পার্টি</th><th>অবস্থা</th>${admin ? "<th></th>" : ""}</tr></thead><tbody>${rows.map((r, i) => `<tr class="${r.active ? "" : "dim"}"><td>${esc(r.name)}</td><td class="r num">${r.n}</td><td>${r.active ? '<span class="dst approved">সক্রিয়</span>' : '<span class="dst cancelled">নিষ্ক্রিয়</span>'}</td>${admin ? `<td class="r"><div class="dcacts"><button class="btn sm" data-rn="${i}">নাম বদলান</button>${r.id ? `<button class="btn sm" data-ac="${i}">${r.active ? "নিষ্ক্রিয়" : "সক্রিয়"}</button><button class="iconbtn sm rd" data-dl="${i}" title="মুছুন">${ico("trash")}</button>` : ""}</div></td>` : ""}</tr>`).join("") || `<tr><td colspan="4" class="mut" style="text-align:center">কোনো ASM নেই</td></tr>`}</tbody></table></div><div class="hint rd" id="am-e"></div><div class="row" style="margin-top:14px"><button class="btn" id="am-x">বন্ধ</button></div>`, (root, close) => {
       $("#am-x", root).onclick = close; const e = m => $("#am-e", root).textContent = m || "";
       const again = async () => { await dpLoad(true); list = DPARTY; filters(); draw(); openAsm(); };
       const add = $("#am-add", root); if (add) add.onclick = () => askText("নতুন ASM / Salesman", "নাম লিখুন (যেমন: Rahim-ASM-Bogura)", "", async n => { if (names.has(n) || [...names.keys()].some(k => norm(k) === norm(n))) throw new Error("এই নামে ASM আগেই আছে"); await API.asmAdd(n); toast("✔ ASM যোগ হয়েছে"); again(); });
@@ -3059,8 +3059,8 @@ async function vDparty(v) {
         const r = rows[+b.dataset.dl]; e("");
         try {
           const c = await API.asmUsage(r.name);
-          if (r.n > 0 || c > 0) return e(`"${r.name}" — ${r.n}টি পার্টি ও ${c}টি কালেকশন রেকর্ডে আছে, মুছা যাবে না। "নিষ্ক্রিয়" করুন।`);
-          if (!ask(`"${r.name}" মুছে ফেলবেন? (কোনো পার্টি বা রেকর্ড নেই)`)) return;
+          if (r.n > 0 || c > 0) return e(bi(`"${r.name}" — ${r.n}টি পার্টি ও ${c}টি কালেকশন রেকর্ডে আছে, মুছা যাবে না। "নিষ্ক্রিয়" করুন।`, `"${r.name}" is used by ${r.n} part${r.n === 1 ? "y" : "ies"} and ${c} collection record(s) — it cannot be deleted. Mark it "Inactive" instead.`));
+          if (!ask(bi(`"${r.name}" মুছে ফেলবেন? (কোনো পার্টি বা রেকর্ড নেই)`, `Delete "${r.name}"? (No parties or records)`))) return;
           await API.asmDelete(r.id); toast("✔ মুছে ফেলা হয়েছে"); again();
         } catch (x) { e(dcErr(x)); }
       });
@@ -3084,7 +3084,7 @@ function onUpdate(v) {
   const el = document.createElement("div"); el.id = "updbar";
   el.innerHTML = `<span>🚀 <b>নতুন আপডেট এসেছে</b> <span class="mut xs">v${esc(v)}</span></span><button class="btn sm pri" id="upd-go">এখনই আপডেট</button><button class="iconbtn" id="upd-x" title="পরে">✕</button>`;
   document.body.appendChild(el);
-  $("#upd-go").onclick = () => { if (DIRTY && !ask("এই পাতায় লেখা কিছু সেভ হয়নি — আপডেট করলে তা হারাতে পারে (ক্লোজিং/ক্যাশের ড্রাফট নিরাপদ থাকবে)। আপডেট করবেন?")) return; location.reload(); };
+  $("#upd-go").onclick = () => { if (DIRTY && !ask(bi("এই পাতায় লেখা কিছু সেভ হয়নি — আপডেট করলে তা হারাতে পারে (ক্লোজিং/ক্যাশের ড্রাফট নিরাপদ থাকবে)। আপডেট করবেন?", "Some of what you typed on this page is not saved — updating may lose it (Closing/Cash drafts stay safe). Update now?"))) return; location.reload(); };
   $("#upd-x").onclick = () => el.remove();
 }
 setTimeout(checkUpdate, 8000); setInterval(checkUpdate, 3 * 60 * 1000);
@@ -3289,7 +3289,7 @@ async function mfaEnrollModal(done) {
     const cancel = async () => { if (!fin) { try { await sb.auth.mfa.unenroll({ factorId: d.id }); } catch { } } close(); };
     $("#mf-x", root).onclick = cancel; $(".mback", root).onmousedown = e => { if (e.target.classList.contains("mback")) cancel(); };
     const go = async () => { const code = $("#mf-c", root).value.replace(/\D/g, ""); if (code.length !== 6) return $("#mf-e", root).textContent = en ? "Enter the 6-digit code" : "৬ অঙ্কের কোড দিন"; const b = $("#mf-ok", root); b.disabled = true;
-      try { const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: d.id, code }); if (error) throw error; fin = true; close(); toast(en ? "✔ 2FA is on" : "✔ 2FA চালু হয়েছে"); done && done(); } catch (e) { $("#mf-e", root).textContent = en ? "Wrong code — check your phone's clock and try again" : "কোড ভুল — ফোনের সময় ঠিক আছে কিনা দেখে আবার দিন"; b.disabled = false; } };
+      try { const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: d.id, code }); if (error) throw error; fin = true; close(); toast(en ? "✔ 2FA is on" : "✔ 2FA চালু হয়েছে"); done && done(); } catch (e) { $("#mf-e", root).textContent = en ? "Wrong code — check your phone's clock and try again" : "কোড ভুল — ফোনের সময় ঠিক আছে কি না দেখে আবার দিন"; b.disabled = false; } };
     $("#mf-ok", root).onclick = go; $("#mf-c", root).onkeydown = e => { if (e.key === "Enter") go(); };
   });
 }
@@ -3337,9 +3337,9 @@ async function boot() {
     loadAvatars();
     let mo = null;
     const start = () => { if (!location.hash && PREFS.start && PREFS.start !== "dash" && allowed().includes(PREFS.start)) location.replace("#/" + PREFS.start); shell(); route(); setTimeout(remTick, 1500); if (!mo) { let q = 0; mo = new MutationObserver(() => { if (!q) q = requestAnimationFrame(() => { q = 0; labelTables(document); }); }); mo.observe(document.body, { childList: true, subtree: true }); } };
-    if (loadCache()) { start(); reload().then(() => { refreshBadges(); const k = (location.hash.match(/^#\/(\w+)/) || [])[1] || "dash"; if (["dash", "cheques", "books", "accounts"].includes(k) && !document.querySelector(".mback,.pal") && !document.activeElement?.matches("input,select,textarea")) route(); }).catch(e => { if (!isNetErr(e)) toast("রিফ্রেশ ব্যর্থ: " + (e.message || e), "err"); }); Outbox.flush(); }
+    if (loadCache()) { start(); reload().then(() => { refreshBadges(); const k = (location.hash.match(/^#\/(\w+)/) || [])[1] || "dash"; if (["dash", "cheques", "books", "accounts"].includes(k) && !document.querySelector(".mback,.pal") && !document.activeElement?.matches("input,select,textarea")) route(); }).catch(e => { if (!isNetErr(e)) toast(bi("রিফ্রেশ ব্যর্থ: ", "Refresh failed: ") + (e.message || e), "err"); }); Outbox.flush(); }
     else { $("#app").innerHTML = `<div class="boot"><div><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div class="mut">ডাটা লোড হচ্ছে…</div></div></div>`; await reload(); start(); Outbox.flush(); }
-  } catch (e) { console.error(e); $("#app").innerHTML = `<div class="login"><div class="card"><div class="alert rd">শুরু করা যায়নি: ${esc(e.message || e)}</div><p class="mut sm">config.js এ Supabase URL ও key ঠিক আছে কি এবং schema.sql চালানো হয়েছে কি দেখুন।</p></div></div>`; }
+  } catch (e) { console.error(e); $("#app").innerHTML = `<div class="login"><div class="card"><div class="alert rd">${bi("শুরু করা যায়নি: ", "Could not start: ")}${esc(e.message || e)}</div><p class="mut sm">${bi("config.js এ Supabase URL ও key ঠিক আছে কি না এবং schema.sql চালানো হয়েছে কি না দেখুন।", "Check that the Supabase URL and key in config.js are correct and that schema.sql has been run.")}</p></div></div>`; }
 }
 window.addEventListener("hashchange", route);
 boot();
