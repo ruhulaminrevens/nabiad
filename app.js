@@ -250,7 +250,12 @@ const ICON = {
   pulse: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
   trend: '<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>',
   sliders: '<path d="M4 6h10M20 6h0M4 12h4M14 12h6M4 18h11M20 18h0"/><circle cx="17" cy="6" r="2"/><circle cx="11" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
-  table: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>'
+  table: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>',
+  chq: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h6M6 14h4M15 14l1.6 1.6L20 11.5"/>',
+  vault: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="12" r="3.5"/><path d="M12 8.5v1M12 14.5v1M8.5 12h1M14.5 12h1"/>',
+  note: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.8"/><path d="M6 9.5h.01M18 14.5h.01"/>',
+  net: '<circle cx="12" cy="5.5" r="2.5"/><circle cx="5.5" cy="18" r="2.5"/><circle cx="18.5" cy="18" r="2.5"/><path d="M11 8l-4 7.5M13 8l4 7.5M8 18h8"/>',
+  grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'
 };
 const ico = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[n]}</svg>`;
 
@@ -609,8 +614,13 @@ function sideMin(on, save = true) { document.documentElement.dataset.side = on ?
 function shell() {
   const keys = allowed(), bd = badges();
   const link = k => { const r = ROUTES[k]; const n = bd[k]; return `<a href="#/${k}" data-k="${k}" title="${esc(r.t)}">${ico(r.ic)}<span>${r.t}</span>${n ? `<span class="badge">${n}</span>` : ""}</a>`; };
-  let nav = "", last = "";
-  keys.forEach(k => { if (ROUTES[k].sec !== last) { last = ROUTES[k].sec; if (SECS[last]) nav += `<div class="sec">${SECS[last]}</div>`; } nav += link(k); });
+  /* v6.49: accordion sidebar — Dashboard · 5 collapsible groups · pinned utilities */
+  const UTIL = ["rem", "settings", "audit", "admin"], GR = [["main", bi("চেক", "Cheque"), "chq", "#818cf8"], ["bank", bi("ব্যাংক", "Bank"), "vault", "#38bdf8"], ["cash", bi("ক্যাশ", "Cash"), "note", "#34d399"], ["dist", bi("কালেকশন", "Collection"), "net", "#fbbf24"], ["more", bi("আরও", "More"), "grid", "#c4b5fd"]];
+  const inGroup = g => keys.filter(k => ROUTES[k].sec === g && !UTIL.includes(k));
+  let nav = keys.includes("dash") ? link("dash") : "";
+  GR.forEach(([g, lab, ic, col]) => { const ks = inGroup(g); if (!ks.length) return; const n = ks.reduce((a, k) => a + (bd[k] || 0), 0);
+    nav += `<div class="ng" data-g="${g}" data-ks="${ks.join(",")}" style="--gc:${col}"><button type="button" class="ng-h" aria-expanded="false"><span class="gi">${ico(ic)}</span><span class="gl">${lab}</span><span class="gb badge" ${n ? "" : "hidden"}>${n || ""}</span><span class="chv">${ico("chev")}</span></button><div class="ng-b"><div class="ng-bi">${ks.map(link).join("")}</div></div></div>`; });
+  const ut = UTIL.filter(k => keys.includes(k)); if (ut.length) nav += `<div class="nsep"></div>` + ut.map(link).join("");
   const TABS = (S.me.role === "boss" ? [["reports", "main", "চেক"], ["crep", "bank", "ব্যাংক"], ["cashsum", "cash", "ক্যাশ"], ["dsum", "dist", "কালেকশন"]] : [["entry", "main", "চেক"], ["closing", "bank", "ব্যাংক"], ["cash", "cash", "ক্যাশ"], ["dcol", "dist", "কালেকশন"]]).filter(t => keys.includes(t[0]));
   const mob = TABS.map(t => t[0]);
   $("#app").innerHTML = `<div class="shell">
@@ -627,6 +637,7 @@ function shell() {
   const lo = async () => { await API.logout(); try { localStorage.removeItem(CACHE_KEY); } catch { } location.hash = ""; location.reload(); };
   $("#logout").onclick = lo;
   $("#sbtog").onclick = () => sideMin(document.documentElement.dataset.side !== "min");
+  $$(".nav .ng-h").forEach(h => h.onclick = () => { const g = h.parentElement, was = g.classList.contains("open"); sideGroup(was ? null : g.dataset.g); }); /* accordion: one group open at a time */
   { let m = false; try { m = localStorage.getItem("nabiad_side") === "min"; } catch { } sideMin(m, false); }
   $("#theme").onclick = () => setTheme(getTheme() === "dark" ? "light" : "dark");
   $("#qs").onclick = palette; $("#bell").onclick = () => { const d = dueList(); if (d.length) dueModal(d); else location.hash = "#/rem"; }; updateBell();
@@ -638,8 +649,13 @@ function shell() {
 const tabBadge = (sec, bd) => { const n = sec === "main" ? bd.status : sec === "more" ? (bd.books || 0) + (bd.rem || 0) : 0; return n ? `<span class="badge">${n}</span>` : ""; };
 const secOf = k => { const x = ROUTES[k]?.sec; return !x || x === "top" ? "more" : x; };
 function setTabActive(k) { $$(".mnav [data-sec]").forEach(a => a.classList.toggle("on", a.dataset.sec === secOf(k))); }
+/* open the group that holds route k (or only the named group); everything else folds away */
+function sideGroup(k, byRoute) {
+  $$(".nav .ng").forEach(g => { const has = byRoute ? !!$(`[data-k="${k}"]`, g) : g.dataset.g === k; g.classList.toggle("open", has); if (byRoute) g.classList.toggle("has-on", has); $(".ng-h", g).setAttribute("aria-expanded", has ? "true" : "false"); });
+}
 function refreshBadges() {
   const bd = badges();
+  $$(".nav .ng").forEach(g => { const n = g.dataset.ks.split(",").reduce((a, k) => a + (bd[k] || 0), 0), b = $(".gb", g); b.textContent = n || ""; b.hidden = !n; });
   $$("[data-k]").forEach(a => { const n = bd[a.dataset.k]; let b = $(".badge", a); if (n) { if (!b) { b = document.createElement("span"); b.className = "badge"; a.appendChild(b); } b.textContent = n; } else b && b.remove(); });
   $$(".mnav [data-sec]").forEach(a => { const t = tabBadge(a.dataset.sec, bd); let b = $(".badge", a); if (t) { if (!b) { b = document.createElement("span"); b.className = "badge"; a.appendChild(b); } b.textContent = (t.match(/>(\d+)</) || [])[1]; } else b && b.remove(); });
 }
@@ -655,7 +671,7 @@ async function route() {
   if (!allowed().includes(k)) k = "dash";
   CUR = k; document.body.classList.remove("print-rep");
   if (cleanup) { cleanup(); cleanup = null; }
-  $$("[data-k]").forEach(a => a.classList.toggle("on", a.dataset.k === k)); setTabActive(k);
+  $$("[data-k]").forEach(a => a.classList.toggle("on", a.dataset.k === k)); setTabActive(k); sideGroup(k, true);
   try { const on = $(".side .nav a.on"); if (on) { const n = on.closest(".nav"), r = on.getBoundingClientRect(), nr = n.getBoundingClientRect(); if (r.top < nr.top + 8 || r.bottom > nr.bottom - 16) n.scrollTop += (r.top < nr.top + 8 ? r.top - nr.top - 40 : r.bottom - nr.bottom + 40); } } catch { }
   const cr = $("#crumb"); if (cr) cr.textContent = ROUTES[k].t;
   document.title = tr(ROUTES[k].t) + " · Nabiad";
