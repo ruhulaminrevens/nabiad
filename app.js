@@ -243,6 +243,7 @@ const ICON = {
   cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
   ledger: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+  recon: '<path d="M4 8h13l-3-3M20 16H7l3 3"/><circle cx="12" cy="12" r="1"/>',
   coins: '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
   pie: '<path d="M12 3v9h9a9 9 0 1 1-9-9z"/><path d="M16 3.5A9 9 0 0 1 20.5 8H16z"/>',
   pulse: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
@@ -578,6 +579,7 @@ const ROUTES = {
   status: { t: "চেক স্ট্যাটাস", ic: "flag", roles: "as", sec: "main", f: () => vStatus },
   cheques: { t: "চেক রেজিস্টার", ic: "list", roles: "asb", sec: "main", f: () => vCheques },
   closing: { t: "ব্যাংক ক্লোজিং", ic: "bank", roles: "as", sec: "bank", f: () => vClosing },
+  recon: { t: "ব্যাংক মিলান", ic: "recon", roles: "as", sec: "bank", f: () => vRecon },
   crep: { t: "ব্যালেন্স স্ন্যাপশট", ic: "img", roles: "asb", sec: "bank", f: () => vCrep },
   reports: { t: "ব্যাংক রিপোর্ট", ic: "chart", roles: "asb", sec: "bank", f: () => vReports },
   cash: { t: "ক্যাশ এন্ট্রি", ic: "wallet", roles: "as", sec: "cash", f: () => vCash },
@@ -764,13 +766,13 @@ async function setStatus(c, status, date, remarks) {
 }
 async function vEntry(v) {
   const st = { purpose: null, photo: null };
-  v.innerHTML = head("চেক পোস্টিং<span class=\"mut\">Enter চাপলে পরের ঘরে যাবে · শেষ ঘরে Enter = সেভ</span>") + `
+  v.innerHTML = head("চেক পোস্টিং<span class=\"mut\">Enter চাপলে পরের ঘরে যাবে · শেষ ঘরে Enter = সেভ</span>", `<button class="btn" id="e-imp">${ico("dl")} ${bi("Excel ইম্পোর্ট", "Excel import")}</button>`) + `
   <div class="split">
    <div class="card">
     <div class="fgrid">
      <div class="s4 daterow"><div class="dr-d"><label class="f">চেকের তারিখ</label><input class="in big" type="date" id="e-date" value="${today()}"></div><div class="dr-p"><label class="f">চেকের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn big" for="e-ph-c" title="ক্যামেরায় ছবি তুলুন">${ico("cam")} <span class="lbl">তুলুন</span></label><label class="btn big" for="e-ph" title="গ্যালারি থেকে বাছুন">${ico("img")} <span class="lbl">বাছুন</span></label><input type="file" id="e-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="e-ph" accept="image/*" hidden><img id="e-phv" class="hide" alt=""><button class="btn sm ghost hide" id="e-phx" title="ছবি বাদ">✕</button></div></div></div>
      <div class="s4"><label class="f">A/C Code <span class="mut">(টাইপ করুন: pbl, 483, nabiad…)</span></label><div><input class="in big" id="e-ac" autocomplete="off" placeholder="PBL-483" autofocus></div><div class="hint" id="e-achint"></div></div>
-     <div class="s2"><label class="f">চেক নং (শুধু সংখ্যা)</label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off"><div class="hint" id="e-nohint"></div></div>
+     <div class="s2"><label class="f">চেক নং (শুধু সংখ্যা)</label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off"><div class="hint" id="e-nohint"></div><div id="e-ocrw" class="hide noprint" style="margin-top:4px"><button type="button" class="btn sm" id="e-ocr">🔍 ${bi("ছবি থেকে পড়ুন", "Read from photo")}</button><div id="e-ocro" style="margin-top:4px"></div></div></div>
      <div class="s2"><label class="f">টাকা (বাতিল পাতা হলে 0)</label><input class="in big num" id="e-amt" inputmode="decimal" autocomplete="off"><div class="hint num" id="e-amthint"></div></div>
      <div class="s4"><label class="f">খাত</label><div class="chips" id="e-purp"></div></div>
      <div class="s2" id="x-cash" style="display:none"><label class="f">কে তুলেছে *</label><select class="in" id="e-taker"><option value=""></option>${TAKERS.map(t => `<option>${t}</option>`).join("")}</select></div>
@@ -789,7 +791,8 @@ async function vEntry(v) {
     sum();
   });
   const toac = suggest($e("e-toac"), () => acItems(true), () => sum());
-  const clearPhoto = photoPicker(v, st, { inp: "e-ph", cam: "e-ph-c", img: "e-phv", x: "e-phx" });
+  const clearPhoto = photoPicker(v, st, { inp: "e-ph", cam: "e-ph-c", img: "e-phv", x: "e-phx" }, () => { $e("e-ocrw").classList.toggle("hide", !st.photo); $e("e-ocro").innerHTML = ""; });
+  $e("e-ocr").onclick = () => runOcr(st, $e("e-ocro"), val => { $e("e-no").value = val; $e("e-no").dispatchEvent(new Event("input")); }, val => { $e("e-amt").value = val; $e("e-amt").dispatchEvent(new Event("input")); });
   const purpKey = () => st.purpose ? purposeKey(st.purpose) : "";
   function drawPurp() {
     $e("e-purp").innerHTML = allPurposes().map(p => `<span class="chip" data-p="${esc(p)}">${esc(p.split(" (")[0])}</span>`).join("") + `<span class="chip add" id="e-padd" title="নতুন খাত যোগ করুন">＋ নতুন</span>` + (S.me.role === "admin" ? `<span class="chip add" id="e-pmg" title="${LANG === "en" ? "Edit / delete purposes" : "খাত এডিট / মুছুন"}">⚙ ${LANG === "en" ? "Manage" : "ম্যানেজ"}</span>` : "");
@@ -807,6 +810,7 @@ async function vEntry(v) {
     const k = purpKey(); $e("x-cash").style.display = k === "cash" ? "" : "none"; $e("x-own").style.display = k === "own" ? "" : "none"; sum();
   }
   drawPurp(); loadPurposes().then(() => { if (v.isConnected) drawPurp(); });
+  $e("e-imp").onclick = () => chequeImportModal(() => { list(); });
   function sum() {
     const code = ac.get()?.value, no = $e("e-no").value, amt = num($e("e-amt").value);
     $e("e-amthint").textContent = amt ? "৳ " + money(amt) : ""; const el = $e("e-sum");
@@ -1685,11 +1689,28 @@ function purposeManage(onChange) {
       try { await API.purposeDelete(nm); PURP_X = allPurposes().filter(x => x !== nm); save(); toast(en ? "✔ Deleted" : "✔ মোছা হয়েছে"); purposeManage(onChange); } catch (e) { toast(userErr(e), "err"); } });
   });
 }
-function photoPicker(root, st, ids) {
+/* ---------- v6.45: OCR (assistive) — Tesseract.js, runs fully in the browser ---------- */
+let OCRW = null;
+async function ocrCheque(blob, onProg) {
+  if (!OCRW) { await loadScript("vendor/ocr/tesseract.min.js"); OCRW = await Tesseract.createWorker("eng", 1, { workerPath: "vendor/ocr/worker.min.js", corePath: "vendor/ocr/core", langPath: "vendor/ocr/lang", gzip: true, workerBlobURL: false, logger: m => { if (m.status === "recognizing text" && onProg) onProg(m.progress); } }); }
+  const { data } = await OCRW.recognize(blob); const text = data.text || "";
+  const nos = [...new Set((text.replace(/[\s-]/g, " ").match(/\b\d{6,8}\b/g) || []))].slice(0, 6);
+  const amts = [...new Set((text.match(/\b\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?\b|\b\d{4,9}(?:\.\d{1,2})?\b/g) || []).map(x => x.replace(/,/g, "")).filter(x => !nos.includes(x) && +x >= 100))].slice(0, 6);
+  return { text, nos, amts };
+}
+async function runOcr(st, box, onNo, onAmt) {
+  if (!st.photo) return; box.innerHTML = `<span class="mut xs">🔍 ${bi("পড়া হচ্ছে… (প্রথমবার ~১০ MB ডাউনলোড হতে পারে)", "Reading… (first run downloads ~10 MB)")}</span>`;
+  try { const r = await ocrCheque(st.photo, p => { box.firstChild.textContent = `🔍 ${Math.round(p * 100)}%`; });
+    const chip = (t, k) => `<span class="chip" data-o="${k}" data-v="${esc(t)}">${k === "n" ? "#" : "৳"} ${esc(k === "a" ? money(+t) : t)}</span>`;
+    box.innerHTML = r.nos.length || r.amts.length ? `<div class="mut xs">${bi("সাজেশন — ট্যাপ করে বসান, তারপর নিজে মিলিয়ে নিন:", "Suggestions — tap to fill, then verify yourself:")}</div><div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap">${r.nos.map(x => chip(x, "n")).join("")}${r.amts.map(x => chip(x, "a")).join("")}</div>` : `<span class="mut xs">${bi("ছবি থেকে কিছু পড়া যায়নি — স্পষ্ট ছবি দিয়ে চেষ্টা করুন", "Nothing readable — try a clearer photo")}</span>`;
+    $$("[data-o]", box).forEach(c => c.onclick = () => (c.dataset.o === "n" ? onNo : onAmt)(c.dataset.v));
+  } catch (e) { box.innerHTML = `<span class="rd xs">OCR: ${esc(e.message || e)}</span>`; }
+}
+function photoPicker(root, st, ids, onChange) {
   const inp = $("#" + ids.inp, root), img = $("#" + ids.img, root), x = $("#" + ids.x, root);
-  const onPick = async function () { const f0 = this.files[0]; this.value = ""; if (!f0) return; const f = await pickImage(f0, { title: LANG === "en" ? "Crop cheque photo" : "চেকের ছবি ক্রপ", aspect: null }); if (!f) return; try { st.photo = await compressImage(f); img.src = URL.createObjectURL(st.photo); img.classList.remove("hide"); x.classList.remove("hide"); } catch (e) { toast(e.message, "err"); } this.value = ""; };
+  const onPick = async function () { const f0 = this.files[0]; this.value = ""; if (!f0) return; const f = await pickImage(f0, { title: LANG === "en" ? "Crop cheque photo" : "চেকের ছবি ক্রপ", aspect: null }); if (!f) return; try { st.photo = await compressImage(f); img.src = URL.createObjectURL(st.photo); img.classList.remove("hide"); x.classList.remove("hide"); onChange && onChange(); } catch (e) { toast(e.message, "err"); } this.value = ""; };
   inp.onchange = onPick; const cam = ids.cam && $("#" + ids.cam, root); if (cam) cam.onchange = onPick;
-  x.onclick = e => { e.preventDefault(); st.photo = null; img.classList.add("hide"); x.classList.add("hide"); img.removeAttribute("src"); };
+  x.onclick = e => { e.preventDefault(); st.photo = null; img.classList.add("hide"); x.classList.add("hide"); img.removeAttribute("src"); onChange && onChange(); };
   return () => x.onclick(new Event("click"));
 }
 function addPhotoModal(c, after) {
@@ -2575,6 +2596,7 @@ Object.assign(SbAPI, {
   async asmActive(id, on) { const { error } = await sb.from("dist_asms").update({ active: on }).eq("id", id); if (error) throw error; },
   async asmDelete(id) { const { error } = await sb.from("dist_asms").delete().eq("id", id); if (error) throw error.code === "23503" ? new Error(DC_INUSE) : error; },
   async dpartyRenameAsm(from, to) { const { error } = await sb.from("dist_parties").update({ asm: to || null }).eq("asm", from); if (error) throw error; },
+  async dcolParty(id, from, to) { let out = [], f = 0; for (;;) { const { data, error } = await sb.from("dist_collections").select("*").eq("party_id", id).gte("date", from).lte("date", to).order("date").order("created_at").order("id").range(f, f + 999); if (error) throw error; out = out.concat(data); if (data.length < 1000) break; f += 1000; } return out.map(dcRow); },
   async dcolRange(from, to) {
     let out = [], f = 0;
     for (;;) { const { data, error } = await sb.from("dist_collections").select("*").gte("date", from).lte("date", to).order("date").order("created_at").order("id").range(f, f + 999); if (error) throw error; out = out.concat(data); if (data.length < 1000) break; f += 1000; }
@@ -2620,6 +2642,7 @@ Object.assign(DemoAPI, {
   async asmDelete(id) { await this.asms(); const o = demoStore.dasms.find(x => x.id === id); if (!o) return; if (demoStore.dparties.some(p => p.asm === o.name) || demoStore.dcols.some(r => r.asm === o.name)) throw new Error(DC_INUSE); demoStore.dasms = demoStore.dasms.filter(x => x.id !== id); this.save(); },
   async dpartyDelete(id) { await this.dparties(); if (demoStore.dcols.some(r => r.party_id === id)) throw new Error(DC_INUSE); const o = demoStore.dparties.find(x => x.id === id); o && this.aud("dist_parties", "delete", "Party " + o.name, o, null); demoStore.dparties = demoStore.dparties.filter(x => x.id !== id); this.save(); },
   async dpartyRenameAsm(from, to) { await this.dparties(); demoStore.dparties.forEach(p => { if (p.asm === from) p.asm = to; }); this.save(); },
+  async dcolParty(id, from, to) { await this.dparties(); return demoStore.dcols.filter(r => r.party_id === id && r.date >= from && r.date <= to).sort((a, b) => a.date.localeCompare(b.date)).map(dcRow); },
   async dcolRange(from, to) { await this.dparties(); return demoStore.dcols.filter(r => r.date >= from && r.date <= to).sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || "").localeCompare(b.created_at || "")).map(dcRow); },
   async dcolAdd(c) { await this.dparties(); const row = { id: crypto.randomUUID(), date: c.date, party_id: c.party_id || null, party: c.party, asm: c.asm || "", account: c.account || "", amount: c.amount, remarks: c.remarks || "", status: "pending", entered_by: S.me.name, created_at: new Date().toISOString() }; demoStore.dcols.push(row); this.aud("dist_collections", "insert", `Collection ${row.date} · ${row.party} · ${row.amount}`, null, row); this.save(); return dcRow(row); },
   async dcolUpdate(id, p) { await this.dparties(); const o = demoStore.dcols.find(x => x.id === id); this.aud("dist_collections", "update", `Collection ${o.date} · ${o.party} · ${o.amount}`, { ...o }, { ...o, ...p }); Object.assign(o, p); this.save(); },
@@ -2995,9 +3018,10 @@ async function vDparty(v) {
     const vis = list.filter(p => (F.act === "" || (F.act === "1") === p.active) && (!F.asm || (F.asm === "__none" ? !p.asm : p.asm === F.asm)) && (!F.dv || (F.dv === "__none" ? !p.division : p.division === F.dv)) && (!F.ds || (F.ds === "__none" ? !p.district : p.district === F.ds)) && (!q || norm([p.name, p.asm, p.district, p.division, p.phone, p.contact_person, p.address, p.note].join(" ")).includes(q)));
     $("#dp-kpi", v).innerHTML = `<div class="grid g4"><div class="kpi card k-vi"><div class="l">মোট পার্টি<span class="ki">${ico("users")}</span></div><div class="v num">${list.length}</div><div class="s">সক্রিয় ${list.filter(p => p.active).length}</div></div><div class="kpi card k-gr"><div class="l">ASM / Salesman<span class="ki">${ico("users")}</span></div><div class="v num">${dcAsms().length}</div><div class="s">জন</div></div><div class="kpi card k-am"><div class="l">ASM ঠিক করা নেই<span class="ki">${ico("flag")}</span></div><div class="v num">${list.filter(p => !p.asm).length}</div><div class="s">পার্টি</div></div><div class="kpi card"><div class="l">জেলা ঠিক করা নেই<span class="ki">${ico("flag")}</span></div><div class="v num">${list.filter(p => !p.district).length}</div><div class="s">পার্টি · ${new Set(list.map(p => p.district).filter(Boolean)).size}টি জেলায় বাকিরা</div></div></div>`;
     $("#dp-cnt", v).textContent = vis.length;
-    out.innerHTML = vis.length ? `<div class="tw cards"><table><thead><tr><th class="r">#</th><th>পার্টি</th><th>ASM / Salesman</th><th>জেলা</th><th>বিভাগ</th><th>অবস্থা</th><th class="r noprint"></th></tr></thead><tbody>${vis.slice(0, F.lim).map((p, i) => `<tr class="${p.active ? "" : "dim"}"><td class="r mut">${i + 1}</td><td><b>${esc(p.name)}</b>${[p.contact_person, p.phone].filter(Boolean).length ? `<div class="mut xs">${esc([p.contact_person, p.phone].filter(Boolean).join(" · "))}</div>` : ""}${p.address ? `<div class="mut xs">${esc(p.address)}</div>` : ""}</td><td>${esc(p.asm) || '<span class="am">—</span>'}</td><td>${p.district ? esc(p.district) : '<span class="am">—</span>'}</td><td>${p.division ? esc(p.division) : '<span class="am">—</span>'}</td><td>${p.active ? '<span class="dst approved">সক্রিয়</span>' : '<span class="dst cancelled">নিষ্ক্রিয়</span>'}</td><td class="r noprint">${admin ? `<button class="iconbtn sm" data-ed="${p.id}" title="এডিট">${ico("edit")}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${vis.length > F.lim ? `<div style="padding:12px;text-align:center"><button class="btn" id="dp-more">আরও ${Math.min(200, vis.length - F.lim)}টি দেখান (মোট ${vis.length})</button></div>` : ""}` : `<div class="empty">কোনো পার্টি পাওয়া যায়নি</div>`;
+    out.innerHTML = vis.length ? `<div class="tw cards"><table><thead><tr><th class="r">#</th><th>পার্টি</th><th>ASM / Salesman</th><th>জেলা</th><th>বিভাগ</th><th>অবস্থা</th><th class="r noprint"></th></tr></thead><tbody>${vis.slice(0, F.lim).map((p, i) => `<tr class="${p.active ? "" : "dim"}"><td class="r mut">${i + 1}</td><td><b>${esc(p.name)}</b>${[p.contact_person, p.phone].filter(Boolean).length ? `<div class="mut xs">${esc([p.contact_person, p.phone].filter(Boolean).join(" · "))}</div>` : ""}${p.address ? `<div class="mut xs">${esc(p.address)}</div>` : ""}</td><td>${esc(p.asm) || '<span class="am">—</span>'}</td><td>${p.district ? esc(p.district) : '<span class="am">—</span>'}</td><td>${p.division ? esc(p.division) : '<span class="am">—</span>'}</td><td>${p.active ? '<span class="dst approved">সক্রিয়</span>' : '<span class="dst cancelled">নিষ্ক্রিয়</span>'}</td><td class="r noprint"><button class="iconbtn sm" data-lg="${p.id}" title="${bi("খাতা", "Ledger")}">${ico("ledger")}</button>${admin ? `<button class="iconbtn sm" data-ed="${p.id}" title="এডিট">${ico("edit")}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${vis.length > F.lim ? `<div style="padding:12px;text-align:center"><button class="btn" id="dp-more">আরও ${Math.min(200, vis.length - F.lim)}টি দেখান (মোট ${vis.length})</button></div>` : ""}` : `<div class="empty">কোনো পার্টি পাওয়া যায়নি</div>`;
     labelTables(out);
     $$("[data-ed]", out).forEach(b => b.onclick = () => dpartyModal(list.find(p => p.id === b.dataset.ed), () => { filters(); draw(); }));
+    $$("[data-lg]", out).forEach(b => b.onclick = () => partyLedgerModal(list.find(p => p.id === b.dataset.lg)));
     const mb = $("#dp-more", out); if (mb) mb.onclick = () => { F.lim += 200; draw(); };
   }
   filters(); draw();
@@ -3054,6 +3078,142 @@ function onUpdate(v) {
 setTimeout(checkUpdate, 8000); setInterval(checkUpdate, 3 * 60 * 1000);
 window.addEventListener("online", () => setTimeout(checkUpdate, 2000));
 document.addEventListener("visibilitychange", () => { if (document.hidden) { if (updReady && !DIRTY && !Outbox.busy) location.reload(); } else checkUpdate(); });
+
+/* ---------- v6.45: Excel cheque import · party ledger · bank reconciliation ---------- */
+const bi = (bn, en) => LANG === "en" ? en : bn;
+async function readSheetFile(file) { await loadScript("vendor/xlsx.min.js"); const wb = XLSX.read(await file.arrayBuffer(), { type: "array" }); const ws = wb.Sheets[wb.SheetNames[0]]; return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" }); }
+function toIsoDate(v) {
+  if (v === "" || v == null) return "";
+  if (typeof v === "number") { if (v < 20000 || v > 80000) return ""; return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10); }
+  const s = String(v).trim(); let m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/), y, mo, d;
+  if (m) { y = m[1]; mo = +m[2]; d = +m[3]; } else if ((m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/))) { d = +m[1]; mo = +m[2]; y = m[3].length === 2 ? "20" + m[3] : m[3]; } else return "";
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return ""; return `${y}-${pad(mo)}-${pad(d)}`;
+}
+const colOf = (head, names) => { const hs = head.map(h => norm(h)); for (const n of names) { const i = hs.indexOf(norm(n)); if (i >= 0) return i; } return -1; };
+const findAcc = v => { const k = norm(v); if (!k) return null; return S.accounts.find(a => norm(a.code) === k) || S.accounts.find(a => a.acno && norm(a.acno) === k) || null; };
+const findPurpose = v => { const k = String(v || "").split(" (")[0].trim().toLowerCase(); if (!k) return null; return allPurposes(true).find(p => p.split(" (")[0].trim().toLowerCase() === k) || null; };
+
+function chequeImportModal(after) {
+  const CH = ["Date", "A/C Code", "Cheque No", "Amount", "Purpose", "Cash Taker", "To A/C", "Remarks"];
+  let rows = [];
+  modal(`<h2>📥 ${bi("Excel থেকে চেক ইম্পোর্ট", "Import cheques from Excel")}</h2>
+    <div class="mut sm" style="margin-bottom:10px">${bi("একসাথে অনেক চেক পোস্ট করুন। আগে টেমপ্লেট নামিয়ে পূরণ করুন, তারপর ফাইল বাছুন। শুধু সঠিক সারি ইম্পোর্ট হয়; ভুল সারির কারণ দেখানো হয়।", "Post many cheques at once. Download the template, fill it, then choose the file. Only valid rows are imported; problems are listed per row.")}</div>
+    <div class="row"><button class="btn" id="ci-t">${ico("dl")} ${bi("টেমপ্লেট", "Template")}</button><label class="btn pri" for="ci-f">${ico("plus")} ${bi("ফাইল বাছুন", "Choose file")}</label><input type="file" id="ci-f" accept=".xlsx,.xls,.csv" hidden></div>
+    <div id="ci-out" style="margin-top:12px"></div>
+    <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn pri hide" id="ci-go">${ico("save")} <span id="ci-gl"></span></button><button class="btn" id="ci-x">${bi("বন্ধ", "Close")}</button></div>`, (root, close) => {
+    $("#ci-x", root).onclick = close;
+    $("#ci-t", root).onclick = () => exportXlsx({ Cheques: [CH, [today(), (S.accounts[0] || {}).code || "PBL-483", 1234567, 50000, "Supplier Payment", "", "", "bill 101"], [today(), (S.accounts[0] || {}).code || "PBL-483", 1234568, 0, "Cancelled/Spoiled", "", "", ""]], Notes: [["Purpose must match one of the purposes in the app (see Manage on Cheque Posting). Date: dd-mm-yyyy or yyyy-mm-dd. Cash Taker / To A/C only for cash withdrawal / own transfer rows."]] }, "Cheque_Import_Template.xlsx");
+    $("#ci-f", root).onchange = async e => {
+      const f = e.target.files[0]; e.target.value = ""; if (!f) return; const out = $("#ci-out", root); out.innerHTML = `<div class="mut">${bi("পড়া হচ্ছে…", "Reading…")}</div>`;
+      let aoa; try { aoa = await readSheetFile(f); } catch (er) { return out.innerHTML = `<div class="alert rd">${esc(er.message || er)}</div>`; }
+      const hi = aoa.findIndex(r => r.some(c => norm(c) === "chequeno" || norm(c) === "chqno")); if (hi < 0) return out.innerHTML = `<div class="alert rd">${bi("হেডার সারি পাওয়া যায়নি — টেমপ্লেটের কলাম নাম ব্যবহার করুন (Date, A/C Code, Cheque No, Amount, Purpose…)", "Header row not found — use the template column names")}</div>`;
+      const H = aoa[hi], c = { d: colOf(H, ["Date", "Cheque Date", "তারিখ"]), a: colOf(H, ["A/C Code", "AC Code", "Code", "Account"]), n: colOf(H, ["Cheque No", "Chq No", "Cheque Number"]), m: colOf(H, ["Amount", "Taka", "টাকা"]), p: colOf(H, ["Purpose", "খাত"]), t: colOf(H, ["Cash Taker", "Taker"]), o: colOf(H, ["To A/C", "To AC"]), r: colOf(H, ["Remarks", "Note", "মন্তব্য"]) };
+      if (c.a < 0 || c.n < 0 || c.m < 0 || c.p < 0 || c.d < 0) return out.innerHTML = `<div class="alert rd">${bi("Date, A/C Code, Cheque No, Amount, Purpose কলাম লাগবে", "Columns Date, A/C Code, Cheque No, Amount, Purpose are required")}</div>`;
+      const seen = new Set(); rows = [];
+      aoa.slice(hi + 1).forEach((r, i) => {
+        if (r.every(x => x === "")) return; const line = hi + i + 2, errs = [];
+        const date = toIsoDate(r[c.d]); if (!date) errs.push(bi("তারিখ ঠিক নয়", "bad date"));
+        const acc = findAcc(r[c.a]); if (!acc) errs.push(bi("A/C Code নেই", "unknown A/C"));
+        const noS = String(r[c.n]).replace(/\D/g, ""), no = parseInt(noS); if (!no || String(r[c.n]).trim() !== String(no) && !/^\d+(\.0+)?$/.test(String(r[c.n]).trim())) errs.push(bi("চেক নং ঠিক নয়", "bad cheque no"));
+        const amount = num(r[c.m]); const purpose = findPurpose(r[c.p]); if (!purpose) errs.push(bi("খাত মেলেনি", "purpose not found")); const k = purpose ? purposeKey(purpose) : "";
+        if (purpose && k !== "cancel" && !(amount > 0)) errs.push(bi("টাকা দিন", "amount required")); if (amount < 0) errs.push(bi("টাকা ঋণাত্মক", "negative amount"));
+        const taker = c.t >= 0 ? String(r[c.t]).trim() : "", toac = c.o >= 0 ? String(r[c.o]).trim() : "", rem = c.r >= 0 ? String(r[c.r]).trim() : "";
+        let toAcc = null; if (k === "own") { toAcc = findAcc(toac); if (!toAcc) errs.push(bi("To A/C দিন (নিজ অ্যাকাউন্ট)", "To A/C required")); else if (acc && toAcc.code === acc.code) errs.push(bi("From ও To একই", "From = To")); }
+        if (acc && no) { const key = acc.code + "|" + no; if (S.cheques.some(x => x.code === acc.code && x.no === no)) errs.push(bi("আগেই এন্ট্রি আছে", "already exists")); else if (seen.has(key)) errs.push(bi("ফাইলে দুইবার", "duplicate in file")); seen.add(key); }
+        rows.push({ line, date, code: acc && acc.code, no, amount: k === "cancel" ? 0 : amount, purpose, taker: k === "cash" ? taker : "", toac: k === "own" && toAcc ? toAcc.code : "", remarks: rem, errs });
+      });
+      const ok = rows.filter(x => !x.errs.length), bad = rows.length - ok.length;
+      out.innerHTML = `<div class="row" style="gap:8px"><span class="tag ok">✓ ${ok.length} ${bi("ঠিক", "valid")}</span><span class="tag ${bad ? "au-delete" : ""}">${bad ? "✗ " + bad : "—"} ${bi("সমস্যা", "problems")}</span>${bad ? `<button class="btn sm" id="ci-eb">${ico("dl")} ${bi("ভুল সারি Excel", "Problem rows")}</button>` : ""}</div>
+        <div class="tw" style="max-height:300px;overflow:auto;margin-top:8px"><table><thead><tr><th>#</th><th>${bi("তারিখ", "Date")}</th><th>A/C</th><th>${bi("চেক নং", "Chq no")}</th><th class="r">${bi("টাকা", "Amount")}</th><th>${bi("খাত", "Purpose")}</th><th></th></tr></thead><tbody>${rows.slice(0, 300).map(x => `<tr class="${x.errs.length ? "dim" : ""}"><td class="mut">${x.line}</td><td>${x.date ? dmy(x.date) : "—"}</td><td>${esc(x.code || "—")}</td><td>${x.no || "—"}</td><td class="r num">${money(x.amount)}</td><td>${esc((x.purpose || "—").split(" (")[0])}</td><td>${x.errs.length ? `<span class="rd xs">${esc(x.errs.join(", "))}</span>` : `<span class="gr">✓</span>`}</td></tr>`).join("")}</tbody></table></div>${rows.length > 300 ? `<div class="mut xs">${bi("প্রথম ৩০০টি দেখানো হয়েছে", "First 300 shown")}</div>` : ""}`;
+      const go = $("#ci-go", root); go.classList.toggle("hide", !ok.length); $("#ci-gl", root).textContent = bi(`${ok.length}টি ইম্পোর্ট করুন`, `Import ${ok.length}`);
+      if ($("#ci-eb", root)) $("#ci-eb", root).onclick = () => exportXlsx({ Problems: [["Line", ...CH, "Problem"], ...rows.filter(x => x.errs.length).map(x => [x.line, x.date, x.code, x.no, x.amount, x.purpose, x.taker, x.toac, x.remarks, x.errs.join("; ")])] }, "Cheque_Import_Problems.xlsx");
+      go.onclick = async () => {
+        if (!ask(bi(`${ok.length}টি চেক পোস্ট করবেন?`, `Post ${ok.length} cheques?`))) return; go.disabled = true; let n = 0, fail = 0;
+        for (const x of ok) { try { const row = await API.addCheque({ id: crypto.randomUUID(), date: x.date, code: x.code, no: x.no, amount: x.amount, purpose: x.purpose, taker: x.taker, party: "", toac: x.toac, remarks: x.remarks }); S.cheques.push(derive(row)); n++; } catch (er) { fail++; x.errs.push(er.message || "error"); } $("#ci-gl", root).textContent = `${n + fail}/${ok.length}…`; }
+        saveCache(); toast(bi(`✔ ${n}টি চেক পোস্ট হয়েছে${fail ? `, ${fail}টি হয়নি` : ""}`, `✔ ${n} cheques posted${fail ? `, ${fail} failed` : ""}`), fail ? "err" : "ok"); close(); after && after();
+      };
+    };
+  });
+}
+
+function partyLedgerModal(p) {
+  let f = today().slice(0, 4) + "-01-01", t = today(), data = [];
+  const draw = root => {
+    let run = 0; const live = data.filter(r => r.status !== "cancelled");
+    const tot = live.reduce((a, r) => a + r.amount, 0), ap = data.filter(r => r.status === "approved").reduce((a, r) => a + r.amount, 0), pe = data.filter(r => r.status === "pending").reduce((a, r) => a + r.amount, 0);
+    $("#pl-k", root).innerHTML = `<div class="grid g4" style="gap:8px"><div class="kpi card k-vi"><div class="l">${bi("মোট (বাতিল বাদে)", "Total (excl. cancelled)")}</div><div class="v num">${money(tot)}</div></div><div class="kpi card k-gr"><div class="l">Approved</div><div class="v num">${money(ap)}</div></div><div class="kpi card k-am"><div class="l">Pending</div><div class="v num">${money(pe)}</div></div><div class="kpi card"><div class="l">${bi("এন্ট্রি", "Entries")}</div><div class="v num">${data.length}</div></div></div>`;
+    $("#pl-t", root).innerHTML = data.length ? `<div class="tw" style="max-height:48vh;overflow:auto"><table><thead><tr><th>${bi("তারিখ", "Date")}</th><th>Account</th><th>${bi("মন্তব্য", "Remarks")}</th><th>${bi("অবস্থা", "Status")}</th><th class="r">${bi("টাকা", "Amount")}</th><th class="r">${bi("জমা যোগফল", "Running")}</th></tr></thead><tbody>${data.map(r => { if (r.status !== "cancelled") run += r.amount; return `<tr class="${r.status === "cancelled" ? "dim" : ""}"><td>${dmy(r.date)}</td><td>${esc(r.account || "—")}</td><td class="mut">${esc(r.remarks || "")}</td><td><span class="dst ${r.status}">${esc(r.status)}</span></td><td class="r num">${money(r.amount)}</td><td class="r num">${r.status === "cancelled" ? "—" : money(run)}</td></tr>`; }).join("")}</tbody></table></div>` : `<div class="empty">${bi("এই সময়ে কোনো কালেকশন নেই", "No collections in this period")}</div>`;
+  };
+  modal(`<h2>📒 ${bi("পার্টি খাতা", "Party ledger")} — ${esc(p.name)}</h2>
+    <div class="mut xs" style="margin-bottom:8px">${esc([p.asm, p.district, p.contact_person, p.phone].filter(Boolean).join(" · "))}</div>
+    <div class="row" style="align-items:end"><div><label class="f">${bi("থেকে", "From")}</label><input class="in" type="date" id="pl-f"></div><div><label class="f">${bi("পর্যন্ত", "To")}</label><input class="in" type="date" id="pl-t2"></div><button class="btn" id="pl-all" type="button">${bi("সব সময়", "All time")}</button></div>
+    <div id="pl-k" style="margin:12px 0"></div><div id="pl-t"><div class="mut">…</div></div>
+    <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" id="pl-xl">${ico("dl")} Excel</button><button class="btn" id="pl-pr">${ico("print")} ${bi("প্রিন্ট A4", "Print A4")}</button><button class="btn pri" id="pl-x">${bi("বন্ধ", "Close")}</button></div>`, (root, close) => {
+    const load = async () => { $("#pl-f", root).value = f; $("#pl-t2", root).value = t; try { data = await API.dcolParty(p.id, f, t); } catch (e) { data = []; $("#pl-t", root).innerHTML = `<div class="alert rd">${esc(dcErr(e))}</div>`; return; } draw(root); };
+    $("#pl-x", root).onclick = close; $("#pl-f", root).onchange = e => { f = e.target.value || f; load(); }; $("#pl-t2", root).onchange = e => { t = e.target.value || t; load(); };
+    $("#pl-all", root).onclick = () => { f = "2000-01-01"; t = today(); load(); };
+    $("#pl-xl", root).onclick = () => { let run = 0; exportXlsx({ Ledger: [["Date", "Account", "Remarks", "Status", "Amount", "Running (excl. cancelled)"], ...data.map(r => { if (r.status !== "cancelled") run += r.amount; return [dmy(r.date), r.account, r.remarks, r.status, r.amount, r.status === "cancelled" ? "" : run]; })] }, `Party_Ledger_${norm(p.name).slice(0, 24)}_${today()}.xlsx`); };
+    $("#pl-pr", root).onclick = () => { let run = 0; const live = data.filter(r => r.status !== "cancelled"), tot = live.reduce((a, r) => a + r.amount, 0);
+      const body = repBox(esc(p.name) + (p.asm ? " · " + esc(p.asm) : ""), ["~" + bi("তারিখ", "Date"), "~Account", "~" + bi("মন্তব্য", "Remarks"), "~" + bi("অবস্থা", "Status"), bi("টাকা", "Amount"), bi("জমা যোগফল", "Running")], data.map(r => { if (r.status !== "cancelled") run += r.amount; return `<tr><td>${dmy(r.date)}</td><td>${esc(r.account || "")}</td><td>${esc(r.remarks || "")}</td><td>${esc(r.status)}</td><td class="r">${money(r.amount)}</td><td class="r">${r.status === "cancelled" ? "—" : money(run)}</td></tr>`; }).join(""), "");
+      printSheet(repSheet("pl-sheet", bi("পার্টি খাতা", "Party Ledger"), f, t, repKpi([[bi("মোট", "Total"), money(tot)], ["Approved", money(data.filter(r => r.status === "approved").reduce((a, r) => a + r.amount, 0))], ["Pending", money(data.filter(r => r.status === "pending").reduce((a, r) => a + r.amount, 0))], [bi("এন্ট্রি", "Entries"), data.length]]), body), `Ledger_${p.name}`); };
+    load();
+  });
+}
+
+/* ----- bank reconciliation page ----- */
+async function vRecon(v) {
+  const st = { tab: "bal", aoa: null, name: "" };
+  const draw = () => {
+    v.innerHTML = head(bi("ব্যাংক মিলান", "Bank reconciliation")) + `<div class="seg noprint" style="margin:6px 0 14px"><span class="chip ${st.tab === "bal" ? "on" : ""}" data-tab="bal">${bi("ব্যালেন্স মিলান", "Balances")}</span><span class="chip ${st.tab === "chq" ? "on" : ""}" data-tab="chq">${bi("চেক পাস মিলান", "Cleared cheques")}</span></div><div id="rc-body"></div>`;
+    $$("[data-tab]", v).forEach(c => c.onclick = () => { st.tab = c.dataset.tab; st.aoa = null; draw(); });
+    (st.tab === "bal" ? reconBal : reconChq)($("#rc-body", v));
+  };
+  const pickFile = (box, hint, cb) => {
+    box.innerHTML = `<div class="card"><div class="mut sm" style="margin-bottom:10px">${hint}</div><div class="row"><label class="btn pri" for="rc-f">${ico("plus")} ${bi("স্টেটমেন্ট ফাইল (Excel/CSV)", "Statement file (Excel/CSV)")}</label><input type="file" id="rc-f" accept=".xlsx,.xls,.csv" hidden></div><div id="rc-map" style="margin-top:12px"></div><div id="rc-res" style="margin-top:12px"></div></div>`;
+    $("#rc-f", box).onchange = async e => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; try { st.aoa = (await readSheetFile(f)).filter(r => r.some(c => c !== "")); st.name = f.name; } catch (er) { return toast(er.message || String(er), "err"); } cb(box); };
+  };
+  const colSel = (id, head, guess) => `<select class="in" id="${id}"><option value="-1">—</option>${head.map((h, i) => `<option value="${i}" ${i === guess ? "selected" : ""}>${esc(String(h).slice(0, 30) || "col " + (i + 1))}</option>`).join("")}</select>`;
+  function reconBal(box) {
+    pickFile(box, bi("ব্যাংক স্টেটমেন্ট/ক্লোজিং তালিকা দিন — প্রতি সারিতে তারিখ ও ব্যালেন্স (সাথে A/C কোড, অথবা একটি অ্যাকাউন্টের স্টেটমেন্ট হলে নিচে অ্যাকাউন্ট বাছুন)। অ্যাপের ক্লোজিং ব্যালেন্সের সাথে মেলানো হবে।", "Upload a statement / closing list — a date and balance per row (plus A/C code, or choose one account below for a single-account statement). Compared with the app's closing balances."), b => {
+      const A = st.aoa, hi = Math.max(0, A.findIndex(r => r.filter(c => c !== "").length >= 2)), H = A[hi].map(String), g = names => colOf(H, names);
+      $("#rc-map", b).innerHTML = `<div class="row"><div><label class="f">${bi("তারিখ কলাম", "Date column")}</label>${colSel("rm-d", H, g(["Date", "Txn Date", "Value Date", "তারিখ"]))}</div><div><label class="f">${bi("ব্যালেন্স কলাম", "Balance column")}</label>${colSel("rm-b", H, g(["Balance", "Closing Balance", "Running Balance", "Total", "ব্যালেন্স"]))}</div><div><label class="f">${bi("A/C কোড কলাম (ঐচ্ছিক)", "A/C column (optional)")}</label>${colSel("rm-a", H, g(["A/C Code", "Code", "Account", "AC", "A/C No"]))}</div><div><label class="f">${bi("অথবা একটাই অ্যাকাউন্ট", "Or single account")}</label><select class="in" id="rm-s"><option value="">—</option>${S.accounts.map(a => `<option>${esc(a.code)}</option>`).join("")}</select></div></div><div class="row" style="margin-top:10px"><button class="btn pri" id="rm-go">${bi("মিলান", "Reconcile")}</button><span class="mut xs">${esc(st.name)} · ${A.length - hi - 1} ${bi("সারি", "rows")}</span></div>`;
+      $("#rm-go", b).onclick = async () => {
+        const ci = { d: +$("#rm-d", b).value, b: +$("#rm-b", b).value, a: +$("#rm-a", b).value }, single = $("#rm-s", b).value;
+        if (ci.d < 0 || ci.b < 0 || (ci.a < 0 && !single)) return toast(bi("তারিখ, ব্যালেন্স ও (A/C কলাম বা অ্যাকাউন্ট) দিন", "Choose date, balance and (A/C column or account)"), "err");
+        const items = []; A.slice(hi + 1).forEach(r => { const d = toIsoDate(r[ci.d]), bal = typeof r[ci.b] === "number" ? r[ci.b] : num(r[ci.b]), acc = single ? findAcc(single) : findAcc(r[ci.a]); if (d && acc && r[ci.b] !== "") items.push({ d, code: acc.code, bal, raw: single ? "" : String(r[ci.a]) }); });
+        if (!items.length) return $("#rc-res", b).innerHTML = `<div class="alert rd">${bi("মেলানোর মতো সারি পাওয়া যায়নি (তারিখ/অ্যাকাউন্ট চেনা যায়নি)", "No usable rows (dates / accounts not recognised)")}</div>`;
+        const desc = items.length > 1 && items[0].d > items[items.length - 1].d, last = new Map(); (desc ? [...items].reverse() : items).forEach(x => last.set(x.d + "|" + x.code, x));   // keep the day's closing balance of a running-balance statement
+        const list = [...last.values()], from = list.reduce((m, x) => x.d < m ? x.d : m, "9999"), to = list.reduce((m, x) => x.d > m ? x.d : m, "0000");
+        let app = []; try { app = await API.balancesRange(from, to); } catch (e) { return toast(e.message, "err"); }
+        const am = new Map(app.map(x => [x.date + "|" + x.code, x])); const res = list.map(x => { const a = am.get(x.d + "|" + x.code), has = a && a.total != null; const diff = has ? x.bal - a.total : null; return { ...x, app: has ? a.total : null, diff, s: !has ? "miss" : Math.abs(diff) <= 1 ? "ok" : "diff" }; }).sort((a, b) => a.d.localeCompare(b.d) || a.code.localeCompare(b.code));
+        const n = k => res.filter(x => x.s === k).length;
+        $("#rc-res", b).innerHTML = `<div class="row" style="gap:8px"><span class="tag ok">✓ ${n("ok")} ${bi("মিলেছে", "match")}</span><span class="tag ${n("diff") ? "au-delete" : ""}">≠ ${n("diff")} ${bi("গরমিল", "differ")}</span><span class="tag">∅ ${n("miss")} ${bi("অ্যাপে নেই", "not in app")}</span><button class="btn sm" id="rr-xl">${ico("dl")} Excel</button></div>
+          <div class="tw" style="max-height:52vh;overflow:auto;margin-top:8px"><table><thead><tr><th>${bi("তারিখ", "Date")}</th><th>A/C</th><th class="r">${bi("স্টেটমেন্ট", "Statement")}</th><th class="r">${bi("অ্যাপ", "App")}</th><th class="r">${bi("পার্থক্য", "Diff")}</th><th></th></tr></thead><tbody>${res.slice(0, 500).map(x => `<tr class="${x.s === "ok" ? "" : x.s === "diff" ? "" : "dim"}"><td>${dmy(x.d)}</td><td>${esc(x.code)}</td><td class="r num">${money(x.bal)}</td><td class="r num">${x.app == null ? "—" : money(x.app)}</td><td class="r num ${x.s === "diff" ? "rd" : ""}">${x.diff == null ? "—" : money(x.diff)}</td><td>${x.s === "ok" ? '<span class="gr">✓</span>' : x.s === "diff" ? '<span class="rd">≠</span>' : '<span class="am">∅</span>'}</td></tr>`).join("")}</tbody></table></div>`;
+        $("#rr-xl", b).onclick = () => exportXlsx({ Reconcile: [["Date", "A/C", "Statement", "App", "Diff", "Result"], ...res.map(x => [dmy(x.d), x.code, x.bal, x.app, x.diff, x.s])] }, `Balance_Reconcile_${today()}.xlsx`);
+      };
+    });
+  }
+  function reconChq(box) {
+    pickFile(box, bi("ব্যাংকে পাস হওয়া চেকের তালিকা দিন (চেক নং ও টাকা; তারিখ/A/C কোড থাকলে আরও নির্ভুল)। অ্যাপের চেক রেজিস্টারের সাথে মিলিয়ে দেখাবে — কোনটা অ্যাপে নেই, কোনটা পাস হয়নি, টাকা ভিন্ন।", "Upload the bank's cleared-cheque list (cheque no. and amount; date / A/C code make it more exact). Compared with the cheque register: not in app, not marked cleared, amount differs."), b => {
+      const A = st.aoa, hi = Math.max(0, A.findIndex(r => r.filter(c => c !== "").length >= 2)), H = A[hi].map(String), g = names => colOf(H, names);
+      $("#rc-map", b).innerHTML = `<div class="row"><div><label class="f">${bi("চেক নং কলাম", "Cheque no column")}</label>${colSel("rc-n", H, g(["Cheque No", "Chq No", "Cheque Number", "Instrument No", "Chq"]))}</div><div><label class="f">${bi("টাকা কলাম", "Amount column")}</label>${colSel("rc-m", H, g(["Amount", "Debit", "Withdrawal", "Taka"]))}</div><div><label class="f">${bi("A/C কোড কলাম (ঐচ্ছিক)", "A/C column (optional)")}</label>${colSel("rc-a", H, g(["A/C Code", "Code", "Account", "AC"]))}</div><div><label class="f">${bi("অথবা একটাই অ্যাকাউন্ট", "Or single account")}</label><select class="in" id="rc-s"><option value="">—</option>${S.accounts.map(a => `<option>${esc(a.code)}</option>`).join("")}</select></div></div><div class="row" style="margin-top:10px"><button class="btn pri" id="rc-go">${bi("মিলান", "Reconcile")}</button><span class="mut xs">${esc(st.name)} · ${A.length - hi - 1} ${bi("সারি", "rows")}</span></div>`;
+      $("#rc-go", b).onclick = () => {
+        const ci = { n: +$("#rc-n", b).value, m: +$("#rc-m", b).value, a: +$("#rc-a", b).value }, single = $("#rc-s", b).value;
+        if (ci.n < 0) return toast(bi("চেক নং কলাম দিন", "Choose the cheque-no column"), "err");
+        const res = []; A.slice(hi + 1).forEach(r => { const no = parseInt(String(r[ci.n]).replace(/\D/g, "")); if (!no) return; const amt = ci.m >= 0 ? (typeof r[ci.m] === "number" ? r[ci.m] : num(r[ci.m])) : null, code = single ? (findAcc(single) || {}).code : ci.a >= 0 ? (findAcc(r[ci.a]) || {}).code : null;
+          const cands = S.cheques.filter(c => c.no === no && (!code || c.code === code)); let s, c = null; if (!cands.length) s = "miss"; else if (cands.length > 1 && !code) { c = cands[0]; s = "multi"; } else { c = cands[0]; s = c.status !== "Cleared" ? "notclr" : (amt != null && amt > 0 && Math.abs(c.amount - amt) > 1) ? "amt" : "ok"; }
+          res.push({ no, amt, c, s }); });
+        const L = { ok: bi("✓ মিলেছে", "✓ OK"), miss: bi("অ্যাপে নেই", "not in app"), notclr: bi("অ্যাপে পাস হয়নি", "not cleared in app"), amt: bi("টাকা ভিন্ন", "amount differs"), multi: bi("একাধিক A/C-তে আছে", "in several A/Cs") }, n = k => res.filter(x => x.s === k).length;
+        const bankNos = new Set(res.map(x => x.no)), code = single ? (findAcc(single) || {}).code : null; const unseen = S.cheques.filter(c => c.status === "Cleared" && purposeKey(c.purpose) !== "cash" && purposeKey(c.purpose) !== "own" && (!code || c.code === code) && !bankNos.has(c.no));
+        $("#rc-res", b).innerHTML = `<div class="row" style="gap:8px;flex-wrap:wrap"><span class="tag ok">✓ ${n("ok")}</span><span class="tag ${n("miss") ? "au-delete" : ""}">${bi("অ্যাপে নেই", "not in app")} ${n("miss")}</span><span class="tag ${n("notclr") ? "au-update" : ""}">${bi("পাস হয়নি", "not cleared")} ${n("notclr")}</span><span class="tag ${n("amt") ? "au-delete" : ""}">${bi("টাকা ভিন্ন", "amount")} ${n("amt")}</span><button class="btn sm" id="rc-xl">${ico("dl")} Excel</button></div>
+          <div class="tw" style="max-height:48vh;overflow:auto;margin-top:8px"><table><thead><tr><th>${bi("চেক নং", "Chq no")}</th><th>A/C</th><th class="r">${bi("ব্যাংক", "Bank")}</th><th class="r">${bi("অ্যাপ", "App")}</th><th>${bi("ফলাফল", "Result")}</th></tr></thead><tbody>${res.slice(0, 500).map(x => `<tr class="${x.s === "ok" ? "" : ""}"><td>${x.no}</td><td>${esc(x.c ? x.c.code : "—")}</td><td class="r num">${x.amt == null ? "—" : money(x.amt)}</td><td class="r num">${x.c ? money(x.c.amount) : "—"}</td><td class="${x.s === "ok" ? "gr" : "rd"}">${L[x.s]}${x.s === "notclr" ? ` (${esc(x.c.status)})` : ""}</td></tr>`).join("")}</tbody></table></div>
+          ${unseen.length ? `<div class="mut sm" style="margin-top:10px">${bi(`অ্যাপে Cleared কিন্তু এই স্টেটমেন্টে নেই: ${unseen.length}টি (সব সময়ের মধ্যে — স্টেটমেন্টের সময়সীমার বাইরেরগুলোও থাকতে পারে)`, `Cleared in app but not in this statement: ${unseen.length} (may include cheques outside the statement period)`)}</div>` : ""}`;
+        $("#rc-xl", b).onclick = () => exportXlsx({ Cheques: [["Cheque No", "A/C", "Bank amount", "App amount", "Result"], ...res.map(x => [x.no, x.c && x.c.code, x.amt, x.c && x.c.amount, L[x.s]])], "Cleared in app, not in statement": [["A/C", "Cheque No", "Amount", "Date"], ...unseen.map(c => [c.code, c.no, c.amount, dmy(c.date)])] }, `Cheque_Reconcile_${today()}.xlsx`);
+      };
+    });
+  }
+  draw();
+}
 
 /* ---------- v6.44 security: auto-lock, 2FA (TOTP), user sessions / activity / email / delete ---------- */
 const LOCK_KEY = "nabiad_lock_min", LOCKED_KEY = "nabiad_locked";
