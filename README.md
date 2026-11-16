@@ -143,7 +143,8 @@ The rules below are enforced by the database itself through PostgreSQL Row Level
 The app is a static site, so any static host works:
 
 - **GitHub Pages:** Settings → Pages → *Deploy from a branch* → `main` / root.
-- **Custom domain:** add a `CNAME` DNS record `app → <user>.github.io`, enter the domain in Pages, then tick **Enforce HTTPS**.
+- **Custom domain:** add a `CNAME` DNS record `app → <user>.github.io`, enter the domain in Pages, then tick **Enforce HTTPS**. Production runs at `https://app.nabiad.com` (the `CNAME` file in the repo must stay).
+- **Supabase → Authentication → URL Configuration:** set *Site URL* to the production domain and add it under *Redirect URLs*, otherwise password-reset links point to the wrong place. Minimum password length is 10; public sign-ups stay disabled.
 
 HTTPS is required, both for login security and because offline mode and encryption only run on secure pages. To install on a phone, open the site in Chrome and choose **Add to Home screen**.
 

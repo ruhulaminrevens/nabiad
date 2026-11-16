@@ -185,7 +185,7 @@ const I18N = {
   "কোনো সম্পন্ন রিমাইন্ডার নেই": "No completed reminders", "এখনো কোনো রিমাইন্ডার নেই — উপরের \"নতুন রিমাইন্ডার\" চাপুন।": "No reminders yet — press \"New reminder\" above.", "খুলুন →": "Open →",
   "আজকের দৈনিক ক্যাশ রেকর্ড এখনো সেভ হয়নি": "Today's daily cash record is not saved yet",
   // settings
-  "👤 প্রোফাইল": "👤 Profile", "আপনার নাম": "Your name", "(চেক/ক্লোজিং-এ \"কে এন্ট্রি করেছে\" হিসেবে বসে)": "(shown as \"entered by\")", "নতুন পাসওয়ার্ড": "New password", "কমপক্ষে ৮ অক্ষর": "At least 8 characters", "বদলান": "Change",
+  "👤 প্রোফাইল": "👤 Profile", "আপনার নাম": "Your name", "(চেক/ক্লোজিং-এ \"কে এন্ট্রি করেছে\" হিসেবে বসে)": "(shown as \"entered by\")", "নতুন পাসওয়ার্ড": "New password", "কমপক্ষে ১০ অক্ষর": "At least 10 characters", "বদলান": "Change",
   "🎨 দেখতে কেমন": "🎨 Appearance", "লাইট": "Light", "ডার্ক": "Dark", "লেখার আকার": "Text size", "ছোট": "Small", "স্বাভাবিক": "Normal", "বড়": "Large", "টেবিল": "Tables", "আরামদায়ক": "Comfortable", "ঘন (বেশি সারি)": "Compact (more rows)", "অ্যাপ খুললে কোন পাতা": "Start page",
   "🔔 রিমাইন্ডার ও সতর্কতা": "🔔 Reminders & alerts", "ব্যাংক ক্লোজিং বাকি থাকলে সতর্কতা": "Alert if bank closing pending at", "ক্যাশ রেকর্ড বাকি থাকলে সতর্কতা": "Alert if cash record pending at", "কত দিন Pending হলে সতর্কতা": "Pending alert after", "শব্দ": "Sound", "বন্ধ": "Off",
   "শুক্রবার": "Friday", "বন্ধ দিন (আগের/পরের বাটনে বাদ)": "Day off (skipped by prev/next)", "কর্মদিবস": "Working day", "✓ নোটিফিকেশন চালু আছে": "✓ Notifications on", "নোটিফিকেশন ব্রাউজারে বন্ধ": "Blocked in browser", "নোটিফিকেশন চালু করুন": "Enable notifications", "পরীক্ষা করুন": "Test",

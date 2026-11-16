@@ -2065,7 +2065,7 @@ async function vSettings(v) {
    <div class="card"><h3>👤 প্রোফাইল</h3><div class="grid" style="gap:12px">
      <div><label class="f">আপনার নাম <span class="mut">(চেক/ক্লোজিং-এ "কে এন্ট্রি করেছে" হিসেবে বসে)</span></label><div class="row" style="flex-wrap:nowrap"><input class="in" id="st-nm" value="${esc(S.me.name || "")}"><button class="btn fix" id="st-nm-s">সেভ</button></div></div>
      <div class="mut sm">${esc(S.me.email)} · <span class="pill">${esc(S.me.role)}</span></div>
-     ${DEMO ? "" : `<div><label class="f">নতুন পাসওয়ার্ড</label><div class="row" style="flex-wrap:nowrap"><input class="in" type="password" id="st-pw" autocomplete="new-password" placeholder="কমপক্ষে ৮ অক্ষর"><button class="btn fix" id="st-pw-s">বদলান</button></div></div>`}</div></div>
+     ${DEMO ? "" : `<div><label class="f">নতুন পাসওয়ার্ড</label><div class="row" style="flex-wrap:nowrap"><input class="in" type="password" id="st-pw" autocomplete="new-password" placeholder="কমপক্ষে ১০ অক্ষর"><button class="btn fix" id="st-pw-s">বদলান</button></div></div>`}</div></div>
    <div class="card"><h3>🎨 দেখতে কেমন</h3><div class="grid" style="gap:12px">
      <div class="row"><div><label class="f">থিম</label>${sel("st-th", [["light", "লাইট"], ["dark", "ডার্ক"]], getTheme())}</div><div><label class="f">ভাষা</label>${sel("st-lg", [["bn", "বাংলা"], ["en", "English"]], LANG)}</div></div>
      <div class="row"><div><label class="f">লেখার আকার</label>${sel("st-fs", [["small", "ছোট"], ["normal", "স্বাভাবিক"], ["large", "বড়"]], PREFS.font)}</div><div><label class="f">টেবিল</label>${sel("st-cp", [["0", "আরামদায়ক"], ["1", "ঘন (বেশি সারি)"]], PREFS.compact ? 1 : 0)}</div></div>
@@ -2085,7 +2085,7 @@ async function vSettings(v) {
    ${admin ? `<div class="card" style="grid-column:1/-1"><h3>🛡 Admin শর্টকাট</h3><div class="row"><a class="btn fix" href="#/admin">${ico("gear")} ব্যবহারকারী ও অ্যাকাউন্ট</a><a class="btn fix" href="#/audit">${ico("shield")} Audit ও Backup</a><a class="btn fix" href="#/books">${ico("book")} চেক বই</a></div></div>` : ""}</div>`;
   const g = id => $("#" + id, v);
   g("st-nm-s").onclick = async () => { const n = g("st-nm").value.trim(); if (!n) return toast("নাম লিখুন", "err"); try { await API.setMyName(n); S.me.name = n; saveCache(); shell(); route(); toast("✔ নাম সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? "schema_v3.sql চালানো বাকি" : e.message, "err"); } };
-  g("st-pw-s") && (g("st-pw-s").onclick = async () => { const p = g("st-pw").value; if (p.length < 8) return toast("পাসওয়ার্ড কমপক্ষে ৮ অক্ষর", "err"); try { await API.changePassword(p); g("st-pw").value = ""; toast("✔ পাসওয়ার্ড বদলানো হয়েছে"); } catch (e) { toast(e.message, "err"); } });
+  g("st-pw-s") && (g("st-pw-s").onclick = async () => { const p = g("st-pw").value; if (p.length < 10) return toast("পাসওয়ার্ড কমপক্ষে ১০ অক্ষর", "err"); try { await API.changePassword(p); g("st-pw").value = ""; toast("✔ পাসওয়ার্ড বদলানো হয়েছে"); } catch (e) { toast(e.message, "err"); } });
   g("st-th").onchange = e => setTheme(e.target.value); g("st-lg").onchange = e => setLang(e.target.value);
   g("st-fs").onchange = e => savePrefs({ font: e.target.value }); g("st-cp").onchange = e => savePrefs({ compact: e.target.value === "1" }); g("st-start").onchange = e => { savePrefs({ start: e.target.value }); toast("✔ সেভ হয়েছে"); };
   g("st-ch").onchange = e => { savePrefs({ closingHour: +e.target.value }); updateBell(); }; g("st-cs").onchange = e => { savePrefs({ cashHour: +e.target.value }); updateBell(); };

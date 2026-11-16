@@ -270,3 +270,10 @@ create trigger book_del_guard before delete on books for each row execute functi
 -- v6.34: the "Hold" status was retired (Pending covers it). Existing hold rows were moved to pending.
 -- The check constraint still allows 'hold' so old backups restore cleanly; the app no longer offers it.
 update dist_collections set status = 'pending' where status = 'hold';
+
+-- v6.36 hardening (applied to the live DB 16-11-2026)
+revoke execute on function public.my_role(), public.handle_new_user(), public.touch_updated_at(), public.audit_trg(), public.dist_asm_guard(), public.cheque_del_guard(), public.book_del_guard(), public.rls_auto_enable() from anon, public;
+grant execute on function public.my_role() to authenticated;
+create index if not exists books_code_idx on public.books(code);
+create index if not exists reminders_cheque_idx on public.reminders(cheque_id);
+-- Auth (dashboard): Site URL = https://app.nabiad.com, Redirect URLs include it, min password length 10, sign-ups disabled.

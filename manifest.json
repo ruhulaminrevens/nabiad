@@ -1,1 +1,27 @@
-{"name": "Nabiad — Cheque & Bank Control", "short_name": "Nabiad", "start_url": "./", "scope": "./", "display": "standalone", "background_color": "#f2f4fb", "theme_color": "#4f46e5", "icons": [{"src": "icon.svg", "sizes": "any", "type": "image/svg+xml"}, {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"}, {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}, {"src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]}
+{
+  "id": "/",
+  "name": "Nabiad — Cheque & Bank Control",
+  "short_name": "Nabiad",
+  "description": "Cheque register, daily bank closing, cash and collection reports",
+  "lang": "bn",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f2f4fb",
+  "theme_color": "#4f46e5",
+  "categories": ["finance", "business"],
+  "icons": [
+    {"src": "icon.svg", "sizes": "any", "type": "image/svg+xml"},
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ],
+  "shortcuts": [
+    {"name": "Cheque Posting", "url": "./#/entry", "icons": [{"src": "icon-192.png", "sizes": "192x192"}]},
+    {"name": "Bank Closing", "url": "./#/closing", "icons": [{"src": "icon-192.png", "sizes": "192x192"}]},
+    {"name": "Cash Entry", "url": "./#/cash", "icons": [{"src": "icon-192.png", "sizes": "192x192"}]},
+    {"name": "Collection Entry", "url": "./#/dcol", "icons": [{"src": "icon-192.png", "sizes": "192x192"}]}
+  ]
+}
