@@ -214,6 +214,7 @@ function resetPwModal(u) {
 const ICON = {
   home: '<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   plus: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
   flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   bank: '<path d="M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 21h18"/>',
@@ -738,7 +739,7 @@ function palette() {
 }
 document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && S.me) { e.preventDefault(); palette(); } });
 let CUR = "dash";
-const head = (title, extra = "") => `<div class="top"><div class="pic">${ico(ROUTES[CUR]?.ic || "home")}</div><h1>${title}</h1><div class="sp"></div>${extra ? `<div class="acts">${extra}</div>` : ""}</div>`;
+const head = (title, extra = "", cls = "") => `<div class="top${cls ? " " + cls : ""}"><div class="pic">${ico(ROUTES[CUR]?.ic || "home")}</div><h1>${title}</h1><div class="sp"></div>${extra ? `<div class="acts">${extra}</div>` : ""}</div>`;
 const stTag = s => `<span class="st ${s}">${s}</span>`;
 const pendTag = c => c.pending || c.events?.some(e => e.pending) ? ` <span class="tag" style="background:var(--am-soft);color:var(--am)" title="সার্ভারে যাওয়া বাকি">⏳ সিঙ্ক বাকি</span>` : "";
 const chqIcons = c => `${c.photo ? ` <span class="ci" title="ছবি আছে">📷</span>` : ""}${(S.reminders || []).some(r => r.cheque_id === c.id && !r.done) ? ` <span class="ci" title="রিমাইন্ডার আছে">⏰</span>` : ""}`;
@@ -808,10 +809,10 @@ async function setStatus(c, status, date, remarks) {
 }
 async function vEntry(v) {
   const st = { purpose: null, photo: null };
-  v.innerHTML = head("চেক পোস্টিং<span class=\"mut\">Enter চাপলে পরের ঘরে যাবে · শেষ ঘরে Enter = সেভ</span>", `<button class="btn" id="e-imp">${ico("dl")} ${bi("Excel ইম্পোর্ট", "Excel import")}</button>`) + `
+  v.innerHTML = head("চেক পোস্টিং<span class=\"mut kbh\">Enter চাপলে পরের ঘরে যাবে · শেষ ঘরে Enter = সেভ</span>", `<button class="btn" id="e-imp">${ico("dl")} ${bi("Excel ইম্পোর্ট", "Excel import")}</button>`, "tc") + `
   <div class="split">
-   <div class="card">
-    <div class="fgrid">
+   <div class="card efc">
+    <div class="fgrid ef">
      <div class="s4 daterow"><div class="dr-d"><label class="f">চেকের তারিখ</label><input class="in big" type="date" id="e-date" value="${today()}"></div><div class="dr-p"><label class="f">চেকের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn big" for="e-ph-c" title="${bi("ক্যামেরায় ছবি তুলুন", "Take a photo with the camera")}">${ico("cam")} <span class="lbl">তুলুন</span></label><label class="btn big" for="e-ph" title="${bi("গ্যালারি থেকে বাছুন", "Choose from the gallery")}">${ico("img")} <span class="lbl">বাছুন</span></label><input type="file" id="e-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="e-ph" accept="image/*" hidden><img id="e-phv" class="hide" alt=""><button class="btn sm ghost hide" id="e-phx" title="ছবি বাদ">✕</button></div></div></div>
      <div class="s4"><label class="f">A/C Code <span class="mut">(টাইপ করুন: pbl, 483, nabiad…)</span></label><div><input class="in big" id="e-ac" autocomplete="off" placeholder="PBL-483" autofocus></div><div class="hint" id="e-achint"></div></div>
      <div class="s2"><label class="f">চেক নং (শুধু সংখ্যা)</label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off"><div class="hint" id="e-nohint"></div><div id="e-ocrw" class="hide noprint" style="margin-top:4px"><button type="button" class="btn sm" id="e-ocr">🔍 ${bi("ছবি থেকে পড়ুন", "Read from photo")}</button><div id="e-ocro" style="margin-top:4px"></div></div></div>
@@ -2377,7 +2378,7 @@ const CASH_DRAFT = d => "nabiad_cash_draft_" + d;
 
 async function vCash(v) {
   const t = today(); let date = sessionStorage.getItem("nabiad_cash_date") || (S.lastCash && S.lastCash < t ? stepDay(S.lastCash, 1) : t); sessionStorage.removeItem("nabiad_cash_date"); if (date > t) date = t;
-  v.innerHTML = head("ক্যাশ এন্ট্রি", `<a class="btn" href="#/cashsum">${ico("chart")} সামারি</a>`) + `<div class="card navcard" style="margin-bottom:14px">${dateNav("cs", date)}<div id="cs-msg" style="margin-top:10px"></div></div><div id="cs-body"><div class="card empty">লোড হচ্ছে…</div></div>`;
+  v.innerHTML = head("ক্যাশ এন্ট্রি", `<a class="btn" href="#/cashsum">${ico("chart")} সামারি</a>`, "tc") + `<div class="card navcard" style="margin-bottom:14px">${dateNav("cs", date)}<div id="cs-msg" style="margin-top:10px"></div></div><div id="cs-body"><div class="card empty">লোড হচ্ছে…</div></div>`;
   const body = $("#cs-body", v); let autoT = null;
   async function draw() {
     date = $("#cs-d", v).value; if (!date) return; body.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
@@ -3049,7 +3050,7 @@ async function vDcol(v) {
      <div class="dcx-c"><label class="f">Account *</label><div><input class="in" id="dc-c" autocomplete="off" placeholder="Account খুঁজুন — DBBL-17"></div></div>
      <div class="dcx-m"><label class="f">টাকা *</label><input class="in big num" id="dc-m" inputmode="decimal" autocomplete="off" placeholder="0"><div class="dcx-h num" id="dc-mh"></div></div>
      <div class="dcx-r"><label class="f">মন্তব্য <span class="mut">(ঐচ্ছিক)</span></label><input class="in big" id="dc-r" autocomplete="off" placeholder="স্লিপ নং / নোট"></div>
-     <div class="dcx-b"><button class="btn pri big" id="dc-add">${ico("plus")} যোগ করুন</button></div>
+     <div class="dcx-b"><button class="btn big" type="button" id="dc-clear">${ico("x")} ${bi("পরিষ্কার", "Clear")}</button><button class="btn pri big" id="dc-add">${ico("plus")} যোগ করুন</button></div>
     </div><div class="hint rd" id="dc-err" style="min-height:0;margin-top:8px"></div><datalist id="dc-dl-a"></datalist></div>
    <div class="card flush dcx-list"><div class="ch"><h3>এই তারিখের কালেকশন</h3><span class="tag" id="dc-cnt">0</span></div>
     <div class="noprint dcx-tools"><div class="chips dcx-tabs" id="dc-sc"></div>${searchBox("dc-q", "খুঁজুন — পার্টি, ASM, Account, টাকা…")}</div>
@@ -3081,6 +3082,8 @@ async function vDcol(v) {
   mIn.addEventListener("input", () => { const n = evalAmt(mIn.value); $("#dc-mh", v).textContent = mIn.value && !isNaN(n) && /[+-]/.test(mIn.value.replace(/^[-+]/, "")) ? "= " + money0(n) : isNaN(n) ? "অঙ্ক ঠিক নেই" : ""; });
   [mIn, rIn].forEach(x => x.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); add(); } }));
   $("#dc-add", v).onclick = add;
+  const clearForm = () => { err(""); picker.set(null); cPick.set(null); pIn.value = ""; aIn.value = ""; cIn.value = ""; mIn.value = ""; rIn.value = ""; $("#dc-mh", v).textContent = ""; $("#dc-ph", v).innerHTML = ""; pIn.focus(); };
+  $("#dc-clear", v).onclick = clearForm;
   function createParty(name) { dpartyModal({ name, asm: aIn.value, account: cIn.value }, saved => { if (!saved) return; parties = DPARTY; picker.set({ value: saved.name, label: saved.asm || "", sub: saved.account || "" }); fill(saved); mIn.focus(); }); }
   async function add() {
     if (busy) return; err("");
