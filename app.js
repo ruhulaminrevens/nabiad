@@ -66,7 +66,14 @@ const ICON = {
   cam: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3"/>',
   cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
-  shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>'
+  shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+  ledger: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+  coins: '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
+  pie: '<path d="M12 3v9h9a9 9 0 1 1-9-9z"/><path d="M16 3.5A9 9 0 0 1 20.5 8H16z"/>',
+  pulse: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+  trend: '<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>',
+  sliders: '<path d="M4 6h10M20 6h0M4 12h4M14 12h6M4 18h11M20 18h0"/><circle cx="17" cy="6" r="2"/><circle cx="11" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  table: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>'
 };
 const ico = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[n]}</svg>`;
 
@@ -153,10 +160,16 @@ const SbAPI = {
   },
   async history(code, from, to) { const { data, error } = await sb.from("balances").select("date,total,block,remark").eq("code", code).gte("date", from).lte("date", to).order("date"); if (error) throw error; return data.map(r => ({ date: r.date, total: Number(r.total), block: r.block == null ? null : Number(r.block), remark: r.remark })); },
   async balanceCount() { const { count } = await sb.from("balances").select("date", { count: "exact", head: true }); return count || 0; },
+  async balanceStats() {
+    const one = async asc => (await sb.from("balances").select("date").order("date", { ascending: asc }).limit(1)).data?.[0]?.date || null;
+    const [first, last, n] = await Promise.all([one(true), one(false), this.balanceCount()]);
+    return { first, last, n };
+  },
   async importBalances(rows, onProg) {
     for (let i = 0; i < rows.length; i += 1000) {
       const part = rows.slice(i, i + 1000).map(r => ({ date: r[0], code: r[1], total: r[2], block: r[3], remark: r[4], entered_by: "Old file (Foysal)" }));
-      const { error } = await sb.from("balances").upsert(part, { onConflict: "date,code" }); if (error) throw error; onProg && onProg(Math.min(i + 1000, rows.length), rows.length);
+      /* only fills MISSING rows — never overwrites a balance that was entered/edited in the app */
+      const { error } = await sb.from("balances").upsert(part, { onConflict: "date,code", ignoreDuplicates: true }); if (error) throw error; onProg && onProg(Math.min(i + 1000, rows.length), rows.length);
     }
   },
   async upsertAccount(a) { const { error } = await sb.from("accounts").upsert(a, { onConflict: "code" }); if (error) throw error; },
@@ -225,6 +238,7 @@ const DemoAPI = {
   },
   async history(code, from, to) { const h = await this.hist(); const out = []; for (const [d, m] of [...h.entries()].sort()) if (d >= from && d <= to && m[code]) out.push({ date: d, total: m[code].total, block: m[code].block, remark: m[code].remark }); return out; },
   async balanceCount() { const h = await this.hist(); let n = 0; h.forEach(m => n += Object.keys(m).length); return n; },
+  async balanceStats() { const h = await this.hist(), ds = [...h.keys()].sort(); return { first: ds[0] || null, last: ds.at(-1) || null, n: await this.balanceCount() }; },
   async importBalances() { }, 
   async upsertAccount(a) { const i = demoStore.accounts.findIndex(x => x.code === a.code); if (i >= 0) demoStore.accounts[i] = { ...demoStore.accounts[i], ...a }; else demoStore.accounts.push(a); this.save(); },
   async upsertBook(b) { if (b.id) { Object.assign(demoStore.books.find(x => x.id === b.id), b); } else { b.id = crypto.randomUUID(); demoStore.books.push(b); } this.save(); return b.id; },
@@ -375,26 +389,26 @@ const acItems = (all = false) => (all ? S.accounts : activeAccounts()).map(a => 
 /* ---------- shell / router ---------- */
 const ROUTES = {
   dash: { t: "ড্যাশবোর্ড", ic: "home", roles: "asb", sec: "top", f: () => vDash },
-  entry: { t: "চেক এন্ট্রি", ic: "plus", roles: "as", sec: "main", f: () => vEntry },
-  status: { t: "স্ট্যাটাস", ic: "flag", roles: "as", sec: "main", f: () => vStatus },
-  cheques: { t: "চেক তালিকা", ic: "list", roles: "asb", sec: "main", f: () => vCheques },
-  closing: { t: "দৈনিক ক্লোজিং", ic: "bank", roles: "as", sec: "bank", f: () => vClosing },
-  crep: { t: "ব্যালেন্স রিপোর্ট", ic: "img", roles: "asb", sec: "bank", f: () => vCrep },
-  reports: { t: "রিপোর্ট", ic: "chart", roles: "asb", sec: "bank", f: () => vReports },
-  cash: { t: "দৈনিক ক্যাশ রেকর্ড", ic: "wallet", roles: "as", sec: "cash", f: () => vCash },
-  cashsum: { t: "ক্যাশ সামারি", ic: "clock", roles: "asb", sec: "cash", f: () => vCashSum },
-  cashrep: { t: "ক্যাশ রিপোর্ট", ic: "chart", roles: "asb", sec: "cash", f: () => vCashRep },
-  dcol: { t: "দৈনিক কালেকশন", ic: "wallet", roles: "as", sec: "dist", f: () => vDcol },
-  dsum: { t: "কালেকশন সামারি", ic: "clock", roles: "asb", sec: "dist", f: () => vDsum },
-  drep: { t: "কালেকশন রিপোর্ট", ic: "chart", roles: "asb", sec: "dist", f: () => vDrep },
+  entry: { t: "নতুন চেক", ic: "plus", roles: "as", sec: "main", f: () => vEntry },
+  status: { t: "চেক স্ট্যাটাস", ic: "flag", roles: "as", sec: "main", f: () => vStatus },
+  cheques: { t: "চেক রেজিস্টার", ic: "list", roles: "asb", sec: "main", f: () => vCheques },
+  closing: { t: "ব্যাংক ক্লোজিং", ic: "bank", roles: "as", sec: "bank", f: () => vClosing },
+  crep: { t: "ব্যালেন্স স্ন্যাপশট", ic: "img", roles: "asb", sec: "bank", f: () => vCrep },
+  reports: { t: "ব্যাংক রিপোর্ট", ic: "chart", roles: "asb", sec: "bank", f: () => vReports },
+  cash: { t: "ক্যাশ এন্ট্রি", ic: "wallet", roles: "as", sec: "cash", f: () => vCash },
+  cashsum: { t: "ক্যাশ সামারি", ic: "pulse", roles: "asb", sec: "cash", f: () => vCashSum },
+  cashrep: { t: "ক্যাশ রিপোর্ট", ic: "pie", roles: "asb", sec: "cash", f: () => vCashRep },
+  dcol: { t: "কালেকশন এন্ট্রি", ic: "coins", roles: "as", sec: "dist", f: () => vDcol },
+  dsum: { t: "কালেকশন সামারি", ic: "trend", roles: "asb", sec: "dist", f: () => vDsum },
+  drep: { t: "কালেকশন রিপোর্ট", ic: "table", roles: "asb", sec: "dist", f: () => vDrep },
   books: { t: "চেক বই", ic: "book", roles: "asb", sec: "more", f: () => vBooks },
-  accounts: { t: "অ্যাকাউন্ট খুঁজুন", ic: "card", roles: "asb", sec: "more", f: () => vAccounts },
-  register: { t: "ক্যাশ রেজিস্টার", ic: "list", roles: "asb", sec: "more", f: () => vRegister },
-  dparty: { t: "ডিস্ট্রিবিউশন পার্টি", ic: "users", roles: "asb", sec: "more", f: () => vDparty },
+  accounts: { t: "অ্যাকাউন্ট ফাইন্ডার", ic: "card", roles: "asb", sec: "more", f: () => vAccounts },
+  register: { t: "ক্যাশ খাতা", ic: "ledger", roles: "asb", sec: "more", f: () => vRegister },
+  dparty: { t: "পার্টি তালিকা", ic: "users", roles: "asb", sec: "more", f: () => vDparty },
   rem: { t: "রিমাইন্ডার", ic: "bell", roles: "asb", sec: "more", f: () => vRem },
   settings: { t: "সেটিংস", ic: "gear", roles: "asb", sec: "more", f: () => vSettings },
-  audit: { t: "Audit ও Security", ic: "shield", roles: "ab", sec: "more", f: () => vSecurity },
-  admin: { t: "অ্যাডমিন", ic: "gear", roles: "a", sec: "more", f: () => vAdmin }
+  audit: { t: "অডিট ও সিকিউরিটি", ic: "shield", roles: "ab", sec: "more", f: () => vSecurity },
+  admin: { t: "অ্যাডমিন প্যানেল", ic: "sliders", roles: "a", sec: "more", f: () => vAdmin }
 };
 const SECS = { top: "", main: "চেক", bank: "ব্যাংক", cash: "ক্যাশ", dist: "ডিস্ট্রিবিউশন কালেকশন", more: "অন্যান্য" };
 const roleKey = () => ({ admin: "a", staff: "s", boss: "b" }[S.me.role]);
@@ -525,7 +539,7 @@ async function setStatus(c, status, date, remarks) {
 }
 async function vEntry(v) {
   const st = { purpose: null, photo: null };
-  v.innerHTML = head("নতুন চেক এন্ট্রি<span class=\"mut\">Enter চাপলে পরের ঘরে যাবে · শেষ ঘরে Enter = সেভ</span>") + `
+  v.innerHTML = head("নতুন চেক<span class=\"mut\">Enter চাপলে পরের ঘরে যাবে · শেষ ঘরে Enter = সেভ</span>") + `
   <div class="split">
    <div class="card">
     <div class="fgrid">
@@ -773,7 +787,7 @@ const Draft = {
 async function vClosing(v) {
   const t = today(); let date = S.lastBal && S.lastBal < t ? stepDay(S.lastBal, 1) : t;
   if (date > t) date = t;
-  v.innerHTML = head("দৈনিক ব্যাংক ক্লোজিং", `<span id="c-info" class="cinfo"></span>`) + `<div class="card navcard" style="margin-bottom:14px">${dateNav("c", date)}
+  v.innerHTML = head("ব্যাংক ক্লোজিং", `<span id="c-info" class="cinfo"></span>`) + `<div class="card navcard" style="margin-bottom:14px">${dateNav("c", date)}
    ${searchBox("c-q", "A/C খুঁজুন — কোড, হোল্ডার, ব্যাংক, A/C নং…", `<select class="in fix" id="c-f"><option value="">সব অ্যাকাউন্ট</option><option value="chg">শুধু আপডেট করা</option><option value="same">শুধু অপরিবর্তিত</option><option value="mv">আজ লেনদেন আছে</option></select>`)}
    <div id="c-msg" style="margin-top:10px"></div></div>
    <div class="card"><div id="c-body"><div class="empty">লোড হচ্ছে…</div></div></div>`;
@@ -1220,7 +1234,7 @@ async function vAdmin(v) {
   let tab = sessionStorage.getItem("nabiad_admin_tab") || "acc";
   const draw = async () => {
     sessionStorage.setItem("nabiad_admin_tab", tab);
-    v.innerHTML = head("অ্যাডমিন") + `<div class="tabs ntabs">${[["acc", "🏦", "অ্যাকাউন্ট"], ["usr", "👥", "ব্যবহারকারী"], ["imp", "📥", "পুরনো ডাটা"], ["help", "🧰", "সেটআপ"]].map(([k, i, l]) => `<span class="chip ${k === tab ? "on" : ""}" data-t="${k}"><i class="te">${i}</i> <span>${l}</span></span>`).join("")}</div><div id="ad"></div>`;
+    v.innerHTML = head("অ্যাডমিন প্যানেল") + `<div class="tabs ntabs">${[["acc", "🏦", "অ্যাকাউন্ট"], ["usr", "👥", "ব্যবহারকারী"], ["imp", "📥", "পুরনো ডাটা"], ["help", "🧰", "সেটআপ"]].map(([k, i, l]) => `<span class="chip ${k === tab ? "on" : ""}" data-t="${k}"><i class="te">${i}</i> <span>${l}</span></span>`).join("")}</div><div id="ad"></div>`;
     $$("[data-t]", v).forEach(c => c.onclick = () => { tab = c.dataset.t; draw(); }); const out = $("#ad", v);
     if (tab === "acc") {
       const F = { q: "", st: "Active" };
@@ -1248,14 +1262,25 @@ async function vAdmin(v) {
       });
     } else if (tab === "imp") {
       out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
-      let n = 0; try { n = await API.balanceCount(); } catch { }
-      const done = n >= 39000;
+      let st = { n: 0, first: null, last: null }; try { st = await API.balanceStats(); } catch { }
       out.innerHTML = `<div class="card"><h3>📥 পুরনো ব্যাংক ব্যালেন্স ইতিহাস</h3>
-        <div class="grid g3" style="margin:12px 0"><div class="kv"><span>ডাটাবেসে রেকর্ড</span><b class="num">${money0(n)}</b></div><div class="kv"><span>ফাইলে রেকর্ড</span><b class="num">39,479</b></div><div class="kv"><span>শুরু</span><b>02-09-2023</b></div></div>
-        ${DEMO ? `<div class="alert gr">DEMO মোডে পুরনো ডাটা আগে থেকেই লোড আছে।</div>` : done ? `<div class="alert gr">✔ পুরনো ডাটা ইতিমধ্যে import হয়ে গেছে — আর কিছু করতে হবে না।</div><details style="margin-top:10px"><summary class="mut sm">আবার import করতে চাইলে</summary><div style="margin-top:8px"><button class="btn" id="im-go">⬆ আবার import</button></div></details>` : `<div class="alert am">এখনো import হয়নি।</div><button class="btn pri" id="im-go" style="margin-top:10px">⬆ পুরনো ডাটা import করুন</button>`}
+        <div class="grid g3" style="margin:12px 0"><div class="kv"><span>ডাটাবেসে রেকর্ড</span><b class="num">${money0(st.n)}</b></div><div class="kv"><span>সবচেয়ে পুরনো তারিখ</span><b>${st.first ? dmy(st.first) : "—"}</b></div><div class="kv"><span>সর্বশেষ তারিখ</span><b>${st.last ? dmy(st.last) : "—"}</b></div></div>
+        ${DEMO ? `<div class="alert gr">DEMO মোডে পুরনো ডাটা আগে থেকেই লোড আছে।</div>` : `<div class="imopt"><div><b>২০২৬ ডাটা পুনরুদ্ধার</b><div class="mut xs">২০২৬-এর সব রেকর্ড + ২০২৬-এর ঠিক আগের শেষ দিনটি (ওটাই ১ জানুয়ারির Opening)</div></div><button class="btn pri" id="im-26">⬆ শুধু ২০২৬</button></div>
+        <div class="imopt"><div><b>সম্পূর্ণ ইতিহাস</b><div class="mut xs">০২-০৯-২০২৩ (প্রথম দিন) থেকে ফাইলের শেষ তারিখ পর্যন্ত সব</div></div><button class="btn" id="im-all">⬆ সম্পূর্ণ import</button></div>`}
         <div class="bar" style="margin-top:12px"><i id="im-bar" style="width:0"></i></div><div class="hint" id="im-t"></div>
-        <div class="mut xs" style="margin-top:8px">একই তারিখ+A/C আবার তুললে আগেরটার জায়গায় বসবে — ডুপ্লিকেট হয় না।</div></div>`;
-      $("#im-go", out) && ($("#im-go", out).onclick = async () => { if (!ask("পুরনো ডাটা import করবেন?")) return; $("#im-go", out).disabled = true; try { const rows = await loadEncrypted("history.enc"); await API.importBalances(rows, (a, b) => { $("#im-bar", out).style.width = a / b * 100 + "%"; $("#im-t", out).textContent = `${a} / ${b}`; }); balCache.clear(); toast("✔ import সম্পূর্ণ"); S.lastBal = await API.lastBalDate(); } catch (e) { toast(e.message, "err"); $("#im-go", out).disabled = false; } });
+        <div class="mut xs" style="margin-top:8px">শুধু যে তারিখ+A/C ডাটাবেসে নেই সেগুলোই যোগ হয় — আপনার app-এ সেভ/এডিট করা কোনো ব্যালেন্স বদলায় না, ডুপ্লিকেটও হয় না।</div></div>`;
+      const run = async (mode) => {
+        const b26 = $("#im-26", out), ball = $("#im-all", out);
+        try {
+          const all = await loadEncrypted("history.enc"); const anchor = all.map(r => r[0]).filter(d => d < "2026-01-01").sort().pop() || "2026-01-01";
+          const rows = mode === "26" ? all.filter(r => r[0] >= anchor) : all;
+          if (!ask(`${money0(rows.length)}টি রেকর্ড (${dmy(rows.reduce((m, r) => r[0] < m ? r[0] : m, rows[0][0]))} থেকে) import করবেন? যেগুলো আগে থেকেই আছে সেগুলো বদলাবে না।`)) return;
+          b26.disabled = ball.disabled = true;
+          await API.importBalances(rows, (a, b) => { $("#im-bar", out).style.width = a / b * 100 + "%"; $("#im-t", out).textContent = `${a} / ${b}`; });
+          balCache.clear(); toast("✔ import সম্পূর্ণ"); S.lastBal = await API.lastBalDate(); draw();
+        } catch (e) { toast(e.message, "err"); b26 && (b26.disabled = ball.disabled = false); }
+      };
+      $("#im-26", out) && ($("#im-26", out).onclick = () => run("26")); $("#im-all", out) && ($("#im-all", out).onclick = () => run("all"));
     } else {
       out.innerHTML = `<div class="card empty">সিস্টেম পরীক্ষা হচ্ছে…</div>`;
       const chk = await API.health().catch(() => ({}));
@@ -1397,7 +1422,7 @@ function sysAlerts() {
   const o = [], t = today(), h = new Date().getHours();
   if (S.me.role !== "boss") {
     if (!isFri(t) && h >= (CFG.CLOSING_REMIND_HOUR ?? 17) && (!S.lastBal || S.lastBal < t)) o.push({ id: "closing-" + t, k: "rd", ic: "bank", t: "আজকের দৈনিক ক্লোজিং এখনো সেভ হয়নি", go: "#/closing", notify: true });
-    if (!isFri(t) && h >= (CFG.CASH_REMIND_HOUR ?? 19) && S.lastCash !== t && !S.cashOff) o.push({ id: "cash-" + t, k: "rd", ic: "wallet", t: "আজকের দৈনিক ক্যাশ রেকর্ড এখনো সেভ হয়নি", go: "#/cash", notify: true });
+    if (!isFri(t) && h >= (CFG.CASH_REMIND_HOUR ?? 19) && S.lastCash !== t && !S.cashOff) o.push({ id: "cash-" + t, k: "rd", ic: "wallet", t: "আজকের ক্যাশ এন্ট্রি এখনো সেভ হয়নি", go: "#/cash", notify: true });
     if (S.lastBal) { const g = workGap(S.lastBal, t); if (g > 0) o.push({ k: "am", ic: "bank", t: `${g} কর্মদিবসের ক্লোজিং বাকি (শেষ সেভ: ${dmy(S.lastBal)})`, go: "#/closing" }); }
     const dd = Draft.localDates().filter(d => !S.lastBal || d > S.lastBal); if (dd.length) o.push({ k: "vi", ic: "edit", t: `ড্রাফট আছে, ফাইনাল সেভ বাকি: ${dd.map(dmy).join(", ")}`, go: "#/closing" });
     if (!DEMO && Outbox.count()) o.push({ k: "am", ic: "clock", t: `${Outbox.count()}টি অফলাইন এন্ট্রি সিঙ্ক বাকি`, go: "" });
@@ -1547,7 +1572,7 @@ async function vDash(v) {
   const mon = S.cheques.filter(c => c.date.startsWith(ym) && isLive(c)), due = dueList(), sys = sysAlerts();
   const upcoming = (S.reminders || []).filter(r => !r.done).sort((a, b) => remDue(a) - remDue(b)).slice(0, 5);
   const acts = boss ? [["crep", "img", "ব্যালেন্স রিপোর্ট", "qa1"], ["cashsum", "wallet", "ক্যাশ সামারি", "qa2"], ["reports", "chart", "ব্যাংক রিপোর্ট", "qa3"]]
-    : [["entry", "plus", "নতুন চেক এন্ট্রি", "qa1"], ["closing", "bank", "দৈনিক ব্যাংক ক্লোজিং", "qa2"], ["cash", "wallet", "দৈনিক ক্যাশ রেকর্ড", "qa3"]];
+    : [["entry", "plus", "নতুন চেক", "qa1"], ["closing", "bank", "ব্যাংক ক্লোজিং", "qa2"], ["cash", "wallet", "ক্যাশ এন্ট্রি", "qa3"]];
   const bankDone = S.lastBal === t, cashDone = S.lastCash === t, workday = !isFri(t);
   const st = (ok, l, go, sub) => `<a class="stchip ${ok ? "ok" : "no"}" href="${go}"><i>${ok ? "✓" : "!"}</i><span><b>${l}</b><small>${sub}</small></span></a>`;
   v.innerHTML = `<div class="hero dash-hero"><div class="hh"><h1>${greet()}, ${esc(S.me.name)} 👋</h1><p>${new Date().toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${workday ? "" : " · শুক্রবার (সাপ্তাহিক বন্ধ)"}</p></div>
@@ -1678,7 +1703,7 @@ const CASH_DRAFT = d => "nabiad_cash_draft_" + d;
 
 async function vCash(v) {
   const t = today(); let date = sessionStorage.getItem("nabiad_cash_date") || (S.lastCash && S.lastCash < t ? stepDay(S.lastCash, 1) : t); sessionStorage.removeItem("nabiad_cash_date"); if (date > t) date = t;
-  v.innerHTML = head("দৈনিক ক্যাশ রেকর্ড", `<a class="btn" href="#/cashsum">${ico("chart")} সামারি</a>`) + `<div class="card navcard" style="margin-bottom:14px">${dateNav("cs", date)}<div id="cs-msg" style="margin-top:10px"></div></div><div id="cs-body"><div class="card empty">লোড হচ্ছে…</div></div>`;
+  v.innerHTML = head("ক্যাশ এন্ট্রি", `<a class="btn" href="#/cashsum">${ico("chart")} সামারি</a>`) + `<div class="card navcard" style="margin-bottom:14px">${dateNav("cs", date)}<div id="cs-msg" style="margin-top:10px"></div></div><div id="cs-body"><div class="card empty">লোড হচ্ছে…</div></div>`;
   const body = $("#cs-body", v); let autoT = null;
   async function draw() {
     date = $("#cs-d", v).value; if (!date) return; body.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
@@ -2304,7 +2329,7 @@ function dpartyModal(p, after) {
 async function vDcol(v) {
   let date = sessionStorage.getItem("nabiad_dc_date") || today(); sessionStorage.removeItem("nabiad_dc_date");
   const F = { st: "", ac: "", q: "" }; let rows = [], sel = new Set(), busy = false;
-  v.innerHTML = head("দৈনিক কালেকশন", `<a class="btn" href="#/dsum">${ico("clock")} সামারি</a><a class="btn" href="#/drep">${ico("chart")} রিপোর্ট</a>`) + `
+  v.innerHTML = head("কালেকশন এন্ট্রি", `<a class="btn" href="#/dsum">${ico("clock")} সামারি</a><a class="btn" href="#/drep">${ico("chart")} রিপোর্ট</a>`) + `
    <div class="card dcx-bar"><div class="dcx-date">${dateNav("dc", date)}</div><div class="dcx-stats" id="dc-kpi"></div></div>
    <div class="dcx-split">
    <div class="card dcx-entry"><div class="dcx-et"><h3>${ico("plus")} নতুন এন্ট্রি</h3><span class="mut xs">শুধু Enter চাপুন: পার্টি → Account → টাকা → যোগ হবে · টাকার ঘরে <b>50000+300</b> লেখা যায়</span></div>

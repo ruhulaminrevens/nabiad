@@ -933,3 +933,4 @@ tr.dim td{opacity:.55}
 .cbar .bl{display:flex;flex-direction:column;align-items:center;line-height:1.2} .cbar .bl small{font-size:11px;font-weight:600;opacity:.85}
 .cbar .hint:empty{display:none}
 @media (max-width:420px){.cbar .btn.lg{min-height:56px}}
+.imopt{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px dashed var(--line2)} .imopt .btn{white-space:nowrap;flex:none} @media(max-width:520px){.imopt{flex-direction:column;align-items:stretch}}

@@ -241,7 +241,7 @@ Object.assign(I18N, {
   "শুধু Enter চাপুন: পার্টি → Account → টাকা → যোগ হবে · টাকার ঘরে ": "Just press Enter: Party → Account → Amount → added · in the amount box you can type ", " লেখা যায়": "", "কিছু নেই": "Nothing", " — \"+ নতুন বই\" চাপুন": " — press \"+ New book\"", "জেলায় বাকিরা": "districts among the rest",
   "২ দিন": "2 days", "৩ দিন": "3 days", "৫ দিন": "5 days", "৭ দিন": "7 days",
   "Audit Log · পরিবর্তনের লগ": "Audit Log · Change log", "এই চেকের": "This cheque has", "টি স্ট্যাটাস রেকর্ড আছে — মুছা যাবে না। ভুল এন্ট্রি হলে \"Cancelled\" স্ট্যাটাস দিন": " status record(s) — cannot be deleted. For a wrong entry set status \"Cancelled\"", "এই বইয়ের": "This book has", "টি পাতায় চেক এন্ট্রি আছে — মুছা যাবে না। এর বদলে বইয়ের স্ট্যাটাস Finished বা Lost দিন": " leaf/leaves with cheque entries — cannot be deleted. Set the book status to Finished or Lost instead",
-  // v6.24 — cheque entry: camera/gallery, add purpose
+    // v6.24 — cheque entry: camera/gallery, add purpose
   "তুলুন": "Camera", "বাছুন": "Gallery", "ছবি তুলুন": "Take photo", "গ্যালারি": "Gallery", "＋ নতুন": "＋ New", "নতুন খাত (Purpose)": "New purpose", "খাতের নাম লিখুন (যেমন: Salary)": "Enter purpose name (e.g. Salary)", "এই খাত আগেই আছে": "This purpose already exists", "✔ নতুন খাত যোগ হয়েছে": "✔ New purpose added", "সেভ করুন": "Save", "পরিষ্কার": "Clear",
   // v6.19 — party record, ASM master, delete protection
   "শুধু Enter চাপুন: পার্টি → Account → টাকা → যোগ হবে · টাকার ঘরে <b>50000+300</b> লেখা যায়": "Just press Enter: Party → Account → Amount → added · amount box accepts <b>50000+300</b>",
@@ -291,7 +291,21 @@ Object.assign(I18N, {
   "✔ ASM-এর নাম বদলানো হয়েছে": "✔ ASM renamed", "নাম বদলালে ওই ASM-এর সব পার্টির ASM বদলে যাবে (আগের কালেকশন রেকর্ড আগের নামেই থাকবে)।": "Renaming changes the ASM of all that ASM's parties (earlier collection records keep the old name).",
   "আরও ": "Show ", "টি দেখান": " more", "এই সময়ে ": "In this period ", "Note: এই তারিখে আরও": "Note: this period also has", "টি এন্ট্রি (৳": " entries (৳", "অন্য Status-এ আছে — এখানে ধরা হয়নি।": "in another status — not counted here.",
   "ডিস্ট্রিবিউশন কালেকশন সামারি": "Distribution Collection Summary", "পার্টি": "Party", "সাবটোটাল": "Subtotal", "ইন্টারনেট নেই": "No internet", "ঠিক আছে": "OK", "কাজ": "Actions", "অবস্থা": "Status", "মন্তব্য": "Remarks",
-  "মুছে ফেলবেন?": "Delete?", "নতুন": "New", "লিস্ট": "List", "ডাটা নেই": "No data", "এডিট": "Edit", "মুছুন": "Delete", "সেভ": "Save", "বন্ধ": "Close", "বাতিল": "Cancel", "সামারি": "Summary"
+  "মুছে ফেলবেন?": "Delete?", "নতুন": "New", "লিস্ট": "List", "ডাটা নেই": "No data", "এডিট": "Edit", "মুছুন": "Delete", "সেভ": "Save", "বন্ধ": "Close", "বাতিল": "Cancel", "সামারি": "Summary",
+  // v6.30 — page names + Old data import
+  "নতুন চেক": "New Cheque", "চেক স্ট্যাটাস": "Cheque Status", "চেক রেজিস্টার": "Cheque Register",
+  "ব্যাংক ক্লোজিং": "Bank Closing", "ব্যালেন্স স্ন্যাপশট": "Balance Snapshot", "ব্যাংক রিপোর্ট": "Bank Reports",
+  "ক্যাশ এন্ট্রি": "Cash Entry", "ক্যাশ সামারি": "Cash Summary", "ক্যাশ রিপোর্ট": "Cash Reports",
+  "কালেকশন এন্ট্রি": "Collection Entry", "কালেকশন সামারি": "Collection Summary", "কালেকশন রিপোর্ট": "Collection Reports",
+  "অ্যাকাউন্ট ফাইন্ডার": "Account Finder", "ক্যাশ খাতা": "Cash Ledger", "পার্টি তালিকা": "Parties",
+  "অডিট ও সিকিউরিটি": "Audit & Security", "অ্যাডমিন প্যানেল": "Admin Panel",
+  "সবচেয়ে পুরনো তারিখ": "Oldest date", "সর্বশেষ তারিখ": "Latest date",
+  "২০২৬ ডাটা পুনরুদ্ধার": "Restore 2026 data",
+  "২০২৬-এর সব রেকর্ড + ২০২৬-এর ঠিক আগের শেষ দিনটি (ওটাই ১ জানুয়ারির Opening)": "All 2026 records + the last day before 2026 (it becomes the 1 January Opening)",
+  "⬆ শুধু ২০২৬": "⬆ 2026 only", "সম্পূর্ণ ইতিহাস": "Full history",
+  "০২-০৯-২০২৩ (প্রথম দিন) থেকে ফাইলের শেষ তারিখ পর্যন্ত সব": "Everything from 02-09-2023 (first day) to the last date in the file",
+  "⬆ সম্পূর্ণ import": "⬆ Import everything",
+  "শুধু যে তারিখ+A/C ডাটাবেসে নেই সেগুলোই যোগ হয় — আপনার app-এ সেভ/এডিট করা কোনো ব্যালেন্স বদলায় না, ডুপ্লিকেটও হয় না।": "Only date + A/C rows missing from the database are added — balances you saved or edited in the app never change, and no duplicates are created."
 });
 const I18N_KEYS = Object.keys(I18N).filter(k => k.length >= 6).sort((a, b) => b.length - a.length);
 const BN_DIG = { "০": "0", "১": "1", "২": "2", "৩": "3", "৪": "4", "৫": "5", "৬": "6", "৭": "7", "৮": "8", "৯": "9" };
