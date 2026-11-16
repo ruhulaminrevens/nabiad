@@ -128,7 +128,7 @@ async function pickImage(file, o) { if (!file) return null; return await cropMod
 
 function userErr(e) {
   const m = String(e?.message || e), en = LANG === "en";
-  const T = { admin_only: ["শুধু Admin এই কাজ করতে পারেন", "Only an admin can do this"], bad_email: ["ইমেইল ঠিক নয়", "Invalid email address"], weak_password: ["পাসওয়ার্ড কমপক্ষে ১০ অক্ষর হতে হবে", "Password must be at least 10 characters"], bad_role: ["Role ঠিক নয়", "Invalid role"], email_exists: ["এই ইমেইলে আগেই ব্যবহারকারী আছে", "A user with this email already exists"], no_user: ["ব্যবহারকারী পাওয়া যায়নি", "User not found"], edit_window_closed: ["এডিটের সময় শেষ বা বন্ধ — ছবি বদলানো যায়নি", "Your edit window is closed or off — photo not changed"], purpose_exists: ["এই খাত আগেই আছে", "This purpose already exists"], no_purpose: ["খাত পাওয়া যায়নি", "Purpose not found"], bad_name: ["নাম লিখুন", "Enter a name"] };
+  const T = { admin_only: ["শুধু Admin এই কাজ করতে পারেন", "Only an admin can do this"], bad_email: ["ইমেইল ঠিক নয়", "Invalid email address"], weak_password: ["পাসওয়ার্ড কমপক্ষে ১০ অক্ষর হতে হবে", "Password must be at least 10 characters"], bad_role: ["Role ঠিক নয়", "Invalid role"], email_exists: ["এই ইমেইলে আগেই ব্যবহারকারী আছে", "A user with this email already exists"], no_user: ["ব্যবহারকারী পাওয়া যায়নি", "User not found"], edit_window_closed: ["এডিটের সময় শেষ বা বন্ধ — ছবি বদলানো যায়নি", "Your edit window is closed or off — photo not changed"], purpose_exists: ["এই খাত আগেই আছে", "This purpose already exists"], no_purpose: ["খাত পাওয়া যায়নি", "Purpose not found"], bad_name: ["নাম লিখুন", "Enter a name"], cannot_delete_self: ["নিজেকে মোছা যাবে না", "You cannot delete yourself"], deactivate_first: ["আগে ব্যবহারকারীকে নিষ্ক্রিয় করুন, তারপর মুছুন", "Deactivate the user first, then delete"], too_many_attempts: ["অনেকবার ভুল হয়েছে — ১০ মিনিট পরে চেষ্টা করুন", "Too many wrong attempts — try again in 10 minutes"] };
   for (const k in T) if (m.includes(k)) return new Error(T[k][en ? 1 : 0]);
   return e instanceof Error ? e : new Error(m);
 }
@@ -285,7 +285,7 @@ const SbAPI = {
     if (error || !p || !p.active) return null; return { id: u.id, email: p.email, name: p.name, role: p.role, edit_days: p.edit_days || 0 };
   },
   async login(email, pw) { const { error } = await sb.auth.signInWithPassword({ email, password: pw }); if (error) throw error; return this.session(); },
-  async logout() { await sb.auth.signOut(); },
+  async logout() { try { localStorage.removeItem("nabiad_locked"); } catch { } await sb.auth.signOut(); },
   async loadAll() {
     const [acc, ch, ev, bk] = await Promise.all([fetchAll("accounts", "sort"), fetchAll("cheques", "created_at"), fetchAll("cheque_status", "created_at"), fetchAll("books", "code")]);
     const by = {}; ev.forEach(e => (by[e.cheque_id] ||= []).push({ id: e.id, status: e.new_status, date: e.status_date, remarks: e.remarks, by: e.entered_by, at: e.created_at }));
@@ -388,7 +388,7 @@ const DemoAPI = {
   save() { localStorage.setItem(DEMO_KEY, JSON.stringify(demoStore)); },
   async session() { const s = sessionStorage.getItem("nabiad_demo_user"); return s ? JSON.parse(s) : null; },
   async login(role, name) { const u = { id: "demo-" + role, email: role + "@demo", name, role }; sessionStorage.setItem("nabiad_demo_user", JSON.stringify(u)); return u; },
-  async logout() { sessionStorage.removeItem("nabiad_demo_user"); },
+  async logout() { try { localStorage.removeItem("nabiad_locked"); } catch { } sessionStorage.removeItem("nabiad_demo_user"); },
   async loadAll() {
     const ev = {}; demoStore.events.forEach(e => (ev[e.cheque_id] ||= []).push(e));
     return { accounts: demoStore.accounts, books: demoStore.books, cheques: demoStore.cheques.map(c => ({ ...c, events: ev[c.id] || [] })) };
@@ -1525,13 +1525,15 @@ async function vAdmin(v) {
       $("#ac-add", out).onclick = () => accountModal(null, draw); list();
     } else if (tab === "usr") {
       out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
-      let us = []; try { us = await API.users(); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(e.message)}</div>`; return; }
+      let us = [], secM = {}; try { us = await API.users(); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(e.message)}</div>`; return; }
+      try { (await API.userSec()).forEach(x => secM[x.user_id] = x); } catch { }
       out.innerHTML = `<div class="row ubar"><div><b>${us.length} ${LANG === "en" ? "users" : "জন ব্যবহারকারী"}</b><div class="mut xs">${LANG === "en" ? "Create accounts, edit profiles, set roles and reset passwords here" : "এখান থেকেই অ্যাকাউন্ট খোলা, প্রোফাইল এডিট, Role দেওয়া ও পাসওয়ার্ড রিসেট"}</div></div><button class="btn pri" id="u-new">${ico("plus")} ${LANG === "en" ? "New user" : "নতুন ব্যবহারকারী"}</button></div>
        <div class="ulist">${us.map(u => `<div class="card uc ${u.active ? "" : "off"}" data-u="${u.id}"><div class="uh">${avaEl(u.id, u.name, u.email)}<div class="ue"><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div></div>
-        <div class="row" style="gap:6px;margin-bottom:12px"><span class="pill">${esc(u.role)}</span><span class="tag ${u.active ? "ok" : "off"}">${u.active ? (LANG === "en" ? "Active" : "সক্রিয়") : (LANG === "en" ? "Inactive" : "নিষ্ক্রিয়")}</span>${u.role === "staff" ? `<span class="tag ${u.edit_days ? "ok" : "off"}" title="${LANG === "en" ? "Edit window for own entries" : "নিজের এন্ট্রি এডিটের সময়"}">✎ ${u.edit_days ? u.edit_days + (LANG === "en" ? " day" : " দিন") : (LANG === "en" ? "Edit off" : "এডিট বন্ধ")}</span>` : ""}${u.id === S.me.id ? `<span class="mut xs">${LANG === "en" ? "This is you" : "এটা আপনি"}</span>` : ""}</div>
-        <div class="row"><button class="btn pri sm fix" data-ed="${u.id}">✏️ ${LANG === "en" ? "Edit" : "এডিট"}</button><button class="btn sm fix" data-pw="${u.id}">🔑 ${LANG === "en" ? "Reset password" : "পাসওয়ার্ড রিসেট"}</button></div></div>`).join("")}</div>`;
+        <div class="row" style="gap:6px;margin-bottom:12px"><span class="pill">${esc(u.role)}</span><span class="tag ${u.active ? "ok" : "off"}">${u.active ? (LANG === "en" ? "Active" : "সক্রিয়") : (LANG === "en" ? "Inactive" : "নিষ্ক্রিয়")}</span>${secM[u.id]?.has_2fa ? `<span class="tag ok" title="2FA">🔐 2FA</span>` : ""}${secM[u.id]?.sessions ? `<span class="tag" title="${LANG === "en" ? "Signed-in devices" : "লগইন ডিভাইস"}">📱 ${secM[u.id].sessions}</span>` : ""}${u.role === "staff" ? `<span class="tag ${u.edit_days ? "ok" : "off"}" title="${LANG === "en" ? "Edit window for own entries" : "নিজের এন্ট্রি এডিটের সময়"}">✎ ${u.edit_days ? u.edit_days + (LANG === "en" ? " day" : " দিন") : (LANG === "en" ? "Edit off" : "এডিট বন্ধ")}</span>` : ""}${u.id === S.me.id ? `<span class="mut xs">${LANG === "en" ? "This is you" : "এটা আপনি"}</span>` : ""}</div>
+        <div class="row"><button class="btn pri sm fix" data-ed="${u.id}">✏️ ${LANG === "en" ? "Edit" : "এডিট"}</button><button class="btn sm fix" data-pw="${u.id}">🔑 ${LANG === "en" ? "Reset password" : "পাসওয়ার্ড রিসেট"}</button><button class="btn sm fix" data-sc="${u.id}">🛡 ${LANG === "en" ? "Security" : "সিকিউরিটি"}</button></div></div>`).join("")}</div>`;
       $("#u-new", out).onclick = () => newUserModal(draw);
       $$("[data-ed]", out).forEach(b => b.onclick = () => editUserModal(us.find(u => u.id === b.dataset.ed), draw));
+      $$("[data-sc]", out).forEach(b => b.onclick = () => userSecModal(us.find(u => u.id === b.dataset.sc), draw));
       $$("[data-pw]", out).forEach(b => b.onclick = () => resetPwModal(us.find(u => u.id === b.dataset.pw)));
     } else if (tab === "imp") {
       out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
@@ -2334,6 +2336,10 @@ async function vSettings(v) {
      <div class="kv"><span>এই ডিভাইসে জমা ডাটা</span><b>${(used / 1024).toFixed(0)} KB</b></div>
      <div class="row" style="margin-top:6px"><button class="btn fix" id="st-sync">${ico("clock")} এখনই সিঙ্ক</button><button class="btn fix" id="st-upd">↻ আপডেট দেখুন</button>${isStandalone() ? "" : `<button class="btn pri fix" id="st-inst">⬇ অ্যাপ ইনস্টল</button>`}<button class="btn bad fix" id="st-clr">ক্যাশ মুছে রিলোড</button></div>
      <div class="mut xs">"ক্যাশ মুছে রিলোড" শুধু এই ডিভাইসের জমা কপি মোছে — সার্ভারের ডাটা ঠিক থাকে। সিঙ্ক বাকি থাকলে আগে সিঙ্ক করুন।</div></div></div>
+   <div class="card"><h3>🔐 ${LANG === "en" ? "Security" : "নিরাপত্তা"}</h3><div class="grid" style="gap:12px">
+     <div><label class="f">${LANG === "en" ? "Auto-lock when idle" : "কিছুক্ষণ ব্যবহার না করলে অটো-লক"}</label>${sel("st-lk", [[0, LANG === "en" ? "Off" : "বন্ধ"], [1, LANG === "en" ? "1 minute" : "১ মিনিট"], [5, LANG === "en" ? "5 minutes" : "৫ মিনিট"], [10, LANG === "en" ? "10 minutes" : "১০ মিনিট"], [15, LANG === "en" ? "15 minutes" : "১৫ মিনিট"], [30, LANG === "en" ? "30 minutes" : "৩০ মিনিট"], [60, LANG === "en" ? "1 hour" : "১ ঘণ্টা"]], lockMin())}<div class="mut xs">${LANG === "en" ? "This device only. Unlock with your password. Shortcut: Ctrl+Shift+L." : "শুধু এই ডিভাইসে। পাসওয়ার্ড দিয়ে আনলক। শর্টকাট: Ctrl+Shift+L।"}</div></div>
+     <div class="row"><button class="btn fix" id="st-lock">🔒 ${LANG === "en" ? "Lock now" : "এখনই লক করুন"}</button></div>
+     ${DEMO ? "" : `<div id="st-mfa" class="scrow"><div class="mut sm">…</div></div>`}</div></div>
    ${admin ? `<div class="card" style="grid-column:1/-1"><h3>🛡 Admin শর্টকাট</h3><div class="row"><a class="btn fix" href="#/admin">${ico("gear")} ব্যবহারকারী ও অ্যাকাউন্ট</a><a class="btn fix" href="#/audit">${ico("shield")} Audit ও Backup</a><a class="btn fix" href="#/books">${ico("book")} চেক বই</a></div></div>` : ""}</div>`;
   const g = id => $("#" + id, v);
   { const f = g("pf-f"), rm = g("pf-rm"); g("pf-up").onclick = () => f.click();
@@ -2342,6 +2348,11 @@ async function vSettings(v) {
   g("st-nm-s").onclick = async () => { const n = g("st-nm").value.trim(); if (!n) return toast("নাম লিখুন", "err"); try { await API.setMyName(n); S.me.name = n; saveCache(); shell(); route(); toast("✔ নাম সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? "schema_v3.sql চালানো বাকি" : e.message, "err"); } };
   g("st-pw-s") && (g("st-pw-s").onclick = async () => { const p = g("st-pw").value; if (p.length < 10) return toast("পাসওয়ার্ড কমপক্ষে ১০ অক্ষর", "err"); try { await API.changePassword(p); g("st-pw").value = ""; toast("✔ পাসওয়ার্ড বদলানো হয়েছে"); } catch (e) { toast(e.message, "err"); } });
   g("st-th").onchange = e => setTheme(e.target.value); g("st-lg").onchange = e => setLang(e.target.value);
+  g("st-lk").onchange = e => { try { localStorage.setItem(LOCK_KEY, e.target.value); } catch { } lastAct = Date.now(); toast(LANG === "en" ? "✔ Saved" : "✔ সেভ হয়েছে"); };
+  g("st-lock").onclick = () => lockNow();
+  if (g("st-mfa")) { const en = LANG === "en", paint = async () => { const f = await API.mfaFactor().catch(() => null), box = g("st-mfa"); if (!box) return;
+    box.innerHTML = `<div style="flex:1"><b>${en ? "2-step verification (2FA)" : "টু-স্টেপ ভেরিফিকেশন (2FA)"}: ${f ? (en ? "ON" : "চালু") : (en ? "OFF" : "বন্ধ")}</b><div class="mut xs">${en ? "Adds a 6-digit code from your phone at sign-in. Strongly recommended for Admin and Boss." : "লগইনের সময় ফোনের ৬ অঙ্কের কোড লাগে। Admin ও Boss-এর জন্য জোরালোভাবে সুপারিশ।"}</div></div><button class="btn sm ${f ? "bad" : "pri"} fix" id="st-mfab">${f ? (en ? "Turn off" : "বন্ধ করুন") : (en ? "Turn on" : "চালু করুন")}</button>`;
+    g("st-mfab").onclick = async () => { if (!f) return mfaEnrollModal(paint); if (!ask(en ? "Turn off 2FA?" : "2FA বন্ধ করবেন?")) return; try { const { error } = await sb.auth.mfa.unenroll({ factorId: f.id }); if (error) throw error; toast(en ? "✔ 2FA is off" : "✔ 2FA বন্ধ হয়েছে"); paint(); } catch (e) { toast(e.message || String(e), "err"); } }; }; paint(); }
   g("st-fs").onchange = e => savePrefs({ font: e.target.value }); g("st-cp").onchange = e => savePrefs({ compact: e.target.value === "1" }); g("st-start").onchange = e => { savePrefs({ start: e.target.value }); toast("✔ সেভ হয়েছে"); };
   g("st-ch").onchange = e => { savePrefs({ closingHour: +e.target.value }); updateBell(); }; g("st-cs").onchange = e => { savePrefs({ cashHour: +e.target.value }); updateBell(); };
   g("st-pd").onchange = e => { savePrefs({ pendDays: +e.target.value }); refreshBadges(); }; g("st-snd").onchange = e => savePrefs({ sound: e.target.value === "1" }); g("st-fri").onchange = e => savePrefs({ skipFri: e.target.value === "1" });
@@ -2491,13 +2502,27 @@ Object.assign(SbAPI, {
   async audit(f) { const lim = f.limit || 500, off = f.offset || 0; let q = sb.from("audit_log").select("*").order("at", { ascending: false }).range(off, off + lim - 1); if (f.tbl) q = q.eq("tbl", f.tbl); if (f.act) q = q.eq("action", f.act); if (f.from) q = q.gte("at", new Date(f.from + "T00:00:00").toISOString()); if (f.to) q = q.lt("at", new Date(addDays(f.to, 1) + "T00:00:00").toISOString()); const { data, error } = await q; if (error) throw error; return data; },
   async clearAudit(before) { const { data, error } = await sb.rpc("clear_audit", { before }); if (error) throw error; return data; },
   async deleteBackup(id) { const { error } = await sb.rpc("delete_backup", { bid: id }); if (error) throw error; },
-  async userLogins() { const { data, error } = await sb.rpc("user_logins"); if (error) throw error; return data; }
+  async userLogins() { const { data, error } = await sb.rpc("user_logins"); if (error) throw error; return data; },
+  async verifyPassword(p) { const { data, error } = await sb.rpc("verify_my_password", { p }); if (error) throw error; return !!data; },
+  async userSec() { const { data, error } = await sb.rpc("admin_user_security"); if (error) throw error; return data || []; },
+  async userSessions(id) { const { data, error } = await sb.rpc("admin_sessions", { p_user: id }); if (error) throw error; return data || []; },
+  async revokeSessions(id, sid) { const { data, error } = await sb.rpc("admin_revoke_sessions", { p_user: id, p_session: sid || null }); if (error) throw error; return data; },
+  async reset2fa(id) { const { error } = await sb.rpc("admin_reset_2fa", { p_user: id }); if (error) throw error; },
+  async setUserEmail(id, e) { const { error } = await sb.rpc("admin_set_email", { p_user: id, p_email: e }); if (error) throw error; },
+  async deleteUser(id) { const { error } = await sb.rpc("admin_delete_user", { p_user: id }); if (error) throw error; },
+  async userActivity(id) { const { data, error } = await sb.from("audit_log").select("*").eq("user_id", id).order("at", { ascending: false }).limit(25); if (error) throw error; return data || []; },
+  async mfaNeeded() { const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel(); return !!data && data.nextLevel === "aal2" && data.currentLevel !== "aal2"; },
+  async mfaFactor() { const { data } = await sb.auth.mfa.listFactors(); return (data?.totp || []).find(f => f.status === "verified") || null; },
 });
 Object.assign(DemoAPI, {
   async audit(f) { const off = f.offset || 0, lim = f.limit || 500; return demoStore.audit.filter(r => (!f.tbl || r.tbl === f.tbl) && (!f.act || r.action === f.act) && (!f.from || r.at.slice(0, 10) >= f.from) && (!f.to || r.at.slice(0, 10) <= f.to)).slice(off, off + lim); },
   async clearAudit(before) { const n = demoStore.audit.filter(r => r.at < before).length; demoStore.audit = demoStore.audit.filter(r => r.at >= before); this.aud("audit_log", "delete", `${n} rows cleared`, null, null); this.save(); return n; },
   async deleteBackup(id) { demoStore.backups = (demoStore.backups || []).filter(b => b.id !== id); this.save(); },
-  async userLogins() { return [{ email: "admin@demo", name: S.me.name, role: "admin", active: true, last_sign_in_at: new Date().toISOString() }]; }
+  async userLogins() { return [{ email: "admin@demo", name: S.me.name, role: "admin", active: true, last_sign_in_at: new Date().toISOString() }]; },
+  async verifyPassword() { return true; }, async userSec() { return []; },
+  async userSessions() { return [{ id: "d1", created_at: new Date().toISOString(), last_seen: new Date().toISOString(), user_agent: navigator.userAgent, ip: "demo", aal: "aal1", mine: true }]; },
+  async revokeSessions() { return 0; }, async reset2fa() { }, async setUserEmail(id, e) { const u = (demoStore.users || []).find(x => x.id === id); if (u) { u.email = e; this.save(); } }, async deleteUser(id) { demoStore.users = (demoStore.users || []).filter(x => x.id !== id); this.save(); },
+  async userActivity() { return []; }, async mfaNeeded() { return false; }, async mfaFactor() { return null; },
 });
 
 /* =================== v6.15: Distribution Collection (daily record · approval · summary · report · parties) =================== */
@@ -3030,6 +3055,100 @@ setTimeout(checkUpdate, 8000); setInterval(checkUpdate, 3 * 60 * 1000);
 window.addEventListener("online", () => setTimeout(checkUpdate, 2000));
 document.addEventListener("visibilitychange", () => { if (document.hidden) { if (updReady && !DIRTY && !Outbox.busy) location.reload(); } else checkUpdate(); });
 
+/* ---------- v6.44 security: auto-lock, 2FA (TOTP), user sessions / activity / email / delete ---------- */
+const LOCK_KEY = "nabiad_lock_min", LOCKED_KEY = "nabiad_locked";
+const lockMin = () => { let v = null; try { v = localStorage.getItem(LOCK_KEY); } catch { } return v === null ? 15 : +v || 0; };
+let lastAct = Date.now(), lockT = null, lockOn = false;
+function lockInit() {
+  if (lockT) return;
+  const bump = () => { if (!lockOn) lastAct = Date.now(); };
+  ["pointerdown", "keydown", "touchstart", "wheel", "scroll"].forEach(e => document.addEventListener(e, bump, { passive: true, capture: true }));
+  const chk = () => { const m = lockMin(); if (m > 0 && S.me && !lockOn && Date.now() - lastAct > m * 6e4) lockNow(); };
+  lockT = setInterval(chk, 15000);
+  /* a force-logout from the admin ends the session on the server at once; notice it here and go to the login screen */
+  const alive = async () => { if (DEMO || !S.me || !navigator.onLine || document.hidden) return; try { const { error } = await sb.auth.getUser(); if (error && (error.status === 401 || error.status === 403 || /session|jwt/i.test(error.message || ""))) { try { await sb.auth.signOut({ scope: "local" }); } catch { } try { localStorage.removeItem(CACHE_KEY); localStorage.removeItem(LOCKED_KEY); } catch { } location.hash = ""; location.reload(); } } catch { } };
+  setInterval(alive, 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) chk(); });
+  document.addEventListener("keydown", e => { if (e.ctrlKey && e.shiftKey && (e.key === "L" || e.key === "l")) { e.preventDefault(); lockNow(); } });
+  try { if (localStorage.getItem(LOCKED_KEY) === "1") lockNow(); } catch { }
+}
+function lockOff() { lockOn = false; lastAct = Date.now(); try { localStorage.removeItem(LOCKED_KEY); } catch { } delete document.documentElement.dataset.lock; $("#lockroot")?.remove(); }
+function lockNow() {
+  if (!S.me || lockOn) return; lockOn = true; try { localStorage.setItem(LOCKED_KEY, "1"); } catch { }
+  document.documentElement.dataset.lock = "1"; $("#modal-root").innerHTML = "";
+  const en = LANG === "en"; let el = $("#lockroot"); if (!el) { el = document.createElement("div"); el.id = "lockroot"; document.body.appendChild(el); }
+  el.innerHTML = `<div class="lkc card"><div style="display:grid;place-items:center">${avaEl(S.me.id, S.me.name, S.me.email, "xl")}</div><h2>🔒 ${en ? "Locked" : "লক করা আছে"}</h2><div class="mut sm">${esc(S.me.name || "")} · ${esc(S.me.email || "")}</div>
+    <div class="mut xs" style="margin:8px 0 14px">${en ? "Locked for your safety. Enter your password to continue." : "নিরাপত্তার জন্য লক হয়েছে। চালিয়ে যেতে পাসওয়ার্ড দিন।"}</div>
+    <input class="in big" id="lk-p" type="password" autocomplete="current-password" placeholder="${en ? "Password" : "পাসওয়ার্ড"}"><div class="hint rd" id="lk-e"></div>
+    <div class="row" style="margin-top:12px;flex-wrap:nowrap"><button class="btn pri" id="lk-ok" style="flex:1">${en ? "Unlock" : "আনলক"}</button><button class="btn" id="lk-out">${en ? "Sign out" : "লগআউট"}</button></div></div>`;
+  const p = $("#lk-p", el); setTimeout(() => p.focus(), 50);
+  const go = async () => { const b = $("#lk-ok", el); b.disabled = true; $("#lk-e", el).textContent = ""; try { if (await API.verifyPassword(p.value)) return lockOff(); $("#lk-e", el).textContent = en ? "Wrong password" : "পাসওয়ার্ড ভুল"; p.select(); } catch (e) { $("#lk-e", el).textContent = /too_many/.test(e.message || "") ? userErr(e).message : (!navigator.onLine ? (en ? "No internet — needed to unlock" : "ইন্টারনেট নেই — আনলক করতে নেট লাগবে") : (e.message || "Error")); } b.disabled = false; };
+  $("#lk-ok", el).onclick = go; p.onkeydown = e => { if (e.key === "Enter") go(); };
+  $("#lk-out", el).onclick = async () => { await API.logout(); try { localStorage.removeItem(CACHE_KEY); } catch { } location.hash = ""; location.reload(); };
+}
+/* 2FA login gate — shown before any data loads when the account has 2FA and this session is not yet verified */
+function mfaGate() {
+  return new Promise(async res => {
+    const en = LANG === "en"; const f = await API.mfaFactor(); if (!f) return res();
+    $("#app").innerHTML = `<div class="login"><div class="card lkc"><div class="logo" style="margin:0 auto 10px"><img src="icon.svg" alt="Nabiad"></div><h2>🔐 ${en ? "Two-step verification" : "টু-স্টেপ ভেরিফিকেশন"}</h2>
+      <div class="mut sm" style="margin:6px 0 14px">${en ? "Open your authenticator app and enter the 6-digit code." : "অথেন্টিকেটর অ্যাপ খুলে ৬ অঙ্কের কোডটি দিন।"}</div>
+      <input class="in big" id="mf-c" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" style="text-align:center;letter-spacing:.4em;font-size:22px"><div class="hint rd" id="mf-e"></div>
+      <div class="row" style="margin-top:12px;flex-wrap:nowrap"><button class="btn pri" id="mf-ok" style="flex:1">${en ? "Verify" : "ভেরিফাই"}</button><button class="btn" id="mf-out">${en ? "Sign out" : "লগআউট"}</button></div></div></div>`;
+    const c = $("#mf-c"); c.focus();
+    const go = async () => { const code = c.value.replace(/\D/g, ""); if (code.length !== 6) return $("#mf-e").textContent = en ? "Enter the 6-digit code" : "৬ অঙ্কের কোড দিন"; const b = $("#mf-ok"); b.disabled = true;
+      try { const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: f.id, code }); if (error) throw error; res(); } catch (e) { $("#mf-e").textContent = en ? "Wrong or expired code" : "কোড ভুল বা মেয়াদ শেষ"; c.select(); b.disabled = false; } };
+    $("#mf-ok").onclick = go; c.oninput = () => { if (c.value.replace(/\D/g, "").length === 6) go(); }; c.onkeydown = e => { if (e.key === "Enter") go(); };
+    $("#mf-out").onclick = async () => { await API.logout(); try { localStorage.removeItem(CACHE_KEY); } catch { } location.hash = ""; location.reload(); };
+  });
+}
+async function mfaEnrollModal(done) {
+  const en = LANG === "en";
+  let r; try { r = await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "Nabiad " + Date.now().toString(36) }); if (r.error) throw r.error; } catch (e) { return toast(e.message || String(e), "err"); }
+  const d = r.data; let fin = false;
+  modal(`<h2>🔐 ${en ? "Turn on 2FA" : "2FA চালু করুন"}</h2>
+    <ol class="mut sm" style="margin:0 0 10px 18px;line-height:1.7"><li>${en ? "Install Google Authenticator / Microsoft Authenticator on your phone." : "ফোনে Google Authenticator বা Microsoft Authenticator ইনস্টল করুন।"}</li><li>${en ? "Scan this QR code (or type the key)." : "এই QR কোড স্ক্যান করুন (বা নিচের কী টাইপ করুন)।"}</li><li>${en ? "Enter the 6-digit code it shows." : "অ্যাপে যে ৬ অঙ্কের কোড দেখায় তা নিচে দিন।"}</li></ol>
+    <div style="display:grid;place-items:center;margin:8px 0"><img src="${d.totp.qr_code}" alt="QR" style="width:200px;height:200px;background:#fff;border-radius:12px;padding:6px"></div>
+    <div class="mono xs" style="text-align:center;word-break:break-all;margin-bottom:10px">${esc(d.totp.secret)}</div>
+    <input class="in big" id="mf-c" inputmode="numeric" maxlength="6" placeholder="${en ? "6-digit code" : "৬ অঙ্কের কোড"}" style="text-align:center;letter-spacing:.3em"><div class="hint rd" id="mf-e"></div>
+    <div class="row" style="margin-top:12px"><button class="btn pri" id="mf-ok">${ico("save")} ${en ? "Verify & turn on" : "ভেরিফাই করে চালু"}</button><button class="btn" id="mf-x">${en ? "Cancel" : "বাতিল"}</button></div>`, (root, close) => {
+    const cancel = async () => { if (!fin) { try { await sb.auth.mfa.unenroll({ factorId: d.id }); } catch { } } close(); };
+    $("#mf-x", root).onclick = cancel; $(".mback", root).onmousedown = e => { if (e.target.classList.contains("mback")) cancel(); };
+    const go = async () => { const code = $("#mf-c", root).value.replace(/\D/g, ""); if (code.length !== 6) return $("#mf-e", root).textContent = en ? "Enter the 6-digit code" : "৬ অঙ্কের কোড দিন"; const b = $("#mf-ok", root); b.disabled = true;
+      try { const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: d.id, code }); if (error) throw error; fin = true; close(); toast(en ? "✔ 2FA is on" : "✔ 2FA চালু হয়েছে"); done && done(); } catch (e) { $("#mf-e", root).textContent = en ? "Wrong code — check your phone's clock and try again" : "কোড ভুল — ফোনের সময় ঠিক আছে কিনা দেখে আবার দিন"; b.disabled = false; } };
+    $("#mf-ok", root).onclick = go; $("#mf-c", root).onkeydown = e => { if (e.key === "Enter") go(); };
+  });
+}
+const uaName = ua => { ua = ua || ""; const b = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser"; const o = /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Mac OS/.test(ua) ? "Mac" : /Linux/.test(ua) ? "Linux" : ""; return b + (o ? " · " + o : ""); };
+async function userSecModal(u, after) {
+  const en = LANG === "en", me = u.id === S.me.id;
+  modal(`<h2>🛡 ${en ? "Security" : "সিকিউরিটি"} — ${esc(u.name || u.email)}</h2><div class="card empty">${en ? "Loading…" : "লোড হচ্ছে…"}</div>`);
+  let ss = [], act = [], sec = null;
+  try { [ss, act, sec] = await Promise.all([API.userSessions(u.id), API.userActivity(u.id), API.userSec().then(a => a.find(x => x.user_id === u.id) || null)]); } catch (e) { return modal(`<h2>🛡</h2><div class="alert rd">${esc(userErr(e).message)}</div><div class="row" style="margin-top:12px"><button class="btn" id="sx">${en ? "Close" : "বন্ধ"}</button></div>`, (r, c) => $("#sx", r).onclick = c); }
+  const again = () => { userSecModal(u, after); after && after(); };
+  modal(`<h2>🛡 ${en ? "Security" : "সিকিউরিটি"}</h2>
+    <div class="uh2">${avaEl(u.id, u.name, u.email)}<div><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div></div>
+    <h3 class="sch">📱 ${en ? "Signed-in devices" : "লগইন করা ডিভাইস"} (${ss.length})</h3>
+    ${ss.length ? ss.map(x => `<div class="scrow"><div style="flex:1;min-width:0"><b>${esc(uaName(x.user_agent))}</b>${x.mine ? ` <span class="tag ok">${en ? "this device" : "এই ডিভাইস"}</span>` : ""}<div class="mut xs">${esc(x.ip || "")} · ${en ? "last seen" : "শেষ ব্যবহার"} ${relTime(x.last_seen)}</div></div><button class="btn sm ghost" data-rs="${x.id}" title="${en ? "Sign this device out" : "এই ডিভাইস লগআউট"}">${en ? "Sign out" : "লগআউট"}</button></div>`).join("") : `<div class="mut sm">${en ? "No active sessions" : "কোনো সক্রিয় সেশন নেই"}</div>`}
+    ${ss.length ? `<div class="mut xs" style="margin:6px 0">${en ? "Signing out takes effect immediately — the next request from that device is refused." : "লগআউট সাথে সাথে কার্যকর — ওই ডিভাইসের পরের রিকোয়েস্টই বন্ধ হয়ে যায়।"}</div><button class="btn sm bad" id="rs-all">${en ? "Sign out everywhere" : "সব ডিভাইস থেকে লগআউট"}</button>` : ""}
+    <h3 class="sch">🔐 2FA</h3>
+    <div class="scrow"><div style="flex:1"><b>${sec?.has_2fa ? (en ? "On" : "চালু") : (en ? "Off" : "বন্ধ")}</b><div class="mut xs">${en ? "Each user turns 2FA on from their own Settings. If they lose their phone, reset it here." : "প্রত্যেক ইউজার নিজের সেটিংস থেকে 2FA চালু করেন। ফোন হারালে এখান থেকে রিসেট করুন।"}</div></div>${sec?.has_2fa ? `<button class="btn sm bad" id="r2fa">${en ? "Reset 2FA" : "2FA রিসেট"}</button>` : ""}</div>
+    <h3 class="sch">🕘 ${en ? "Recent activity" : "সাম্প্রতিক কাজ"}</h3>
+    ${act.length ? `<div class="sc-act">${act.map(r => `<div class="scrow" style="padding:6px 0"><span class="tag au-${r.action}">${esc((AU_A[r.action] || [r.action])[0])}</span><div style="flex:1;min-width:0"><b class="xs">${esc(AU_T[r.tbl] || r.tbl)} · ${esc(r.row_key || "")}</b></div><span class="mut xs">${relTime(r.at)}</span></div>`).join("")}</div>` : `<div class="mut sm">${en ? "No recorded activity" : "কোনো কাজের রেকর্ড নেই"}</div>`}
+    <div class="mut xs" style="margin-top:4px">${en ? "Last sign-in" : "শেষ লগইন"}: ${sec?.last_sign_in_at ? new Date(sec.last_sign_in_at).toLocaleString("en-GB") : "—"}</div>
+    <h3 class="sch">✉️ ${en ? "Account" : "অ্যাকাউন্ট"}</h3>
+    <label class="f">${en ? "Change email (login id)" : "ইমেইল বদল (লগইন আইডি)"}</label><div class="row" style="flex-wrap:nowrap"><input class="in" id="se-e" value="${esc(u.email)}" autocomplete="off"><button class="btn fix" id="se-ok">${en ? "Change" : "বদলান"}</button></div>
+    <div class="mut xs">${en ? "The user is signed out everywhere and must sign in with the new email." : "ইউজার সব ডিভাইস থেকে লগআউট হবেন, নতুন ইমেইলে লগইন করতে হবে।"}</div>
+    <div class="scrow" style="margin-top:12px"><div style="flex:1"><b class="rd">${en ? "Delete user" : "ইউজার মুছুন"}</b><div class="mut xs">${me ? (en ? "You cannot delete yourself." : "নিজেকে মোছা যায় না।") : u.active ? (en ? "Deactivate the user first (Edit), then delete." : "আগে ইউজারকে নিষ্ক্রিয় করুন (এডিট), তারপর মুছুন।") : (en ? "Permanent. Old entries keep the user's name; the login is gone." : "স্থায়ী। পুরনো এন্ট্রিতে নাম থাকবে; লগইন থাকবে না।")}</div></div><button class="btn sm bad" id="su-del" ${me || u.active ? "disabled" : ""}>🗑 ${en ? "Delete" : "মুছুন"}</button></div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn pri" id="sc-x">${en ? "Close" : "বন্ধ"}</button></div>`, (root, close) => {
+    $("#sc-x", root).onclick = close;
+    $$("[data-rs]", root).forEach(b => b.onclick = async () => { try { await API.revokeSessions(u.id, b.dataset.rs); toast(en ? "✔ Signed out" : "✔ লগআউট করা হয়েছে"); again(); } catch (e) { toast(userErr(e).message, "err"); } });
+    $("#rs-all", root) && ($("#rs-all", root).onclick = async () => { if (!ask(en ? `Sign ${u.name || u.email} out of every device?${me ? "\nThis includes YOUR current device." : ""}` : `${u.name || u.email}-কে সব ডিভাইস থেকে লগআউট করবেন?${me ? "\nআপনার এই ডিভাইসও লগআউট হবে।" : ""}`)) return; try { await API.revokeSessions(u.id); toast(en ? "✔ Signed out everywhere" : "✔ সব ডিভাইস থেকে লগআউট"); if (me) return location.reload(); again(); } catch (e) { toast(userErr(e).message, "err"); } });
+    $("#r2fa", root) && ($("#r2fa", root).onclick = async () => { if (!ask(en ? "Remove this user's 2FA? They will be signed out and can set it up again." : "এই ইউজারের 2FA সরিয়ে দেবেন? তিনি লগআউট হবেন এবং আবার সেটআপ করতে পারবেন।")) return; try { await API.reset2fa(u.id); toast(en ? "✔ 2FA reset" : "✔ 2FA রিসেট হয়েছে"); again(); } catch (e) { toast(userErr(e).message, "err"); } });
+    $("#se-ok", root).onclick = async () => { const e = $("#se-e", root).value.trim().toLowerCase(); if (!e || e === u.email) return; if (!ask(en ? `Change login email to ${e}?` : `লগইন ইমেইল বদলে ${e} করবেন?`)) return; try { await API.setUserEmail(u.id, e); u.email = e; toast(en ? "✔ Email changed" : "✔ ইমেইল বদলেছে"); again(); } catch (er) { toast(userErr(er).message, "err"); } };
+    $("#su-del", root).onclick = async () => { if (!ask(en ? `PERMANENTLY delete ${u.name || u.email}? This cannot be undone.` : `${u.name || u.email}-কে স্থায়ীভাবে মুছে ফেলবেন? এটা ফেরানো যাবে না।`)) return; try { await API.deleteUser(u.id); close(); toast(en ? "✔ User deleted" : "✔ ইউজার মোছা হয়েছে"); after && after(); } catch (er) { toast(userErr(er).message, "err"); } };
+  });
+}
+
 /* ---------- boot ---------- */
 let inited = false;
 function onLangChange() { if (S.me && $("#view")) { shell(); route(); } else if (!S.me) loginView(); }
@@ -3038,6 +3157,8 @@ async function boot() {
     if (!inited) { startI18n(); await API.init(); inited = true; }
     if (!S.me) S.me = await API.session();
     if (!S.me) return loginView();
+    if (!DEMO && navigator.onLine) { try { if (await API.mfaNeeded()) await mfaGate(); } catch (e) { console.warn("mfa", e); } }
+    lockInit();
     loadAvatars();
     let mo = null;
     const start = () => { if (!location.hash && PREFS.start && PREFS.start !== "dash" && allowed().includes(PREFS.start)) location.replace("#/" + PREFS.start); shell(); route(); setTimeout(remTick, 1500); if (!mo) { let q = 0; mo = new MutationObserver(() => { if (!q) q = requestAnimationFrame(() => { q = 0; labelTables(document); }); }); mo.observe(document.body, { childList: true, subtree: true }); } };

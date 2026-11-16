@@ -422,3 +422,102 @@ begin
 end $$;
 revoke execute on function public.purpose_rename(text, text) from anon, public;
 grant execute on function public.purpose_rename(text, text) to authenticated;
+
+-- v6.44 — security: 2FA enforced server-side, force-logout takes effect at once, session/activity RPCs, user delete / email change
+create or replace function public.my_role() returns text language sql stable security definer set search_path = public, auth as $$
+  select p.role from public.profiles p
+  where p.id = auth.uid() and p.active
+    and (not exists (select 1 from auth.mfa_factors f where f.user_id = p.id and f.status = 'verified') or coalesce(auth.jwt()->>'aal', 'aal1') = 'aal2')
+    and (auth.jwt()->>'session_id' is null or exists (select 1 from auth.sessions s where s.id = (auth.jwt()->>'session_id')::uuid))
+$$;
+
+create or replace function public.admin_user_security() returns table(user_id uuid, has_2fa boolean, sessions int, last_active timestamptz, last_sign_in_at timestamptz)
+language plpgsql security definer set search_path = public, auth as $$
+begin
+  if my_role() is distinct from 'admin' then raise exception 'admin_only'; end if;
+  return query select p.id,
+    exists (select 1 from auth.mfa_factors f where f.user_id = p.id and f.status = 'verified'),
+    (select count(*)::int from auth.sessions s where s.user_id = p.id and (s.not_after is null or s.not_after > now())),
+    (select max(coalesce(s.refreshed_at, s.updated_at, s.created_at)) from auth.sessions s where s.user_id = p.id),
+    u.last_sign_in_at
+  from public.profiles p left join auth.users u on u.id = p.id;
+end $$;
+
+create or replace function public.admin_sessions(p_user uuid) returns table(id uuid, created_at timestamptz, last_seen timestamptz, user_agent text, ip text, aal text, mine boolean)
+language plpgsql security definer set search_path = public, auth as $$
+begin
+  if my_role() is distinct from 'admin' then raise exception 'admin_only'; end if;
+  return query select s.id, s.created_at, coalesce(s.refreshed_at, s.updated_at, s.created_at), s.user_agent, host(s.ip), s.aal::text,
+                      (s.id::text = auth.jwt()->>'session_id')
+    from auth.sessions s where s.user_id = p_user and (s.not_after is null or s.not_after > now()) order by 3 desc;
+end $$;
+
+create or replace function public.admin_revoke_sessions(p_user uuid, p_session uuid default null) returns int
+language plpgsql security definer set search_path = public, auth as $$
+declare n int; em text;
+begin
+  if my_role() is distinct from 'admin' then raise exception 'admin_only'; end if;
+  select email into em from public.profiles where id = p_user; if em is null then raise exception 'no_user'; end if;
+  delete from auth.sessions where user_id = p_user and (p_session is null or id = p_session); get diagnostics n = row_count;
+  insert into public.audit_log(user_name,tbl,action,row_key,new) values ((select name from public.profiles where id = auth.uid()),'users','update',em,jsonb_build_object('event','force_logout','sessions',n));
+  return n;
+end $$;
+
+create or replace function public.admin_reset_2fa(p_user uuid) returns void
+language plpgsql security definer set search_path = public, auth as $$
+declare em text;
+begin
+  if my_role() is distinct from 'admin' then raise exception 'admin_only'; end if;
+  select email into em from public.profiles where id = p_user; if em is null then raise exception 'no_user'; end if;
+  delete from auth.mfa_factors where user_id = p_user;
+  delete from auth.sessions where user_id = p_user and p_user <> auth.uid();
+  insert into public.audit_log(user_name,tbl,action,row_key,new) values ((select name from public.profiles where id = auth.uid()),'users','update',em,jsonb_build_object('event','2fa_reset'));
+end $$;
+
+create or replace function public.admin_set_email(p_user uuid, p_email text) returns void
+language plpgsql security definer set search_path = public, auth as $$
+declare em text := lower(btrim(p_email)); old text;
+begin
+  if my_role() is distinct from 'admin' then raise exception 'admin_only'; end if;
+  if em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'bad_email'; end if;
+  select email into old from public.profiles where id = p_user; if old is null then raise exception 'no_user'; end if;
+  if exists (select 1 from auth.users where lower(email) = em and id <> p_user) then raise exception 'email_exists'; end if;
+  update auth.users set email = em, updated_at = now() where id = p_user;
+  update auth.identities set identity_data = identity_data || jsonb_build_object('email', em), updated_at = now() where user_id = p_user and provider = 'email';
+  update public.profiles set email = em where id = p_user;
+  delete from auth.sessions where user_id = p_user and p_user <> auth.uid();
+  insert into public.audit_log(user_name,tbl,action,row_key,old,new) values ((select name from public.profiles where id = auth.uid()),'users','update',em,jsonb_build_object('email',old),jsonb_build_object('email',em,'event','email_changed'));
+end $$;
+
+create or replace function public.admin_delete_user(p_user uuid) returns void
+language plpgsql security definer set search_path = public, auth as $$
+declare em text; act boolean; r text;
+begin
+  if my_role() is distinct from 'admin' then raise exception 'admin_only'; end if;
+  if p_user = auth.uid() then raise exception 'cannot_delete_self'; end if;
+  select email, active, role into em, act, r from public.profiles where id = p_user; if em is null then raise exception 'no_user'; end if;
+  if act then raise exception 'deactivate_first'; end if;
+  insert into public.audit_log(user_name,tbl,action,row_key,old) values ((select name from public.profiles where id = auth.uid()),'users','delete',em,jsonb_build_object('role',r,'event','user_deleted'));
+  delete from auth.users where id = p_user;
+end $$;
+
+revoke execute on function public.admin_user_security(), public.admin_sessions(uuid), public.admin_revoke_sessions(uuid, uuid), public.admin_reset_2fa(uuid), public.admin_set_email(uuid, text), public.admin_delete_user(uuid) from anon, public;
+grant execute on function public.admin_user_security(), public.admin_sessions(uuid), public.admin_revoke_sessions(uuid, uuid), public.admin_reset_2fa(uuid), public.admin_set_email(uuid, text), public.admin_delete_user(uuid) to authenticated;
+
+-- v6.44 — idle-lock password check without creating a new session (rate limited)
+create table if not exists public.pw_attempts (user_id uuid not null, at timestamptz not null default now());
+alter table public.pw_attempts enable row level security;
+revoke all on public.pw_attempts from anon, authenticated;
+create or replace function public.verify_my_password(p text) returns boolean
+language plpgsql security definer set search_path = public, extensions, auth as $$
+declare ok boolean;
+begin
+  if auth.uid() is null then raise exception 'not_allowed'; end if;
+  delete from pw_attempts where at < now() - interval '1 day';
+  if (select count(*) from pw_attempts where user_id = auth.uid() and at > now() - interval '10 minutes') >= 8 then raise exception 'too_many_attempts'; end if;
+  select encrypted_password = crypt(p, encrypted_password) into ok from auth.users where id = auth.uid();
+  if coalesce(ok, false) then delete from pw_attempts where user_id = auth.uid(); else insert into pw_attempts(user_id) values (auth.uid()); end if;
+  return coalesce(ok, false);
+end $$;
+revoke execute on function public.verify_my_password(text) from anon, public;
+grant execute on function public.verify_my_password(text) to authenticated;
