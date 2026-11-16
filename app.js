@@ -36,6 +36,61 @@ function modal(html, onMount) {
   onMount && onMount(root, close); return close;
 }
 function loadScript(src) { return new Promise((res, rej) => { if (document.querySelector(`script[data-s="${src}"]`)) return res(); const s = document.createElement("script"); s.src = src; s.dataset.s = src; s.onload = res; s.onerror = () => rej(new Error("Load failed: " + src)); document.head.appendChild(s); }); }
+function userErr(e) {
+  const m = String(e?.message || e), en = LANG === "en";
+  const T = { admin_only: ["শুধু Admin এই কাজ করতে পারেন", "Only an admin can do this"], bad_email: ["ইমেইল ঠিক নয়", "Invalid email address"], weak_password: ["পাসওয়ার্ড কমপক্ষে ১০ অক্ষর হতে হবে", "Password must be at least 10 characters"], bad_role: ["Role ঠিক নয়", "Invalid role"], email_exists: ["এই ইমেইলে আগেই ব্যবহারকারী আছে", "A user with this email already exists"], no_user: ["ব্যবহারকারী পাওয়া যায়নি", "User not found"] };
+  for (const k in T) if (m.includes(k)) return new Error(T[k][en ? 1 : 0]);
+  return e instanceof Error ? e : new Error(m);
+}
+function genPassword() { const A = "ABCDEFGHJKLMNPQRSTUVWXYZ", a = "abcdefghijkmnpqrstuvwxyz", d = "23456789", all = A + a + d, r = n => crypto.getRandomValues(new Uint32Array(n)); const pick = (set, x) => set[x % set.length]; const x = r(12); let o = [pick(A, x[0]), pick(a, x[1]), pick(d, x[2])]; for (let i = 3; i < 12; i++) o.push(pick(all, x[i])); const y = r(12); for (let i = o.length - 1; i > 0; i--) { const j = y[i] % (i + 1);[o[i], o[j]] = [o[j], o[i]]; } return o.join(""); }
+function pwField(id, val = "") { const en = LANG === "en"; return `<div class="pwf"><input class="in" id="${id}" type="text" autocomplete="off" spellcheck="false" value="${esc(val)}" placeholder="${en ? "At least 10 characters" : "কমপক্ষে ১০ অক্ষর"}"><button type="button" class="btn sm" data-gen="${id}" title="${en ? "Generate a strong password" : "শক্তিশালী পাসওয়ার্ড বানান"}">🎲 ${en ? "Generate" : "জেনারেট"}</button><button type="button" class="btn sm" data-cp="${id}" title="${en ? "Copy" : "কপি"}">${ico("copy")}</button></div>`; }
+function pwBind(root) { $$("[data-gen]", root).forEach(b => b.onclick = () => { $("#" + b.dataset.gen, root).value = genPassword(); }); $$("[data-cp]", root).forEach(b => b.onclick = () => { const v = $("#" + b.dataset.cp, root).value; v ? copyText(v, LANG === "en" ? "Password copied" : "পাসওয়ার্ড কপি হয়েছে") : toast(LANG === "en" ? "Nothing to copy" : "কপি করার মতো কিছু নেই", "err"); }); }
+function newUserModal(after) {
+  const en = LANG === "en";
+  modal(`<h2>➕ ${en ? "New user" : "নতুন ব্যবহারকারী"}</h2>
+    <div class="ug2"><div><label class="f">${en ? "Name" : "নাম"}</label><input class="in" id="nu-n" autocomplete="off" placeholder="${en ? "Full name" : "পুরো নাম"}"></div>
+    <div><label class="f">${en ? "Email (used to sign in)" : "ইমেইল (লগইনে ব্যবহার হবে)"}</label><input class="in" id="nu-e" type="email" autocomplete="off" inputmode="email" placeholder="name@company.com"></div>
+    <div><label class="f">Role</label><div class="seg rl" id="nu-r" style="display:flex;width:100%">${[["staff", "Staff"], ["boss", "Boss"], ["admin", "Admin"]].map(([r, l], i) => `<span class="chip ${i === 0 ? "on" : ""}" data-r="${r}" style="flex:1;text-align:center">${l}</span>`).join("")}</div>
+    <div class="mut xs" style="margin-top:6px">${en ? "Staff: daily entry · Boss: view & reports · Admin: everything incl. this page" : "Staff: দৈনিক এন্ট্রি · Boss: দেখা ও রিপোর্ট · Admin: সব কিছু, এই পাতাসহ"}</div></div>
+    <div><label class="f">${en ? "Password" : "পাসওয়ার্ড"}</label>${pwField("nu-p", genPassword())}</div></div>
+    <div class="alert" style="margin-top:12px">${en ? "Copy the password and give it to the user. It is not shown again — you can always reset it from the user's card." : "পাসওয়ার্ড কপি করে ব্যবহারকারীকে দিন। এটা আর দেখানো হবে না — দরকার হলে ব্যবহারকারীর কার্ড থেকে নতুন বানাতে পারবেন।"}</div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" id="nu-x">${en ? "Cancel" : "বাতিল"}</button><button class="btn pri" id="nu-ok">${ico("save")} ${en ? "Create user" : "তৈরি করুন"}</button></div>`, (root, close) => {
+    pwBind(root); $$("#nu-r .chip", root).forEach(c => c.onclick = () => $$("#nu-r .chip", root).forEach(x => x.classList.toggle("on", x === c)));
+    $("#nu-x", root).onclick = close; setTimeout(() => $("#nu-n", root)?.focus(), 50);
+    $("#nu-ok", root).onclick = async e => {
+      const name = $("#nu-n", root).value.trim(), email = $("#nu-e", root).value.trim().toLowerCase(), pw = $("#nu-p", root).value, role = $("#nu-r .chip.on", root).dataset.r;
+      if (!name) return toast(en ? "Enter a name" : "নাম লিখুন", "err");
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast(en ? "Enter a valid email" : "সঠিক ইমেইল দিন", "err");
+      if (pw.length < 10) return toast(en ? "Password must be at least 10 characters" : "পাসওয়ার্ড কমপক্ষে ১০ অক্ষর", "err");
+      e.target.disabled = true;
+      try { await API.createUser(email, pw, name, role); close(); toast(en ? "✔ User created" : "✔ ব্যবহারকারী তৈরি হয়েছে"); credModal(email, pw, name); after && after(); }
+      catch (er) { toast(er.message, "err"); e.target.disabled = false; }
+    };
+  });
+}
+function credModal(email, pw, name, reset) {
+  const en = LANG === "en", url = location.origin + "/", txt = `Nabiad\n${url}\n${en ? "Email" : "ইমেইল"}: ${email}\n${en ? "Password" : "পাসওয়ার্ড"}: ${pw}`;
+  modal(`<h2>🔑 ${reset ? (en ? "Password changed" : "পাসওয়ার্ড বদলানো হয়েছে") : (en ? "User ready" : "ব্যবহারকারী প্রস্তুত")}</h2>
+    <div class="card cred" data-nt><div><span class="mut xs">${en ? "Name" : "নাম"}</span><b>${esc(name || "—")}</b></div><div><span class="mut xs">${en ? "Email" : "ইমেইল"}</span><b>${esc(email)}</b></div><div><span class="mut xs">${en ? "Password" : "পাসওয়ার্ড"}</span><b class="mono">${esc(pw)}</b></div><div><span class="mut xs">${en ? "Sign in at" : "লগইন লিংক"}</span><b>${esc(url)}</b></div></div>
+    <div class="mut xs" style="margin:10px 0">${en ? "This password is shown only now. Copy it before closing." : "এই পাসওয়ার্ড শুধু এখনই দেখা যাবে। বন্ধ করার আগে কপি করে নিন।"}</div>
+    <div class="row" style="justify-content:flex-end"><button class="btn pri" id="cr-cp">${ico("copy")} ${en ? "Copy details" : "সব কপি করুন"}</button><button class="btn" id="cr-x">${en ? "Done" : "হয়েছে"}</button></div>`, (root, close) => { $("#cr-cp", root).onclick = () => copyText(txt, en ? "Details copied" : "তথ্য কপি হয়েছে"); $("#cr-x", root).onclick = close; });
+}
+function resetPwModal(u) {
+  const en = LANG === "en", me = u.id === S.me.id;
+  modal(`<h2>🔑 ${en ? "Reset password" : "পাসওয়ার্ড রিসেট"}</h2>
+    <div class="uh2"><div class="ava">${esc((u.name || u.email || "?").trim().slice(0, 1).toUpperCase())}</div><div><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div></div>
+    <label class="f" style="margin-top:14px">${en ? "New password" : "নতুন পাসওয়ার্ড"}</label>${pwField("rp-p", genPassword())}
+    <div class="mut xs" style="margin-top:8px">${me ? (en ? "This is your own account — you stay signed in." : "এটা আপনার নিজের অ্যাকাউন্ট — আপনি সাইন-ইন থাকবেন।") : (en ? "The user is signed out from all devices and must sign in with this password." : "ব্যবহারকারী সব device থেকে সাইন-আউট হবেন এবং এই পাসওয়ার্ড দিয়ে নতুন করে লগইন করতে হবে।")}</div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" id="rp-x">${en ? "Cancel" : "বাতিল"}</button><button class="btn pri" id="rp-ok">${ico("save")} ${en ? "Set password" : "পাসওয়ার্ড সেট করুন"}</button></div>`, (root, close) => {
+    pwBind(root); $("#rp-x", root).onclick = close;
+    $("#rp-ok", root).onclick = async e => {
+      const pw = $("#rp-p", root).value; if (pw.length < 10) return toast(en ? "Password must be at least 10 characters" : "পাসওয়ার্ড কমপক্ষে ১০ অক্ষর", "err");
+      e.target.disabled = true;
+      try { await API.setUserPassword(u.id, pw); close(); toast(en ? "✔ Password changed" : "✔ পাসওয়ার্ড বদলানো হয়েছে"); credModal(u.email, pw, u.name, true); }
+      catch (er) { toast(er.message, "err"); e.target.disabled = false; }
+    };
+  });
+}
 const ICON = {
   home: '<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   plus: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
@@ -181,6 +236,8 @@ const SbAPI = {
   async dataKey() { const { data, error } = await sb.from("app_secrets").select("v").eq("k", "data_key").maybeSingle(); if (error || !data) throw new Error("ডাটা কী পাওয়া যায়নি"); return data.v; },
   async users() { const { data, error } = await sb.from("profiles").select("*").order("role"); if (error) throw error; return data; },
   async updateProfile(id, p) { const { error } = await sb.from("profiles").update(p).eq("id", id); if (error) throw error; },
+  async createUser(email, password, name, role) { const { data, error } = await sb.rpc("admin_create_user", { p_email: email, p_password: password, p_name: name, p_role: role }); if (error) throw userErr(error); return data; },
+  async setUserPassword(id, password) { const { error } = await sb.rpc("admin_set_password", { p_user: id, p_password: password }); if (error) throw userErr(error); },
   /* v2: drafts, reminders, audit log, cheque photos (need schema_v2.sql) */
   async getDraft(d) { const { data, error } = await sb.from("balance_drafts").select("*").eq("date", d).maybeSingle(); if (error) throw error; return data ? { rows: data.data, at: data.updated_at, by: data.updated_by } : null; },
   async saveDraft(d, rows) { const { error } = await sb.from("balance_drafts").upsert({ date: d, data: rows, updated_by: S.me.name, updated_at: new Date().toISOString() }); if (error) throw error; },
@@ -243,8 +300,10 @@ const DemoAPI = {
   async upsertAccount(a) { const i = demoStore.accounts.findIndex(x => x.code === a.code); if (i >= 0) demoStore.accounts[i] = { ...demoStore.accounts[i], ...a }; else demoStore.accounts.push(a); this.save(); },
   async upsertBook(b) { if (b.id) { Object.assign(demoStore.books.find(x => x.id === b.id), b); } else { b.id = crypto.randomUUID(); demoStore.books.push(b); } this.save(); return b.id; },
   async deleteBook(id) { demoStore.books = demoStore.books.filter(b => b.id !== id); this.save(); },
-  async users() { return [{ id: "1", email: "admin@demo", name: "Admin", role: "admin", active: true }]; },
+  async users() { return [{ id: "1", email: "admin@demo", name: "Admin", role: "admin", active: true }, ...(demoStore.users || [])]; },
   async updateProfile() { },
+  async createUser(email, password, name, role) { if (demoStore.users?.some(u => u.email === email)) throw userErr({ message: "email_exists" }); (demoStore.users ||= []).push({ id: "d" + Date.now(), email, name: name || email.split("@")[0], role, active: true }); this.aud("users", "insert", email, null, { role, event: "user_created" }); this.save(); },
+  async setUserPassword(id) { this.aud("users", "update", (demoStore.users || []).find(u => u.id === id)?.email || "admin@demo", null, { event: "password_reset" }); this.save(); },
   aud(tbl, action, key, o, n) { demoStore.audit.unshift({ id: Date.now() + Math.random(), at: new Date().toISOString(), user_name: S.me?.name, tbl, action, row_key: key, old: o || null, new: n || null }); demoStore.audit.length > 2000 && (demoStore.audit.length = 2000); },
   async getDraft(d) { return demoStore.drafts[d] || null; },
   async saveDraft(d, rows) { demoStore.drafts[d] = { rows, at: new Date().toISOString(), by: S.me.name }; this.save(); },
@@ -466,6 +525,7 @@ async function route() {
   CUR = k; document.body.classList.remove("print-rep");
   if (cleanup) { cleanup(); cleanup = null; }
   $$("[data-k]").forEach(a => a.classList.toggle("on", a.dataset.k === k)); setTabActive(k);
+  try { const on = $(".side .nav a.on"); if (on) { const n = on.closest(".nav"), r = on.getBoundingClientRect(), nr = n.getBoundingClientRect(); if (r.top < nr.top + 8 || r.bottom > nr.bottom - 16) n.scrollTop += (r.top < nr.top + 8 ? r.top - nr.top - 40 : r.bottom - nr.bottom + 40); } } catch { }
   const cr = $("#crumb"); if (cr) cr.textContent = ROUTES[k].t;
   document.title = ROUTES[k].t + " · Nabiad";
   const v = $("#view"); v.innerHTML = `<div class="card"><div class="skel" style="width:40%"></div><div class="skel" style="margin-top:12px"></div><div class="skel" style="margin-top:12px;width:70%"></div></div>`;
@@ -1337,10 +1397,12 @@ async function vAdmin(v) {
     } else if (tab === "usr") {
       out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
       let us = []; try { us = await API.users(); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(e.message)}</div>`; return; }
-      out.innerHTML = `<div class="ulist">${us.map(u => `<div class="card uc" data-u="${u.id}"><div class="uh"><div class="ava">${esc((u.name || u.email || "?").trim().slice(0, 1).toUpperCase())}</div><div class="ue"><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div><label class="sw" title="সক্রিয়"><input type="checkbox" class="ac" ${u.active ? "checked" : ""}><i></i></label></div>
+      out.innerHTML = `<div class="row ubar"><div><b>${us.length} ${LANG === "en" ? "users" : "জন ব্যবহারকারী"}</b><div class="mut xs">${LANG === "en" ? "Create accounts, set roles and reset passwords here" : "এখান থেকেই অ্যাকাউন্ট খোলা, Role দেওয়া ও পাসওয়ার্ড রিসেট"}</div></div><button class="btn pri" id="u-new">${ico("plus")} ${LANG === "en" ? "New user" : "নতুন ব্যবহারকারী"}</button></div>
+       <div class="ulist">${us.map(u => `<div class="card uc" data-u="${u.id}"><div class="uh"><div class="ava">${esc((u.name || u.email || "?").trim().slice(0, 1).toUpperCase())}</div><div class="ue"><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div><label class="sw" title="সক্রিয়"><input type="checkbox" class="ac" ${u.active ? "checked" : ""}><i></i></label></div>
         <div class="ug"><div><label class="f">নাম</label><input class="in nm" value="${esc(u.name || "")}"></div><div><label class="f">Role</label><div class="seg rl">${[["admin", "Admin"], ["staff", "Staff"], ["boss", "Boss"]].map(([r, l]) => `<span class="chip ${r === u.role ? "on" : ""}" data-r="${r}">${l}</span>`).join("")}</div></div></div>
-        <div class="row" style="margin-top:10px"><button class="btn pri sm fix" data-s="${u.id}">${ico("save")} সেভ</button>${u.id === S.me.id ? `<span class="mut xs">এটা আপনি</span>` : ""}</div></div>`).join("")}</div>
-       <details class="card" style="margin-top:12px"><summary><b>➕ নতুন ব্যবহারকারী কীভাবে যোগ করবেন</b></summary><ol class="steps"><li>Supabase → <b>Authentication → Users → Add user</b></li><li>ইমেইল ও পাসওয়ার্ড দিন, <b>Auto Confirm</b> টিক দিন</li><li>এই পাতা রিফ্রেশ করুন — নতুন ব্যবহারকারী নিষ্ক্রিয় অবস্থায় আসবে</li><li>নাম ও Role ঠিক করে সক্রিয় করুন, তারপর সেভ</li></ol><div class="mut xs">নাম চেক/ক্লোজিং/ক্যাশে "কে এন্ট্রি করেছে" হিসেবে বসে।</div></details>`;
+        <div class="row" style="margin-top:10px"><button class="btn pri sm fix" data-s="${u.id}">${ico("save")} সেভ</button><button class="btn sm fix" data-pw="${u.id}">🔑 ${LANG === "en" ? "Reset password" : "পাসওয়ার্ড রিসেট"}</button>${u.id === S.me.id ? `<span class="mut xs">এটা আপনি</span>` : ""}</div></div>`).join("")}</div>`;
+      $("#u-new", out).onclick = () => newUserModal(draw);
+      $$("[data-pw]", out).forEach(b => b.onclick = () => resetPwModal(us.find(u => u.id === b.dataset.pw)));
       $$(".rl .chip", out).forEach(c => c.onclick = () => { $$(".chip", c.parentElement).forEach(x => x.classList.toggle("on", x === c)); });
       $$("[data-s]", out).forEach(b => b.onclick = async () => {
         const card = b.closest(".uc"), role = $(".rl .chip.on", card)?.dataset.r, active = $(".ac", card).checked;
@@ -1578,7 +1640,7 @@ function icsFile(r) {
 const remErrMsg = e => /relation|does not exist|schema cache|not find/i.test(e?.message || "") ? "রিমাইন্ডার টেবিল নেই — Supabase-এ schema_v2.sql চালাতে হবে" : (e?.message || String(e));
 
 /* ---------- audit log ---------- */
-const AU_T = { cheques: "চেক", cheque_status: "স্ট্যাটাস", balances: "ব্যালেন্স", accounts: "অ্যাকাউন্ট", books: "চেক বই", profiles: "ব্যবহারকারী" };
+const AU_T = { cheques: "চেক", cheque_status: "স্ট্যাটাস", balances: "ব্যালেন্স", accounts: "অ্যাকাউন্ট", books: "চেক বই", profiles: "ব্যবহারকারী", users: "ব্যবহারকারী" };
 const AU_A = { insert: ["যোগ", "gr"], update: ["বদল", "am"], delete: ["মুছে ফেলা", "rd"] };
 const AU_F = { chq_date: "তারিখ", code: "A/C", chq_no: "চেক নং", amount: "টাকা", purpose: "খাত", cash_taker: "কে তুলেছে", party: "পার্টি", to_ac: "To A/C", remarks: "মন্তব্য", new_status: "স্ট্যাটাস", status_date: "স্ট্যাটাস তারিখ", total: "ক্লোজিং", block: "Block", remark: "মন্তব্য", other_debit: "অন্য খরচ", other_deposit: "অন্য জমা", photo: "ছবি", holder: "হোল্ডার", bank: "ব্যাংক", acno: "A/C নং", status: "Status", role: "Role", active: "সক্রিয়", name: "নাম" };
 const AU_SKIP = new Set(["created_at", "user_id", "id", "updated_at", "entered_by", "cheque_id"]);
@@ -2138,7 +2200,7 @@ async function vSettings(v) {
 /* =================== v6: audit & security (tabs) =================== */
 
 /* =================== v6.2: audit log =================== */
-AU_T.cash_records = "ক্যাশ"; AU_T.audit_log = "Audit log";
+AU_F.event = "ঘটনা"; AU_T.cash_records = "ক্যাশ"; AU_T.audit_log = "Audit log";
 const AU_IC = { insert: "plus", update: "edit", delete: "trash" };
 const auText = r => { const o = r.old || {}, n = r.new || {}; if (r.action === "update") return Object.keys({ ...o, ...n }).filter(k => !AU_SKIP.has(k) && JSON.stringify(o[k]) !== JSON.stringify(n[k])).map(k => `${AU_F[k] || k}: ${auV(o[k])} → ${auV(n[k])}`).join("; "); const x = r.action === "delete" ? o : n; return Object.entries(x).filter(([k, val]) => !AU_SKIP.has(k) && val !== null && val !== "").map(([k, val]) => `${AU_F[k] || k}: ${auV(val)}`).join("; "); };
 function auChips(r, all) {

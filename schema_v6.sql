@@ -277,3 +277,37 @@ grant execute on function public.my_role() to authenticated;
 create index if not exists books_code_idx on public.books(code);
 create index if not exists reminders_cheque_idx on public.reminders(cheque_id);
 -- Auth (dashboard): Site URL = https://app.nabiad.com, Redirect URLs include it, min password length 10, sign-ups disabled.
+
+-- v6.38 — admin can create users and reset passwords from inside the app (admin only, min password 10)
+create or replace function public.admin_create_user(p_email text, p_password text, p_name text, p_role text)
+returns uuid language plpgsql security definer set search_path = public, extensions, auth as $$
+declare uid uuid := gen_random_uuid(); em text := lower(trim(p_email)); nm text := nullif(trim(coalesce(p_name,'')), '');
+begin
+  if my_role() is distinct from 'admin' then raise exception 'admin_only'; end if;
+  if em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'bad_email'; end if;
+  if length(coalesce(p_password,'')) < 10 then raise exception 'weak_password'; end if;
+  if p_role not in ('admin','staff','boss') then raise exception 'bad_role'; end if;
+  if exists (select 1 from auth.users where lower(email) = em) then raise exception 'email_exists'; end if;
+  insert into auth.users(instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at,confirmation_token,recovery_token,email_change_token_new,email_change)
+  values ('00000000-0000-0000-0000-000000000000',uid,'authenticated','authenticated',em,crypt(p_password,gen_salt('bf')),now(),'{"provider":"email","providers":["email"]}'::jsonb,jsonb_build_object('name',coalesce(nm,split_part(em,'@',1))),now(),now(),'','','','');
+  insert into auth.identities(id,user_id,provider_id,provider,identity_data,last_sign_in_at,created_at,updated_at)
+  values (gen_random_uuid(),uid,uid::text,'email',jsonb_build_object('sub',uid::text,'email',em,'email_verified',true,'phone_verified',false),now(),now(),now());
+  update public.profiles set name = coalesce(nm,name), role = p_role, active = true where id = uid;
+  insert into public.audit_log(user_name,tbl,action,row_key,new) values ((select name from public.profiles where id = auth.uid()),'users','insert',em,jsonb_build_object('role',p_role,'event','user_created'));
+  return uid;
+end $$;
+
+create or replace function public.admin_set_password(p_user uuid, p_password text)
+returns void language plpgsql security definer set search_path = public, extensions, auth as $$
+declare em text;
+begin
+  if my_role() is distinct from 'admin' then raise exception 'admin_only'; end if;
+  if length(coalesce(p_password,'')) < 10 then raise exception 'weak_password'; end if;
+  update auth.users set encrypted_password = crypt(p_password,gen_salt('bf')), updated_at = now() where id = p_user returning email into em;
+  if em is null then raise exception 'no_user'; end if;
+  if p_user is distinct from auth.uid() then delete from auth.sessions where user_id = p_user; end if;
+  insert into public.audit_log(user_name,tbl,action,row_key,new) values ((select name from public.profiles where id = auth.uid()),'users','update',em,jsonb_build_object('event','password_reset'));
+end $$;
+
+revoke execute on function public.admin_create_user(text,text,text,text), public.admin_set_password(uuid,text) from anon, public;
+grant execute on function public.admin_create_user(text,text,text,text), public.admin_set_password(uuid,text) to authenticated;
