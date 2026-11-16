@@ -1274,3 +1274,10 @@ html[data-theme="dark"] .lk.blank{color:#fca5a5}html[data-theme="dark"] .lk.lost
 .row.pm-foot{flex-wrap:nowrap;gap:10px;align-items:stretch}
 .row.pm-foot>.btn{flex:1 1 0;min-width:0;justify-content:center}
 .row.pm-foot>#pm-x{flex:1.6 1 0}
+
+/* v6.57 — Cheque detail: Close in the header (top-right); status-entry delete is a small icon, cheque delete is the labelled button */
+.modal h2:has(#c-x){flex-wrap:nowrap}
+.modal h2:has(#c-x) .shclose{flex:none}
+.btn.evdel{width:34px;height:34px;padding:0;display:inline-grid;place-items:center;color:#ef4444;border-color:rgba(239,68,68,.35)}
+.btn.evdel svg{width:16px;height:16px}
+.btn.evdel:hover{background:rgba(239,68,68,.1)}
