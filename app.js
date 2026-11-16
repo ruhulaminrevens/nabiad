@@ -1566,59 +1566,143 @@ function balSeries(rows) {
 
 /* =================== v6: dashboard =================== */
 const greet = () => { const h = new Date().getHours(); return h < 12 ? "শুভ সকাল" : h < 17 ? "শুভ দুপুর" : "শুভ সন্ধ্যা"; };
+/* ---- dashboard helpers (v6.31) ---- */
+function msp(vals) { // tiny white sparkline for KPI cards
+  if (vals.length < 2) return "";
+  const w = 120, h = 30, mx = Math.max(...vals), mn = Math.min(...vals), rg = mx - mn || 1;
+  const d = vals.map((q, i) => (i ? "L" : "M") + (i / (vals.length - 1) * w).toFixed(1) + "," + (h - 3 - (q - mn) / rg * (h - 6)).toFixed(1)).join("");
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="msp"><path d="${d}L${w},${h}L0,${h}Z" fill="#fff" opacity=".16"/><path d="${d}" fill="none" stroke="#fff" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+/* two lines on ONE scale + touch/hover tooltip */
+function dashLine(el, rows) {
+  if (rows.length < 2) { el.innerHTML = `<div class="mut sm" style="padding:22px 0">ট্রেন্ড দেখাতে আরও ডাটা লাগবে</div>`; return; }
+  const w = 300, h = 110, all = rows.flatMap(r => [r.t, r.u]), mx = Math.max(...all), mn = Math.min(...all, 0) === 0 && Math.min(...all) > 0 ? Math.min(...all) * 0.92 : Math.min(...all), rg = mx - mn || 1;
+  const X = i => i / (rows.length - 1) * w, Y = q => h - 6 - (q - mn) / rg * (h - 14);
+  const path = k => rows.map((r, i) => (i ? "L" : "M") + X(i).toFixed(1) + "," + Y(r[k]).toFixed(1)).join("");
+  el.innerHTML = `<div class="dl-wrap"><div class="dl-tip hide"></div><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="spark dl-svg" style="height:${h}px">
+    <path d="${path("t")}L${w},${h}L0,${h}Z" fill="#6366f1" opacity=".12"/><path d="${path("u")}L${w},${h}L0,${h}Z" fill="#10b981" opacity=".10"/>
+    <path d="${path("t")}" fill="none" stroke="#6366f1" stroke-width="2.4" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+    <path d="${path("u")}" fill="none" stroke="#10b981" stroke-width="2.4" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>
+    <i class="dl-cur hide"></i><i class="dl-dot a hide"></i><i class="dl-dot b hide"></i></div>`;
+  const wrap = $(".dl-wrap", el), tip = $(".dl-tip", el), cur = $(".dl-cur", el), da = $(".dl-dot.a", el), db = $(".dl-dot.b", el);
+  const show = e => {
+    const r0 = wrap.getBoundingClientRect(), px = Math.min(Math.max((e.clientX - r0.left) / r0.width, 0), 1), i = Math.round(px * (rows.length - 1)), r = rows[i], lx = i / (rows.length - 1) * r0.width;
+    [tip, cur, da, db].forEach(n => n.classList.remove("hide")); cur.style.left = lx + "px";
+    da.style.cssText = `left:${lx}px;top:${Y(r.t) / h * r0.height}px`; db.style.cssText = `left:${lx}px;top:${Y(r.u) / h * r0.height}px`;
+    tip.innerHTML = `<b>${dmy(r.date)}</b><span><i style="background:#6366f1"></i>Total ৳ ${money0(r.t)}</span><span><i style="background:#10b981"></i>Usable ৳ ${money0(r.u)}</span>`;
+    tip.style.left = Math.min(Math.max(lx, 78), r0.width - 78) + "px";
+  };
+  const hide = () => [tip, cur, da, db].forEach(n => n.classList.add("hide"));
+  wrap.addEventListener("pointermove", show); wrap.addEventListener("pointerdown", show); wrap.addEventListener("pointerleave", hide);
+}
+const SEG_C = { Pending: "#f59e0b", Cleared: "#10b981", Bounced: "#ef4444", Stopped: "#8b5cf6", Cancelled: "#94a3b8" };
+
 async function vDash(v) {
   const t = today(), ym = t.slice(0, 7), boss = S.me.role === "boss", admin = S.me.role === "admin";
   const todayC = S.cheques.filter(c => c.date === t && isLive(c)), pend = S.cheques.filter(c => c.status === "Pending"), old = pendingOld();
   const mon = S.cheques.filter(c => c.date.startsWith(ym) && isLive(c)), due = dueList(), sys = sysAlerts();
   const upcoming = (S.reminders || []).filter(r => !r.done).sort((a, b) => remDue(a) - remDue(b)).slice(0, 5);
-  const acts = boss ? [["crep", "img", "ব্যালেন্স রিপোর্ট", "qa1"], ["cashsum", "wallet", "ক্যাশ সামারি", "qa2"], ["reports", "chart", "ব্যাংক রিপোর্ট", "qa3"]]
+  const acts = boss ? [["crep", "img", "ব্যালেন্স স্ন্যাপশট", "qa1"], ["cashsum", "pulse", "ক্যাশ সামারি", "qa2"], ["reports", "chart", "ব্যাংক রিপোর্ট", "qa3"]]
     : [["entry", "plus", "নতুন চেক", "qa1"], ["closing", "bank", "ব্যাংক ক্লোজিং", "qa2"], ["cash", "wallet", "ক্যাশ এন্ট্রি", "qa3"]];
   const bankDone = S.lastBal === t, cashDone = S.lastCash === t, workday = !isFri(t);
   const st = (ok, l, go, sub) => `<a class="stchip ${ok ? "ok" : "no"}" href="${go}"><i>${ok ? "✓" : "!"}</i><span><b>${l}</b><small>${sub}</small></span></a>`;
-  v.innerHTML = `<div class="hero dash-hero"><div class="hh"><h1>${greet()}, ${esc(S.me.name)} 👋</h1><p>${new Date().toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${workday ? "" : " · শুক্রবার (সাপ্তাহিক বন্ধ)"}</p></div>
-      <div class="qacts">${acts.map(([k, ic, l, c]) => `<a class="qa ${c}" href="#/${k}"><span class="qi">${ico(ic)}</span><span>${l}</span></a>`).join("")}</div></div>
-    <div class="ststrip">${boss ? "" : st(bankDone, "ব্যাংক ক্লোজিং", "#/closing", bankDone ? "আজ সেভ হয়েছে" : S.lastBal ? "<span>শেষ:</span> " + dmy(S.lastBal) : "এখনো নেই")}${boss ? "" : st(cashDone, "ক্যাশ রেকর্ড", "#/cash", cashDone ? "আজ সেভ হয়েছে" : S.lastCash ? "<span>শেষ:</span> " + dmy(S.lastCash) : "এখনো নেই")}
-      ${st(!due.length, "রিমাইন্ডার", "#/rem", due.length ? `${due.length}টি সময় হয়েছে` : `${upcoming.length}টি আসছে`)}${st(!old.length, "Pending চেক", "#/status", `${pend.length}টি · পুরনো ${old.length}`)}${admin ? `<span id="d-bk" class="stchip"><i>…</i><span><b>Backup</b><small>দেখা হচ্ছে…</small></span></span>` : ""}</div>
-    <div class="grid g4" id="d-kpi">
-      <div class="kpi card k-vi"><div class="l">ব্যাংক ব্যালেন্স<span class="ki">${ico("bank")}</span></div><div class="v num" id="d-bt">—</div><div class="s" id="d-bs">লোড হচ্ছে…</div></div>
-      <div class="kpi card k-gr"><div class="l">ব্যবহারযোগ্য (Usable)<span class="ki">${ico("wallet")}</span></div><div class="v num" id="d-bu">—</div><div class="s" id="d-bb"></div></div>
-      <div class="kpi card k-cy"><div class="l">ক্যাশ ক্লোজিং<span class="ki">${ico("wallet")}</span></div><div class="v num" id="d-ct">—</div><div class="s" id="d-cs">লোড হচ্ছে…</div></div>
-      <div class="kpi card k-am"><div class="l">চেক · এই মাস<span class="ki">${ico("list")}</span></div><div class="v num">${mon.length}</div><div class="s num">৳ ${money0(sumAmt(mon))} · <span>আজ</span> ${todayC.length} · Pending ${pend.length}</div></div>
-    </div>
-    <div class="grid g2" style="margin-top:14px">
-      <div class="card"><div class="ch" style="padding:0 0 8px"><h3>ব্যাংক ব্যালেন্স ট্রেন্ড</h3><span class="mut sm" id="d-tr-l">৩০ দিন</span><div class="sp" style="flex:1"></div><a class="sm" href="#/reports">রিপোর্ট →</a></div><div id="d-tr"><div class="skel" style="height:64px"></div></div><div class="lgd"><span><i style="background:#6366f1"></i>মোট</span><span><i style="background:#10b981"></i>Usable</span></div></div>
-      <div class="card"><div class="ch" style="padding:0 0 8px"><h3>ক্যাশ: আয় বনাম ব্যয়</h3><span class="mut sm">১৪ দিন</span><div class="sp" style="flex:1"></div><a class="sm" href="#/cashsum">সামারি →</a></div><div id="d-cash"><div class="skel" style="height:90px"></div></div><div class="lgd"><span><i style="background:#10b981"></i>Receipt</span><span><i style="background:#f43f5e"></i>Payment</span></div></div>
-    </div>
-    ${sys.length || due.length ? `<div class="grid" style="margin-top:14px;gap:8px">${due.slice(0, 3).map(r => `<div class="alert rd">⏰ <span><b>${esc(r.title)}</b> — ${relTime(remDue(r))}</span><a class="btn sm" style="margin-left:auto" href="#/rem">দেখুন</a></div>`).join("")}${sys.map(a => `<div class="alert ${a.k}">${ico(a.ic).replace("<svg", '<svg width="18" height="18"')}<span>${esc(a.t)}</span>${a.go ? `<a class="btn sm" style="margin-left:auto" href="${a.go}">খুলুন →</a>` : ""}</div>`).join("")}</div>` : `<div class="alert gr" style="margin-top:14px">✔ কোনো সতর্কতা নেই — সব ঠিক আছে।</div>`}
-    <div class="grid g3" style="margin-top:14px">
-      <div class="card flush"><div class="ch"><h3>সর্বশেষ চেক এন্ট্রি</h3><div class="sp" style="flex:1"></div><a class="sm" href="#/cheques">সব →</a></div>${(() => { const r = [...S.cheques].sort((a, b) => (b.at || "").localeCompare(a.at || "")).slice(0, 6); return r.length ? `<div class="mini">${r.map(c => `<div class="mi" data-id="${c.id}"><div><b>${esc(c.code)} · ${c.no}</b>${chqIcons(c)}<div class="mut sm">${dmy(c.date)} · ${esc(c.purpose.split(" (")[0])}</div></div><div class="r"><b class="num">৳ ${money0(c.amount)}</b><div>${stTag(c.status)}</div></div></div>`).join("")}</div>` : `<div class="empty">এখনো কোনো চেক এন্ট্রি হয়নি${boss ? "" : `<div style="margin-top:10px"><a class="btn sm pri" href="#/entry">${ico("plus")} প্রথম চেক এন্ট্রি</a></div>`}</div>`; })()}</div>
-      <div class="card flush"><div class="ch"><h3>আসন্ন রিমাইন্ডার</h3><div class="sp" style="flex:1"></div><a class="sm" href="#/rem">সব →</a></div>${upcoming.length ? `<div class="mini">${upcoming.map(r => `<a class="mi" href="#/rem"><div><b>${esc(r.title)}</b><div class="mut sm">${esc(r.note || REPEATS[r.repeat] || "")}</div></div><div class="r"><span class="tag ${remDue(r) <= new Date() ? "t-due" : ""}">${relTime(remDue(r))}</span></div></a>`).join("")}</div>` : `<div class="empty">কোনো রিমাইন্ডার নেই<div style="margin-top:10px"><button class="btn sm" id="d-addrem">${ico("plus")} রিমাইন্ডার দিন</button></div></div>`}</div>
-      <div class="card flush"><div class="ch"><h3>পুরনো Pending চেক</h3><span class="tag">${old.length}</span></div>${old.length ? `<div class="mini">${old.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6).map(c => `<div class="mi" data-id="${c.id}"><div><b>${esc(c.code)} · ${c.no}</b><div class="mut sm">${esc(c.remarks || c.party || c.purpose.split(" (")[0])}</div></div><div class="r"><b class="num">৳ ${money0(c.amount)}</b><div class="rd sm b">${daysBetween(c.date, t)} দিন</div></div></div>`).join("")}</div>` : `<div class="empty">কোনো পুরনো Pending নেই 🎉</div>`}</div>
-    </div>`;
+  /* today's progress */
+  const tasks = [...(boss ? [] : [[bankDone || !workday, "ব্যাংক ক্লোজিং"], [cashDone || !workday, "ক্যাশ এন্ট্রি"]]), [!due.length, "রিমাইন্ডার"], [!old.length, "পুরনো Pending"]];
+  const tdone = tasks.filter(x => x[0]).length, tpct = Math.round(tdone / tasks.length * 100), left = tasks.filter(x => !x[0]).map(x => x[1]);
+  const ring = `<svg class="pring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" class="rb" fill="none" style="fill:none"/><circle cx="22" cy="22" r="18" class="rf" fill="none" style="fill:none" stroke-dasharray="${(tpct * 1.131).toFixed(1)} 113.1" transform="rotate(-90 22 22)"/><text x="22" y="26" text-anchor="middle">${tpct}%</text></svg>`;
+  /* cheque pipeline (this month) */
+  const monAll = S.cheques.filter(c => c.date.startsWith(ym)), stc = {};
+  monAll.forEach(c => { (stc[c.status] ||= { n: 0, a: 0 }); stc[c.status].n++; stc[c.status].a += c.amount; });
+  const ORD = ["Pending", "Cleared", "Bounced", "Stopped", "Cancelled"], skeys = ORD.filter(k => stc[k]).concat(Object.keys(stc).filter(k => !ORD.includes(k)));
+  const clearedPct = monAll.length ? Math.round((stc.Cleared?.n || 0) / monAll.length * 100) : 0;
+  const pipeline = monAll.length ? `<div class="seg3">${skeys.map(k => `<i style="width:${stc[k].n / monAll.length * 100}%;background:${SEG_C[k] || "#64748b"}" title="${k}"></i>`).join("")}</div>
+      <div class="lgl">${skeys.map(k => `<a class="lg" href="#/cheques"><i style="background:${SEG_C[k] || "#64748b"}"></i><span>${k}</span><b class="num">${stc[k].n}</b><em class="num">৳ ${money0(stc[k].a)}</em></a>`).join("")}</div>
+      <div class="pfoot"><div><small>সব Pending (মোট)</small><b class="num">৳ ${money0(sumAmt(pend))}</b></div><div><small>আজকের চেক</small><b class="num">৳ ${money0(sumAmt(todayC))}</b></div><div><small>Clear হয়েছে</small><b class="num gr">${clearedPct}%</b></div></div>`
+    : `<div class="empty" style="padding:22px 0">এই মাসে এখনো কোনো চেক নেই${boss ? "" : `<div style="margin-top:10px"><a class="btn sm pri" href="#/entry">${ico("plus")} নতুন চেক</a></div>`}</div>`;
+  /* attention panel */
+  const att = [
+    ...due.slice(0, 3).map(r => `<a class="att rd" href="#/rem"><span class="ai">⏰</span><span><b>${esc(r.title)}</b><small>${relTime(remDue(r))}</small></span><u>দেখুন</u></a>`),
+    ...sys.map(a => `<a class="att ${a.k}" ${a.go ? `href="${a.go}"` : ""}><span class="ai">${ico(a.ic)}</span><span><b>${esc(a.t)}</b></span>${a.go ? "<u>খুলুন →</u>" : ""}</a>`)];
+  v.innerHTML = `<div class="hero dash-hero"><div class="hh"><h1>${greet()}, ${esc(S.me.name)} 👋</h1><p>${new Date().toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${workday ? "" : " · শুক্রবার (সাপ্তাহিক বন্ধ)"}</p>
+        <div class="dprog">${ring}<div><b>${tdone === tasks.length ? "আজকের সব কাজ সম্পন্ন 🎉" : `আজকের কাজ ${tdone}/${tasks.length} সম্পন্ন`}</b><small>${tdone === tasks.length ? "দারুণ! সব কিছু আপ-টু-ডেট আছে" : `<span>বাকি:</span> ` + left.map(x => `<span>${x}</span>`).join(" · ")}</small><small id="d-streak"></small></div></div></div>
+       <div class="qacts">${acts.map(([k, ic, l, c]) => `<a class="qa ${c}" href="#/${k}"><span class="qi">${ico(ic)}</span><span>${l}</span></a>`).join("")}</div></div>
+     <div class="ststrip">${boss ? "" : st(bankDone, "ব্যাংক ক্লোজিং", "#/closing", bankDone ? "আজ সেভ হয়েছে" : S.lastBal ? "<span>শেষ:</span> " + dmy(S.lastBal) : "এখনো নেই")}${boss ? "" : st(cashDone, "ক্যাশ এন্ট্রি", "#/cash", cashDone ? "আজ সেভ হয়েছে" : S.lastCash ? "<span>শেষ:</span> " + dmy(S.lastCash) : "এখনো নেই")}
+       ${st(!due.length, "রিমাইন্ডার", "#/rem", due.length ? `${due.length}টি সময় হয়েছে` : `${upcoming.length}টি আসছে`)}${st(!old.length, "Pending চেক", "#/status", `${pend.length}টি · পুরনো ${old.length}`)}${admin ? `<span id="d-bk" class="stchip"><i>…</i><span><b>Backup</b><small>দেখা হচ্ছে…</small></span></span>` : ""}</div>
+     <div class="grid g4" id="d-kpi">
+       <a class="kpi card k-vi" href="#/crep"><div class="l">ব্যাংক ব্যালেন্স<span class="ki">${ico("bank")}</span></div><div class="v num" id="d-bt">—</div><div class="s" id="d-bs">লোড হচ্ছে…</div><div id="d-sp1" class="kspw"></div></a>
+       <a class="kpi card k-gr" href="#/reports"><div class="l">ব্যবহারযোগ্য (Usable)<span class="ki">${ico("coins")}</span></div><div class="v num" id="d-bu">—</div><div class="s" id="d-bb"></div><div id="d-sp2" class="kspw"></div></a>
+       <a class="kpi card k-cy" href="#/cashsum"><div class="l">ক্যাশ ক্লোজিং<span class="ki">${ico("wallet")}</span></div><div class="v num" id="d-ct">—</div><div class="s" id="d-cs">লোড হচ্ছে…</div><div id="d-sp3" class="kspw"></div></a>
+       <a class="kpi card k-am" href="#/cheques"><div class="l">চেক · এই মাস<span class="ki">${ico("list")}</span></div><div class="v num">${mon.length}</div><div class="s num">৳ ${money0(sumAmt(mon))} · <span>আজ</span> ${todayC.length} · Pending ${pend.length}</div><div class="kbar"><i style="width:${clearedPct}%"></i></div><div class="s" style="margin-top:3px">${clearedPct}% Clear</div></a>
+     </div>
+     <div class="grid g2 dgap">
+       <div class="card"><div class="ch" style="padding:0 0 8px"><h3>ব্যাংক ব্যালেন্স ট্রেন্ড</h3><div class="sp" style="flex:1"></div><div class="seg mini-seg" id="d-rng">${[[7, "৭ দিন"], [15, "১৫ দিন"], [30, "৩০ দিন"]].map(([n, l]) => `<span class="chip ${n === 30 ? "on" : ""}" data-n="${n}">${l}</span>`).join("")}</div></div>
+         <div id="d-tr"><div class="skel" style="height:110px"></div></div><div class="mut sm" id="d-tr-s"></div><div class="lgd"><span><i style="background:#6366f1"></i>Total</span><span><i style="background:#10b981"></i>Usable</span><span class="mut" style="margin-left:auto">আঙুল/মাউস দিয়ে দেখুন</span><a class="sm" href="#/reports">রিপোর্ট →</a></div></div>
+       <div class="card"><div class="ch" style="padding:0 0 8px"><h3>ক্যাশ: আয় বনাম ব্যয়</h3><span class="mut sm">১৪ দিন</span><div class="sp" style="flex:1"></div><a class="sm" href="#/cashsum">সামারি →</a></div><div id="d-cash"><div class="skel" style="height:90px"></div></div><div class="lgd"><span><i style="background:#10b981"></i>Receipt</span><span><i style="background:#ef4444"></i>Payment</span></div></div>
+     </div>
+     <div class="grid g2 dgap">
+       <div class="card"><div class="ch" style="padding:0 0 10px"><h3>ব্যাংক-ওয়াইজ ব্যালেন্স</h3><span class="mut sm" id="d-bk-d"></span><div class="sp" style="flex:1"></div><a class="sm" href="#/crep">বিস্তারিত →</a></div><div id="d-banks"><div class="skel" style="height:150px"></div></div></div>
+       <div class="card"><div class="ch" style="padding:0 0 10px"><h3>চেক পাইপলাইন · এই মাস</h3><span class="tag">${monAll.length}</span><div class="sp" style="flex:1"></div><a class="sm" href="#/cheques">সব →</a></div>${pipeline}</div>
+     </div>
+     <div class="grid g2 dgap">
+       <div class="card"><div class="ch" style="padding:0 0 10px"><h3>ডিস্ট্রিবিউশন কালেকশন</h3><span class="mut sm">৭ দিন</span><div class="sp" style="flex:1"></div><a class="sm" href="#/dsum">সামারি →</a></div><div id="d-col"><div class="skel" style="height:110px"></div></div></div>
+       <div class="card"><div class="ch" style="padding:0 0 10px"><h3>মনোযোগ দরকার</h3><span class="tag ${att.length ? "t-due" : ""}">${att.length}</span></div>${att.length ? `<div class="attl">${att.join("")}</div>` : `<div class="allgood"><span>✨</span><b>সব ঠিক আছে!</b><small>কোনো জরুরি কাজ বা সতর্কতা নেই — দারুণ চলছে।</small></div>`}</div>
+     </div>
+     <div class="grid g3 dgap">
+       <div class="card flush"><div class="ch"><h3>সর্বশেষ চেক এন্ট্রি</h3><div class="sp" style="flex:1"></div><a class="sm" href="#/cheques">সব →</a></div>${(() => { const r = [...S.cheques].sort((a, b) => (b.at || "").localeCompare(a.at || "")).slice(0, 6); return r.length ? `<div class="mini">${r.map(c => `<div class="mi" data-id="${c.id}"><div><b>${esc(c.code)} · ${c.no}</b>${chqIcons(c)}<div class="mut sm">${dmy(c.date)} · ${esc(c.purpose.split(" (")[0])}</div></div><div class="r"><b class="num">৳ ${money0(c.amount)}</b><div>${stTag(c.status)}</div></div></div>`).join("")}</div>` : `<div class="empty">এখনো কোনো চেক এন্ট্রি হয়নি${boss ? "" : `<div style="margin-top:10px"><a class="btn sm pri" href="#/entry">${ico("plus")} প্রথম চেক এন্ট্রি</a></div>`}</div>`; })()}</div>
+       <div class="card flush"><div class="ch"><h3>আসন্ন রিমাইন্ডার</h3><div class="sp" style="flex:1"></div><a class="sm" href="#/rem">সব →</a></div>${upcoming.length ? `<div class="mini">${upcoming.map(r => `<a class="mi" href="#/rem"><div><b>${esc(r.title)}</b><div class="mut sm">${esc(r.note || REPEATS[r.repeat] || "")}</div></div><div class="r"><span class="tag ${remDue(r) <= new Date() ? "t-due" : ""}">${relTime(remDue(r))}</span></div></a>`).join("")}</div>` : `<div class="empty">কোনো রিমাইন্ডার নেই<div style="margin-top:10px"><button class="btn sm" id="d-addrem">${ico("plus")} রিমাইন্ডার দিন</button></div></div>`}</div>
+       <div class="card flush"><div class="ch"><h3>পুরনো Pending চেক</h3><span class="tag">${old.length}</span></div>${old.length ? `<div class="mini">${old.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6).map(c => `<div class="mi" data-id="${c.id}"><div><b>${esc(c.code)} · ${c.no}</b><div class="mut sm">${esc(c.remarks || c.party || c.purpose.split(" (")[0])}</div></div><div class="r"><b class="num">৳ ${money0(c.amount)}</b><div class="rd sm b">${daysBetween(c.date, t)} দিন</div></div></div>`).join("")}</div>` : `<div class="empty">কোনো পুরনো Pending নেই 🎉</div>`}</div>
+     </div>`;
   $$(".mi[data-id]", v).forEach(r => r.onclick = () => chequeModal(S.cheques.find(c => c.id === r.dataset.id), () => route()));
   $("#d-addrem", v) && ($("#d-addrem", v).onclick = () => reminderModal(null, {}, () => route()));
-  // bank figures
+  // bank figures + trend + bank-wise + streak
   (async () => {
     try {
       const rows = await cached("bal30", 60000, () => API.balancesRange(addDays(t, -45), t)); const ser = balSeries(rows);
       if (!$("#d-bt", v)) return;
       const last = ser[ser.length - 1], prev = ser[ser.length - 2];
-      if (last) {
-        $("#d-bt", v).textContent = "৳ " + money0(last.t); $("#d-bs", v).innerHTML = `${dmy(last.date)} · ${delta(last.t, prev?.t)}`;
-        $("#d-bu", v).textContent = "৳ " + money0(last.t - last.b); $("#d-bb", v).innerHTML = `Block ${money0(last.b)} · ${last.n} A/C · ${delta(last.t - last.b, prev ? prev.t - prev.b : null)}`;
-        const s30 = ser.slice(-30); $("#d-tr", v).innerHTML = `<div class="dual">${spark(s30.map(x => x.t), "#6366f1")}${spark(s30.map(x => x.t - x.b), "#10b981", 40)}</div><div class="mut sm">${dmy(s30[0].date)} → ${dmy(last.date)} · সর্বোচ্চ ${money0(Math.max(...s30.map(x => x.t)))} · সর্বনিম্ন ${money0(Math.min(...s30.map(x => x.t)))}</div>`;
-      } else { $("#d-bs", v).textContent = "কোনো ব্যালেন্স সেভ নেই"; $("#d-tr", v).innerHTML = `<div class="mut sm">ডাটা নেই</div>`; }
-    } catch (e) { if ($("#d-bs", v)) { $("#d-bs", v).textContent = isNetErr(e) ? "অফলাইন" : "লোড হয়নি"; $("#d-tr", v).innerHTML = `<div class="mut sm">${isNetErr(e) ? "ইন্টারনেট নেই" : esc(e.message)}</div>`; } }
+      if (!last) { $("#d-bs", v).textContent = "কোনো ব্যালেন্স সেভ নেই"; $("#d-tr", v).innerHTML = `<div class="mut sm">ডাটা নেই</div>`; $("#d-banks", v).innerHTML = `<div class="mut sm">ডাটা নেই</div>`; return; }
+      $("#d-bt", v).textContent = "৳ " + money0(last.t); $("#d-bs", v).innerHTML = `${dmy(last.date)} · ${delta(last.t, prev?.t)}`;
+      $("#d-bu", v).textContent = "৳ " + money0(last.t - last.b); $("#d-bb", v).innerHTML = `Block ${money0(last.b)} · ${last.n} A/C · ${delta(last.t - last.b, prev ? prev.t - prev.b : null)}`;
+      $("#d-sp1", v).innerHTML = msp(ser.slice(-14).map(x => x.t)); $("#d-sp2", v).innerHTML = msp(ser.slice(-14).map(x => x.t - x.b));
+      const drawTr = n => {
+        const s = ser.slice(-n), tt = s.map(x => x.t); dashLine($("#d-tr", v), s.map(x => ({ date: x.date, t: x.t, u: x.t - x.b })));
+        const chg = s.length > 1 ? s[s.length - 1].t - s[0].t : 0, avg = tt.reduce((a, b) => a + b, 0) / tt.length;
+        $("#d-tr-s", v).innerHTML = `${dmy(s[0].date)} → ${dmy(last.date)} · <b class="${chg >= 0 ? "gr" : "rd"}">${chg >= 0 ? "▲" : "▼"} ${money0(Math.abs(chg))}</b> · <span>গড়</span> ${money0(avg)} · <span>সর্বোচ্চ</span> ${money0(Math.max(...tt))} · <span>সর্বনিম্ন</span> ${money0(Math.min(...tt))}`;
+      };
+      drawTr(30); $$("#d-rng .chip", v).forEach(c => c.onclick = () => { $$("#d-rng .chip", v).forEach(x => x.classList.toggle("on", x === c)); drawTr(+c.dataset.n); });
+      // streak of consecutive working days with a saved closing
+      const have = new Set(ser.map(x => x.date)); let d = t, n = 0; if (!have.has(d) && !isFri(d)) d = addDays(d, -1);
+      for (let i = 0; i < 45; i++) { if (isFri(d)) { d = addDays(d, -1); continue; } if (!have.has(d)) break; n++; d = addDays(d, -1); }
+      if (n >= 2 && $("#d-streak", v)) $("#d-streak", v).textContent = `🔥 টানা ${n} কর্মদিবস ব্যাংক ক্লোজিং সম্পন্ন`;
+      // bank-wise
+      const bm = await balancesOn(last.date), am = accMap(), by = new Map();
+      Object.entries(bm).forEach(([c, r]) => { const a = am[c]; if (!a || !a.daily || r.total == null) return; const k = (a.bank || "—").trim(), o = by.get(k) || { k, t: 0, b: 0, l: [] }; o.t += Number(r.total); o.b += Number(r.block || 0); o.l.push({ c, h: a.holder || "", t: Number(r.total) }); by.set(k, o); });
+      const bl = [...by.values()].sort((a, b) => b.t - a.t), tot = bl.reduce((s, x) => s + x.t, 0) || 1, mxb = bl[0]?.t || 1;
+      $("#d-bk-d", v).textContent = dmy(last.date);
+      $("#d-banks", v).innerHTML = bl.length ? `<div class="bkl">${bl.slice(0, 8).map(b => `<details class="bk"><summary><span class="bn">${esc(b.k)}</span><span class="bbar"><i style="width:${Math.max(3, b.t / mxb * 100)}%"></i></span><b class="num">৳ ${money0(b.t)}</b><em>${(b.t / tot * 100).toFixed(0)}%</em></summary><div class="bkd">${b.l.sort((x, y) => y.t - x.t).map(a => `<div><span>${esc(a.c)}${a.h ? ` · ${esc(a.h)}` : ""}</span><b class="num">৳ ${money0(a.t)}</b></div>`).join("")}${b.b ? `<div class="mut"><span>Block</span><b class="num">৳ ${money0(b.b)}</b></div>` : ""}</div></details>`).join("")}</div>${bl.length > 8 ? `<div class="mut sm" style="margin-top:6px"><span>আরও</span> ${bl.length - 8} <span>টি ব্যাংক</span> — <a href="#/crep">সব দেখুন</a></div>` : ""}` : `<div class="mut sm">ডাটা নেই</div>`;
+    } catch (e) { if ($("#d-bs", v)) { $("#d-bs", v).textContent = isNetErr(e) ? "অফলাইন" : "লোড হয়নি"; $("#d-tr", v).innerHTML = `<div class="mut sm">${isNetErr(e) ? "ইন্টারনেট নেই" : esc(e.message)}</div>`; $("#d-banks", v).innerHTML = ""; } }
   })();
   // cash figures
   (async () => {
     try {
       const rows = await cached("cash14", 60000, () => API.cashRange(addDays(t, -40), t)); if (!$("#d-ct", v)) return;
       const fin = rows.filter(r => r.status === "final"), last = fin[fin.length - 1], prev = fin[fin.length - 2];
-      if (last) { $("#d-ct", v).textContent = "৳ " + money0(last.closing); $("#d-cs", v).innerHTML = `${dmy(last.date)} · হাতে ক্যাশ ${money0(last.cash_in_hand)} · ${delta(+last.closing, prev ? +prev.closing : null)}`; }
+      if (last) { $("#d-ct", v).textContent = "৳ " + money0(last.closing); $("#d-cs", v).innerHTML = `${dmy(last.date)} · হাতে ক্যাশ ${money0(last.cash_in_hand)} · ${delta(+last.closing, prev ? +prev.closing : null)}`; $("#d-sp3", v).innerHTML = msp(fin.slice(-14).map(r => +r.closing)); }
       else $("#d-cs", v).textContent = "এখনো কোনো ক্যাশ রেকর্ড নেই";
       const r14 = rows.filter(r => r.date > addDays(t, -14)); $("#d-cash", v).innerHTML = bars2(r14.map(r => ({ l: dmy(r.date), a: +r.total_receipt || 0, b: +r.total_payment || 0 }))) + (r14.length ? `<div class="mut sm">Receipt ৳ ${money0(r14.reduce((s, r) => s + (+r.total_receipt || 0), 0))} · Payment ৳ ${money0(r14.reduce((s, r) => s + (+r.total_payment || 0), 0))}</div>` : "");
     } catch (e) { if ($("#d-cs", v)) { $("#d-cs", v).textContent = /relation|does not exist|schema cache|not find/i.test(e.message || "") ? "SQL v3 চালানো বাকি" : isNetErr(e) ? "অফলাইন" : "লোড হয়নি"; $("#d-cash", v).innerHTML = ""; } }
+  })();
+  // distribution collection (last 7 days)
+  (async () => {
+    const el = $("#d-col", v);
+    try {
+      const rows = (await cached("dcol7", 60000, () => API.dcolRange(addDays(t, -6), t))).filter(r => r.status !== "cancelled"); if (!$("#d-col", v)) return;
+      const days = [...Array(7)].map((_, i) => addDays(t, i - 6)), sm = (arr, f) => arr.filter(f).reduce((s, r) => s + r.amount, 0);
+      const td = rows.filter(r => r.date === t), tot7 = sm(rows, () => true), ok7 = sm(rows, r => r.status === "approved"), pe7 = sm(rows, r => r.status === "pending" || r.status === "hold");
+      const per = days.map(d => ({ l: dmy(d), a: sm(rows, r => r.date === d && r.status === "approved"), b: sm(rows, r => r.date === d && r.status !== "approved") }));
+      el.innerHTML = rows.length ? `<div class="colk"><div><small>আজ</small><b class="num">৳ ${money0(sm(td, () => true))}</b><em>${td.length}টি এন্ট্রি</em></div><div><small>৭ দিনে মোট</small><b class="num">৳ ${money0(tot7)}</b><em>${rows.length}টি এন্ট্রি</em></div><div><small>Approved</small><b class="num gr">৳ ${money0(ok7)}</b><em>${rows.filter(r => r.status === "approved").length}টি</em></div><div><small>Pending/Hold</small><b class="num am">৳ ${money0(pe7)}</b><em>${rows.filter(r => r.status === "pending" || r.status === "hold").length}টি</em></div></div>${bars2(per, 60)}<div class="lgd"><span><i style="background:#10b981"></i>Approved</span><span><i style="background:#ef4444"></i>Pending/Hold</span></div>`
+        : `<div class="empty" style="padding:18px 0">গত ৭ দিনে কোনো কালেকশন এন্ট্রি নেই${boss ? "" : `<div style="margin-top:10px"><a class="btn sm" href="#/dcol">${ico("plus")} কালেকশন এন্ট্রি</a></div>`}</div>`;
+    } catch (e) { if (el) el.innerHTML = `<div class="mut sm" style="padding:14px 0">${isNetErr(e) ? "ইন্টারনেট নেই" : "কালেকশন ডাটা পাওয়া যায়নি"}</div>`; }
   })();
   if (admin) (async () => { const el = $("#d-bk", v); try { const b = (await API.backups())[0]; if (!el) return; const ok = b && Date.now() - new Date(b.at) < 36 * 36e5; el.className = "stchip " + (ok ? "ok" : "no"); el.innerHTML = `<i>${ok ? "✓" : "!"}</i><span><b>Backup</b><small>${b ? relTime(b.at) : "এখনো হয়নি"}</small></span>`; el.onclick = () => location.hash = "#/audit"; } catch { if (el) { el.className = "stchip no"; el.innerHTML = `<i>!</i><span><b>Backup</b><small>সেটআপ বাকি</small></span>`; } } })();
 }
