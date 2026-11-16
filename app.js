@@ -638,7 +638,7 @@ let cleanup = null;
 const getTheme = () => document.documentElement.dataset.theme || "light";
 function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("nabiad_theme", t); } catch { } $$(".th-ic").forEach(e => e.innerHTML = ico(t === "dark" ? "sun" : "moon")); }
 function badges() { return { status: pendingOld().length, books: allMissing().reduce((a, x) => a + x.st.missing.length, 0) + openMarks().length, rem: typeof dueList === "function" ? dueList().length : 0 }; }
-function sideMin(on, save = true) { document.documentElement.dataset.side = on ? "min" : ""; if (save) try { localStorage.setItem("nabiad_side", on ? "min" : "full"); } catch { } const b = $("#sbtog"); if (b) { const t = LANG === "en" ? (on ? "Expand sidebar" : "Minimize sidebar") : (on ? "সাইডবার বড় করুন" : "সাইডবার ছোট করুন"); b.title = t; b.setAttribute("aria-label", t); b.setAttribute("aria-expanded", on ? "false" : "true"); } }
+function sideMin(on, save = true) { sideFlyClose(); document.documentElement.dataset.side = on ? "min" : ""; if (save) try { localStorage.setItem("nabiad_side", on ? "min" : "full"); } catch { } const b = $("#sbtog"); if (b) { const t = LANG === "en" ? (on ? "Expand sidebar" : "Minimize sidebar") : (on ? "সাইডবার বড় করুন" : "সাইডবার ছোট করুন"); b.title = t; b.setAttribute("aria-label", t); b.setAttribute("aria-expanded", on ? "false" : "true"); } }
 function shell() {
   const keys = allowed(), bd = badges();
   const link = k => { const r = ROUTES[k]; const n = bd[k]; return `<a href="#/${k}" data-k="${k}" title="${esc(r.t)}">${ico(r.ic)}<span>${r.t}</span>${n ? `<span class="badge">${n}</span>` : ""}</a>`; };
@@ -647,13 +647,14 @@ function shell() {
   const inGroup = g => keys.filter(k => ROUTES[k].sec === g && !UTIL.includes(k));
   let nav = keys.includes("dash") ? link("dash") : "";
   GR.forEach(([g, lab, ic, col]) => { const ks = inGroup(g); if (!ks.length) return; const n = ks.reduce((a, k) => a + (bd[k] || 0), 0);
-    nav += `<div class="ng" data-g="${g}" data-ks="${ks.join(",")}" style="--gc:${col}"><button type="button" class="ng-h" aria-expanded="false"><span class="gi">${ico(ic)}</span><span class="gl">${lab}</span><span class="gb badge" ${n ? "" : "hidden"}>${n || ""}</span><span class="chv">${ico("chev")}</span></button><div class="ng-b"><div class="ng-bi">${ks.map(link).join("")}</div></div></div>`; });
-  const ut = UTIL.filter(k => keys.includes(k)); if (ut.length) nav += `<div class="nsep"></div>` + ut.map(link).join("");
+    nav += `<div class="ng" data-g="${g}" data-ks="${ks.join(",")}" style="--gc:${col}"><button type="button" class="ng-h" aria-expanded="false" title="${esc(lab)}"><span class="gi">${ico(ic)}</span><span class="gl">${lab}</span><span class="gb badge" ${n ? "" : "hidden"}>${n || ""}</span><span class="chv">${ico("chev")}</span></button><div class="ng-b"><div class="ng-bi">${ks.map(link).join("")}</div></div></div>`; });
+  const ut = UTIL.filter(k => keys.includes(k)), navFix = ut.length ? `<div class="nsep"></div>` + ut.map(link).join("") : "";
   const TABS = (S.me.role === "boss" ? [["reports", "main", "চেক"], ["crep", "bank", "ব্যাংক"], ["cashsum", "cash", "ক্যাশ"], ["dsum", "dist", "কালেকশন"]] : [["entry", "main", "চেক"], ["closing", "bank", "ব্যাংক"], ["cash", "cash", "ক্যাশ"], ["dcol", "dist", "কালেকশন"]]).filter(t => keys.includes(t[0]));
   const mob = TABS.map(t => t[0]);
   $("#app").innerHTML = `<div class="shell">
     <aside class="side"><div class="brand"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Smart Finance Suite</span></div><button class="sbtog" id="sbtog" type="button">${ico("chev")}</button></div>
       <nav class="nav">${nav}</nav>
+      ${navFix ? `<nav class="nav navfix" aria-label="Utilities">${navFix}</nav>` : ""}
       <div class="me">${avaEl(S.me.id, S.me.name, S.me.email)}<div class="who"><b>${esc(S.me.name)}</b><span class="mut">${esc(S.me.email)}</span></div><button class="iconbtn" id="logout" title="লগআউট">${ico("out")}</button></div></aside>
     <div class="mainwrap">
       <header class="topbar"><div class="tb-brand"><div class="logo" style="width:30px;height:30px"><img src="icon.svg" alt="Nabiad"></div>NABIAD</div><div class="crumb" id="crumb"></div><div class="sp"></div>
@@ -665,7 +666,7 @@ function shell() {
   const lo = async () => { await API.logout(); try { localStorage.removeItem(CACHE_KEY); } catch { } location.hash = ""; location.reload(); };
   $("#logout").onclick = lo;
   $("#sbtog").onclick = () => sideMin(document.documentElement.dataset.side !== "min");
-  $$(".nav .ng-h").forEach(h => h.onclick = () => { const g = h.parentElement, was = g.classList.contains("open"); sideGroup(was ? null : g.dataset.g); }); /* accordion: one group open at a time */
+  $$(".nav .ng-h").forEach(h => h.onclick = () => { const g = h.parentElement; if (document.documentElement.dataset.side === "min") return sideFly(g, h); const was = g.classList.contains("open"); sideGroup(was ? null : g.dataset.g); }); /* accordion: one group open at a time */
   { let m = false; try { m = localStorage.getItem("nabiad_side") === "min"; } catch { } sideMin(m, false); }
   $("#theme").onclick = () => setTheme(getTheme() === "dark" ? "light" : "dark");
   $("#qs").onclick = palette; $("#bell").onclick = () => { const d = dueList(); if (d.length) dueModal(d); else location.hash = "#/rem"; }; updateBell();
@@ -678,6 +679,19 @@ const tabBadge = (sec, bd) => { const n = sec === "main" ? bd.status : sec === "
 const secOf = k => { const x = ROUTES[k]?.sec; return !x || x === "top" ? "more" : x; };
 function setTabActive(k) { $$(".mnav [data-sec]").forEach(a => a.classList.toggle("on", a.dataset.sec === secOf(k))); }
 /* open the group that holds route k (or only the named group); everything else folds away */
+/* v6.58: minimized sidebar shows one icon per group; clicking it opens a small flyout with that group's pages */
+function sideFlyClose() { const f = $("#sidefly"); if (f) { f._off && f._off(); f.remove(); } }
+function sideFly(g, h) {
+  const old = $("#sidefly"), same = old && old.dataset.g === g.dataset.g; sideFlyClose(); if (same) return;
+  const f = document.createElement("div"); f.id = "sidefly"; f.className = "sidefly"; f.dataset.g = g.dataset.g; f.style.setProperty("--gc", g.style.getPropertyValue("--gc"));
+  f.innerHTML = `<div class="sf-t">${esc($(".gl", g).textContent)}</div>` + $(".ng-bi", g).innerHTML;
+  document.body.appendChild(f);
+  const r = h.getBoundingClientRect(); f.style.left = (r.right + 10) + "px"; f.style.top = Math.max(8, Math.min(r.top, innerHeight - f.offsetHeight - 10)) + "px";
+  const down = e => { if (!f.contains(e.target) && !h.contains(e.target)) sideFlyClose(); }, key = e => { if (e.key === "Escape") sideFlyClose(); };
+  f._off = () => { document.removeEventListener("mousedown", down, true); document.removeEventListener("keydown", key, true); };
+  document.addEventListener("mousedown", down, true); document.addEventListener("keydown", key, true);
+  f.addEventListener("click", e => { if (e.target.closest("a")) sideFlyClose(); });
+}
 function sideGroup(k, byRoute) {
   $$(".nav .ng").forEach(g => { const has = byRoute ? !!$(`[data-k="${k}"]`, g) : g.dataset.g === k; g.classList.toggle("open", has); if (byRoute) g.classList.toggle("has-on", has); $(".ng-h", g).setAttribute("aria-expanded", has ? "true" : "false"); });
 }
@@ -1022,11 +1036,17 @@ async function vCheques(v) {
   v.innerHTML = head("চেক তালিকা ও এনকোয়ারি", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>`) + `<div class="card noprint" style="margin-bottom:14px">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
    <div style="flex:2 1 220px"><label class="f">খুঁজুন (কোড, চেক নং, পার্টি, মন্তব্য, টাকা)</label><input class="in" id="k-q" placeholder="যেকোনো কিছু লিখুন…"></div>
    <div style="flex:1 1 220px"><label class="f">A/C</label><select class="in" id="k-c"><option value="">সব</option>${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)}${a.holder ? " · " + esc(a.holder) : ""}${a.bank ? " · " + esc(a.bank) : ""}</option>`).join("")}</select></div>
-   <div><label class="f">স্ট্যাটাস</label><select class="in" id="k-s"><option value="">সব</option>${STATUSES.map(s => `<option>${s}</option>`).join("")}</select></div>
+   <div><label class="f">স্ট্যাটাস</label><select class="in" id="k-s"></select></div>
    <div><label class="f">খাত</label><select class="in" id="k-u"><option value="">সব</option>${allPurposes(true).map(p => `<option value="${esc(p)}">${esc(p.split(" (")[0])}</option>`).join("")}</select></div></div></div>
    <div id="k-sum" class="ksum"></div><div class="card flush"><div id="k-tab"></div></div><div id="k-pg" class="row noprint" style="margin-top:10px;justify-content:center"></div>`;
-  const filt = () => { const t = norm(F.q), raw = F.q.trim(), [pa, pb] = pbRange(PF); return S.cheques.filter(c => c.date >= pa && c.date <= pb && (!F.code || c.code === F.code) && (!F.status || c.status === F.status) && (!F.purpose || pKey(c.purpose) === pKey(F.purpose)) && (!t || norm(c.code + c.no + (c.party || "") + (c.remarks || "") + (c.taker || "") + (c.toac || "")).includes(t) || String(c.amount) === raw.replace(/,/g, ""))).sort((a, b) => b.date.localeCompare(a.date) || b.no - a.no); };
+  const filt = (skipSt) => { const t = norm(F.q), raw = F.q.trim(), [pa, pb] = pbRange(PF); return S.cheques.filter(c => c.date >= pa && c.date <= pb && (!F.code || c.code === F.code) && (skipSt || !F.status || c.status === F.status) && (!F.purpose || pKey(c.purpose) === pKey(F.purpose)) && (!t || norm(c.code + c.no + (c.party || "") + (c.remarks || "") + (c.taker || "") + (c.toac || "")).includes(t) || String(c.amount) === raw.replace(/,/g, ""))).sort((a, b) => b.date.localeCompare(a.date) || b.no - a.no); };
+  /* v6.58: status filter = the statuses this project actually works with (Pending / Cleared / Bounced / Cancelled) + a live count each;
+     Returned-Cash / Stopped appear only if some cheque really has them (they stay available in "Set status"). */
+  const stOpts = () => { const base = filt(true), n = {}; base.forEach(c => n[c.status] = (n[c.status] || 0) + 1);
+    const list = ["Pending", "Cleared", "Bounced", "Cancelled", ...["Returned-Cash", "Stopped"].filter(x => n[x] || F.status === x)], sel = $("#k-s", v);
+    sel.innerHTML = `<option value="">${bi("সব", "All")} (${base.length})</option>` + list.map(x => `<option value="${x}" ${F.status === x ? "selected" : ""}>${x} (${n[x] || 0})</option>`).join(""); sel.value = F.status; };
   const draw = () => {
+    stOpts();
     const arr = filt(), pages = Math.max(1, Math.ceil(arr.length / PS)); F.page = Math.min(F.page, pages - 1); const part = arr.slice(F.page * PS, F.page * PS + PS), live = arr.filter(isLive);
     const kc = (l, n, a, cls = "") => `<div class="kc ${cls}"><span>${l}</span><div class="kv"><b>${n}</b>${a != null ? `<small class="num">৳ ${money0(a)}</small>` : ""}</div></div>`;
     $("#k-sum", v).innerHTML = kc(bi("মোট চেক", "Cheques"), arr.length, null) + kc(bi("কার্যকর মোট", "Live total"), live.length, sumAmt(live), "main") + ["Pending", "Cleared", "Bounced", "Cancelled"].map(s => { const x = arr.filter(c => c.status === s); return x.length ? kc(stTag(s), x.length, sumAmt(x)) : ""; }).join("");
