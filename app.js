@@ -3218,38 +3218,68 @@ const repBtns = p => `<button class="btn" id="${p}-png">${ico("img")} স্ক�
 
 /* =================== Collection Summary (screenshot) =================== */
 async function vDsum(v) {
-  const F = { ...pbInit("day"), s: "approved", all: false }; let cur = null;
+  const SHK = "nb_dsum_show", SHD = { led: 1, bank: 1, asm: 1, div: 1, dist: 1, day: 1 };
+  let show = { ...SHD }; try { show = { ...SHD, ...JSON.parse(localStorage.getItem(SHK) || "{}") }; } catch (e) { }
+  const F = { ...pbInit("day"), s: "approved", all: false, lm: "entry" }; let cur = null, all = [];
+  const SH = [["led", "Party ledger", "পার্টি লেজার"], ["bank", "Bank", "ব্যাংক"], ["asm", "ASM", "ASM"], ["div", "Division", "বিভাগ"], ["dist", "District", "জেলা"], ["day", "Per day", "দিন অনুযায়ী"]];
   v.innerHTML = head("কালেকশন সামারি", `<button class="btn" id="ds-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="ds-pdf">${ico("print")} PDF</button>${navigator.share ? `<button class="btn" id="ds-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
-   <div class="card noprint dcx-filt">${dcPeriodBar("ds", F)}<div class="dcx-frow"><div class="dcx-fs"><label class="f">কোন Status ধরব</label><select class="in" id="ds-s">${dcStatOpts(F.s)}</select></div><label class="keep dcx-keep"><input type="checkbox" id="ds-z"> ০ টাকার Account/ASM-ও দেখাও</label><span class="dcx-per mut" id="ds-per"></span></div></div>
+   <div class="card noprint dcx-filt">${dcPeriodBar("ds", F)}<div class="dcx-frow"><div class="dcx-fs"><label class="f">${bi("কোন Status ধরব", "Status to include")}</label><select class="in" id="ds-s">${dcStatOpts(F.s)}</select></div><label class="keep dcx-keep"><input type="checkbox" id="ds-z"> ${bi("০ টাকার Account/ASM-ও দেখাও", "Also show accounts/ASM with 0")}</label><span class="dcx-per mut" id="ds-per"></span></div>
+    <div class="dcx-tg" id="ds-tg"><span class="mut xs"><b>${bi("সামারিতে দেখাও", "Show in Summary")}:</b></span>${SH.map(([k, en, bn]) => `<label class="keep"><input type="checkbox" data-sh="${k}" ${show[k] ? "checked" : ""}> ${bi(bn, en)}</label>`).join("")}<span class="dcx-lm" id="ds-lmw"><label class="f">${bi("লেজার", "Ledger")}</label><select class="in" id="ds-lm"><option value="entry">${bi("এন্ট্রি অনুযায়ী", "Entry-wise")}</option><option value="party">${bi("পার্টি অনুযায়ী মোট", "Party-wise total")}</option></select></span></div></div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="ds-out"></div></div></div>`;
-  async function draw() {
-    const [f, t] = dcRange(F), out = $("#ds-out", v); out.innerHTML = `<div class="skel" style="height:160px"></div>`; let all;
-    try { await dpLoad().catch(() => { }); all = await API.dcolRange(f, t); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(dcErr(e))}</div>`; cur = null; return; }
-    const rows = all.filter(r => dcStatPass(r, F.s)), tot = dcSum(rows);
+  const out = $("#ds-out", v);
+  async function load() {
+    const [f, t] = dcRange(F); out.innerHTML = `<div class="skel" style="height:160px"></div>`;
+    try { await dpLoad().catch(() => { }); all = await API.dcolRange(f, t); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(dcErr(e))}</div>`; cur = null; all = []; return; }
+    draw();
+  }
+  function draw() {
+    const [f, t] = dcRange(F), rows = all.filter(r => dcStatPass(r, F.s)), tot = dcSum(rows);
     let banks = dcGroup(rows, r => r.account || "(No account)"), asms = dcGroup(rows, r => r.asm || "(No ASM)");
     if (F.all) { dcAccounts().forEach(a => { if (!banks.some(x => x.k === a)) banks.push({ k: a, n: 0, amt: 0 }); }); dcAsms().forEach(a => { if (!asms.some(x => x.k === a)) asms.push({ k: a, n: 0, amt: 0 }); }); }
     const days = t > f ? dcGroup(rows, r => r.date).sort((a, b) => a.k.localeCompare(b.k)) : [];
     const mx = a => Math.max(1, ...a.map(x => x.amt)), others = all.filter(r => !dcStatPass(r, F.s) && r.status !== "cancelled");
     const gm = dpGeoMap(), divs = dcGroup(rows, r => dpGeoOf(gm, r).division || "(No Division)"), dists = dcGroup(rows, r => dpGeoOf(gm, r).district || "(No District)").slice(0, 25);
-    const tbl = (title, arr, nm) => `<div class="dcs-box"><div class="dcs-t">${title}</div><table class="rep-t"><thead><tr><th>${nm}</th><th class="r">Entry</th><th class="r">Amount</th></tr></thead><tbody>${arr.map(x => `<tr><td class="${nm === "Bank / Account" ? "cd" : "ho"}">${nm === "Bank / Account" ? `<i class="bdot" style="background:${dcBrand(x.k)}"></i>` : ""}${esc(x.k)}</td><td class="r num ${x.n ? "" : "z"}">${x.n || "—"}</td><td class="r num ${x.amt ? "us" : "z"}">${x.amt ? money0(x.amt) : "0"}</td></tr>`).join("") || `<tr><td colspan="3" class="z" style="text-align:center">কিছু নেই</td></tr>`}<tr class="tot"><td>TOTAL</td><td class="r num">${arr.reduce((s, x) => s + x.n, 0)}</td><td class="r num">${money0(arr.reduce((s, x) => s + x.amt, 0))}</td></tr></tbody></table></div>`;
+    const nothing = `<tr><td colspan="3" class="z" style="text-align:center">${bi("কিছু নেই", "Nothing")}</td></tr>`;
+    const tbl = (title, arr, nm) => `<div class="dcs-box"><div class="dcs-t">${title}</div><table class="rep-t"><thead><tr><th>${nm}</th><th class="r">Entry</th><th class="r">Amount</th></tr></thead><tbody>${arr.map(x => `<tr><td class="${nm === "Bank / Account" ? "cd" : "ho"}">${nm === "Bank / Account" ? `<i class="bdot" style="background:${dcBrand(x.k)}"></i>` : ""}${esc(x.k)}</td><td class="r num ${x.n ? "" : "z"}">${x.n || "—"}</td><td class="r num ${x.amt ? "us" : "z"}">${x.amt ? money0(x.amt) : "0"}</td></tr>`).join("") || nothing}<tr class="tot"><td>TOTAL</td><td class="r num">${arr.reduce((s, x) => s + x.n, 0)}</td><td class="r num">${money0(arr.reduce((s, x) => s + x.amt, 0))}</td></tr></tbody></table></div>`;
+    /* party ledger */
+    let led = "", ledN = 0;
+    if (show.led && rows.length) {
+      const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date) || String(a.created_at || "").localeCompare(String(b.created_at || "")));
+      if (F.lm === "party") {
+        const pg = dcGroup(rows, r => r.party), asmOf = new Map(); rows.forEach(r => { if (!asmOf.has(r.party)) asmOf.set(r.party, r.asm || ""); }); ledN = pg.length;
+        led = `<div class="dcs-box dcs-led"><div class="dcs-t">Party Ledger · ${bi("পার্টি অনুযায়ী", "Party-wise")} <span class="dcs-c">${pg.length}</span></div><table class="rep-t"><thead><tr><th class="r">#</th><th>Party</th><th>ASM</th><th class="r">Entry</th><th class="r">Amount</th></tr></thead><tbody>${pg.map((x, i) => `<tr><td class="n">${i + 1}</td><td class="ho">${esc(x.k)}</td><td class="rm">${esc(asmOf.get(x.k) || "")}</td><td class="r num">${x.n}</td><td class="r num us">${money0(x.amt)}</td></tr>`).join("")}<tr class="tot"><td></td><td colspan="2">GRAND TOTAL</td><td class="r num">${rows.length}</td><td class="r num">${money0(tot)}</td></tr></tbody></table></div>`;
+      } else {
+        const multi = t > f; let n = 0, day = null, ds = 0, dn = 0, body = ""; ledN = sorted.length;
+        const flush = () => { if (multi && day) body += `<tr class="dsub"><td></td><td colspan="3">${dcShort(day)} — ${dn}</td><td class="r num">${money0(ds)}</td></tr>`; ds = 0; dn = 0; };
+        sorted.forEach(r => { if (multi && r.date !== day) { flush(); day = r.date; } n++; ds += r.amount; dn++; body += `<tr><td class="n">${n}</td><td class="cd">${dcShort(r.date)}</td><td class="ho">${esc(r.party)}${r.remarks ? `<span class="rm"> · ${esc(r.remarks)}</span>` : ""}</td><td class="cd"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account || "—")}</td><td class="r num us">${money0(r.amount)}</td></tr>`; });
+        flush();
+        led = `<div class="dcs-box dcs-led"><div class="dcs-t">Party Ledger · ${bi("এন্ট্রি অনুযায়ী", "Entry-wise")} <span class="dcs-c">${sorted.length}</span></div><table class="rep-t"><thead><tr><th class="r">#</th><th>TxnDate</th><th>Party</th><th>Bank</th><th class="r">Amount</th></tr></thead><tbody>${body}<tr class="tot"><td></td><td colspan="3">GRAND TOTAL</td><td class="r num">${money0(tot)}</td></tr></tbody></table></div>`;
+      }
+    }
+    const tabs = [show.bank && tbl("Per Bank", banks, "Bank / Account"), show.asm && tbl("Per Salesman / ASM", asms, "Salesman / ASM"), show.div && tbl("Per Division", divs, "Division"), show.dist && tbl(`Per District${dists.length >= 25 ? " (Top 25)" : ""}`, dists, "District")].filter(Boolean);
+    const perDay = show.day && days.length ? `<div class="dcs-box dcs-day"><div class="dcs-t">Per Day</div><table class="rep-t"><thead><tr><th>Date</th><th class="r">Entry</th><th class="r">Amount</th><th style="width:50%"></th></tr></thead><tbody>${days.map(x => `<tr><td class="cd">${dcShort(x.k)}</td><td class="r num">${x.n}</td><td class="r num us">${money0(x.amt)}</td><td><div class="dcbar"><i style="width:${(x.amt / mx(days) * 100).toFixed(1)}%"></i></div></td></tr>`).join("")}</tbody></table></div>` : "";
+    /* layout: small ledger sits beside the tables, a long one goes below them */
+    const side = led && tabs.length && ledN <= 28, grid = tabs.length ? `<div class="dcs-two">${tabs.join("")}</div>` : "";
+    const main = side ? `<div class="dcs-main sbs">${led}<div class="dcs-stk">${tabs.join("")}</div></div>` : `${grid}${led ? `<div class="dcs-one">${led}</div>` : ""}`;
+    const none = !led && !tabs.length && !perDay ? `<div class="dcs-note">${bi("কিছু দেখানোর জন্য বাছা নেই — উপরে \"সামারিতে দেখাও\" থেকে বাছুন।", "Nothing selected — tick items under \"Show in Summary\" above.")}</div>` : "";
     cur = { f, t, rows, tot, banks, asms };
-    out.innerHTML = rows.length || F.all ? `<div class="rep" id="ds-in">${dcHead("Distribution Collection Summary · কালেকশন সামারি", f, t, "NABIAD DISTRIBUTION")}
-      <div class="rep-kpi"><div class="k1"><span>Total ${esc(dcStatLabel(F.s).split(" ")[0])}</span><b>৳ ${money0(tot)}</b></div><div><span>Entries</span><b>${rows.length}</b></div><div><span>Parties</span><b>${new Set(rows.map(r => r.party)).size}</b></div><div class="k3"><span>Accounts · ASM</span><b>${banks.filter(b => b.amt).length} · ${asms.filter(b => b.amt).length}</b></div></div>
-      <div class="dcs-two">${tbl("Per Bank", banks, "Bank / Account")}${tbl("Per Salesman / ASM", asms, "Salesman / ASM")}</div>
-      <div class="dcs-two">${tbl("Per Division", divs, "Division")}${tbl(`Per District${dists.length >= 25 ? " (Top 25)" : ""}`, dists, "District")}</div>
-      ${days.length ? `<div class="dcs-box" style="margin:0 16px 12px"><div class="dcs-t">Per Day</div><table class="rep-t"><thead><tr><th>Date</th><th class="r">Entry</th><th class="r">Amount</th><th style="width:50%"></th></tr></thead><tbody>${days.map(x => `<tr><td class="cd">${dcShort(x.k)}</td><td class="r num">${x.n}</td><td class="r num us">${money0(x.amt)}</td><td><div class="dcbar"><i style="width:${(x.amt / mx(days) * 100).toFixed(1)}%"></i></div></td></tr>`).join("")}</tbody></table></div>` : ""}
-      ${others.length ? `<div class="dcs-note">Note: এই তারিখে আরও ${others.length}টি এন্ট্রি (৳ ${money0(dcSum(others))}) অন্য Status-এ আছে — এখানে ধরা হয়নি।</div>` : ""}${dcFoot()}</div>` : dcEmptyPeriod(`এই সময়ে ${esc(dcStatLabel(F.s))} কোনো কালেকশন নেই`);
+    $("#ds-lmw", v).style.display = show.led ? "" : "none";
+    out.innerHTML = rows.length || F.all ? `<div class="rep" id="ds-in">${dcHead("Distribution Collection Summary · " + bi("কালেকশন সামারি", "Collection Summary"), f, t, "NABIAD DISTRIBUTION")}
+      <div class="rep-kpi" style="grid-template-columns:1.5fr repeat(4,1fr)"><div class="k1"><span>Total ${esc(dcStatLabel(F.s).split(" ")[0])}</span><b>৳ ${money0(tot)}</b></div><div><span>Entries</span><b>${rows.length}</b></div><div><span>Parties</span><b>${new Set(rows.map(r => r.party)).size}</b></div><div class="k3"><span>Accounts</span><b>${banks.filter(b => b.amt).length}</b></div><div class="k3"><span>ASM</span><b>${asms.filter(b => b.amt).length}</b></div></div>
+      ${main}${perDay ? `<div class="dcs-one">${perDay}</div>` : ""}${none}
+      ${others.length ? `<div class="dcs-note">${bi(`Note: এই সময়ে আরও ${others.length}টি এন্ট্রি (৳ ${money0(dcSum(others))}) অন্য Status-এ আছে — এখানে ধরা হয়নি।`, `Note: ${others.length} more entries (৳ ${money0(dcSum(others))}) in this period have another status and are not counted here.`)}</div>` : ""}${dcFoot()}</div>` : dcEmptyPeriod(bi(`এই সময়ে ${dcStatLabel(F.s)} কোনো কালেকশন নেই`, `No ${dcStatLabel(F.s)} collection in this period`));
     $$("[data-qp]", out).forEach(b => b.onclick = () => $(`#ds [data-m="${b.dataset.qp}"]`, v).click());
     const pe = $("#ds-per", v); if (pe) pe.textContent = dcRangeLabel(f, t);
     dcFit(v, "ds-in");
   }
-  dcBindPeriod(v, "ds", F, draw);
-  $("#ds-s", v).onchange = e => { F.s = e.target.value; draw(); }; $("#ds-z", v).onchange = e => { F.all = e.target.checked; draw(); };
+  dcBindPeriod(v, "ds", F, load);
+  $("#ds-s", v).onchange = e => { F.s = e.target.value; draw(); }; $("#ds-z", v).onchange = e => { F.all = e.target.checked; draw(); }; $("#ds-lm", v).onchange = e => { F.lm = e.target.value; draw(); };
+  $$("[data-sh]", v).forEach(c => c.onchange = () => { show[c.dataset.sh] = c.checked ? 1 : 0; try { localStorage.setItem(SHK, JSON.stringify(show)); } catch (e) { } draw(); });
   const nm = () => `Collection_Summary_${cur ? cur.f + (cur.t !== cur.f ? "_" + cur.t : "") : today()}`;
   $("#ds-png", v).onclick = () => dcPng($("#ds-in", v), nm()); $("#ds-pdf", v).onclick = () => dcPdf($("#ds-in", v), nm());
   $("#ds-sh", v) && ($("#ds-sh", v).onclick = () => dcShare($("#ds-in", v), nm(), cur ? `Collection ${dcRangeLabel(cur.f, cur.t)} — Total ৳ ${money0(cur.tot)}` : ""));
   const onRs = () => dcFit(v, "ds-in"); window.addEventListener("resize", onRs);
-  await draw(); return () => window.removeEventListener("resize", onRs);
+  await load(); return () => window.removeEventListener("resize", onRs);
 }
 
 /* =================== Collection Report (screenshot / Excel) =================== */

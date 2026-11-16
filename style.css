@@ -1318,3 +1318,13 @@ html[data-theme="dark"] .lk.blank{color:#fca5a5}html[data-theme="dark"] .lk.lost
 .dcx-entry .dcx-et{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)}
 .dcx-entry .dcx-et h3{font-size:15.5px}
 @media (max-width:760px){ .dcx-grid{--fh:46px;gap:10px} .dcx-grid .in,.dcx-grid .in.big{font-size:16px} .dcx-grid .btn,.dcx-grid .btn.big,.dcx-b .btn{height:var(--fh)} }
+
+/* v6.59: Collection Summary — ledger beside tables, "Show in Summary" toggles */
+.dcx-tg .dcx-lm{display:flex;align-items:center;gap:8px;margin-left:auto} .dcx-tg .dcx-lm .f{margin:0;white-space:nowrap} .dcx-tg .dcx-lm .in{height:36px;min-width:150px;padding:0 10px}
+.dcx-tg .keep{white-space:nowrap}
+.dcs-main.sbs{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:16px;padding:12px 16px;align-items:start}
+.dcs-stk{display:flex;flex-direction:column;gap:14px;min-width:0}
+.dcs-c{display:inline-block;margin-left:6px;padding:0 7px;border-radius:99px;background:#eef0ff;color:#4338ca;font-size:10.5px;letter-spacing:0;vertical-align:1px}
+.dcs-led .rep-t td.ho{font-size:11px} .dcs-led .rep-t th:first-child{width:28px}
+.dcs-led .rep-t td.rm{font-size:10px}
+@media (max-width:760px){ .dcx-tg .dcx-lm{margin-left:0;flex:1 1 100%} .dcx-tg .dcx-lm .in{flex:1} }
