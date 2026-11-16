@@ -1030,3 +1030,4 @@ a.kpi{display:block;text-decoration:none!important;color:#fff;cursor:pointer}
   html[data-side=min] .me{flex-direction:column;padding:10px 6px;gap:8px} html[data-side=min] .me .who{display:none}
 }
 @media (prefers-reduced-motion:reduce){.shell,.sbtog{transition:none}}
+.side .brand>div:nth-child(2){min-width:0} .side .brand span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

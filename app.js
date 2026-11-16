@@ -487,7 +487,7 @@ function shell() {
   const mob = TABS.map(t => t[0]);
   const ini = (S.me.name || "?").trim().slice(0, 1).toUpperCase();
   $("#app").innerHTML = `<div class="shell">
-    <aside class="side"><div class="brand"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Cheque &amp; Bank Control</span></div><button class="sbtog" id="sbtog" type="button">${ico("chev")}</button></div>
+    <aside class="side"><div class="brand"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Smart Finance Suite</span></div><button class="sbtog" id="sbtog" type="button">${ico("chev")}</button></div>
       <nav class="nav">${nav}</nav>
       <div class="me"><div class="ava">${esc(ini)}</div><div class="who"><b>${esc(S.me.name)}</b><span class="mut">${esc(S.me.email)}</span></div><button class="iconbtn" id="logout" title="লগআউট">${ico("out")}</button></div></aside>
     <div class="mainwrap">
