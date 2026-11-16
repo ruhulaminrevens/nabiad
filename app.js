@@ -83,18 +83,18 @@ async function cropModal(file, o = {}) {
   const ASP = o.aspects === undefined ? [null, 1, 4 / 3, 3 / 4, 16 / 9] : o.aspects, nm = a => a == null ? (en ? "Free" : "ফ্রি") : a === 1 ? "1:1" : a === 4 / 3 ? "4:3" : a === 3 / 4 ? "3:4" : a === 16 / 9 ? "16:9" : a.toFixed(2);
   return new Promise(async resolve => {
     const host = document.createElement("div"); host.className = "crhost";
-    host.innerHTML = `<div class="mback" style="z-index:95"><div class="modal crop"><h2>✂️ ${esc(o.title || (en ? "Crop photo" : "ছবি ক্রপ করুন"))}</h2>
+    host.innerHTML = `<div class="mback" style="z-index:95"><div class="modal crop"><h2>✂️ <span>${esc(o.title || (en ? "Crop photo" : "ছবি ক্রপ করুন"))}</span><button class="shclose" id="cr-x" type="button">✕ ${en ? "Close" : "বন্ধ"}</button></h2>
       <div class="crwrap"><div class="crstage" id="cr-st"><canvas id="cr-cv"></canvas><div class="crbox ${o.circle ? "circ" : ""}" id="cr-bx"><i class="crh" data-h="nw"></i><i class="crh" data-h="ne"></i><i class="crh" data-h="sw"></i><i class="crh" data-h="se"></i></div></div></div>
       <div class="crtools"><button class="btn sm" id="cr-auto" type="button">✨ ${en ? "Auto crop" : "অটো ক্রপ"}</button><button class="btn sm" id="cr-l" type="button" title="${en ? "Rotate left" : "বাঁয়ে ঘোরান"}">↺</button><button class="btn sm" id="cr-r" type="button" title="${en ? "Rotate right" : "ডানে ঘোরান"}">↻</button><button class="btn sm" id="cr-rs" type="button">${en ? "Reset" : "রিসেট"}</button>${ASP.length > 1 ? `<div class="seg" id="cr-as">${ASP.map(a => `<span class="chip" data-a="${a == null ? "" : a}">${nm(a)}</span>`).join("")}</div>` : ""}</div>
       <div class="mut xs" id="cr-info" style="margin:8px 0 0"></div>
-      <div class="row" style="margin-top:14px;justify-content:flex-end">${o.allowFull === false ? "" : `<button class="btn" id="cr-full" type="button">${en ? "Use full photo" : "পুরো ছবি"}</button>`}<button class="btn" id="cr-x" type="button">${en ? "Cancel" : "বাতিল"}</button><button class="btn pri" id="cr-ok" type="button">✔ ${en ? "Crop & use" : "ক্রপ করে নিন"}</button></div></div></div>`;
+      <div class="crbar"><button class="btn" id="cr-full" type="button">↺ ${en ? "Retake" : "আবার তুলুন"}</button><button class="btn pri" id="cr-ok" type="button"></button></div></div></div>`;
     document.body.appendChild(host);
     const q = id => host.querySelector("#" + id), cv = q("cr-cv"), st = q("cr-st"), bx = q("cr-bx"); let aspect = o.aspect === undefined ? (ASP.length ? ASP[0] : null) : o.aspect, box, s = 1;
     const fin = v => { document.removeEventListener("keydown", key); host.remove(); resolve(v); };
-    const info = () => { q("cr-info").textContent = `${Math.round(box.w)} × ${Math.round(box.h)} px`; };
+    const info = () => { q("cr-info").textContent = `${Math.round(box.w)} × ${Math.round(box.h)} px`; const full = box.w >= src.width * .985 && box.h >= src.height * .985; q("cr-ok").textContent = full ? `✔ ${en ? "Save now" : "এখনই সেভ"}` : `✔ ${en ? "Save cropped" : "ক্রপ সেভ"}`; };
     const paint = () => { bx.style.left = box.x * s + "px"; bx.style.top = box.y * s + "px"; bx.style.width = box.w * s + "px"; bx.style.height = box.h * s + "px"; info(); };
     const chips = () => host.querySelectorAll("#cr-as .chip").forEach(c => c.classList.toggle("on", (c.dataset.a === "" ? null : +c.dataset.a) === aspect));
-    const layout = () => { const aw = Math.max(120, st.parentElement.clientWidth - 2), ah = Math.min(innerHeight * .5, 460); s = Math.min(aw / src.width, ah / src.height); cv.width = Math.round(src.width * s); cv.height = Math.round(src.height * s); st.style.width = cv.width + "px"; st.style.height = cv.height + "px"; cv.getContext("2d").drawImage(src, 0, 0, cv.width, cv.height); paint(); };
+    const layout = () => { const aw = Math.max(120, st.parentElement.clientWidth - 2), ah = Math.min(innerHeight * .42, 460); s = Math.min(aw / src.width, ah / src.height); cv.width = Math.round(src.width * s); cv.height = Math.round(src.height * s); st.style.width = cv.width + "px"; st.style.height = cv.height + "px"; cv.getContext("2d").drawImage(src, 0, 0, cv.width, cv.height); paint(); };
     const initBox = () => { const W = src.width, H = src.height; box = aspect ? crFit({ x: W * .05, y: H * .05, w: W * .9, h: H * .9 }, aspect, W, H) : { x: W * .04, y: H * .04, w: W * .92, h: H * .92 }; };
     const setAuto = async () => { const b = q("cr-auto"); b.disabled = true; try { box = await crAuto(src, aspect, !!o.face); } catch { initBox(); } b.disabled = false; paint(); };
     const rot = d => { const n = document.createElement("canvas"); n.width = src.height; n.height = src.width; const x = n.getContext("2d"); x.translate(n.width / 2, n.height / 2); x.rotate(d * Math.PI / 2); x.drawImage(src, -src.width / 2, -src.height / 2); src = n; initBox(); layout(); };
@@ -116,7 +116,7 @@ async function cropModal(file, o = {}) {
     };
     function key(e) { if (e.key === "Escape") fin(null); else if (e.key === "Enter" && !(e.target.tagName === "BUTTON")) apply(); }
     document.addEventListener("keydown", key);
-    q("cr-x").onclick = () => fin(null); q("cr-ok").onclick = apply; q("cr-full") && (q("cr-full").onclick = () => fin(file));
+    q("cr-x").onclick = () => fin(null); q("cr-ok").onclick = apply; q("cr-full").onclick = () => fin(CR_RETAKE);
     q("cr-auto").onclick = setAuto; q("cr-l").onclick = () => rot(-1); q("cr-r").onclick = () => rot(1); q("cr-rs").onclick = () => { initBox(); paint(); };
     host.querySelectorAll("#cr-as .chip").forEach(c => c.onclick = () => { aspect = c.dataset.a === "" ? null : +c.dataset.a; chips(); if (aspect) { box = crFit(box, aspect, src.width, src.height); paint(); } });
     host.querySelector(".mback").addEventListener("mousedown", e => { if (e.target.classList.contains("mback")) fin(null); });
@@ -124,7 +124,8 @@ async function cropModal(file, o = {}) {
   });
 }
 /* ask for a crop, then return the blob to upload (null = user cancelled) */
-async function pickImage(file, o) { if (!file) return null; return await cropModal(file, o); }
+const CR_RETAKE = { retake: 1 };
+async function pickImage(file, o, again) { if (!file) return null; const r = await cropModal(file, o); if (r === CR_RETAKE) { again && again.click(); return null; } return r; }
 
 function userErr(e) {
   const m = String(e?.message || e), en = LANG === "en";
@@ -178,7 +179,7 @@ function editUserModal(u, after) {
     const g = id => $("#" + id, root), paint = () => { const im = cur(); g("eu-av").innerHTML = im ? `<img src="${im}" alt="">` : avaInit(g("eu-n").value || u.name, u.email); g("eu-av").classList.toggle("has", !!im); g("eu-rm").classList.toggle("hide", !im); };
     paint(); g("eu-n").oninput = paint; $$("#eu-r .chip", root).forEach(c => c.onclick = () => { $$("#eu-r .chip", root).forEach(x => x.classList.toggle("on", x === c)); g("eu-edw").style.display = c.dataset.r === "staff" ? "" : "none"; });
     g("eu-up").onclick = () => g("eu-f").click(); g("eu-x").onclick = close;
-    g("eu-f").onchange = async () => { const f0 = g("eu-f").files[0]; g("eu-f").value = ""; if (!f0) return; const f = await pickImage(f0, { title: en ? "Crop profile picture" : "প্রোফাইল ছবি ক্রপ", aspect: 1, aspects: [], circle: true, face: true, allowFull: false, maxSide: 512 }); if (!f) return; try { st.av = await imgToAvatar(f); paint(); } catch (e) { toast(e.message, "err"); } };
+    g("eu-f").onchange = async () => { const f0 = g("eu-f").files[0]; g("eu-f").value = ""; if (!f0) return; const f = await pickImage(f0, { title: en ? "Crop profile picture" : "প্রোফাইল ছবি ক্রপ", aspect: 1, aspects: [], circle: true, face: true, allowFull: false, maxSide: 512 }, g("eu-f")); if (!f) return; try { st.av = await imgToAvatar(f); paint(); } catch (e) { toast(e.message, "err"); } };
     g("eu-rm").onclick = () => { st.av = null; paint(); };
     g("eu-ok").onclick = async e => {
       const name = g("eu-n").value.trim(), role = $("#eu-r .chip.on", root).dataset.r, active = g("eu-ac").checked;
@@ -834,7 +835,7 @@ async function vEntry(v) {
   function list() {
     const t = today(), arr = S.cheques.filter(c => (c.at || "").slice(0, 10) === t || c.date === t).sort((a, b) => (b.at || "").localeCompare(a.at || ""));
     $e("e-cnt").textContent = arr.length;
-    $e("e-list").innerHTML = arr.length ? `<div class="tw cards" style="max-height:66vh"><table><thead><tr><th>A/C · চেক</th><th class="r">টাকা</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${arr.map(c => `<tr><td><b>${esc(c.code)}</b> · ${c.no}${chqIcons(c)}<div class="mut sm">${esc(c.purpose.split(" (")[0])}${c.party ? " · " + esc(c.party) : ""}</div></td><td class="r num">${money(c.amount)}</td><td>${stTag(c.status)}${pendTag(c)}</td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">আজ এখনো কোনো এন্ট্রি নেই</div>`;
+    $e("e-list").innerHTML = arr.length ? `<div class="tw cards" style="max-height:66vh"><table><thead><tr><th>A/C · চেক</th><th class="r">টাকা</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${arr.map(c => `<tr><td><div class="c1"><b>${esc(c.code)}</b> · ${c.no}${chqIcons(c)}<div class="mut sm">${esc(c.purpose.split(" (")[0])}${c.party ? " · " + esc(c.party) : ""}</div></div></td><td class="r num">${money(c.amount)}</td><td>${stTag(c.status)}${pendTag(c)}</td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">আজ এখনো কোনো এন্ট্রি নেই</div>`;
   }
   let busy = false;
   async function save() {
@@ -896,7 +897,7 @@ async function vStatus(v) {
     let arr = S.cheques.filter(c => (!f || c.status === f) && (!t || norm(c.code + c.no + (c.party || "")).includes(t) || String(c.no) === t));
     arr.sort((a, b) => f === "Pending" && !t ? a.date.localeCompare(b.date) : (b.at || "").localeCompare(a.at || ""));
     const tot = arr.length; arr = arr.slice(0, 80); const T = today();
-    $("#s-list", v).innerHTML = tot ? `<div class="mut sm" style="margin-bottom:8px">${tot}টি চেক ${tot > 80 ? "(প্রথম ৮০টি)" : ""}</div><div class="card flush"><div class="tw cards"><table><thead><tr><th>তারিখ</th><th>A/C · চেক</th><th class="r">টাকা</th><th>বিবরণ</th><th>স্ট্যাটাস</th><th></th></tr></thead><tbody>${arr.map(c => { const d = daysBetween(c.date, T); return `<tr><td>${dmy(c.date)}${c.status === "Pending" && d > (CFG.PENDING_ALERT_DAYS ?? 3) ? `<div class="rd sm b">${d} দিন</div>` : ""}</td><td><b>${esc(c.code)}</b> · ${c.no}</td><td class="r num">${money(c.amount)}</td><td class="mut sm">${esc(c.purpose.split(" (")[0])}${c.party || c.remarks ? " · " + esc(c.party || c.remarks) : ""}</td><td>${stTag(c.status)}${pendTag(c)}${c.sdate && c.status !== "Pending" ? `<div class="mut sm">${dmy(c.sdate)}</div>` : ""}</td>
+    $("#s-list", v).innerHTML = tot ? `<div class="mut sm" style="margin-bottom:8px">${tot}${bi("টি চেক", " cheques")} ${tot > 80 ? bi("(প্রথম ৮০টি)", "(first 80)") : ""}</div><div class="card flush"><div class="tw cards"><table><thead><tr><th>তারিখ</th><th>A/C · চেক</th><th class="r">টাকা</th><th>বিবরণ</th><th>স্ট্যাটাস</th><th></th></tr></thead><tbody>${arr.map(c => { const d = daysBetween(c.date, T); return `<tr><td>${dmy(c.date)}${c.status === "Pending" && d > (CFG.PENDING_ALERT_DAYS ?? 3) ? `<div class="rd sm b">${d} ${bi("দিন", "days")}</div>` : ""}</td><td><div class="c1"><b>${esc(c.code)}</b> · ${c.no}</div></td><td class="r num">${money(c.amount)}</td><td class="mut sm">${esc(c.purpose.split(" (")[0])}${c.party || c.remarks ? " · " + esc(c.party || c.remarks) : ""}</td><td>${stTag(c.status)}${pendTag(c)}${c.sdate && c.status !== "Pending" ? `<div class="mut sm">${dmy(c.sdate)}</div>` : ""}</td>
       <td class="r" data-l="" style="white-space:nowrap"><button class="btn ok sm" data-q="Cleared" data-id="${c.id}" ${c.status === "Cleared" ? "disabled" : ""}>✓ Cleared</button> <button class="btn bad sm" data-q="Bounced" data-id="${c.id}" ${c.status === "Bounced" ? "disabled" : ""}>✗ Bounced</button> <button class="btn sm" data-m="${c.id}">${ico("more")}</button></td></tr>`; }).join("")}</tbody></table></div></div>` : `<div class="card empty">${S.cheques.length ? "কোনো চেক পাওয়া যায়নি" : "এখনো কোনো চেক এন্ট্রি হয়নি"}</div>`;
     $$("[data-q]", v).forEach(b => b.onclick = async () => { const c = S.cheques.find(x => x.id === b.dataset.id); b.disabled = true; try { await setStatus(c, b.dataset.q, $("#s-d", v).value, ""); toast(`✔ ${c.code} · ${c.no} → ${c.status}`); draw(); } catch (e) { toast(e.message, "err"); b.disabled = false; } });
     $$("[data-m]", v).forEach(b => b.onclick = () => statusModal(S.cheques.find(x => x.id === b.dataset.m), draw));
@@ -1177,7 +1178,7 @@ async function vCrep(v) {
     const max = Math.max(...rows.map(r => r.total)), min = Math.min(...rows.map(r => r.total)), W = 700, H = 120, rg = max - min || 1;
     const pts = rows.map((r, i) => `${(i / Math.max(1, rows.length - 1) * W).toFixed(1)},${(H - 8 - (r.total - min) / rg * (H - 16)).toFixed(1)}`).join(" ");
     $("#h-out", v).innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:120px"><defs><linearGradient id="lg" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><polyline fill="none" stroke="url(#lg)" stroke-width="2.5" points="${pts}"/></svg>
-     <div class="mut sm">সর্বোচ্চ ${money0(max)} · সর্বনিম্ন ${money0(min)} · ${rows.length} দিন</div><div class="tw" style="max-height:300px;margin-top:8px"><table><thead><tr><th>তারিখ</th><th class="r">Total</th><th class="r">Block</th><th class="r">Usable</th><th>মন্তব্য</th></tr></thead><tbody>${[...rows].reverse().map(r => `<tr><td>${dmy(r.date)}</td><td class="r num">${money0(r.total)}</td><td class="r num">${r.block ? money0(r.block) : ""}</td><td class="r num">${money0(r.total - (r.block || 0))}</td><td class="mut sm">${esc(r.remark || "")}</td></tr>`).join("")}</tbody></table></div>`;
+     <div class="mut sm">সর্বোচ্চ ${money0(max)} · সর্বনিম্ন ${money0(min)} · ${rows.length} ${bi("দিন", "days")}</div><div class="tw" style="max-height:300px;margin-top:8px"><table><thead><tr><th>তারিখ</th><th class="r">Total</th><th class="r">Block</th><th class="r">Usable</th><th>মন্তব্য</th></tr></thead><tbody>${[...rows].reverse().map(r => `<tr><td>${dmy(r.date)}</td><td class="r num">${money0(r.total)}</td><td class="r num">${r.block ? money0(r.block) : ""}</td><td class="r num">${money0(r.total - (r.block || 0))}</td><td class="mut sm">${esc(r.remark || "")}</td></tr>`).join("")}</tbody></table></div>`;
   }
   $("#h-f", v).onchange = hist; $("#h-t", v).onchange = hist; await load();
   return () => window.removeEventListener("resize", onRs);
@@ -1415,7 +1416,7 @@ function accountModal(a, after) {
     $$("input", root).forEach(i => i.addEventListener("input", upd)); g("a-d").addEventListener("change", upd); upd();
     const ph = { blob: null, remove: false }, showPh = src => { g("a-bphi").src = src; g("a-bphw").classList.remove("hide"); g("a-bpx").classList.remove("hide"); }, hidePh = () => { g("a-bphw").classList.add("hide"); g("a-bpx").classList.add("hide"); g("a-bphi").removeAttribute("src"); };
     if (a.book_photo) API.photoUrl(a.book_photo).then(showPh).catch(() => { });
-    g("a-bpin").onchange = async () => { const f0 = g("a-bpin").files[0]; g("a-bpin").value = ""; if (!f0) return; const f = await pickImage(f0, { title: LANG === "en" ? "Crop cheque book photo" : "Cheque book-এর ছবি ক্রপ", aspect: null }); if (!f) return; try { ph.blob = await compressImage(f); ph.remove = false; showPh(URL.createObjectURL(ph.blob)); } catch (e) { toast(e.message, "err"); } g("a-bpin").value = ""; };
+    g("a-bpin").onchange = async () => { const f0 = g("a-bpin").files[0]; g("a-bpin").value = ""; if (!f0) return; const f = await pickImage(f0, { title: LANG === "en" ? "Crop cheque book photo" : "Cheque book-এর ছবি ক্রপ", aspect: null }, g("a-bpin")); if (!f) return; try { ph.blob = await compressImage(f); ph.remove = false; showPh(URL.createObjectURL(ph.blob)); } catch (e) { toast(e.message, "err"); } g("a-bpin").value = ""; };
     g("a-bpx").onclick = () => { ph.blob = null; ph.remove = true; hidePh(); };
     g("a-x").onclick = close;
     g("a-sh") && (g("a-sh").onclick = () => { close(); shareAccounts([{ ...a, ...cur(), code: a.code }]); });
@@ -1708,7 +1709,7 @@ async function runOcr(st, box, onNo, onAmt) {
 }
 function photoPicker(root, st, ids, onChange) {
   const inp = $("#" + ids.inp, root), img = $("#" + ids.img, root), x = $("#" + ids.x, root);
-  const onPick = async function () { const f0 = this.files[0]; this.value = ""; if (!f0) return; const f = await pickImage(f0, { title: LANG === "en" ? "Crop cheque photo" : "চেকের ছবি ক্রপ", aspect: null }); if (!f) return; try { st.photo = await compressImage(f); img.src = URL.createObjectURL(st.photo); img.classList.remove("hide"); x.classList.remove("hide"); onChange && onChange(); } catch (e) { toast(e.message, "err"); } this.value = ""; };
+  const onPick = async function () { const f0 = this.files[0]; this.value = ""; if (!f0) return; const f = await pickImage(f0, { title: LANG === "en" ? "Crop cheque photo" : "চেকের ছবি ক্রপ", aspect: null }, this); if (!f) return; try { st.photo = await compressImage(f); img.src = URL.createObjectURL(st.photo); img.classList.remove("hide"); x.classList.remove("hide"); onChange && onChange(); } catch (e) { toast(e.message, "err"); } this.value = ""; };
   inp.onchange = onPick; const cam = ids.cam && $("#" + ids.cam, root); if (cam) cam.onchange = onPick;
   x.onclick = e => { e.preventDefault(); st.photo = null; img.classList.add("hide"); x.classList.add("hide"); img.removeAttribute("src"); onChange && onChange(); };
   return () => x.onclick(new Event("click"));
@@ -1740,7 +1741,7 @@ function nextOcc(r) {
 function relTime(d) {
   const m = Math.round((new Date(d) - Date.now()) / 6e4), a = Math.abs(m);
   if (LANG === "en") { const e = a < 60 ? `${a} min` : a < 1440 ? `${Math.round(a / 60)} h` : `${Math.round(a / 1440)} day${Math.round(a / 1440) === 1 ? "" : "s"}`; return m < 0 ? `${e} ago` : m === 0 ? "now" : `in ${e}`; }
-  const s = a < 60 ? `${a} মিনিট` : a < 1440 ? `${Math.round(a / 60)} ঘণ্টা` : `${Math.round(a / 1440)} দিন`;
+  const s = a < 60 ? `${a} ${bi("মিনিট", "min")}` : a < 1440 ? `${Math.round(a / 60)} ${bi("ঘণ্টা", "h")}` : `${Math.round(a / 1440)} ${bi("দিন", "days")}`;
   return m < 0 ? `${s} আগে` : m === 0 ? "এখন" : `${s} পরে`;
 }
 function sysAlerts() {
@@ -1752,7 +1753,7 @@ function sysAlerts() {
     const dd = Draft.localDates().filter(d => !S.lastBal || d > S.lastBal); if (dd.length) o.push({ k: "vi", ic: "edit", t: `ড্রাফট আছে, ফাইনাল সেভ বাকি: ${dd.map(dmy).join(", ")}`, go: "#/closing" });
     if (!DEMO && Outbox.count()) o.push({ k: "am", ic: "clock", t: `${Outbox.count()}টি অফলাইন এন্ট্রি সিঙ্ক বাকি`, go: "" });
   }
-  const old = pendingOld(); if (old.length) o.push({ k: "am", ic: "clock", t: `${old.length}টি চেক ${CFG.PENDING_ALERT_DAYS ?? 3} দিনের বেশি Pending`, go: "#/status" });
+  const old = pendingOld(); if (old.length) o.push({ k: "am", ic: "clock", t: bi(`${old.length}টি চেক ${CFG.PENDING_ALERT_DAYS ?? 3} দিনের বেশি Pending`, `${old.length} cheques pending for more than ${CFG.PENDING_ALERT_DAYS ?? 3} days`), go: "#/status" });
   const miss = allMissing(); if (miss.length) o.push({ k: "am", ic: "book", t: `মিসিং চেক পাতা আছে: ${miss.slice(0, 3).map(x => x.b.code).join(", ")}`, go: "#/books" });
   return o;
 }
@@ -2273,7 +2274,7 @@ function reminderModal(r, opts = {}, after) {
    <div><label class="f">কী মনে করাবে *</label><input class="in" id="m-t" value="${esc(r.title)}" placeholder="যেমন: পার্টির চেক জমা দিন / পাস হয়েছে কিনা দেখুন" autocomplete="off"></div>
    <div><label class="f">বিস্তারিত (পার্টি, টাকা, ব্যাংক…)</label><input class="in" id="m-n" value="${esc(r.note || "")}" autocomplete="off"></div>
    ${canPhoto ? `<div><label class="f">চেক / কাগজের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn" for="m-ph-c">${ico("cam")} ছবি তুলুন</label><label class="btn" for="m-ph">${ico("img")} গ্যালারি</label><input type="file" id="m-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="m-ph" accept="image/*" hidden><img id="m-phv" class="hide" alt=""><button class="btn sm ghost hide" id="m-phx">✕</button>${r.photo ? `<span class="mut sm">ছবি আছে — নতুন দিলে বদলাবে</span>` : ""}</div></div>` : ""}
-   <div><label class="f">কত দিন পরে (Pick days)</label><div class="chips" id="m-pd">${PICK_DAYS.map(n => `<span class="chip" data-pd="${n}">${n} দিন</span>`).join("")}</div></div>
+   <div><label class="f">কত দিন পরে (Pick days)</label><div class="chips" id="m-pd">${PICK_DAYS.map(n => `<span class="chip" data-pd="${n}">${n} ${bi("দিন", "days")}</span>`).join("")}</div></div>
    <div class="row"><div><label class="f">তারিখ</label><input class="in" type="date" id="m-d" value="${d0}"></div><div><label class="f">সময়</label><input class="in" type="time" id="m-tm" value="${t0}"></div></div>
    <div class="row"><div><label class="f">পুনরাবৃত্তি</label><select class="in" id="m-r">${Object.entries(REPEATS).map(([k, l]) => `<option value="${k}" ${k === r.repeat ? "selected" : ""}>${l}</option>`).join("")}</select></div>
    <div><label class="f">কার জন্য</label><select class="in" id="m-f">${Object.entries(FOR_ROLE).filter(([k]) => k !== "admin" || admin).map(([k, l]) => `<option value="${k}" ${k === r.for_role ? "selected" : ""}>${l}</option>`).join("")}</select></div></div>
@@ -2365,7 +2366,7 @@ async function vSettings(v) {
    ${admin ? `<div class="card" style="grid-column:1/-1"><h3>🛡 Admin শর্টকাট</h3><div class="row"><a class="btn fix" href="#/admin">${ico("gear")} ব্যবহারকারী ও অ্যাকাউন্ট</a><a class="btn fix" href="#/audit">${ico("shield")} Audit ও Backup</a><a class="btn fix" href="#/books">${ico("book")} চেক বই</a></div></div>` : ""}</div>`;
   const g = id => $("#" + id, v);
   { const f = g("pf-f"), rm = g("pf-rm"); g("pf-up").onclick = () => f.click();
-    f.onchange = async () => { const f0 = f.files[0]; f.value = ""; if (!f0) return; const file = await pickImage(f0, { title: LANG === "en" ? "Crop profile picture" : "প্রোফাইল ছবি ক্রপ", aspect: 1, aspects: [], circle: true, face: true, allowFull: false, maxSide: 512 }); if (!file) return; const b = g("pf-up"); b.disabled = true; try { const img = await imgToAvatar(file); await API.setAvatar(img); avaMap()[S.me.id] = img; try { localStorage.setItem("nabiad_ava_" + S.me.id, img); } catch { } refreshAvatars(); rm.classList.remove("hide"); toast(LANG === "en" ? "✔ Photo updated" : "✔ ছবি সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? "schema_v6.sql-এর v6.41 অংশ চালানো হয়নি" : e.message, "err"); } b.disabled = false; };
+    f.onchange = async () => { const f0 = f.files[0]; f.value = ""; if (!f0) return; const file = await pickImage(f0, { title: LANG === "en" ? "Crop profile picture" : "প্রোফাইল ছবি ক্রপ", aspect: 1, aspects: [], circle: true, face: true, allowFull: false, maxSide: 512 }, f); if (!file) return; const b = g("pf-up"); b.disabled = true; try { const img = await imgToAvatar(file); await API.setAvatar(img); avaMap()[S.me.id] = img; try { localStorage.setItem("nabiad_ava_" + S.me.id, img); } catch { } refreshAvatars(); rm.classList.remove("hide"); toast(LANG === "en" ? "✔ Photo updated" : "✔ ছবি সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? "schema_v6.sql-এর v6.41 অংশ চালানো হয়নি" : e.message, "err"); } b.disabled = false; };
     rm.onclick = async () => { if (!ask(LANG === "en" ? "Remove your profile picture?" : "প্রোফাইল ছবি মুছে ফেলবেন?")) return; try { await API.setAvatar(null); delete avaMap()[S.me.id]; try { localStorage.removeItem("nabiad_ava_" + S.me.id); } catch { } refreshAvatars(); rm.classList.add("hide"); toast(LANG === "en" ? "✔ Photo removed" : "✔ ছবি মুছে ফেলা হয়েছে"); } catch (e) { toast(e.message, "err"); } }; }
   g("st-nm-s").onclick = async () => { const n = g("st-nm").value.trim(); if (!n) return toast("নাম লিখুন", "err"); try { await API.setMyName(n); S.me.name = n; saveCache(); shell(); route(); toast("✔ নাম সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? "schema_v3.sql চালানো বাকি" : e.message, "err"); } };
   g("st-pw-s") && (g("st-pw-s").onclick = async () => { const p = g("st-pw").value; if (p.length < 10) return toast("পাসওয়ার্ড কমপক্ষে ১০ অক্ষর", "err"); try { await API.changePassword(p); g("st-pw").value = ""; toast("✔ পাসওয়ার্ড বদলানো হয়েছে"); } catch (e) { toast(e.message, "err"); } });

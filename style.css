@@ -1068,3 +1068,16 @@ html[data-lock="1"] #app,html[data-lock="1"] #modal-root,html[data-lock="1"] #to
 .sch{margin:16px 0 6px;font-size:13px;color:var(--mut)}
 .scrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
 .sc-act{max-height:200px;overflow:auto}
+
+/* ---------- v6.47: crop sheet (sticky footer, top close) + mobile card cells ---------- */
+.modal.crop h2{flex-wrap:nowrap} .modal.crop h2 .shclose{flex:none}
+.crbar{position:sticky;bottom:0;margin:14px -22px -22px;padding:12px 22px calc(12px + env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr;gap:10px;z-index:4}
+.crbar .btn{justify-content:center;height:46px;font-size:15px}
+.c1{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+@media (max-width:900px){
+  .tw.cards td{min-width:0}
+  .tw.cards td .c1{text-align:right;flex:1}
+  #e-list .tw.cards{max-height:none!important}
+  .card.flush #e-list{padding-bottom:6px}
+}
+#cr-info{margin-bottom:8px}
