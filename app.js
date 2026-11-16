@@ -28,7 +28,7 @@ const addDays = (s, n) => { const d = new Date(s + "T00:00:00"); d.setDate(d.get
 const daysBetween = (a, b) => Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 864e5);
 const num = v => { const n = parseFloat(String(v ?? "").replace(/,/g, "")); return isNaN(n) ? 0 : n; };
 const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const purposeKey = p => { const s = String(p || "").toLowerCase(); return s.startsWith("cash") ? "cash" : s.startsWith("own") ? "own" : s.startsWith("cancel") ? "cancel" : s.startsWith("supplier") ? "supplier" : "other"; };
+const purposeKey = p => { const s = String(p || "").toLowerCase(); return s.startsWith("cash") ? "cash" : s.startsWith("own") ? "own" : (s.startsWith("cancel") || s.startsWith("blank")) ? "cancel" : s.startsWith("supplier") ? "supplier" : "other"; };
 function toast(msg, kind = "ok") { const t = document.createElement("div"); t.className = "toast " + kind; t.innerHTML = `<i>${kind === "err" ? "!" : "✓"}</i><span></span>`; t.lastChild.textContent = tr(String(msg)).replace(/^✔\s*/, ""); $("#toasts").appendChild(t); setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 260); }, kind === "err" ? 6000 : 2800); }
 const ask = m => confirm(tr(m));
 function modal(html, onMount) {
@@ -1940,7 +1940,7 @@ function purposeManage(onChange) {
   const used = p => (S.cheques || []).filter(c => pKey(c.purpose) === pKey(p)).length;
   const save = () => { try { if (!DEMO) localStorage.setItem("nb_purp_v2", JSON.stringify(PURP_X)); } catch (e) { } };
   modal(`<h2>⚙ ${en ? "Cheque purposes" : "চেকের খাত (Purpose)"}</h2>
-    <div class="mut xs" style="margin-bottom:10px">${en ? "Renaming also updates old cheques. Deleting only removes it from the list — old cheques keep their purpose. Names starting with Cash / Own / Cancel / Supplier trigger special fields." : "নাম বদলালে পুরনো চেকের খাতও বদলে যায়। মুছলে শুধু তালিকা থেকে সরে — পুরনো চেকে খাত লেখাই থাকে। Cash / Own / Cancel / Supplier দিয়ে শুরু নামে বিশেষ ঘর (ক্যাশ-টেকার, To A/C) কাজ করে।"}</div>
+    <div class="mut xs" style="margin-bottom:10px">${en ? "Renaming also updates old cheques. Deleting only removes it from the list — old cheques keep their purpose. Names starting with Cash / Own / Cancel / Blank / Supplier trigger special handling." : "নাম বদলালে পুরনো চেকের খাতও বদলে যায়। মুছলে শুধু তালিকা থেকে সরে — পুরনো চেকে খাত লেখাই থাকে। Cash / Own / Cancel / Blank / Supplier দিয়ে শুরু নামে বিশেষ নিয়ম (ক্যাশ-টেকার, To A/C, বাতিল) কাজ করে।"}</div>
     <div class="pm-list">${allPurposes().map((p, i) => `<div class="pm-row"><div class="pm-n"><b>${esc(p)}</b><span class="mut xs">${used(p)} ${en ? "cheques" : "টি চেক"}</span></div><button class="btn sm ghost" data-pe="${i}" title="${en ? "Rename" : "নাম বদলান"}">${ico("edit")}</button><button class="btn sm ghost" data-pd="${i}" title="${en ? "Delete" : "মুছুন"}">${ico("trash")}</button></div>`).join("") || `<div class="mut">${en ? "No purposes" : "কোনো খাত নেই"}</div>`}</div>
     <div class="row pm-foot" style="margin-top:14px;justify-content:space-between"><button class="btn" id="pm-c" type="button">${en ? "Close" : "বন্ধ করুন"}</button><button class="btn pri" id="pm-x" type="button">${en ? "Done" : "হয়েছে"}</button></div>`, (root, close) => {
     const list = allPurposes();
