@@ -351,3 +351,74 @@ begin
 end $$;
 revoke execute on function public.admin_set_avatar(uuid,text) from anon, public;
 grant execute on function public.admin_set_avatar(uuid,text) to authenticated;
+
+-- v6.43 — staff edit window (per user, 0 = OFF, max 7 days), purposes managed in DB, staff cannot delete anything
+alter table public.profiles add column if not exists edit_days int not null default 0;
+alter table public.profiles drop constraint if exists profiles_edit_days_chk;
+alter table public.profiles add constraint profiles_edit_days_chk check (edit_days between 0 and 7);
+
+create or replace function public.can_edit_cheque(c_user uuid, c_created timestamptz) returns boolean
+language sql stable security definer set search_path = public as $$
+  select case
+    when public.my_role() = 'admin' then true
+    when public.my_role() = 'staff' then coalesce((select p.active and p.edit_days > 0 and c_user = auth.uid() and c_created > now() - make_interval(days => p.edit_days)
+                                                   from public.profiles p where p.id = auth.uid()), false)
+    else false end
+$$;
+revoke execute on function public.can_edit_cheque(uuid, timestamptz) from anon, public;
+grant execute on function public.can_edit_cheque(uuid, timestamptz) to authenticated;
+
+drop policy if exists p_chq_w on public.cheques;
+create policy p_chq_w on public.cheques for update to authenticated
+  using (public.can_edit_cheque(user_id, created_at)) with check (public.can_edit_cheque(user_id, created_at));
+
+-- non-admin edits can never change ownership/entry time (would extend the window)
+create or replace function public.cheque_upd_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if public.my_role() is distinct from 'admin' then
+    new.user_id := old.user_id; new.created_at := old.created_at; new.entered_by := old.entered_by;
+  end if;
+  return new;
+end $$;
+revoke execute on function public.cheque_upd_guard() from anon, public;
+drop trigger if exists cheque_upd_guard on public.cheques;
+create trigger cheque_upd_guard before update on public.cheques for each row execute function public.cheque_upd_guard();
+
+-- photo: staff may add when none, or replace inside their edit window
+create or replace function public.set_cheque_photo(cid uuid, p text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if my_role() = 'admin' then update cheques set photo = p where id = cid;
+  elsif my_role() = 'staff' then update cheques set photo = p where id = cid and (photo is null or public.can_edit_cheque(user_id, created_at));
+  else raise exception 'not allowed'; end if;
+  if not found then raise exception 'edit_window_closed'; end if;
+end $$;
+
+-- staff: no deletes at all (own reminders were the last exception; they can mark them done)
+drop policy if exists p_rem_del on public.reminders;
+create policy p_rem_del on public.reminders for delete to authenticated using (public.my_role() = 'admin');
+
+-- purposes: defaults now live in the table so admin can rename/delete them too
+alter table public.cheque_purposes add column if not exists sort int not null default 100;
+insert into public.cheque_purposes(name, entered_by, sort, user_id) values
+ ('Cash Withdrawal (ক্যাশ উত্তোলন)','system',1,null),('Own A/C Transfer (নিজ অ্যাকাউন্টে জমা)','system',2,null),('Supplier Payment (সাপ্লায়ার পেমেন্ট)','system',3,null),
+ ('Rent (ভাড়া)','system',4,null),('Loan/EMI (লোন কিস্তি)','system',5,null),('Inter-company (সহযোগী প্রতিষ্ঠান)','system',6,null),
+ ('Zakat/Donation (যাকাত/দান)','system',7,null),('Cancelled/Spoiled (বাতিল/নষ্ট পাতা)','system',8,null)
+on conflict do nothing;
+drop policy if exists p_cpur_upd on public.cheque_purposes;
+create policy p_cpur_upd on public.cheque_purposes for update to authenticated using (public.my_role() = 'admin') with check (public.my_role() = 'admin');
+
+create or replace function public.purpose_rename(p_old text, p_new text) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; nn text := btrim(p_new);
+begin
+  if my_role() is distinct from 'admin' then raise exception 'admin_only'; end if;
+  if nn is null or nn = '' then raise exception 'bad_name'; end if;
+  if lower(nn) <> lower(btrim(p_old)) and exists (select 1 from cheque_purposes where lower(btrim(name)) = lower(nn)) then raise exception 'purpose_exists'; end if;
+  update cheque_purposes set name = nn where name = p_old;
+  if not found then raise exception 'no_purpose'; end if;
+  update cheques set purpose = nn where purpose = p_old; get diagnostics n = row_count;
+  return n;
+end $$;
+revoke execute on function public.purpose_rename(text, text) from anon, public;
+grant execute on function public.purpose_rename(text, text) to authenticated;

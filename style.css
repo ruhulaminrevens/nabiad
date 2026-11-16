@@ -1056,3 +1056,8 @@ a.kpi{display:block;text-decoration:none!important;color:#fff;cursor:pointer}
 .tag.off{background:rgba(225,29,72,.12);color:#e11d48;border-color:rgba(225,29,72,.25)}
 .tag.ok{background:rgba(16,185,129,.14);color:#059669;border-color:rgba(16,185,129,.3)}
 .uc .row>.pill,.uc .row>.tag{flex:none;width:auto;align-self:center} .modal .pfp{padding-top:4px}
+/* v6.43 purpose manager + edit window */
+.pm-list{display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto}
+.pm-row{display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface2)}
+.pm-n{flex:1;min-width:0;display:flex;flex-direction:column}.pm-n b{font-size:14px;word-break:break-word}
+.euac select.in{min-width:92px}

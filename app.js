@@ -5,9 +5,9 @@ const DEMO = !CFG.SUPABASE_URL;
 const STATUSES = ["Pending","Cleared","Bounced","Returned-Cash","Cancelled","Stopped"];
 const PURPOSES = ["Cash Withdrawal (ক্যাশ উত্তোলন)","Own A/C Transfer (নিজ অ্যাকাউন্টে জমা)","Supplier Payment (সাপ্লায়ার পেমেন্ট)","Rent (ভাড়া)","Loan/EMI (লোন কিস্তি)","Inter-company (সহযোগী প্রতিষ্ঠান)","Zakat/Donation (যাকাত/দান)","Cancelled/Spoiled (বাতিল/নষ্ট পাতা)"];
 /* v6.24 — user-added purposes (shared in DB table cheque_purposes, cached per device) */
-let PURP_X = []; try { PURP_X = JSON.parse(localStorage.getItem("nb_purp_x") || "[]"); } catch (e) {}
-const allPurposes = (withUsed) => { const l = [...PURPOSES, ...PURP_X.filter(x => !PURPOSES.includes(x))]; if (withUsed) (S.cheques || []).forEach(c => { if (c.purpose && !l.includes(c.purpose)) l.push(c.purpose); }); return l; };
-async function loadPurposes() { try { const x = await API.purposes(); PURP_X = x; if (!DEMO) localStorage.setItem("nb_purp_x", JSON.stringify(x)); } catch (e) {} }
+let PURP_X = []; try { PURP_X = JSON.parse(localStorage.getItem("nb_purp_v2") || "[]"); } catch (e) {}
+const allPurposes = (withUsed) => { const l = [...(PURP_X.length ? PURP_X : PURPOSES)]; if (withUsed) (S.cheques || []).forEach(c => { if (c.purpose && !l.includes(c.purpose)) l.push(c.purpose); }); return l; };
+async function loadPurposes() { try { const x = await API.purposes(); PURP_X = x; if (!DEMO) localStorage.setItem("nb_purp_v2", JSON.stringify(x)); } catch (e) {} }
 const TAKERS = ["Foysal","Sourov","Sadik","Tushar","Sohan","Omi","Aslam","Boss","Others"];
 const BN_M = ["জানু","ফেব্রু","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টে","অক্টো","নভে","ডিসে"];
 
@@ -128,7 +128,7 @@ async function pickImage(file, o) { if (!file) return null; return await cropMod
 
 function userErr(e) {
   const m = String(e?.message || e), en = LANG === "en";
-  const T = { admin_only: ["শুধু Admin এই কাজ করতে পারেন", "Only an admin can do this"], bad_email: ["ইমেইল ঠিক নয়", "Invalid email address"], weak_password: ["পাসওয়ার্ড কমপক্ষে ১০ অক্ষর হতে হবে", "Password must be at least 10 characters"], bad_role: ["Role ঠিক নয়", "Invalid role"], email_exists: ["এই ইমেইলে আগেই ব্যবহারকারী আছে", "A user with this email already exists"], no_user: ["ব্যবহারকারী পাওয়া যায়নি", "User not found"] };
+  const T = { admin_only: ["শুধু Admin এই কাজ করতে পারেন", "Only an admin can do this"], bad_email: ["ইমেইল ঠিক নয়", "Invalid email address"], weak_password: ["পাসওয়ার্ড কমপক্ষে ১০ অক্ষর হতে হবে", "Password must be at least 10 characters"], bad_role: ["Role ঠিক নয়", "Invalid role"], email_exists: ["এই ইমেইলে আগেই ব্যবহারকারী আছে", "A user with this email already exists"], no_user: ["ব্যবহারকারী পাওয়া যায়নি", "User not found"], edit_window_closed: ["এডিটের সময় শেষ বা বন্ধ — ছবি বদলানো যায়নি", "Your edit window is closed or off — photo not changed"], purpose_exists: ["এই খাত আগেই আছে", "This purpose already exists"], no_purpose: ["খাত পাওয়া যায়নি", "Purpose not found"], bad_name: ["নাম লিখুন", "Enter a name"] };
   for (const k in T) if (m.includes(k)) return new Error(T[k][en ? 1 : 0]);
   return e instanceof Error ? e : new Error(m);
 }
@@ -172,10 +172,11 @@ function editUserModal(u, after) {
     <div class="pfp"><div class="ava xl" id="eu-av"></div><div class="pfb"><b style="word-break:break-all">${esc(u.email)}</b>${me ? `<div class="mut xs">${en ? "This is you" : "এটা আপনি"}</div>` : ""}<div class="row" style="margin-top:8px"><button class="btn sm pri fix" id="eu-up" type="button">${ico("cam")} ${en ? "Photo" : "ছবি"}</button><button class="btn sm fix" id="eu-rm" type="button">${ico("trash")} ${en ? "Remove" : "মুছুন"}</button><input type="file" id="eu-f" accept="image/*" hidden></div></div></div>
     <div class="ug2" style="margin-top:14px"><div><label class="f">${en ? "Name" : "নাম"}</label><input class="in" id="eu-n" value="${esc(u.name || "")}" autocomplete="off"></div>
     <div><label class="f">Role</label><div class="seg rl" id="eu-r" style="display:flex;width:100%">${[["admin", "Admin"], ["staff", "Staff"], ["boss", "Boss"]].map(([r, l]) => `<span class="chip ${r === u.role ? "on" : ""}" data-r="${r}" style="flex:1;text-align:center">${l}</span>`).join("")}</div></div>
+    <div class="euac" id="eu-edw" style="display:${u.role === "staff" ? "" : "none"}"><div style="flex:1"><b>${en ? "Edit window (own entries)" : "নিজের এন্ট্রি এডিটের সময়"}</b><div class="mut xs">${en ? "Lets this staff edit cheque entries they posted, for up to N days after posting. Staff can never delete anything." : "এই staff নিজের পোস্ট করা চেক এন্ট্রি পোস্টের পর সর্বোচ্চ N দিন এডিট করতে পারবেন। কোনো staff কখনোই কিছু মুছতে পারেন না।"}</div></div><select class="in" id="eu-ed" style="width:auto">${[0, 1, 2, 3, 4, 5, 6, 7].map(d => `<option value="${d}" ${(u.edit_days || 0) === d ? "selected" : ""}>${d === 0 ? (en ? "OFF" : "বন্ধ") : d + (en ? " day" : " দিন")}</option>`).join("")}</select></div>
     <div class="euac"><div><b>${en ? "Active" : "সক্রিয়"}</b><div class="mut xs">${en ? "Inactive users cannot sign in or see any data." : "নিষ্ক্রিয় ইউজার লগইন করতে বা কোনো ডাটা দেখতে পারেন না।"}</div></div><label class="sw"><input type="checkbox" id="eu-ac" ${u.active ? "checked" : ""}><i></i></label></div></div>
     <div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn" id="eu-x" type="button">${en ? "Cancel" : "বাতিল"}</button><button class="btn pri" id="eu-ok" type="button">${ico("save")} ${en ? "Save changes" : "সেভ করুন"}</button></div>`, (root, close) => {
     const g = id => $("#" + id, root), paint = () => { const im = cur(); g("eu-av").innerHTML = im ? `<img src="${im}" alt="">` : avaInit(g("eu-n").value || u.name, u.email); g("eu-av").classList.toggle("has", !!im); g("eu-rm").classList.toggle("hide", !im); };
-    paint(); g("eu-n").oninput = paint; $$("#eu-r .chip", root).forEach(c => c.onclick = () => $$("#eu-r .chip", root).forEach(x => x.classList.toggle("on", x === c)));
+    paint(); g("eu-n").oninput = paint; $$("#eu-r .chip", root).forEach(c => c.onclick = () => { $$("#eu-r .chip", root).forEach(x => x.classList.toggle("on", x === c)); g("eu-edw").style.display = c.dataset.r === "staff" ? "" : "none"; });
     g("eu-up").onclick = () => g("eu-f").click(); g("eu-x").onclick = close;
     g("eu-f").onchange = async () => { const f0 = g("eu-f").files[0]; g("eu-f").value = ""; if (!f0) return; const f = await pickImage(f0, { title: en ? "Crop profile picture" : "প্রোফাইল ছবি ক্রপ", aspect: 1, aspects: [], circle: true, face: true, allowFull: false, maxSide: 512 }); if (!f) return; try { st.av = await imgToAvatar(f); paint(); } catch (e) { toast(e.message, "err"); } };
     g("eu-rm").onclick = () => { st.av = null; paint(); };
@@ -185,7 +186,7 @@ function editUserModal(u, after) {
       if (me && (role !== "admin" || !active) && !ask(en ? "Removing your own Admin access will lock you out of the admin pages. Sure?" : "নিজের Admin অধিকার সরিয়ে দিলে আর অ্যাডমিন পাতায় আসতে পারবেন না। নিশ্চিত?")) return;
       e.target.disabled = true;
       try {
-        await API.updateProfile(u.id, { name, role, active });
+        await API.updateProfile(u.id, { name, role, active, edit_days: role === "staff" ? +g("eu-ed").value : 0 });
         if (st.av !== undefined) { await API.setUserAvatar(u.id, st.av); st.av ? avaMap()[u.id] = st.av : delete avaMap()[u.id]; if (me) try { st.av ? localStorage.setItem("nabiad_ava_" + u.id, st.av) : localStorage.removeItem("nabiad_ava_" + u.id); } catch { } }
         close(); toast(en ? "✔ Saved" : "✔ সেভ হয়েছে");
         if (me) { S.me.name = name; saveCache(); shell(); route(); } else { refreshAvatars(); after && after(); }
@@ -281,7 +282,7 @@ const SbAPI = {
     if (!u) { const c = readCache(); if (!navigator.onLine && c?.me) return c.me; return null; }
     const { data: p, error } = await sb.from("profiles").select("*").eq("id", u.id).maybeSingle();
     if (error && isNetErr(error)) { const c = readCache(); if (c?.me?.id === u.id) return c.me; }
-    if (error || !p || !p.active) return null; return { id: u.id, email: p.email, name: p.name, role: p.role };
+    if (error || !p || !p.active) return null; return { id: u.id, email: p.email, name: p.name, role: p.role, edit_days: p.edit_days || 0 };
   },
   async login(email, pw) { const { error } = await sb.auth.signInWithPassword({ email, password: pw }); if (error) throw error; return this.session(); },
   async logout() { await sb.auth.signOut(); },
@@ -290,18 +291,18 @@ const SbAPI = {
     const by = {}; ev.forEach(e => (by[e.cheque_id] ||= []).push({ id: e.id, status: e.new_status, date: e.status_date, remarks: e.remarks, by: e.entered_by, at: e.created_at }));
     return {
       accounts: acc, books: bk.map(b => ({ id: b.id, code: b.code, series: b.series, first: Number(b.first_leaf), last: b.last_leaf == null ? null : Number(b.last_leaf), track: b.track_from == null ? null : Number(b.track_from), status: b.status, note: b.note })),
-      cheques: ch.map(r => ({ id: r.id, date: r.chq_date, code: r.code, no: Number(r.chq_no), amount: Number(r.amount), purpose: r.purpose, taker: r.cash_taker, party: r.party, toac: r.to_ac, remarks: r.remarks, photo: r.photo || null, by: r.entered_by, at: r.created_at, events: by[r.id] || [] }))
+      cheques: ch.map(r => ({ id: r.id, date: r.chq_date, code: r.code, no: Number(r.chq_no), amount: Number(r.amount), purpose: r.purpose, taker: r.cash_taker, party: r.party, toac: r.to_ac, remarks: r.remarks, photo: r.photo || null, by: r.entered_by, uid: r.user_id || null, at: r.created_at, events: by[r.id] || [] }))
     };
   },
   async addCheque(c) {
     const row = { id: c.id || crypto.randomUUID(), chq_date: c.date, code: c.code, chq_no: c.no, amount: c.amount, purpose: c.purpose, cash_taker: c.taker || null, party: c.party || null, to_ac: c.toac || null, remarks: c.remarks || null, entered_by: S.me.name };
     if (c.photo) row.photo = c.photo;
-    const local = () => ({ id: row.id, date: c.date, code: c.code, no: c.no, amount: c.amount, purpose: c.purpose, taker: row.cash_taker, party: row.party, toac: row.to_ac, remarks: row.remarks, by: S.me.name, at: new Date().toISOString(), events: [], pending: true });
+    const local = () => ({ id: row.id, date: c.date, code: c.code, no: c.no, amount: c.amount, purpose: c.purpose, taker: row.cash_taker, party: row.party, toac: row.to_ac, remarks: row.remarks, by: S.me.name, uid: S.me.id, at: new Date().toISOString(), events: [], pending: true });
     if (!navigator.onLine) { Outbox.add("cheque", row); return local(); }
     const { data, error } = await sb.from("cheques").insert(row).select().single();
     if (error && isNetErr(error)) { Outbox.add("cheque", row); return local(); }
     if (error) { if (error.code === "23505") throw new Error("এই চেক নম্বর এই অ্যাকাউন্টে আগেই এন্ট্রি আছে"); throw error; }
-    return { id: data.id, date: data.chq_date, code: data.code, no: Number(data.chq_no), amount: Number(data.amount), purpose: data.purpose, taker: data.cash_taker, party: data.party, toac: data.to_ac, remarks: data.remarks, photo: data.photo || null, by: data.entered_by, at: data.created_at, events: [] };
+    return { id: data.id, date: data.chq_date, code: data.code, no: Number(data.chq_no), amount: Number(data.amount), purpose: data.purpose, taker: data.cash_taker, party: data.party, toac: data.to_ac, remarks: data.remarks, photo: data.photo || null, by: data.entered_by, uid: data.user_id || null, at: data.created_at, events: [] };
   },
   async addStatus(chequeId, status, date, remarks) {
     const row = { id: crypto.randomUUID(), cheque_id: chequeId, new_status: status, status_date: date, remarks: remarks || null, entered_by: S.me.name };
@@ -314,7 +315,7 @@ const SbAPI = {
   async updateCheque(id, p) {
     const m = { date: "chq_date", code: "code", no: "chq_no", amount: "amount", purpose: "purpose", taker: "cash_taker", party: "party", toac: "to_ac", remarks: "remarks" }; const row = {};
     for (const k in p) row[m[k]] = p[k] === "" ? null : p[k];
-    const { error } = await sb.from("cheques").update(row).eq("id", id); if (error) throw error;
+    const { data, error } = await sb.from("cheques").update(row).eq("id", id).select("id"); if (error) throw error; if (!data || !data.length) throw new Error(LANG === "en" ? "Edit not allowed — your edit window is closed or switched off" : "এডিট করা যাবে না — আপনার এডিটের সময় শেষ বা বন্ধ আছে");
   },
   async deleteCheque(id) { const { error } = await sb.from("cheques").delete().eq("id", id); if (error) throw /in_use/.test(error.message || "") ? new Error("এই চেকের স্ট্যাটাস রেকর্ড আছে — মুছা যাবে না। \"Cancelled\" স্ট্যাটাস দিন") : error; },
   async deleteStatus(id) { const { error } = await sb.from("cheque_status").delete().eq("id", id); if (error) throw error; },
@@ -791,11 +792,12 @@ async function vEntry(v) {
   const clearPhoto = photoPicker(v, st, { inp: "e-ph", cam: "e-ph-c", img: "e-phv", x: "e-phx" });
   const purpKey = () => st.purpose ? purposeKey(st.purpose) : "";
   function drawPurp() {
-    $e("e-purp").innerHTML = allPurposes().map(p => `<span class="chip" data-p="${esc(p)}">${esc(p.split(" (")[0])}</span>`).join("") + `<span class="chip add" id="e-padd" title="নতুন খাত যোগ করুন">＋ নতুন</span>`;
+    $e("e-purp").innerHTML = allPurposes().map(p => `<span class="chip" data-p="${esc(p)}">${esc(p.split(" (")[0])}</span>`).join("") + `<span class="chip add" id="e-padd" title="নতুন খাত যোগ করুন">＋ নতুন</span>` + (S.me.role === "admin" ? `<span class="chip add" id="e-pmg" title="${LANG === "en" ? "Edit / delete purposes" : "খাত এডিট / মুছুন"}">⚙ ${LANG === "en" ? "Manage" : "ম্যানেজ"}</span>` : "");
+    if ($e("e-pmg")) $e("e-pmg").onclick = () => purposeManage(() => { if (st.purpose && !allPurposes().includes(st.purpose)) st.purpose = ""; drawPurp(); });
     $$(".chip[data-p]", v).forEach(c => c.onclick = () => { st.purpose = c.dataset.p; applyPurpose(); if (purpKey() === "cash") $e("e-taker").focus(); else if (purpKey() === "own") $e("e-toac").focus(); else $e("e-rem").focus(); });
     $e("e-padd").onclick = () => askText("নতুন খাত (Purpose)", "খাতের নাম লিখুন (যেমন: Salary)", "", async n => {
       if (allPurposes(true).some(p => p.split(" (")[0].trim().toLowerCase() === n.split(" (")[0].trim().toLowerCase())) throw new Error("এই খাত আগেই আছে");
-      await API.purposeAdd(n); PURP_X = [...PURP_X, n]; if (!DEMO) localStorage.setItem("nb_purp_x", JSON.stringify(PURP_X));
+      await API.purposeAdd(n); PURP_X = [...allPurposes(), n]; if (!DEMO) localStorage.setItem("nb_purp_v2", JSON.stringify(PURP_X));
       st.purpose = n; drawPurp(); applyPurpose(); toast("✔ নতুন খাত যোগ হয়েছে");
     });
     applyPurpose();
@@ -919,7 +921,7 @@ function chequeModal(c, after) {
    ${(S.reminders || []).filter(r => r.cheque_id === c.id && !r.done).map(r => `<div class="alert vi" style="margin-top:10px">⏰ <span>${esc(r.title)} — ${new Date(remDue(r)).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span></div>`).join("")}
    <h3 style="margin:16px 0 8px;font-size:13px;color:var(--mut)">স্ট্যাটাস ইতিহাস</h3>
    ${c.events.length ? c.events.map(e => `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">${stTag(e.status)} <span>${dmy(e.date)}</span> <span class="mut sm">${esc(e.by || "")} ${esc(e.remarks || "")}</span>${admin ? `<button class="btn bad sm" style="margin-left:auto" data-de="${e.id}">মুছুন</button>` : ""}</div>`).join("") : `<div class="mut sm">কোনো আপডেট নেই (ডিফল্ট: ${c.status})</div>`}
-   <div class="row" style="margin-top:16px">${S.me.role !== "boss" ? `<button class="btn pri" id="c-st">স্ট্যাটাস দিন</button>` : ""}<button class="btn" id="c-rm">${ico("bell")} রিমাইন্ডার</button>${admin || (S.me.role === "staff" && !c.photo) ? `<button class="btn" id="c-ap">${ico("cam")} ${c.photo ? "ছবি বদলান" : "ছবি যোগ"}</button>` : ""}${admin ? `<button class="btn" id="c-ed">✎ এডিট</button><button class="btn bad" id="c-dl">🗑 মুছুন</button>` : ""}<button class="btn" id="c-x">বন্ধ</button></div>`, (root, close) => {
+   <div class="row" style="margin-top:16px">${S.me.role !== "boss" ? `<button class="btn pri" id="c-st">স্ট্যাটাস দিন</button>` : ""}<button class="btn" id="c-rm">${ico("bell")} রিমাইন্ডার</button>${admin || (S.me.role === "staff" && (!c.photo || canEditChq(c))) ? `<button class="btn" id="c-ap">${ico("cam")} ${c.photo ? "ছবি বদলান" : "ছবি যোগ"}</button>` : ""}${admin ? `<button class="btn" id="c-ed">✎ এডিট</button><button class="btn bad" id="c-dl">🗑 মুছুন</button>` : canEditChq(c) ? `<button class="btn" id="c-ed">✎ এডিট</button>` : ""}<button class="btn" id="c-x">বন্ধ</button></div>${!admin && canEditChq(c) ? `<div class="mut xs" style="margin-top:8px">⏳ ${LANG === "en" ? "You can edit this entry for another " : "এই এন্ট্রি আরও এডিট করতে পারবেন: "}${leftTxt(chqEditLeft(c))}</div>` : ""}`, (root, close) => {
     $("#c-x", root).onclick = close; showPhoto($("#c-ph", root), c);
     $("#c-rm", root).onclick = () => { close(); reminderModal(null, { title: `চেক ${c.code} · ${c.no} পাস হয়েছে কিনা দেখুন`, note: `৳ ${money(c.amount)}${c.party ? " · " + c.party : ""} · চেকের তারিখ ${dmy(c.date)}`, due: (() => { const d = new Date(addDays(c.date < today() ? today() : c.date, 3) + "T10:00"); return d; })(), kind: "cheque", cheque_id: c.id, for_role: "all" }, after); };
     $("#c-ap", root) && ($("#c-ap", root).onclick = () => { close(); addPhotoModal(c, after); });
@@ -930,7 +932,7 @@ function chequeModal(c, after) {
   });
 }
 function editChequeModal(c, after) {
-  modal(`<h2>এডিট (Admin): ${esc(c.code)} · ${c.no}</h2><div class="grid" style="gap:10px">
+  modal(`<h2>এডিট: ${esc(c.code)} · ${c.no}</h2><div class="grid" style="gap:10px">
    <div class="row"><div><label class="f">তারিখ</label><input class="in" type="date" id="x-d" value="${c.date}"></div><div><label class="f">A/C Code</label><select class="in" id="x-c">${S.accounts.map(a => `<option ${a.code === c.code ? "selected" : ""}>${esc(a.code)}</option>`).join("")}</select></div></div>
    <div class="row"><div><label class="f">চেক নং</label><input class="in" id="x-n" value="${c.no}"></div><div><label class="f">টাকা</label><input class="in" id="x-a" value="${c.amount}"></div></div>
    <div><label class="f">খাত</label><select class="in" id="x-p">${allPurposes(true).map(p => `<option ${p === c.purpose ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></div>
@@ -1526,7 +1528,7 @@ async function vAdmin(v) {
       let us = []; try { us = await API.users(); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(e.message)}</div>`; return; }
       out.innerHTML = `<div class="row ubar"><div><b>${us.length} ${LANG === "en" ? "users" : "জন ব্যবহারকারী"}</b><div class="mut xs">${LANG === "en" ? "Create accounts, edit profiles, set roles and reset passwords here" : "এখান থেকেই অ্যাকাউন্ট খোলা, প্রোফাইল এডিট, Role দেওয়া ও পাসওয়ার্ড রিসেট"}</div></div><button class="btn pri" id="u-new">${ico("plus")} ${LANG === "en" ? "New user" : "নতুন ব্যবহারকারী"}</button></div>
        <div class="ulist">${us.map(u => `<div class="card uc ${u.active ? "" : "off"}" data-u="${u.id}"><div class="uh">${avaEl(u.id, u.name, u.email)}<div class="ue"><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div></div>
-        <div class="row" style="gap:6px;margin-bottom:12px"><span class="pill">${esc(u.role)}</span><span class="tag ${u.active ? "ok" : "off"}">${u.active ? (LANG === "en" ? "Active" : "সক্রিয়") : (LANG === "en" ? "Inactive" : "নিষ্ক্রিয়")}</span>${u.id === S.me.id ? `<span class="mut xs">${LANG === "en" ? "This is you" : "এটা আপনি"}</span>` : ""}</div>
+        <div class="row" style="gap:6px;margin-bottom:12px"><span class="pill">${esc(u.role)}</span><span class="tag ${u.active ? "ok" : "off"}">${u.active ? (LANG === "en" ? "Active" : "সক্রিয়") : (LANG === "en" ? "Inactive" : "নিষ্ক্রিয়")}</span>${u.role === "staff" ? `<span class="tag ${u.edit_days ? "ok" : "off"}" title="${LANG === "en" ? "Edit window for own entries" : "নিজের এন্ট্রি এডিটের সময়"}">✎ ${u.edit_days ? u.edit_days + (LANG === "en" ? " day" : " দিন") : (LANG === "en" ? "Edit off" : "এডিট বন্ধ")}</span>` : ""}${u.id === S.me.id ? `<span class="mut xs">${LANG === "en" ? "This is you" : "এটা আপনি"}</span>` : ""}</div>
         <div class="row"><button class="btn pri sm fix" data-ed="${u.id}">✏️ ${LANG === "en" ? "Edit" : "এডিট"}</button><button class="btn sm fix" data-pw="${u.id}">🔑 ${LANG === "en" ? "Reset password" : "পাসওয়ার্ড রিসেট"}</button></div></div>`).join("")}</div>`;
       $("#u-new", out).onclick = () => newUserModal(draw);
       $$("[data-ed]", out).forEach(b => b.onclick = () => editUserModal(us.find(u => u.id === b.dataset.ed), draw));
@@ -1647,11 +1649,39 @@ async function compressImage(file, max = 1600, q = 0.72) {
     return await new Promise(r => cv.toBlob(r, "image/jpeg", q));
   } finally { URL.revokeObjectURL(url); }
 }
-const photoPath = (id, code, no, date) => `${(date || today()).slice(0, 4)}/${norm(code)}_${no}_${id.slice(0, 8)}.jpg`;
+const photoPath = (id, code, no, date) => `${(date || today()).slice(0, 4)}/${norm(code)}_${no}_${id.slice(0, 8)}_${Date.now().toString(36)}.jpg`;
+/* v6.43 — who may edit a cheque: admin always; staff only own entries inside the per-user window (profiles.edit_days, 0 = off) */
+const chqEditLeft = c => { if (S.me.role === "admin") return Infinity; if (S.me.role !== "staff") return 0; const d = S.me.edit_days || 0; if (!d || !c.at) return 0; if (c.uid ? c.uid !== S.me.id : c.by !== S.me.name) return 0; return new Date(c.at).getTime() + d * 864e5 - Date.now(); };
+const canEditChq = c => chqEditLeft(c) > 0;
+const leftTxt = ms => { const h = Math.floor(ms / 36e5); return h >= 24 ? Math.floor(h / 24) + (LANG === "en" ? "d " : " দিন ") + (h % 24) + (LANG === "en" ? "h" : " ঘণ্টা") : Math.max(1, h) + (LANG === "en" ? "h" : " ঘণ্টা"); };
 async function showPhoto(el, c) {
   if (!c.photo) return; el.innerHTML = `<div class="skel" style="height:120px"></div>`;
   try { const u = await API.photoUrl(c.photo); el.innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener" class="chq-ph"><img src="${esc(u)}" alt="cheque"></a>`; }
   catch (e) { el.innerHTML = `<div class="mut sm">ছবি লোড হয়নি: ${esc(e.message || e)}</div>`; }
+}
+/* v6.43 — admin: rename / delete cheque purposes (staff can only add) */
+function purposeManage(onChange) {
+  const en = LANG === "en";
+  const used = p => (S.cheques || []).filter(c => c.purpose === p).length;
+  const save = () => { try { if (!DEMO) localStorage.setItem("nb_purp_v2", JSON.stringify(PURP_X)); } catch (e) { } };
+  modal(`<h2>⚙ ${en ? "Cheque purposes" : "চেকের খাত (Purpose)"}</h2>
+    <div class="mut xs" style="margin-bottom:10px">${en ? "Renaming also updates old cheques. Deleting only removes it from the list — old cheques keep their purpose. Names starting with Cash / Own / Cancel / Supplier trigger special fields." : "নাম বদলালে পুরনো চেকের খাতও বদলে যায়। মুছলে শুধু তালিকা থেকে সরে — পুরনো চেকে খাত লেখাই থাকে। Cash / Own / Cancel / Supplier দিয়ে শুরু নামে বিশেষ ঘর (ক্যাশ-টেকার, To A/C) কাজ করে।"}</div>
+    <div class="pm-list">${allPurposes().map((p, i) => `<div class="pm-row"><div class="pm-n"><b>${esc(p)}</b><span class="mut xs">${used(p)} ${en ? "cheques" : "টি চেক"}</span></div><button class="btn sm ghost" data-pe="${i}" title="${en ? "Rename" : "নাম বদলান"}">${ico("edit")}</button><button class="btn sm ghost" data-pd="${i}" title="${en ? "Delete" : "মুছুন"}">${ico("trash")}</button></div>`).join("") || `<div class="mut">${en ? "No purposes" : "কোনো খাত নেই"}</div>`}</div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn pri" id="pm-x">${en ? "Done" : "হয়েছে"}</button></div>`, (root, close) => {
+    const list = allPurposes();
+    $("#pm-x", root).onclick = () => { close(); onChange && onChange(); };
+    $$("[data-pe]", root).forEach(b => b.onclick = () => { const old = list[+b.dataset.pe];
+      askText(en ? "Rename purpose" : "খাতের নাম বদলান", en ? "New name" : "নতুন নাম", old, async n => {
+        if (n === old) return;
+        if (allPurposes(true).some(x => x !== old && x.split(" (")[0].trim().toLowerCase() === n.split(" (")[0].trim().toLowerCase())) throw new Error(en ? "This purpose already exists" : "এই খাত আগেই আছে");
+        const k = await API.purposeRename(old, n); PURP_X = allPurposes().map(x => x === old ? n : x); save();
+        (S.cheques || []).forEach(c => { if (c.purpose === old) c.purpose = n; }); saveCache(); toast(en ? `✔ Renamed${k ? " · " + k + " cheques updated" : ""}` : `✔ নাম বদলেছে${k ? " · " + k + "টি চেক আপডেট" : ""}`);
+        setTimeout(() => purposeManage(onChange), 0);
+      }); });
+    $$("[data-pd]", root).forEach(b => b.onclick = async () => { const nm = list[+b.dataset.pd], u = used(nm);
+      if (!ask(en ? `Delete purpose "${nm}"?${u ? `\n${u} existing cheques keep this purpose.` : ""}` : `"${nm}" খাতটি তালিকা থেকে মুছবেন?${u ? `\nপুরনো ${u}টি চেকে এই খাত লেখাই থাকবে।` : ""}`)) return;
+      try { await API.purposeDelete(nm); PURP_X = allPurposes().filter(x => x !== nm); save(); toast(en ? "✔ Deleted" : "✔ মোছা হয়েছে"); purposeManage(onChange); } catch (e) { toast(userErr(e), "err"); } });
+  });
 }
 function photoPicker(root, st, ids) {
   const inp = $("#" + ids.inp, root), img = $("#" + ids.img, root), x = $("#" + ids.x, root);
@@ -1668,7 +1698,7 @@ function addPhotoModal(c, after) {
     $("#p-ok", root).onclick = async () => {
       if (!st.photo) return toast("ছবি বাছুন", "err"); const b = $("#p-ok", root); b.disabled = true;
       try { const p = photoPath(c.id, c.code, c.no, c.date); await API.uploadPhoto(p, st.photo); await API.setPhoto(c.id, p); c.photo = p; saveCache(); close(); toast("✔ ছবি সেভ হয়েছে"); after && after(); }
-      catch (e) { toast("ছবি সেভ হয়নি: " + (e.message || e), "err"); b.disabled = false; }
+      catch (e) { toast("ছবি সেভ হয়নি: " + (/edit_window_closed/.test(e.message || "") ? userErr(e) : (e.message || e)), "err"); b.disabled = false; }
     };
   });
 }
@@ -2260,7 +2290,7 @@ async function vRem(v) {
       <div class="rem-list" style="margin-top:12px">${tab !== "done" ? `<button class="card rem-add" id="rm-add"><span class="ri">${ico("plus")}</span><span><b>নতুন রিমাইন্ডার</b><small>পার্টির চেক, পেমেন্ট, অডিট বা যেকোনো কাজ — ছবি ও দিন বেছে দিন</small></span></button>` : ""}
       ${list.length ? list.map(r => { const due = !r.done && remDue(r) <= now; const ch = r.cheque_id && S.cheques.find(c => c.id === r.cheque_id); return `<div class="card rem ${due ? "due" : ""} ${r.done ? "dn" : ""}"><div class="ri">${ico(r.kind === "cheque" ? "list" : r.photo ? "cam" : "bell")}</div><div class="rt"><b>${esc(r.title)}</b>${r.note ? `<div class="mut sm">${esc(r.note)}</div>` : ""}
         <div class="rmeta"><span class="tag ${due ? "t-due" : ""}">${ico("clock").replace("<svg", '<svg width="12" height="12"')} ${new Date(remDue(r)).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · ${r.done ? "সম্পন্ন" : relTime(remDue(r))}</span>${r.repeat !== "none" ? `<span class="tag">${REPEATS[r.repeat] || ""}</span>` : ""}<span class="tag">${FOR_ROLE[r.for_role] || ""}</span>${ch ? `<span class="tag t-mv">${esc(ch.code)} · ${ch.no} ${stTag(ch.status)}</span>` : ""}<span class="mut xs">${esc(r.created_by || "")}</span></div>${r.photo ? `<div class="rph" data-ph="${esc(r.photo)}"></div>` : ""}</div>
-        <div class="ra">${r.done ? "" : `<button class="btn ok sm" data-dn="${r.id}">✓ সম্পন্ন</button>${due ? snoozeBtns(r.id) : ""}`}${r.cheque_id ? `<button class="btn sm" data-oc="${r.cheque_id}">চেক</button>` : ""}<button class="btn sm" data-ics="${r.id}" title="ফোনের ক্যালেন্ডারে অ্যালার্ম সহ যোগ করুন">${ico("cal")}</button><button class="btn sm ghost" data-ed="${r.id}" title="এডিট">${ico("edit")}</button><button class="btn sm ghost" data-rm="${r.id}" title="মুছুন">${ico("trash")}</button></div></div>`; }).join("") : `<div class="card empty">${tab === "done" ? "কোনো সম্পন্ন রিমাইন্ডার নেই" : "এখনো কোনো রিমাইন্ডার নেই — উপরের \"নতুন রিমাইন্ডার\" চাপুন।"}</div>`}</div>
+        <div class="ra">${r.done ? "" : `<button class="btn ok sm" data-dn="${r.id}">✓ সম্পন্ন</button>${due ? snoozeBtns(r.id) : ""}`}${r.cheque_id ? `<button class="btn sm" data-oc="${r.cheque_id}">চেক</button>` : ""}<button class="btn sm" data-ics="${r.id}" title="ফোনের ক্যালেন্ডারে অ্যালার্ম সহ যোগ করুন">${ico("cal")}</button><button class="btn sm ghost" data-ed="${r.id}" title="এডিট">${ico("edit")}</button>${S.me.role === "admin" ? `<button class="btn sm ghost" data-rm="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></div>`; }).join("") : `<div class="card empty">${tab === "done" ? "কোনো সম্পন্ন রিমাইন্ডার নেই" : "এখনো কোনো রিমাইন্ডার নেই — উপরের \"নতুন রিমাইন্ডার\" চাপুন।"}</div>`}</div>
       <div class="card" style="margin-top:14px"><div class="ch" style="padding:0 0 10px"><h3>সিস্টেম সতর্কতা</h3><span class="tag">${sys.length}</span></div>${sys.length ? `<div class="grid" style="gap:8px">${sys.map(a => `<div class="alert ${a.k}">${ico(a.ic).replace("<svg", '<svg width="18" height="18"')}<span>${esc(a.t)}</span>${a.go ? `<a class="btn sm" style="margin-left:auto" href="${a.go}">খুলুন →</a>` : ""}</div>`).join("")}</div>` : `<div class="alert gr">✔ কোনো সতর্কতা নেই</div>`}</div>
       <div class="mut sm" style="margin-top:12px">💡 অ্যাপ পুরো বন্ধ থাকলেও অ্যালার্ম চাইলে ${ico("cal").replace("<svg", '<svg width="13" height="13" style="vertical-align:-2px"')} বাটন চাপুন — ফোনের ক্যালেন্ডারে অ্যালার্মসহ যোগ হবে।</div>`;
     $$("[data-t]", v).forEach(c => c.onclick = () => { tab = c.dataset.t; draw(); });
@@ -2511,7 +2541,9 @@ Object.assign(SbAPI, {
   async dpartyUsage(id) { const { count, error } = await sb.from("dist_collections").select("id", { count: "exact", head: true }).eq("party_id", id); if (error) throw error; return count || 0; },
   async asmUsage(name) { const { count, error } = await sb.from("dist_collections").select("id", { count: "exact", head: true }).eq("asm", name); if (error) throw error; return count || 0; },
   async asms() { try { return (await fetchAll("dist_asms", "name")).map(a => ({ id: a.id, name: a.name, active: a.active !== false })); } catch (e) { if (/dist_asms|relation|schema cache/i.test(e.message || "")) return []; throw e; } },
-  async purposes() { try { return (await fetchAll("cheque_purposes", "name")).map(a => a.name); } catch (e) { if (/cheque_purposes|relation|schema cache/i.test(e.message || "")) return PURP_X; throw e; } },
+  async purposes() { try { const r = (await fetchAll("cheque_purposes", "created_at")).sort((a, b) => (a.sort ?? 100) - (b.sort ?? 100) || String(a.created_at).localeCompare(String(b.created_at))); return r.map(a => a.name); } catch (e) { if (/cheque_purposes|relation|schema cache/i.test(e.message || "")) return PURP_X; throw e; } },
+  async purposeDelete(name) { const { data, error } = await sb.from("cheque_purposes").delete().eq("name", name).select(); if (error) throw error; if (!data.length) throw new Error("admin_only"); },
+  async purposeRename(o, n) { const { data, error } = await sb.rpc("purpose_rename", { p_old: o, p_new: n }); if (error) throw error; return data; },
   async purposeAdd(name) { const { error } = await sb.from("cheque_purposes").insert({ name, entered_by: S.me.name }); if (error) throw error.code === "23505" ? new Error("এই খাত আগেই আছে") : /cheque_purposes|relation|schema cache/i.test(error.message || "") ? new Error("Supabase-এ schema_v6.sql-এর v6.24 অংশ run করা হয়নি") : error; },
   async asmAdd(name) { const { data, error } = await sb.from("dist_asms").insert({ name, entered_by: S.me.name }).select().single(); if (error) throw error.code === "23505" ? new Error("এই নামে ASM আগেই আছে") : error; return { id: data.id, name: data.name, active: true }; },
   async asmRename(a, to) { if (a.id) { const { error } = await sb.from("dist_asms").update({ name: to }).eq("id", a.id); if (error) throw error.code === "23505" ? new Error("এই নামে ASM আগেই আছে") : error; } await this.dpartyRenameAsm(a.name, to); },
@@ -2553,8 +2585,10 @@ Object.assign(DemoAPI, {
   async dpartyUsage(id) { await this.dparties(); return demoStore.dcols.filter(r => r.party_id === id).length; },
   async asmUsage(name) { await this.dparties(); return demoStore.dcols.filter(r => r.asm === name).length; },
   async asms() { await this.dparties(); if (!demoStore.dasms) { demoStore.dasms = [...new Set(demoStore.dparties.map(p => p.asm).filter(Boolean))].map(n => ({ id: crypto.randomUUID(), name: n, active: true })); this.save(); } return demoStore.dasms.map(a => ({ ...a })); },
-  async purposes() { return [...(demoStore.purposes || [])]; },
-  async purposeAdd(name) { demoStore.purposes = [...(demoStore.purposes || []), name]; this.save(); },
+  async purposes() { if (!demoStore.purposes || !demoStore.purposes.length) demoStore.purposes = [...PURPOSES]; return [...demoStore.purposes]; },
+  async purposeAdd(name) { await this.purposes(); demoStore.purposes = [...demoStore.purposes, name]; this.save(); },
+  async purposeDelete(name) { await this.purposes(); demoStore.purposes = demoStore.purposes.filter(x => x !== name); this.save(); },
+  async purposeRename(o, n) { await this.purposes(); demoStore.purposes = demoStore.purposes.map(x => x === o ? n : x); let k = 0; demoStore.cheques.forEach(c => { if (c.purpose === o) { c.purpose = n; k++; } }); this.save(); return k; },
   async asmAdd(name) { await this.asms(); if (demoStore.dasms.some(a => norm(a.name) === norm(name))) throw new Error("এই নামে ASM আগেই আছে"); const a = { id: crypto.randomUUID(), name, active: true }; demoStore.dasms.push(a); this.save(); return { ...a }; },
   async asmRename(a, to) { await this.asms(); if (demoStore.dasms.some(x => x.id !== a.id && norm(x.name) === norm(to))) throw new Error("এই নামে ASM আগেই আছে"); const o = demoStore.dasms.find(x => x.id === a.id); if (o) o.name = to; await this.dpartyRenameAsm(a.name, to); },
   async asmActive(id, on) { await this.asms(); const o = demoStore.dasms.find(x => x.id === id); if (o) o.active = on; this.save(); },
