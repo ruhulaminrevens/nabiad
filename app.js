@@ -6,7 +6,9 @@ const STATUSES = ["Pending","Cleared","Bounced","Returned-Cash","Cancelled","Sto
 const PURPOSES = ["Cash Withdrawal (ক্যাশ উত্তোলন)","Own A/C Transfer (নিজ অ্যাকাউন্টে জমা)","Supplier Payment (সাপ্লায়ার পেমেন্ট)","Rent (ভাড়া)","Loan/EMI (লোন কিস্তি)","Inter-company (সহযোগী প্রতিষ্ঠান)","Zakat/Donation (যাকাত/দান)","Cancelled/Spoiled (বাতিল/নষ্ট পাতা)"];
 /* v6.24 — user-added purposes (shared in DB table cheque_purposes, cached per device) */
 let PURP_X = []; try { PURP_X = JSON.parse(localStorage.getItem("nb_purp_v2") || "[]"); } catch (e) {}
-const allPurposes = (withUsed) => { const l = [...(PURP_X.length ? PURP_X : PURPOSES)]; if (withUsed) (S.cheques || []).forEach(c => { if (c.purpose && !l.includes(c.purpose)) l.push(c.purpose); }); return l; };
+const pKey = p => String(p || "").split(" (")[0].trim().toLowerCase();
+/* v6.55 — a used purpose is added only if no listed purpose has the same key (e.g. "Cancelled/Spoiled" vs "Cancelled/Spoiled (বাতিল/নষ্ট পাতা)") */
+const allPurposes = (withUsed) => { const l = [...(PURP_X.length ? PURP_X : PURPOSES)]; if (withUsed) { const ks = new Set(l.map(pKey)); (S.cheques || []).forEach(c => { if (c.purpose && !ks.has(pKey(c.purpose))) { ks.add(pKey(c.purpose)); l.push(c.purpose); } }); } return l; };
 async function loadPurposes() { try { const x = await API.purposes(); PURP_X = x; if (!DEMO) localStorage.setItem("nb_purp_v2", JSON.stringify(x)); } catch (e) {} }
 const TAKERS = ["Foysal","Sourov","Sadik","Tushar","Sohan","Omi","Aslam","Boss","Others"];
 const BN_M = ["জানু","ফেব্রু","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টে","অক্টো","নভে","ডিসে"];
@@ -1006,7 +1008,7 @@ function editChequeModal(c, after) {
   modal(`<h2>এডিট: ${esc(c.code)} · ${c.no}</h2><div class="grid" style="gap:10px">
    <div class="row"><div><label class="f">তারিখ</label><input class="in" type="date" id="x-d" value="${c.date}"></div><div><label class="f">A/C Code</label><select class="in" id="x-c">${S.accounts.map(a => `<option ${a.code === c.code ? "selected" : ""}>${esc(a.code)}</option>`).join("")}</select></div></div>
    <div class="row"><div><label class="f">চেক নং</label><input class="in" id="x-n" value="${c.no}"></div><div><label class="f">টাকা</label><input class="in" id="x-a" value="${c.amount}"></div></div>
-   <div><label class="f">খাত</label><select class="in" id="x-p">${allPurposes(true).map(p => `<option ${p === c.purpose ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></div>
+   <div><label class="f">খাত</label><select class="in" id="x-p">${allPurposes(true).map(p => `<option ${pKey(p) === pKey(c.purpose) ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></div>
    <div class="row"><div><label class="f">কে তুলেছে</label><input class="in" id="x-t" value="${esc(c.taker || "")}"></div><div><label class="f">To A/C</label><input class="in" id="x-o" value="${esc(c.toac || "")}"></div></div>
    <div class="row"><div><label class="f">পার্টি</label><input class="in" id="x-y" value="${esc(c.party || "")}"></div><div><label class="f">মন্তব্য</label><input class="in" id="x-r" value="${esc(c.remarks || "")}"></div></div>
    <div class="row"><button class="btn pri" id="x-ok">সেভ</button><button class="btn" id="x-x">বাতিল</button></div></div>`, (root, close) => {
@@ -1023,7 +1025,7 @@ async function vCheques(v) {
    <div><label class="f">স্ট্যাটাস</label><select class="in" id="k-s"><option value="">সব</option>${STATUSES.map(s => `<option>${s}</option>`).join("")}</select></div>
    <div><label class="f">খাত</label><select class="in" id="k-u"><option value="">সব</option>${allPurposes(true).map(p => `<option value="${esc(p)}">${esc(p.split(" (")[0])}</option>`).join("")}</select></div></div></div>
    <div id="k-sum" class="ksum"></div><div class="card flush"><div id="k-tab"></div></div><div id="k-pg" class="row noprint" style="margin-top:10px;justify-content:center"></div>`;
-  const filt = () => { const t = norm(F.q), raw = F.q.trim(), [pa, pb] = pbRange(PF); return S.cheques.filter(c => c.date >= pa && c.date <= pb && (!F.code || c.code === F.code) && (!F.status || c.status === F.status) && (!F.purpose || c.purpose === F.purpose) && (!t || norm(c.code + c.no + (c.party || "") + (c.remarks || "") + (c.taker || "") + (c.toac || "")).includes(t) || String(c.amount) === raw.replace(/,/g, ""))).sort((a, b) => b.date.localeCompare(a.date) || b.no - a.no); };
+  const filt = () => { const t = norm(F.q), raw = F.q.trim(), [pa, pb] = pbRange(PF); return S.cheques.filter(c => c.date >= pa && c.date <= pb && (!F.code || c.code === F.code) && (!F.status || c.status === F.status) && (!F.purpose || pKey(c.purpose) === pKey(F.purpose)) && (!t || norm(c.code + c.no + (c.party || "") + (c.remarks || "") + (c.taker || "") + (c.toac || "")).includes(t) || String(c.amount) === raw.replace(/,/g, ""))).sort((a, b) => b.date.localeCompare(a.date) || b.no - a.no); };
   const draw = () => {
     const arr = filt(), pages = Math.max(1, Math.ceil(arr.length / PS)); F.page = Math.min(F.page, pages - 1); const part = arr.slice(F.page * PS, F.page * PS + PS), live = arr.filter(isLive);
     const kc = (l, n, a, cls = "") => `<div class="kc ${cls}"><span>${l}</span><div class="kv"><b>${n}</b>${a != null ? `<small class="num">৳ ${money0(a)}</small>` : ""}</div></div>`;
@@ -1935,14 +1937,15 @@ async function showPhoto(el, c) {
 /* v6.43 — admin: rename / delete cheque purposes (staff can only add) */
 function purposeManage(onChange) {
   const en = LANG === "en";
-  const used = p => (S.cheques || []).filter(c => c.purpose === p).length;
+  const used = p => (S.cheques || []).filter(c => pKey(c.purpose) === pKey(p)).length;
   const save = () => { try { if (!DEMO) localStorage.setItem("nb_purp_v2", JSON.stringify(PURP_X)); } catch (e) { } };
   modal(`<h2>⚙ ${en ? "Cheque purposes" : "চেকের খাত (Purpose)"}</h2>
     <div class="mut xs" style="margin-bottom:10px">${en ? "Renaming also updates old cheques. Deleting only removes it from the list — old cheques keep their purpose. Names starting with Cash / Own / Cancel / Supplier trigger special fields." : "নাম বদলালে পুরনো চেকের খাতও বদলে যায়। মুছলে শুধু তালিকা থেকে সরে — পুরনো চেকে খাত লেখাই থাকে। Cash / Own / Cancel / Supplier দিয়ে শুরু নামে বিশেষ ঘর (ক্যাশ-টেকার, To A/C) কাজ করে।"}</div>
     <div class="pm-list">${allPurposes().map((p, i) => `<div class="pm-row"><div class="pm-n"><b>${esc(p)}</b><span class="mut xs">${used(p)} ${en ? "cheques" : "টি চেক"}</span></div><button class="btn sm ghost" data-pe="${i}" title="${en ? "Rename" : "নাম বদলান"}">${ico("edit")}</button><button class="btn sm ghost" data-pd="${i}" title="${en ? "Delete" : "মুছুন"}">${ico("trash")}</button></div>`).join("") || `<div class="mut">${en ? "No purposes" : "কোনো খাত নেই"}</div>`}</div>
-    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn pri" id="pm-x">${en ? "Done" : "হয়েছে"}</button></div>`, (root, close) => {
+    <div class="row pm-foot" style="margin-top:14px;justify-content:space-between"><button class="btn" id="pm-c" type="button">${en ? "Close" : "বন্ধ করুন"}</button><button class="btn pri" id="pm-x" type="button">${en ? "Done" : "হয়েছে"}</button></div>`, (root, close) => {
     const list = allPurposes();
     $("#pm-x", root).onclick = () => { close(); onChange && onChange(); };
+    $("#pm-c", root).onclick = () => { close(); onChange && onChange(); };
     $$("[data-pe]", root).forEach(b => b.onclick = () => { const old = list[+b.dataset.pe];
       askText(en ? "Rename purpose" : "খাতের নাম বদলান", en ? "New name" : "নতুন নাম", old, async n => {
         if (n === old) return;

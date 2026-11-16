@@ -1269,3 +1269,8 @@ html[data-theme="dark"] .lk.blank{color:#fca5a5}html[data-theme="dark"] .lk.lost
   .row.cflt>div{min-width:0;flex:none!important} .row.cflt>div:nth-child(1),.row.cflt>div:nth-child(2){grid-column:1/-1}
   .row.cflt label.f{margin-bottom:3px;font-size:12px} .row.cflt .in{height:42px}
 }
+
+/* v6.55 — Cheque purposes modal footer: Close (left) + Done (right) on one row */
+.row.pm-foot{flex-wrap:nowrap;gap:10px;align-items:stretch}
+.row.pm-foot>.btn{flex:1 1 0;min-width:0;justify-content:center}
+.row.pm-foot>#pm-x{flex:1.6 1 0}
