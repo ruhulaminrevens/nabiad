@@ -555,3 +555,118 @@ revoke all on function public.daily_summary(date) from public, anon, authenticat
 grant execute on function public.daily_summary(date) to service_role;
 -- (applied via dashboard) pg_net enabled; vault secret 'notify_cron_secret'; edge function `notify` (source: dev/fn/notify.ts, verify_jwt=false, own x-cron-secret check)
 -- select cron.schedule('nabiad-daily-summary','0 14 * * *', $c$ select net.http_post(url:='https://<ref>.supabase.co/functions/v1/notify', headers:=jsonb_build_object('content-type','application/json','x-cron-secret',(select decrypted_secret from vault.decrypted_secrets where name='notify_cron_secret')), body:='{}'::jsonb) $c$);   -- 20:00 Asia/Dhaka
+
+-- ============================================================
+-- v6.51 — Leaf register: cheque leaves that are missing / blank-stub / lost / cancelled / unused
+-- A "mark" explains why a leaf number has no cheque entry, keeps a stub photo and lets Admin trace it to closure.
+-- ============================================================
+create table if not exists public.leaf_marks (
+  id uuid primary key default gen_random_uuid(),
+  code text not null references public.accounts(code),
+  leaf_no bigint not null,
+  kind text not null check (kind in ('blank','lost','cancelled','unused','other')),
+  note text,
+  photo text,
+  resolved boolean not null default false,
+  resolved_note text,
+  resolved_by text,
+  resolved_at timestamptz,
+  user_id uuid default auth.uid(),
+  entered_by text,
+  created_at timestamptz not null default now(),
+  unique (code, leaf_no)
+);
+create index if not exists leaf_marks_kind_idx on public.leaf_marks(kind, resolved);
+alter table public.leaf_marks enable row level security;
+drop policy if exists p_lm_read on public.leaf_marks;
+create policy p_lm_read on public.leaf_marks for select to authenticated using (my_role() is not null);
+drop policy if exists p_lm_ins on public.leaf_marks;
+create policy p_lm_ins on public.leaf_marks for insert to authenticated with check (my_role() in ('admin','staff') and user_id = auth.uid());
+drop policy if exists p_lm_upd on public.leaf_marks;
+create policy p_lm_upd on public.leaf_marks for update to authenticated using (my_role() = 'admin') with check (my_role() = 'admin');
+drop policy if exists p_lm_del on public.leaf_marks;
+create policy p_lm_del on public.leaf_marks for delete to authenticated using (my_role() = 'admin');
+
+-- guard: a leaf that already has a cheque entry cannot be marked; resolved is decided by the server, not the client
+create or replace function public.leaf_mark_guard() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    if exists (select 1 from cheques where code = new.code and chq_no = new.leaf_no) then raise exception 'leaf_in_use'; end if;
+    new.resolved := new.kind in ('cancelled','unused'); new.resolved_note := null; new.resolved_by := null; new.resolved_at := null;
+    if new.resolved then new.resolved_at := now(); new.resolved_by := 'System'; end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists leaf_mark_guard on public.leaf_marks;
+create trigger leaf_mark_guard before insert on public.leaf_marks for each row execute function public.leaf_mark_guard();
+
+-- when a cheque for a marked leaf is posted later, the trace closes itself
+create or replace function public.leaf_mark_autoresolve() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  update leaf_marks set resolved = true, resolved_at = now(), resolved_by = 'System', resolved_note = coalesce(nullif(resolved_note, ''), 'Cheque was posted for this leaf')
+   where code = new.code and leaf_no = new.chq_no and not resolved;
+  return null;
+end $$;
+drop trigger if exists leaf_mark_autoresolve on public.cheques;
+create trigger leaf_mark_autoresolve after insert on public.cheques for each row execute function public.leaf_mark_autoresolve();
+
+drop trigger if exists audit_leaf on public.leaf_marks;
+create trigger audit_leaf after insert or update or delete on public.leaf_marks for each row execute function audit_trg();
+
+create or replace function public.audit_trg() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare o jsonb; n jsonb; r jsonb; k text; nm text;
+begin
+  if tg_op <> 'INSERT' then o := to_jsonb(old); end if;
+  if tg_op <> 'DELETE' then n := to_jsonb(new); end if;
+  r := coalesce(n, o);
+  if r->>'entered_by' = 'Old file (Foysal)' then return null; end if;
+  if tg_op = 'UPDATE' and o = n then return null; end if;
+  k := case tg_table_name
+    when 'cheques'  then (r->>'code') || ' · ' || (r->>'chq_no')
+    when 'balances' then (r->>'date') || ' · ' || (r->>'code')
+    when 'accounts' then r->>'code'
+    when 'books'    then (r->>'code') || ' · ' || coalesce(r->>'first_leaf','') || '–' || coalesce(r->>'last_leaf','')
+    when 'cheque_status' then coalesce((select code || ' · ' || chq_no from cheques where id = (r->>'cheque_id')::uuid), '?') || ' → ' || (r->>'new_status')
+    when 'profiles' then r->>'email'
+    when 'cash_records' then 'Cash ' || (r->>'date') || ' (' || (r->>'status') || ')'
+    when 'dist_collections' then 'Collection ' || (r->>'date') || ' · ' || (r->>'party') || ' · ' || (r->>'amount')
+    when 'dist_parties' then 'Party ' || (r->>'name')
+    when 'leaf_marks' then 'Leaf ' || (r->>'code') || ' · ' || (r->>'leaf_no') || ' (' || (r->>'kind') || ')'
+    else r->>'id' end;
+  select name into nm from profiles where id = auth.uid();
+  insert into audit_log(user_name, tbl, action, row_key, old, new)
+    values (coalesce(nm, 'system'), tg_table_name, lower(tg_op), k, o, n);
+  return null;
+end $$;
+
+create or replace function public.make_backup(k text default 'auto') returns bigint
+language plpgsql security definer set search_path = public as $$
+declare d jsonb; n int; bid bigint;
+begin
+  if auth.uid() is not null and coalesce(my_role(), '') <> 'admin' then raise exception 'not allowed'; end if;
+  d := jsonb_build_object(
+    'taken_at', now(),
+    'accounts',         (select coalesce(jsonb_agg(t), '[]') from accounts t),
+    'cheques',          (select coalesce(jsonb_agg(t), '[]') from cheques t),
+    'cheque_status',    (select coalesce(jsonb_agg(t), '[]') from cheque_status t),
+    'balances',         (select coalesce(jsonb_agg(t), '[]') from balances t),
+    'books',            (select coalesce(jsonb_agg(t), '[]') from books t),
+    'profiles',         (select coalesce(jsonb_agg(t), '[]') from profiles t),
+    'reminders',        (select coalesce(jsonb_agg(t), '[]') from reminders t),
+    'cash_records',     (select coalesce(jsonb_agg(t), '[]') from cash_records t),
+    'balance_drafts',   (select coalesce(jsonb_agg(t), '[]') from balance_drafts t),
+    'dist_parties',     (select coalesce(jsonb_agg(t), '[]') from dist_parties t),
+    'dist_collections', (select coalesce(jsonb_agg(t), '[]') from dist_collections t),
+    'leaf_marks',       (select coalesce(jsonb_agg(t), '[]') from leaf_marks t));
+  n := (select count(*) from accounts) + (select count(*) from cheques) + (select count(*) from cheque_status)
+     + (select count(*) from balances) + (select count(*) from books) + (select count(*) from reminders) + (select count(*) from cash_records)
+     + (select count(*) from dist_parties) + (select count(*) from dist_collections) + (select count(*) from leaf_marks);
+  insert into backups(kind, size_rows, data) values (k, n, d) returning id into bid;
+  delete from backups where kind = 'auto' and at < now() - interval '14 days';
+  delete from backups where kind = 'manual' and id not in (select id from backups where kind = 'manual' order by at desc limit 10);
+  return bid;
+end $$;
+revoke all on function public.make_backup(text) from public, anon;
+grant execute on function public.make_backup(text) to authenticated;
+revoke execute on function public.leaf_mark_guard(), public.leaf_mark_autoresolve(), public.audit_trg() from anon, public;
