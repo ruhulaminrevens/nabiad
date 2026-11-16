@@ -779,7 +779,7 @@ tr.dim td{opacity:.55}
 /* top bar: date + live stats in one card */
 .dcx-bar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:14px;padding:12px 14px}
 .dcx-date{flex:0 1 330px;min-width:260px} .dcx-date .dnav input{max-width:none}
-.dcx-stats{flex:1 1 520px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.dcx-stats{flex:1 1 520px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .dcx-stat{display:flex;align-items:center;gap:10px;text-align:left;padding:9px 12px;border-radius:14px;border:1px solid var(--line);background:var(--surface2);cursor:pointer;font:inherit;color:var(--txt);transition:.18s var(--ease);min-width:0}
 .dcx-stat:hover{transform:translateY(-2px);box-shadow:var(--sh2)}
 .dcx-stat .si{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;color:#fff;background:var(--c1,#6366f1)}
@@ -980,3 +980,4 @@ a.kpi{display:block;text-decoration:none!important;color:#fff;cursor:pointer}
 .bticks{display:flex;margin-top:2px} .bticks span{flex:1;text-align:center;font-size:10.5px;color:var(--mut)}
 
 .mini-seg{flex:none;white-space:nowrap} .mini-seg .chip{padding:4px 9px}
+@media (max-width:900px){ .dcx-stats .dcx-stat.t{grid-column:1/-1} }

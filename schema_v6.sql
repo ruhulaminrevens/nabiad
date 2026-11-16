@@ -266,3 +266,7 @@ begin
 end $$;
 drop trigger if exists book_del_guard on books;
 create trigger book_del_guard before delete on books for each row execute function book_del_guard();
+
+-- v6.34: the "Hold" status was retired (Pending covers it). Existing hold rows were moved to pending.
+-- The check constraint still allows 'hold' so old backups restore cleanly; the app no longer offers it.
+update dist_collections set status = 'pending' where status = 'hold';

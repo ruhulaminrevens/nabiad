@@ -1698,9 +1698,9 @@ async function vDash(v) {
     try {
       const rows = (await cached("dcol7", 60000, () => API.dcolRange(addDays(t, -6), t))).filter(r => r.status !== "cancelled"); if (!$("#d-col", v)) return;
       const days = [...Array(7)].map((_, i) => addDays(t, i - 6)), sm = (arr, f) => arr.filter(f).reduce((s, r) => s + r.amount, 0);
-      const td = rows.filter(r => r.date === t), tot7 = sm(rows, () => true), ok7 = sm(rows, r => r.status === "approved"), pe7 = sm(rows, r => r.status === "pending" || r.status === "hold");
+      const td = rows.filter(r => r.date === t), tot7 = sm(rows, () => true), ok7 = sm(rows, r => r.status === "approved"), pe7 = sm(rows, r => r.status === "pending");
       const per = days.map(d => ({ l: dmy(d), a: sm(rows, r => r.date === d && r.status === "approved"), b: sm(rows, r => r.date === d && r.status !== "approved") }));
-      el.innerHTML = rows.length ? `<div class="colk"><div><small>আজ</small><b class="num">৳ ${money0(sm(td, () => true))}</b><em>${td.length}টি এন্ট্রি</em></div><div><small>৭ দিনে মোট</small><b class="num">৳ ${money0(tot7)}</b><em>${rows.length}টি এন্ট্রি</em></div><div><small>Approved</small><b class="num gr">৳ ${money0(ok7)}</b><em>${rows.filter(r => r.status === "approved").length}টি এন্ট্রি</em></div><div><small>Pending/Hold</small><b class="num am">৳ ${money0(pe7)}</b><em>${rows.filter(r => r.status === "pending" || r.status === "hold").length}টি এন্ট্রি</em></div></div>${bars2(per, 64, ["Approved", "Pending/Hold"], 7)}<div class="bticks">${days.map(d => `<span>${d.slice(8)}</span>`).join("")}</div><div class="lgd"><span><i style="background:#10b981"></i>Approved</span><span><i style="background:#ef4444"></i>Pending/Hold</span></div>`
+      el.innerHTML = rows.length ? `<div class="colk"><div><small>আজ</small><b class="num">৳ ${money0(sm(td, () => true))}</b><em>${td.length}টি এন্ট্রি</em></div><div><small>৭ দিনে মোট</small><b class="num">৳ ${money0(tot7)}</b><em>${rows.length}টি এন্ট্রি</em></div><div><small>Approved</small><b class="num gr">৳ ${money0(ok7)}</b><em>${rows.filter(r => r.status === "approved").length}টি এন্ট্রি</em></div><div><small>Pending</small><b class="num am">৳ ${money0(pe7)}</b><em>${rows.filter(r => r.status === "pending").length}টি এন্ট্রি</em></div></div>${bars2(per, 64, ["Approved", "Pending"], 7)}<div class="bticks">${days.map(d => `<span>${d.slice(8)}</span>`).join("")}</div><div class="lgd"><span><i style="background:#10b981"></i>Approved</span><span><i style="background:#ef4444"></i>Pending</span></div>`
         : `<div class="empty" style="padding:18px 0">গত ৭ দিনে কোনো কালেকশন এন্ট্রি নেই${boss ? "" : `<div style="margin-top:10px"><a class="btn sm" href="#/dcol">${ico("plus")} কালেকশন এন্ট্রি</a></div>`}</div>`;
     } catch (e) { if (el) el.innerHTML = `<div class="mut sm" style="padding:14px 0">${isNetErr(e) ? "ইন্টারনেট নেই" : "কালেকশন ডাটা পাওয়া যায়নি"}</div>`; }
   })();
@@ -2212,7 +2212,7 @@ Object.assign(ICON, {
   pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
   xmark: '<path d="M6 6l12 12M18 6L6 18"/>'
 });
-const DC_ST = { pending: "Pending", approved: "Approved", hold: "Hold", cancelled: "Cancelled" };
+const DC_ST = { pending: "Pending", approved: "Approved", cancelled: "Cancelled" };
 const DC_EXTRA = ["Cash", "Priyo Agro", "Unknown"];
 const DP_KEY = "nabiad_dparty_v1";
 const dcErr = e => /relation|does not exist|schema cache|not find|dist_/i.test(e.message || "") && !/permission|policy/i.test(e.message || "") ? "কালেকশন টেবিল নেই — Supabase-এ schema_v6.sql চালাতে হবে" : isNetErr(e) ? "ইন্টারনেট নেই" : (e.message || String(e));
@@ -2301,7 +2301,7 @@ Object.assign(DemoAPI, {
   async dcolDelete(id) { await this.dparties(); const o = demoStore.dcols.find(x => x.id === id); o && this.aud("dist_collections", "delete", `Collection ${o.date} · ${o.party} · ${o.amount}`, o, null); demoStore.dcols = demoStore.dcols.filter(x => x.id !== id); this.save(); },
   async dcolStatus(ids, st, note) {
     await this.dparties(); let n = 0; const role = S.me.role;
-    demoStore.dcols.forEach(r => { if (!ids.includes(r.id)) return; if (role !== "admin" && !["pending", "hold"].includes(r.status)) return; if (role === "staff" && st === "pending") return; const o = { ...r }; r.status = st; r.decided_by = st === "pending" ? null : S.me.name; r.decided_at = st === "pending" ? null : new Date().toISOString(); r.decision_note = st === "pending" ? "" : (note || ""); this.aud("dist_collections", "update", `Collection ${r.date} · ${r.party} · ${r.amount}`, o, { ...r }); n++; });
+    demoStore.dcols.forEach(r => { if (!ids.includes(r.id)) return; if (role !== "admin" && !["pending"].includes(r.status)) return; if (role === "staff" && st === "pending") return; const o = { ...r }; r.status = st; r.decided_by = st === "pending" ? null : S.me.name; r.decided_at = st === "pending" ? null : new Date().toISOString(); r.decision_note = st === "pending" ? "" : (note || ""); this.aud("dist_collections", "update", `Collection ${r.date} · ${r.party} · ${r.amount}`, o, { ...r }); n++; });
     this.save(); return n;
   }
 });
@@ -2333,7 +2333,7 @@ function askText(title, ph, def, cb) {
 const dcCan = (r, to) => {
   if (r.pending_sync || r.status === to) return false;
   if (S.me.role === "admin") return true;
-  return S.me.role === "staff" && to !== "pending" && ["pending", "hold"].includes(r.status);
+  return S.me.role === "staff" && to !== "pending" && ["pending"].includes(r.status);
 };
 const dcCanEdit = r => !r.pending_sync && (S.me.role === "admin" || (S.me.role === "staff" && r.status === "pending"));
 const dcBrand = code => { try { return brandOf({ code, bank: "" }).c1; } catch { return "#94a3b8"; } };
@@ -2353,7 +2353,7 @@ function dcDecide(ids, st, after) {
     } catch (e) { toast(dcErr(e), "err"); }
   };
   if (st === "approved" || st === "pending") return run("");
-  const L = st === "hold" ? "Hold — ধরে রাখুন" : "Cancel — বাতিল";
+  const L = "Cancel — বাতিল";
   modal(`<h2>${L} · ${ids.length}টি</h2><label class="f">কারণ / মন্তব্য <span class="mut">(ঐচ্ছিক)</span></label><input class="in" id="dd-n" autocomplete="off" placeholder="যেমন: স্টেটমেন্টে নেই / স্লিপ আসেনি"><div class="row" style="margin-top:14px"><button class="btn pri" id="dd-ok">নিশ্চিত করুন</button><button class="btn" id="dd-x">বাতিল</button></div>`, (root, close) => {
     const inp = $("#dd-n", root); inp.focus();
     const go = () => { close(); run(inp.value.trim()); };
@@ -2483,22 +2483,22 @@ async function vDcol(v) {
   function selbar() {
     const el = $("#dc-selbar", v); sel = new Set([...sel].filter(id => rows.some(r => r.id === id))); if (!sel.size) return el.classList.add("hide");
     const rs = rows.filter(r => sel.has(r.id)), can = st => rs.some(r => dcCan(r, st));
-    el.classList.remove("hide"); el.innerHTML = `<b>${sel.size}</b> <span>টি · ৳ ${money0(dcSum(rs))}</span>${can("approved") ? `<button class="btn sm pri" data-b="approved">${ico("check")} Approve</button>` : ""}${can("hold") ? `<button class="btn sm" data-b="hold">${ico("pause")} Hold</button>` : ""}${can("cancelled") ? `<button class="btn sm" data-b="cancelled">${ico("xmark")} Cancel</button>` : ""}${can("pending") ? `<button class="btn sm" data-b="pending">Pending</button>` : ""}<button class="btn sm ghost" data-b="x">✕</button>`;
+    el.classList.remove("hide"); el.innerHTML = `<b>${sel.size}</b> <span>টি · ৳ ${money0(dcSum(rs))}</span>${can("approved") ? `<button class="btn sm pri" data-b="approved">${ico("check")} Approve</button>` : ""}${can("cancelled") ? `<button class="btn sm" data-b="cancelled">${ico("xmark")} Cancel</button>` : ""}${can("pending") ? `<button class="btn sm" data-b="pending">Pending</button>` : ""}<button class="btn sm ghost" data-b="x">✕</button>`;
     $$("[data-b]", el).forEach(b => b.onclick = () => { if (b.dataset.b === "x") { sel.clear(); return draw(); } const ids = rs.filter(r => dcCan(r, b.dataset.b)).map(r => r.id); sel.clear(); dcDecide(ids, b.dataset.b, load); });
   }
   function draw() {
     const live = rows.filter(r => r.status !== "cancelled"), by = s => rows.filter(r => r.status === s);
     const stat = (k, cls, ic, lab, arr) => `<button type="button" class="dcx-stat ${cls} ${F.st === k && k ? "on" : ""}" data-k="${k}"><span class="si">${ico(ic)}</span><span class="tx"><small>${lab}</small><b class="num">৳ ${money0(dcSum(arr))}</b><i>${arr.length}টি</i></span></button>`;
-    $("#dc-kpi", v).innerHTML = stat("", "t", "wallet", "মোট" + (by("cancelled").length ? ` · ${by("cancelled").length} Cancelled বাদে` : ""), live) + stat("approved", "a", "check", "Approved", by("approved")) + stat("pending", "p", "clock", "Pending", by("pending")) + stat("hold", "h", "pause", "Hold", by("hold"));
+    $("#dc-kpi", v).innerHTML = stat("", "t", "wallet", "মোট" + (by("cancelled").length ? ` · ${by("cancelled").length} Cancelled বাদে` : ""), live) + stat("approved", "a", "check", "Approved", by("approved")) + stat("pending", "p", "clock", "Pending", by("pending"));
     $$("#dc-kpi [data-k]", v).forEach(b => b.onclick = () => { F.st = F.st === b.dataset.k ? "" : b.dataset.k; draw(); });
     $("#dc-sc", v).innerHTML = [["", "সব"], ...Object.entries(DC_ST)].map(([k, l]) => `<span class="chip ${F.st === k ? "on" : ""}" data-s="${k}">${k ? `<i class="sdot ${k}"></i>` : ""}${l} <span class="cnt">${k ? by(k).length : rows.length}</span></span>`).join("");
     const acs = dcGroup(live, r => r.account); $("#dc-ac", v).innerHTML = acs.length ? `<span class="mut xs lbl">Account:</span>` + acs.map(a => `<span class="chip ${F.ac === a.k ? "on" : ""}" data-a="${esc(a.k)}"><i class="bdot" style="background:${dcBrand(a.k)}"></i>${esc(a.k)} · ${money0(a.amt)} <span class="mut">(${a.n})</span></span>`).join("") : "";
     $$("#dc-sc [data-s]", v).forEach(c => c.onclick = () => { F.st = c.dataset.s; draw(); }); $$("#dc-ac [data-a]", v).forEach(c => c.onclick = () => { F.ac = F.ac === c.dataset.a ? "" : c.dataset.a; draw(); });
     const vis = visible(); $("#dc-cnt", v).textContent = vis.length;
-    const actionable = vis.filter(r => ["approved", "hold", "cancelled"].some(s => dcCan(r, s))), gm = dpGeoMap();
+    const actionable = vis.filter(r => ["approved", "cancelled"].some(s => dcCan(r, s))), gm = dpGeoMap();
     list.innerHTML = vis.length ? `<div class="tw cards"><table><thead><tr><th style="width:34px">${actionable.length ? `<input type="checkbox" id="dc-all" title="সব বাছুন">` : ""}</th><th class="r">#</th><th>পার্টি</th><th>Account</th><th class="r">টাকা</th><th>অবস্থা</th><th>মন্তব্য</th><th class="r noprint">কাজ</th></tr></thead><tbody>${vis.map((r, i) => {
-      const acts = [["approved", "check", "gr", "Approve (ঠিক আছে)"], ["hold", "pause", "am", "Hold"], ["cancelled", "xmark", "rd", "Cancel"]].filter(([s]) => dcCan(r, s)).map(([s, ic, c, t]) => `<button class="iconbtn sm dca ${c}" data-st="${s}" data-id="${r.id}" title="${t}">${ico(ic)}</button>`).join("") + (r.status !== "pending" && dcCan(r, "pending") ? `<button class="btn sm" data-st="pending" data-id="${r.id}" title="Pending-এ ফেরত">↺</button>` : "");
-      return `<tr class="dcr ${r.status}"><td>${dcCan(r, "approved") || dcCan(r, "hold") || dcCan(r, "cancelled") ? `<input type="checkbox" data-sel="${r.id}" ${sel.has(r.id) ? "checked" : ""}>` : ""}</td><td class="r mut">${i + 1}</td><td><b>${esc(r.party)}</b><div class="mut xs">${esc([r.asm || "—", dpGeoOf(gm, r).district].filter(Boolean).join(" · "))}</div></td><td class="b"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account || "—")}</td><td class="r num b">${money0(r.amount)}</td><td>${dcStTag(r)}${r.decided_by ? `<div class="mut xs">${esc(r.decided_by)}${r.decision_note ? " · " + esc(r.decision_note) : ""}</div>` : ""}</td><td class="sm">${esc(r.remarks)}</td><td class="r noprint"><div class="dcacts">${acts}${dcCanEdit(r) ? `<button class="iconbtn sm" data-ed="${r.id}" title="এডিট">${ico("edit")}</button>` : ""}${S.me.role === "admin" && !r.pending_sync ? `<button class="iconbtn sm rd" data-dl="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></td></tr>`;
+      const acts = [["approved", "check", "gr", "Approve (ঠিক আছে)"], ["cancelled", "xmark", "rd", "Cancel"]].filter(([s]) => dcCan(r, s)).map(([s, ic, c, t]) => `<button class="iconbtn sm dca ${c}" data-st="${s}" data-id="${r.id}" title="${t}">${ico(ic)}</button>`).join("") + (r.status !== "pending" && dcCan(r, "pending") ? `<button class="btn sm" data-st="pending" data-id="${r.id}" title="Pending-এ ফেরত">↺</button>` : "");
+      return `<tr class="dcr ${r.status}"><td>${dcCan(r, "approved") || dcCan(r, "cancelled") ? `<input type="checkbox" data-sel="${r.id}" ${sel.has(r.id) ? "checked" : ""}>` : ""}</td><td class="r mut">${i + 1}</td><td><b>${esc(r.party)}</b><div class="mut xs">${esc([r.asm || "—", dpGeoOf(gm, r).district].filter(Boolean).join(" · "))}</div></td><td class="b"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account || "—")}</td><td class="r num b">${money0(r.amount)}</td><td>${dcStTag(r)}${r.decided_by ? `<div class="mut xs">${esc(r.decided_by)}${r.decision_note ? " · " + esc(r.decision_note) : ""}</div>` : ""}</td><td class="sm">${esc(r.remarks)}</td><td class="r noprint"><div class="dcacts">${acts}${dcCanEdit(r) ? `<button class="iconbtn sm" data-ed="${r.id}" title="এডিট">${ico("edit")}</button>` : ""}${S.me.role === "admin" && !r.pending_sync ? `<button class="iconbtn sm rd" data-dl="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></td></tr>`;
     }).join("")}<tr class="tot"><td></td><td></td><td colspan="2">মোট (${vis.filter(r => r.status !== "cancelled").length}টি, Cancelled বাদে)</td><td class="r num">${money0(dcSum(vis.filter(r => r.status !== "cancelled")))}</td><td colspan="3"></td></tr></tbody></table></div>` : `<div class="dcx-empty"><span class="ei">${ico("wallet")}</span><b>${rows.length ? "খোঁজার সাথে কিছু মেলেনি" : "এই তারিখে এখনো কোনো এন্ট্রি নেই"}</b><span class="mut">${rows.length ? "ফিল্টার বা সার্চ বদলে দেখুন" : "উপরের ফর্ম থেকে প্রথম কালেকশনটি যোগ করুন"}</span>${rows.length ? `<button class="btn sm" id="dc-clr">ফিল্টার মুছুন</button>` : ""}</div>`;
     labelTables(list); const cl = $("#dc-clr", list); if (cl) cl.onclick = () => { F.st = ""; F.ac = ""; F.q = ""; $("#dc-q", v).value = ""; draw(); };
     $$("[data-sel]", list).forEach(x => x.onchange = () => { x.checked ? sel.add(x.dataset.sel) : sel.delete(x.dataset.sel); selbar(); });
@@ -2529,9 +2529,9 @@ function dcBindPeriod(v, id, F, draw) {
   [`${id}-f`, `${id}-t`].forEach(x => $("#" + x, v).onchange = () => { F.f = $(`#${id}-f`, v).value; F.t = $(`#${id}-t`, v).value; draw(); });
 }
 const dcRangeLabel = (f, t) => f === t ? new Date(f + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : `${dmy(f)} → ${dmy(t)}`;
-const dcStatLabel = s => ({ approved: "Approved", pending: "Pending", hold: "Hold", cancelled: "Cancelled", live: "All (Cancelled বাদে)" }[s]);
+const dcStatLabel = s => ({ approved: "Approved", pending: "Pending", cancelled: "Cancelled", live: "All (Cancelled বাদে)" }[s]);
 const dcStatPass = (r, s) => s === "live" ? r.status !== "cancelled" : r.status === s;
-const dcStatOpts = cur => ["approved", "pending", "hold", "live", "cancelled"].map(s => `<option value="${s}" ${s === cur ? "selected" : ""}>${dcStatLabel(s)}</option>`).join("");
+const dcStatOpts = cur => ["approved", "pending", "live", "cancelled"].map(s => `<option value="${s}" ${s === cur ? "selected" : ""}>${dcStatLabel(s)}</option>`).join("");
 async function dcCanvas(el) { await loadScript("vendor/html2canvas.min.js"); const z = el.style.zoom; el.style.zoom = ""; try { return await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", width: el.offsetWidth, windowWidth: 1200 }); } finally { el.style.zoom = z; } }
 async function dcPng(el, name) { if (!el) return toast("ডাটা নেই", "err"); const cv = await dcCanvas(el); const a = document.createElement("a"); a.download = name + ".png"; a.href = cv.toDataURL("image/png"); a.click(); }
 async function dcShare(el, name, text) {
