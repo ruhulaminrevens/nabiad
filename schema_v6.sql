@@ -311,3 +311,25 @@ end $$;
 
 revoke execute on function public.admin_create_user(text,text,text,text), public.admin_set_password(uuid,text) from anon, public;
 grant execute on function public.admin_create_user(text,text,text,text), public.admin_set_password(uuid,text) to authenticated;
+
+-- v6.41 — profile pictures (each user sets their own; everyone signed in can see). Stored as small JPEG data-URL (256x256).
+create table if not exists public.user_avatars (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  img text not null check (img like 'data:image/%' and length(img) <= 150000),
+  updated_at timestamptz not null default now()
+);
+alter table public.user_avatars enable row level security;
+drop policy if exists p_ava_read on public.user_avatars;
+create policy p_ava_read on public.user_avatars for select to authenticated using (true);
+revoke all on public.user_avatars from anon, public;
+grant select on public.user_avatars to authenticated;
+create or replace function public.set_my_avatar(a text) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null or my_role() is null then raise exception 'not_allowed'; end if;
+  if a is null or a = '' then delete from public.user_avatars where user_id = auth.uid(); return; end if;
+  if a not like 'data:image/%' or length(a) > 150000 then raise exception 'bad_image'; end if;
+  insert into public.user_avatars(user_id, img, updated_at) values (auth.uid(), a, now())
+    on conflict (user_id) do update set img = excluded.img, updated_at = now();
+end $$;
+revoke execute on function public.set_my_avatar(text) from anon, public;
+grant execute on function public.set_my_avatar(text) to authenticated;

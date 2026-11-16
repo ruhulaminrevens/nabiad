@@ -1031,3 +1031,10 @@ a.kpi{display:block;text-decoration:none!important;color:#fff;cursor:pointer}
 }
 @media (prefers-reduced-motion:reduce){.shell,.sbtog{transition:none}}
 .side .brand>div:nth-child(2){min-width:0} .side .brand span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---------- v6.41: profile pictures ---------- */
+.ava{overflow:hidden} .ava img{width:100%;height:100%;object-fit:cover;display:block}
+.ava.has{background:#fff}
+.ava.xl{width:76px;height:76px;font-size:30px;background:var(--grad);color:#fff;box-shadow:0 0 0 3px var(--surface),0 0 0 5px color-mix(in srgb,var(--pri) 45%,transparent)}
+.pfp{display:flex;align-items:center;gap:16px;padding-bottom:14px;border-bottom:1px solid var(--line)} .pfp .pfb{min-width:0;flex:1}
+@media (max-width:520px){ .pfp{align-items:flex-start} .ava.xl{width:64px;height:64px;font-size:26px} }

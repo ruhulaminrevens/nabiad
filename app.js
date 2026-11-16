@@ -36,6 +36,26 @@ function modal(html, onMount) {
   onMount && onMount(root, close); return close;
 }
 function loadScript(src) { return new Promise((res, rej) => { if (document.querySelector(`script[data-s="${src}"]`)) return res(); const s = document.createElement("script"); s.src = src; s.dataset.s = src; s.onload = res; s.onerror = () => rej(new Error("Load failed: " + src)); document.head.appendChild(s); }); }
+/* ---------- v6.41: profile pictures ---------- */
+const avaMap = () => (S.ava ||= {});
+const avaInit = (n, e) => esc((n || e || "?").trim().slice(0, 1).toUpperCase());
+const avaIn = (id, n, e) => { const im = avaMap()[id]; return im ? `<img src="${im}" alt="">` : avaInit(n, e); };
+const avaEl = (id, n, e, cls = "") => `<div class="ava ${cls}" data-uid="${esc(id)}" data-n="${esc(n || "")}" data-e="${esc(e || "")}">${avaIn(id, n, e)}</div>`;
+function refreshAvatars() { $$(".ava[data-uid]").forEach(a => { a.innerHTML = avaIn(a.dataset.uid, a.dataset.n, a.dataset.e); a.classList.toggle("has", !!avaMap()[a.dataset.uid]); }); }
+async function loadAvatars() {
+  try { if (S.me) { const c = localStorage.getItem("nabiad_ava_" + S.me.id); if (c) avaMap()[S.me.id] = c; } } catch { }
+  try { S.ava = await API.avatars(); try { const m = S.ava[S.me.id]; m ? localStorage.setItem("nabiad_ava_" + S.me.id, m) : localStorage.removeItem("nabiad_ava_" + S.me.id); } catch { } refreshAvatars(); } catch { }
+}
+function imgToAvatar(file, size = 256) {
+  return new Promise((res, rej) => {
+    if (!file || !/^image\//.test(file.type || "image/")) return rej(new Error(LANG === "en" ? "Choose an image file" : "ছবির ফাইল বাছুন"));
+    if (file.size > 15 * 1024 * 1024) return rej(new Error(LANG === "en" ? "Image is too large (max 15 MB)" : "ছবি অনেক বড় (সর্বোচ্চ ১৫ MB)"));
+    const url = URL.createObjectURL(file), im = new Image();
+    im.onload = () => { try { const w = im.naturalWidth, h = im.naturalHeight, m = Math.min(w, h), c = document.createElement("canvas"); c.width = c.height = size; const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, size, size); x.drawImage(im, (w - m) / 2, (h - m) / 2, m, m, 0, 0, size, size); res(c.toDataURL("image/jpeg", 0.86)); } catch (e) { rej(e); } URL.revokeObjectURL(url); };
+    im.onerror = () => { URL.revokeObjectURL(url); rej(new Error(LANG === "en" ? "Could not read this image (try JPG or PNG)" : "এই ছবি পড়া যায়নি (JPG বা PNG দিন)")); };
+    im.src = url;
+  });
+}
 function userErr(e) {
   const m = String(e?.message || e), en = LANG === "en";
   const T = { admin_only: ["শুধু Admin এই কাজ করতে পারেন", "Only an admin can do this"], bad_email: ["ইমেইল ঠিক নয়", "Invalid email address"], weak_password: ["পাসওয়ার্ড কমপক্ষে ১০ অক্ষর হতে হবে", "Password must be at least 10 characters"], bad_role: ["Role ঠিক নয়", "Invalid role"], email_exists: ["এই ইমেইলে আগেই ব্যবহারকারী আছে", "A user with this email already exists"], no_user: ["ব্যবহারকারী পাওয়া যায়নি", "User not found"] };
@@ -78,7 +98,7 @@ function credModal(email, pw, name, reset) {
 function resetPwModal(u) {
   const en = LANG === "en", me = u.id === S.me.id;
   modal(`<h2>🔑 ${en ? "Reset password" : "পাসওয়ার্ড রিসেট"}</h2>
-    <div class="uh2"><div class="ava">${esc((u.name || u.email || "?").trim().slice(0, 1).toUpperCase())}</div><div><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div></div>
+    <div class="uh2">${avaEl(u.id, u.name, u.email)}<div><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div></div>
     <label class="f" style="margin-top:14px">${en ? "New password" : "নতুন পাসওয়ার্ড"}</label>${pwField("rp-p", genPassword())}
     <div class="mut xs" style="margin-top:8px">${me ? (en ? "This is your own account — you stay signed in." : "এটা আপনার নিজের অ্যাকাউন্ট — আপনি সাইন-ইন থাকবেন।") : (en ? "The user is signed out from all devices and must sign in with this password." : "ব্যবহারকারী সব device থেকে সাইন-আউট হবেন এবং এই পাসওয়ার্ড দিয়ে নতুন করে লগইন করতে হবে।")}</div>
     <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" id="rp-x">${en ? "Cancel" : "বাতিল"}</button><button class="btn pri" id="rp-ok">${ico("save")} ${en ? "Set password" : "পাসওয়ার্ড সেট করুন"}</button></div>`, (root, close) => {
@@ -239,6 +259,8 @@ const SbAPI = {
   async updateProfile(id, p) { const { error } = await sb.from("profiles").update(p).eq("id", id); if (error) throw error; },
   async createUser(email, password, name, role) { const { data, error } = await sb.rpc("admin_create_user", { p_email: email, p_password: password, p_name: name, p_role: role }); if (error) throw userErr(error); return data; },
   async setUserPassword(id, password) { const { error } = await sb.rpc("admin_set_password", { p_user: id, p_password: password }); if (error) throw userErr(error); },
+  async avatars() { const { data, error } = await sb.from("user_avatars").select("user_id,img"); if (error) throw error; return Object.fromEntries((data || []).map(r => [r.user_id, r.img])); },
+  async setAvatar(img) { const { error } = await sb.rpc("set_my_avatar", { a: img || null }); if (error) throw error; },
   /* v2: drafts, reminders, audit log, cheque photos (need schema_v2.sql) */
   async getDraft(d) { const { data, error } = await sb.from("balance_drafts").select("*").eq("date", d).maybeSingle(); if (error) throw error; return data ? { rows: data.data, at: data.updated_at, by: data.updated_by } : null; },
   async saveDraft(d, rows) { const { error } = await sb.from("balance_drafts").upsert({ date: d, data: rows, updated_by: S.me.name, updated_at: new Date().toISOString() }); if (error) throw error; },
@@ -301,9 +323,11 @@ const DemoAPI = {
   async upsertAccount(a) { const i = demoStore.accounts.findIndex(x => x.code === a.code); if (i >= 0) demoStore.accounts[i] = { ...demoStore.accounts[i], ...a }; else demoStore.accounts.push(a); this.save(); },
   async upsertBook(b) { if (b.id) { Object.assign(demoStore.books.find(x => x.id === b.id), b); } else { b.id = crypto.randomUUID(); demoStore.books.push(b); } this.save(); return b.id; },
   async deleteBook(id) { demoStore.books = demoStore.books.filter(b => b.id !== id); this.save(); },
-  async users() { return [{ id: "1", email: "admin@demo", name: "Admin", role: "admin", active: true }, ...(demoStore.users || [])]; },
+  async users() { return [{ id: S.me?.id || "1", email: "admin@demo", name: "Admin", role: "admin", active: true }, ...(demoStore.users || [])]; },
   async updateProfile() { },
   async createUser(email, password, name, role) { if (demoStore.users?.some(u => u.email === email)) throw userErr({ message: "email_exists" }); (demoStore.users ||= []).push({ id: "d" + Date.now(), email, name: name || email.split("@")[0], role, active: true }); this.aud("users", "insert", email, null, { role, event: "user_created" }); this.save(); },
+  async avatars() { return { ...(demoStore.avatars || {}) }; },
+  async setAvatar(img) { (demoStore.avatars ||= {}); if (img) demoStore.avatars[S.me.id] = img; else delete demoStore.avatars[S.me.id]; this.save(); },
   async setUserPassword(id) { this.aud("users", "update", (demoStore.users || []).find(u => u.id === id)?.email || "admin@demo", null, { event: "password_reset" }); this.save(); },
   aud(tbl, action, key, o, n) { demoStore.audit.unshift({ id: Date.now() + Math.random(), at: new Date().toISOString(), user_name: S.me?.name, tbl, action, row_key: key, old: o || null, new: n || null }); demoStore.audit.length > 2000 && (demoStore.audit.length = 2000); },
   async getDraft(d) { return demoStore.drafts[d] || null; },
@@ -485,11 +509,10 @@ function shell() {
   keys.forEach(k => { if (ROUTES[k].sec !== last) { last = ROUTES[k].sec; if (SECS[last]) nav += `<div class="sec">${SECS[last]}</div>`; } nav += link(k); });
   const TABS = (S.me.role === "boss" ? [["reports", "main", "চেক"], ["crep", "bank", "ব্যাংক"], ["cashsum", "cash", "ক্যাশ"], ["dsum", "dist", "কালেকশন"]] : [["entry", "main", "চেক"], ["closing", "bank", "ব্যাংক"], ["cash", "cash", "ক্যাশ"], ["dcol", "dist", "কালেকশন"]]).filter(t => keys.includes(t[0]));
   const mob = TABS.map(t => t[0]);
-  const ini = (S.me.name || "?").trim().slice(0, 1).toUpperCase();
   $("#app").innerHTML = `<div class="shell">
     <aside class="side"><div class="brand"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Smart Finance Suite</span></div><button class="sbtog" id="sbtog" type="button">${ico("chev")}</button></div>
       <nav class="nav">${nav}</nav>
-      <div class="me"><div class="ava">${esc(ini)}</div><div class="who"><b>${esc(S.me.name)}</b><span class="mut">${esc(S.me.email)}</span></div><button class="iconbtn" id="logout" title="লগআউট">${ico("out")}</button></div></aside>
+      <div class="me">${avaEl(S.me.id, S.me.name, S.me.email)}<div class="who"><b>${esc(S.me.name)}</b><span class="mut">${esc(S.me.email)}</span></div><button class="iconbtn" id="logout" title="লগআউট">${ico("out")}</button></div></aside>
     <div class="mainwrap">
       <header class="topbar"><div class="tb-brand"><div class="logo" style="width:30px;height:30px"><img src="icon.svg" alt="Nabiad"></div>NABIAD</div><div class="crumb" id="crumb"></div><div class="sp"></div>
         <button class="searchbtn" id="qs">${ico("search").replace("<svg", '<svg width="16" height="16"')}<span class="lbl">চেক / অ্যাকাউন্ট খুঁজুন…</span><kbd>Ctrl K</kbd></button>
@@ -1402,7 +1425,7 @@ async function vAdmin(v) {
       out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
       let us = []; try { us = await API.users(); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(e.message)}</div>`; return; }
       out.innerHTML = `<div class="row ubar"><div><b>${us.length} ${LANG === "en" ? "users" : "জন ব্যবহারকারী"}</b><div class="mut xs">${LANG === "en" ? "Create accounts, set roles and reset passwords here" : "এখান থেকেই অ্যাকাউন্ট খোলা, Role দেওয়া ও পাসওয়ার্ড রিসেট"}</div></div><button class="btn pri" id="u-new">${ico("plus")} ${LANG === "en" ? "New user" : "নতুন ব্যবহারকারী"}</button></div>
-       <div class="ulist">${us.map(u => `<div class="card uc" data-u="${u.id}"><div class="uh"><div class="ava">${esc((u.name || u.email || "?").trim().slice(0, 1).toUpperCase())}</div><div class="ue"><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div><label class="sw" title="সক্রিয়"><input type="checkbox" class="ac" ${u.active ? "checked" : ""}><i></i></label></div>
+       <div class="ulist">${us.map(u => `<div class="card uc" data-u="${u.id}"><div class="uh">${avaEl(u.id, u.name, u.email)}<div class="ue"><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div><label class="sw" title="সক্রিয়"><input type="checkbox" class="ac" ${u.active ? "checked" : ""}><i></i></label></div>
         <div class="ug"><div><label class="f">নাম</label><input class="in nm" value="${esc(u.name || "")}"></div><div><label class="f">Role</label><div class="seg rl">${[["admin", "Admin"], ["staff", "Staff"], ["boss", "Boss"]].map(([r, l]) => `<span class="chip ${r === u.role ? "on" : ""}" data-r="${r}">${l}</span>`).join("")}</div></div></div>
         <div class="row" style="margin-top:10px"><button class="btn pri sm fix" data-s="${u.id}">${ico("save")} সেভ</button><button class="btn sm fix" data-pw="${u.id}">🔑 ${LANG === "en" ? "Reset password" : "পাসওয়ার্ড রিসেট"}</button>${u.id === S.me.id ? `<span class="mut xs">এটা আপনি</span>` : ""}</div></div>`).join("")}</div>`;
       $("#u-new", out).onclick = () => newUserModal(draw);
@@ -2166,6 +2189,7 @@ async function vSettings(v) {
   let used = 0; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); used += (localStorage.getItem(k) || "").length + k.length; } } catch { }
   v.innerHTML = head("সেটিংস") + `<div class="grid g2 setg">
    <div class="card"><h3>👤 প্রোফাইল</h3><div class="grid" style="gap:12px">
+     <div class="pfp">${avaEl(S.me.id, S.me.name, S.me.email, "xl")}<div class="pfb"><b>${LANG === "en" ? "Profile picture" : "প্রোফাইল ছবি"}</b><div class="mut xs">${LANG === "en" ? "Shown in the sidebar and user lists. Square crop, JPG/PNG." : "সাইডবার ও ইউজার তালিকায় দেখা যাবে। মাঝখান থেকে চৌকো করে কাটা হয়।"}</div><div class="row" style="margin-top:8px"><button class="btn sm pri fix" id="pf-up" type="button">${ico("cam")} ${LANG === "en" ? "Upload photo" : "ছবি দিন"}</button><button class="btn sm fix ${avaMap()[S.me.id] ? "" : "hide"}" id="pf-rm" type="button">${ico("trash")} ${LANG === "en" ? "Remove" : "মুছুন"}</button><input type="file" id="pf-f" accept="image/*" hidden></div></div></div>
      <div><label class="f">আপনার নাম <span class="mut">(চেক/ক্লোজিং-এ "কে এন্ট্রি করেছে" হিসেবে বসে)</span></label><div class="row" style="flex-wrap:nowrap"><input class="in" id="st-nm" value="${esc(S.me.name || "")}"><button class="btn fix" id="st-nm-s">সেভ</button></div></div>
      <div class="mut sm">${esc(S.me.email)} · <span class="pill">${esc(S.me.role)}</span></div>
      ${DEMO ? "" : `<div><label class="f">নতুন পাসওয়ার্ড</label><div class="row" style="flex-wrap:nowrap"><input class="in" type="password" id="st-pw" autocomplete="new-password" placeholder="কমপক্ষে ১০ অক্ষর"><button class="btn fix" id="st-pw-s">বদলান</button></div></div>`}</div></div>
@@ -2187,6 +2211,9 @@ async function vSettings(v) {
      <div class="mut xs">"ক্যাশ মুছে রিলোড" শুধু এই ডিভাইসের জমা কপি মোছে — সার্ভারের ডাটা ঠিক থাকে। সিঙ্ক বাকি থাকলে আগে সিঙ্ক করুন।</div></div></div>
    ${admin ? `<div class="card" style="grid-column:1/-1"><h3>🛡 Admin শর্টকাট</h3><div class="row"><a class="btn fix" href="#/admin">${ico("gear")} ব্যবহারকারী ও অ্যাকাউন্ট</a><a class="btn fix" href="#/audit">${ico("shield")} Audit ও Backup</a><a class="btn fix" href="#/books">${ico("book")} চেক বই</a></div></div>` : ""}</div>`;
   const g = id => $("#" + id, v);
+  { const f = g("pf-f"), rm = g("pf-rm"); g("pf-up").onclick = () => f.click();
+    f.onchange = async () => { const file = f.files[0]; f.value = ""; if (!file) return; const b = g("pf-up"); b.disabled = true; try { const img = await imgToAvatar(file); await API.setAvatar(img); avaMap()[S.me.id] = img; try { localStorage.setItem("nabiad_ava_" + S.me.id, img); } catch { } refreshAvatars(); rm.classList.remove("hide"); toast(LANG === "en" ? "✔ Photo updated" : "✔ ছবি সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? "schema_v6.sql-এর v6.41 অংশ চালানো হয়নি" : e.message, "err"); } b.disabled = false; };
+    rm.onclick = async () => { if (!ask(LANG === "en" ? "Remove your profile picture?" : "প্রোফাইল ছবি মুছে ফেলবেন?")) return; try { await API.setAvatar(null); delete avaMap()[S.me.id]; try { localStorage.removeItem("nabiad_ava_" + S.me.id); } catch { } refreshAvatars(); rm.classList.add("hide"); toast(LANG === "en" ? "✔ Photo removed" : "✔ ছবি মুছে ফেলা হয়েছে"); } catch (e) { toast(e.message, "err"); } }; }
   g("st-nm-s").onclick = async () => { const n = g("st-nm").value.trim(); if (!n) return toast("নাম লিখুন", "err"); try { await API.setMyName(n); S.me.name = n; saveCache(); shell(); route(); toast("✔ নাম সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? "schema_v3.sql চালানো বাকি" : e.message, "err"); } };
   g("st-pw-s") && (g("st-pw-s").onclick = async () => { const p = g("st-pw").value; if (p.length < 10) return toast("পাসওয়ার্ড কমপক্ষে ১০ অক্ষর", "err"); try { await API.changePassword(p); g("st-pw").value = ""; toast("✔ পাসওয়ার্ড বদলানো হয়েছে"); } catch (e) { toast(e.message, "err"); } });
   g("st-th").onchange = e => setTheme(e.target.value); g("st-lg").onchange = e => setLang(e.target.value);
@@ -2331,7 +2358,7 @@ async function vSec(out) {
        <div class="row" style="margin-top:12px"><button class="btn fix" id="sc-oth">${ico("out")} অন্য সব ডিভাইস থেকে লগআউট</button><a class="btn fix" href="#/settings">${ico("gear")} পাসওয়ার্ড বদলান</a></div><div class="mut xs" style="margin-top:6px">ফোন হারালে বা পাসওয়ার্ড অন্য কেউ জানলে আগে "অন্য সব ডিভাইস থেকে লগআউট" চাপুন, তারপর পাসওয়ার্ড বদলান।</div></div>
       <div class="card"><h3>🗑 গত ৭ দিনে মুছে ফেলা</h3>${recent.length ? `<div class="mini">${recent.slice(0, 6).map(r => `<div class="mi"><div><b>${esc(AU_T[r.tbl] || r.tbl)} · ${esc(r.row_key || "")}</b><div class="mut xs">${esc(r.user_name || "")} · ${new Date(r.at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}</div></div></div>`).join("")}</div><a class="btn sm" style="margin-top:8px" href="#/audit" onclick="sessionStorage.setItem('nabiad_sec_tab','audit')">সব দেখুন →</a>` : `<div class="alert gr">✔ গত ৭ দিনে কিছু মোছা হয়নি</div>`}</div></div>
     <div class="card flush" style="grid-column:1/-1"><div class="ch"><h3>👥 ব্যবহারকারী ও শেষ লগইন</h3><span class="tag">${us.length}</span><div class="sp" style="flex:1"></div><a class="sm" href="#/admin" onclick="sessionStorage.setItem('nabiad_admin_tab','usr')">বদলান →</a></div>
-      <div class="ulr">${us.map(u => `<div class="ur"><div class="ava">${esc((u.name || u.email || "?").trim().slice(0, 1).toUpperCase())}</div><div class="ub"><b>${esc(u.name || "—")}</b> <span class="pill sm">${esc(u.role)}</span>${u.active ? "" : ` <span class="tag cl">নিষ্ক্রিয়</span>`}<div class="mut xs">${esc(u.email)}</div></div><div class="ut"><span class="mut xs">শেষ লগইন</span><b class="sm">${u.last_sign_in_at ? relTime(u.last_sign_in_at) : "—"}</b></div></div>`).join("")}</div>
+      <div class="ulr">${us.map(u => `<div class="ur">${avaEl(u.id, u.name, u.email)}<div class="ub"><b>${esc(u.name || "—")}</b> <span class="pill sm">${esc(u.role)}</span>${u.active ? "" : ` <span class="tag cl">নিষ্ক্রিয়</span>`}<div class="mut xs">${esc(u.email)}</div></div><div class="ut"><span class="mut xs">শেষ লগইন</span><b class="sm">${u.last_sign_in_at ? relTime(u.last_sign_in_at) : "—"}</b></div></div>`).join("")}</div>
       ${logins ? "" : `<div class="mut xs" style="padding:0 16px 12px">শেষ লগইনের সময় দেখাতে schema_v4.sql চালাতে হবে।</div>`}</div></div>`;
   $("#sc-oth", out).onclick = async () => { if (!ask("অন্য সব ডিভাইস থেকে লগআউট করবেন? (এই ডিভাইস লগইন থাকবে)")) return; try { await API.signOutOthers(); toast("✔ অন্য ডিভাইস থেকে লগআউট হয়েছে"); } catch (e) { toast(e.message, "err"); } };
 }
@@ -2882,6 +2909,7 @@ async function boot() {
     if (!inited) { startI18n(); await API.init(); inited = true; }
     if (!S.me) S.me = await API.session();
     if (!S.me) return loginView();
+    loadAvatars();
     let mo = null;
     const start = () => { if (!location.hash && PREFS.start && PREFS.start !== "dash" && allowed().includes(PREFS.start)) location.replace("#/" + PREFS.start); shell(); route(); setTimeout(remTick, 1500); if (!mo) { let q = 0; mo = new MutationObserver(() => { if (!q) q = requestAnimationFrame(() => { q = 0; labelTables(document); }); }); mo.observe(document.body, { childList: true, subtree: true }); } };
     if (loadCache()) { start(); reload().then(() => { refreshBadges(); const k = (location.hash.match(/^#\/(\w+)/) || [])[1] || "dash"; if (["dash", "cheques", "books", "accounts"].includes(k) && !document.querySelector(".mback,.pal") && !document.activeElement?.matches("input,select,textarea")) route(); }).catch(e => { if (!isNetErr(e)) toast("রিফ্রেশ ব্যর্থ: " + (e.message || e), "err"); }); Outbox.flush(); }
