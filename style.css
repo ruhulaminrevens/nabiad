@@ -1081,3 +1081,20 @@ html[data-lock="1"] #app,html[data-lock="1"] #modal-root,html[data-lock="1"] #to
   .card.flush #e-list{padding-bottom:6px}
 }
 #cr-info{margin-bottom:8px}
+
+/* v6.49: cheque list summary cards, polished period bar spacing */
+.ksum{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 12px}
+.ksum .kc{flex:1 1 130px;min-width:120px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 14px;display:flex;flex-direction:column;gap:2px;box-shadow:var(--sh1,0 1px 2px rgba(0,0,0,.04))}
+.ksum .kc>span{font-size:11.5px;color:var(--mut);font-weight:600;letter-spacing:.2px}
+.ksum .kc>b{font-size:21px;line-height:1.15}
+.ksum .kc>small{color:var(--mut);font-size:12px}
+.ksum .kc.main{background:linear-gradient(135deg,rgba(79,70,229,.10),rgba(59,130,246,.08));border-color:rgba(79,70,229,.30)}
+.ksum .kc.main>small{color:var(--text);font-weight:700;font-size:13px}
+#b-q{align-items:center}
+.pb6 .pbm{grid-template-columns:repeat(6,1fr)}
+.ksum .kc .kv{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.ksum .kc.main .kv>small{color:var(--text);font-weight:700;font-size:13px}
+/* v6.49: suggest dropdown stays on top inside modals, readable on phones */
+.suggest:focus-within{z-index:70}
+.modal .grid>div:focus-within,.modal .row>div:focus-within{position:relative;z-index:70}
+@media(max-width:520px){.sg-list div{flex-direction:column;align-items:flex-start;gap:1px}.sg-list div small{white-space:normal}}
