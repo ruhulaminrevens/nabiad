@@ -962,6 +962,56 @@ function periodRange(p) {
   if (p === "year") return [`${y}-01-01`, `${y}-12-31`];
   return null;
 }
+/* ---------- v6.35: ONE period picker for every report / summary ----------
+   Daily / Weekly / Monthly / Yearly each have  ‹ Prev | running period | Next ›
+   Custom = any From → To calendar range. State lives in F: { m, d, f, t }. */
+const PB_M = () => [["day", LANG === "en" ? "Daily" : "দৈনিক"], ["week", LANG === "en" ? "Weekly" : "সাপ্তাহিক"], ["month", LANG === "en" ? "Monthly" : "মাসিক"], ["year", LANG === "en" ? "Yearly" : "বার্ষিক"], ["custom", LANG === "en" ? "Custom" : "কাস্টম"]];
+const pbInit = (m = "month") => ({ m, d: today(), f: addDays(today(), -29), t: today() });
+const pbWeek = d => { const x = new Date(d + "T00:00:00"), off = (x.getDay() + 1) % 7, a = addDays(d, -off); return [a, addDays(a, 6)]; }; /* Sat → Fri */
+function pbRange(F) {
+  const d = F.d || today();
+  if (F.m === "day") return [d, d];
+  if (F.m === "week") return pbWeek(d);
+  if (F.m === "month") { const y = +d.slice(0, 4), mo = +d.slice(5, 7) - 1; return [iso(new Date(y, mo, 1)), iso(new Date(y, mo + 1, 0))]; }
+  if (F.m === "year") return [`${d.slice(0, 4)}-01-01`, `${d.slice(0, 4)}-12-31`];
+  const a = F.f || addDays(today(), -29), b = F.t || today(); return a <= b ? [a, b] : [b, a];
+}
+function pbShift(F, n) {
+  const d = F.d || today();
+  if (F.m === "day") F.d = addDays(d, n); else if (F.m === "week") F.d = addDays(d, 7 * n);
+  else if (F.m === "month") { const x = new Date(d.slice(0, 7) + "-01T00:00:00"); x.setMonth(x.getMonth() + n); F.d = iso(x); }
+  else if (F.m === "year") F.d = `${+d.slice(0, 4) + n}-${d.slice(5, 7)}-01`;
+}
+const pbFmt = d => new Date(d + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+function pbBar(id, F) {
+  const [a, b] = pbRange(F), yr = +today().slice(0, 4), ys = []; for (let y = yr + 1; y >= 2023; y--) ys.push(y);
+  const chips = PB_M().map(([k, l]) => `<span class="chip ${k === F.m ? "on" : ""}" data-m="${k}">${l}</span>`).join("");
+  let mid = "";
+  if (F.m === "day") mid = `<input class="in big" type="date" id="${id}pb-d" value="${F.d}">`;
+  else if (F.m === "month") mid = `<input class="in big" type="month" id="${id}pb-d" value="${F.d.slice(0, 7)}">`;
+  else if (F.m === "year") mid = `<select class="in big" id="${id}pb-d">${ys.map(y => `<option ${y === +F.d.slice(0, 4) ? "selected" : ""}>${y}</option>`).join("")}</select>`;
+  else if (F.m === "week") mid = `<label class="pbw in big"><span>${pbFmt(a)} – ${pbFmt(b)} ${b.slice(0, 4)}</span><input type="date" id="${id}pb-d" value="${F.d}"></label>`;
+  const nav = F.m === "custom"
+    ? `<div class="pbcu"><div><label class="f">From</label><input class="in" type="date" id="${id}pb-f" value="${F.f}"></div><div><label class="f">To</label><input class="in" type="date" id="${id}pb-t" value="${F.t}"></div></div>`
+    : `<div class="dnav pbnav"><button class="btn" id="${id}pb-p">‹ ${LANG === "en" ? "Prev" : "আগের"}</button>${mid}<button class="btn" id="${id}pb-n">${LANG === "en" ? "Next" : "পরের"} ›</button></div>`;
+  return `<div class="pb" id="${id}"><div class="pbm">${chips}</div>${nav}</div>`;
+}
+function pbBind(v, id, F, draw) {
+  const redraw = () => { const h = $(`#${id}`, v); h.outerHTML = pbBar(id, F); pbBind(v, id, F, draw); draw(); };
+  $$(`#${id} .chip`, v).forEach(c => c.onclick = () => {
+    const k = c.dataset.m;
+    if (k === F.m) { F.d = today(); if (k === "custom") { F.f = addDays(today(), -29); F.t = today(); } return redraw(); } /* tap the active tab = jump back to the running period */
+    if (k === "custom") { const [a, b] = pbRange(F); F.f = a; F.t = b > today() ? today() : b; }
+    else if (F.m === "custom") F.d = F.t || today();
+    F.m = k; redraw();
+  });
+  const d = $(`#${id}pb-d`, v);
+  if (d) {
+    d.onchange = () => { const x = d.value; if (!x) return; F.d = F.m === "month" ? x + "-01" : F.m === "year" ? x + "-01-01" : x; redraw(); };
+    $(`#${id}pb-p`, v).onclick = () => { pbShift(F, -1); redraw(); }; $(`#${id}pb-n`, v).onclick = () => { pbShift(F, 1); redraw(); };
+  }
+  [`${id}pb-f`, `${id}pb-t`].forEach(x => { const e = $("#" + x, v); if (e) e.onchange = () => { F.f = $(`#${id}pb-f`, v).value || F.f; F.t = $(`#${id}pb-t`, v).value || F.t; if (F.f > F.t) { toast(LANG === "en" ? "From date cannot be after To" : "From তারিখ To-এর পরে হতে পারে না", "err"); return; } draw(); }; });
+}
 function group(arr, kf) { const m = new Map(); arr.forEach(c => { const k = kf(c); if (k === "" || k == null) return; const o = m.get(k) || { k, n: 0, amt: 0 }; o.n++; o.amt += c.amount; m.set(k, o); }); return [...m.values()]; }
 
 /* ---------- cheque books / missing leaves ---------- */
@@ -1709,16 +1759,15 @@ async function vDash(v) {
 
 /* =================== v6: bank + cheque reports =================== */
 async function vReports(v) {
-  const F = { tab: sessionStorage.getItem("nabiad_rep_tab") || "bank", p: "month", from: "", to: "", holder: "" }; const holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort();
+  const F = { ...pbInit("month"), tab: sessionStorage.getItem("nabiad_rep_tab") || "bank", holder: "" }; const holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort();
   v.innerHTML = head("রিপোর্ট", `${repBtns("p")}<button class="btn" id="p-x">${ico("dl")} Excel</button>`) + `
    <div class="tabs noprint">${[["bank", "🏦 ব্যাংক ব্যালেন্স"], ["chq", "🧾 চেক"]].map(([k, l]) => `<span class="chip ${k === F.tab ? "on" : ""}" data-tab="${k}">${l}</span>`).join("")}</div>
-   <div class="card noprint" style="margin-bottom:14px"><label class="f">সময়</label><div class="seg wrap">${[["today", "আজ"], ["week", "৭ দিন"], ["month", "এই মাস"], ["last", "গত মাস"], ["year", "এই বছর"], ["custom", "তারিখ নির্বাচন"]].map(([k, l]) => `<span class="chip ${k === F.p ? "on" : ""}" data-p="${k}">${l}</span>`).join("")}</div>
-   <div class="row" style="margin-top:10px"><div class="hide" id="p-cu" style="flex:2 1 260px"><label class="f">From → To</label><div style="display:flex;gap:6px"><input class="in" type="date" id="p-f"><input class="in" type="date" id="p-t"></div></div>
-   <div style="flex:1 1 200px"><label class="f">অ্যাকাউন্ট হোল্ডার</label><select class="in" id="p-h"><option value="">সব</option>${holders.map(h => `<option>${esc(h)}</option>`).join("")}</select></div></div></div><div class="card rep-wrap"><div class="rep-scroll"><div id="p-out"></div></div></div>`;
+   <div class="card noprint" style="margin-bottom:14px">${pbBar("p", F)}
+   <div class="row" style="margin-top:10px"><div style="flex:1 1 200px"><label class="f">অ্যাকাউন্ট হোল্ডার</label><select class="in" id="p-h"><option value="">সব</option>${holders.map(h => `<option>${esc(h)}</option>`).join("")}</select></div></div></div><div class="card rep-wrap"><div class="rep-scroll"><div id="p-out"></div></div></div>`;
   let cur = null;
   const tbl = (title, rows, cols, total = true, fmt = r => [r.n, money0(r.amt)]) => { const T = rows.reduce((q, r) => ({ n: q.n + (r.n || 0), a: q.a + r.amt }), { n: 0, a: 0 });
     return repBox(title, cols, rows.map(r => `<tr><td>${r.k}</td>${fmt(r).map(x => `<td class="r num">${x}</td>`).join("")}</tr>`).join(""), total && rows.length ? `<tr class="tot"><td>TOTAL</td>${fmt({ n: T.n, amt: T.a }).map(x => `<td class="r num">${x}</td>`).join("")}</tr>` : ""); };
-  const range = () => { if (F.p === "custom") return [F.from || addDays(today(), -30), F.to || today()]; if (F.p === "week") return [addDays(today(), -6), today()]; return periodRange(F.p); };
+  const range = () => pbRange(F);
   async function draw() {
     const [from, to] = range(), am = accMap(), out = $("#p-out", v); const hOk = code => !F.holder || (am[code] || {}).holder === F.holder;
     const label = "", hold = F.holder ? ` · ${esc(F.holder)}` : "";
@@ -1760,8 +1809,7 @@ async function vReports(v) {
     dcFit(v, "p-in");
   }
   $$(".chip[data-tab]", v).forEach(c => c.onclick = () => { F.tab = c.dataset.tab; sessionStorage.setItem("nabiad_rep_tab", F.tab); $$(".chip[data-tab]", v).forEach(x => x.classList.toggle("on", x === c)); draw(); });
-  $$(".chip[data-p]", v).forEach(c => c.onclick = () => { F.p = c.dataset.p; $$(".chip[data-p]", v).forEach(x => x.classList.toggle("on", x === c)); $("#p-cu", v).classList.toggle("hide", F.p !== "custom"); if (F.p === "custom" && !F.from) { F.from = addDays(today(), -30); F.to = today(); $("#p-f", v).value = F.from; $("#p-t", v).value = F.to; } draw(); });
-  ["p-f", "p-t"].forEach(id => $("#" + id, v).onchange = () => { F.from = $("#p-f", v).value; F.to = $("#p-t", v).value; if (F.from && F.to && F.from > F.to) return toast("From তারিখ To-এর পরে হতে পারে না", "err"); draw(); });
+  pbBind(v, "p", F, draw);
   $("#p-h", v).onchange = e => { F.holder = e.target.value; draw(); };
   $("#p-x", v).onclick = () => {
     if (!cur) return toast("ডাটা নেই", "err"); const strip = s => String(s).replace(/<[^>]+>/g, "").trim();
@@ -1863,19 +1911,14 @@ async function vCash(v) {
 }
 
 /* =================== v6: CASH — summary board / history =================== */
-function cashPeriod(p, f, t) { const T = today(); if (p === "30") return [addDays(T, -29), T]; if (p === "custom") return [f || addDays(T, -29), t || T]; return periodRange(p); }
-function periodBar(id, cur) { return `<div class="seg wrap" id="${id}">${[["30", "৩০ দিন"], ["month", "এই মাস"], ["last", "গত মাস"], ["year", "এই বছর"], ["custom", "তারিখ নির্বাচন"]].map(([k, l]) => `<span class="chip ${k === cur ? "on" : ""}" data-p="${k}">${l}</span>`).join("")}</div><div class="row hide" id="${id}-cu" style="margin-top:8px"><input class="in" type="date" id="${id}-f"><input class="in" type="date" id="${id}-t"></div>`; }
-function bindPeriod(v, id, F, draw) {
-  $$(`#${id} .chip`, v).forEach(c => c.onclick = () => { F.p = c.dataset.p; $$(`#${id} .chip`, v).forEach(x => x.classList.toggle("on", x === c)); $(`#${id}-cu`, v).classList.toggle("hide", F.p !== "custom"); if (F.p === "custom" && !F.f) { F.f = addDays(today(), -29); F.t = today(); $(`#${id}-f`, v).value = F.f; $(`#${id}-t`, v).value = F.t; } draw(); });
-  [`${id}-f`, `${id}-t`].forEach(x => $("#" + x, v).onchange = () => { F.f = $(`#${id}-f`, v).value; F.t = $(`#${id}-t`, v).value; draw(); });
-}
+const cashPeriod = F => pbRange(F);
 const cashErr = e => /relation|does not exist|schema cache|not find/i.test(e.message || "") ? "ক্যাশ টেবিল নেই — Supabase-এ schema_v3.sql চালাতে হবে" : isNetErr(e) ? "ইন্টারনেট নেই" : (e.message || String(e));
 async function vCashSum(v) {
-  const F = { p: "30" };
-  v.innerHTML = head("ক্যাশ সামারি ও ইতিহাস", `${repBtns("cm")}<button class="btn" id="cm-x">${ico("dl")} Excel</button>${S.me.role !== "boss" ? `<a class="btn pri" href="#/cash">${ico("plus")} আজকের রেকর্ড</a>` : ""}`) + `<div class="card noprint" style="margin-bottom:14px">${periodBar("cm", F.p)}</div><div class="card rep-wrap"><div class="rep-scroll"><div id="cm-out"></div></div></div>`;
+  const F = pbInit("month");
+  v.innerHTML = head("ক্যাশ সামারি ও ইতিহাস", `${repBtns("cm")}<button class="btn" id="cm-x">${ico("dl")} Excel</button>${S.me.role !== "boss" ? `<a class="btn pri" href="#/cash">${ico("plus")} আজকের রেকর্ড</a>` : ""}`) + `<div class="card noprint" style="margin-bottom:14px">${pbBar("cm", F)}</div><div class="card rep-wrap"><div class="rep-scroll"><div id="cm-out"></div></div></div>`;
   let rows = [];
   async function draw() {
-    const [f, t] = cashPeriod(F.p, F.f, F.t), out = $("#cm-out", v); out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
+    const [f, t] = cashPeriod(F), out = $("#cm-out", v); out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
     try { rows = await API.cashRange(f, t); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(cashErr(e))}</div>`; return; }
     const fin = rows.filter(r => r.status === "final"), R = fin.reduce((s, r) => s + (+r.total_receipt || 0), 0), P = fin.reduce((s, r) => s + (+r.total_payment || 0), 0), last = fin[fin.length - 1], first = fin[0];
     let miss = 0; for (let d = f; d <= (t > today() ? today() : t); d = addDays(d, 1)) if (!isFri(d) && !rows.some(r => r.date === d)) miss++;
@@ -1887,7 +1930,7 @@ async function vCashSum(v) {
       repOne(repBox(`Daily History (${rows.length})`, ["Date", "Opening", "Receipt", "Payment", "Closing", "Cash in hand", "Bank", "Status"], [...rows].reverse().map(r => `<tr><td class="cd">${dmy(r.date)} <span class="mut">${new Date(r.date + "T00:00").toLocaleDateString("en-GB", { weekday: "short" })}</span></td><td class="r num">${money0(+r.opening_cash + +r.opening_bank)}</td><td class="r num gr">${money0(r.total_receipt)}</td><td class="r num rd">${money0(r.total_payment)}</td><td class="r num b">${money0(r.closing)}</td><td class="r num">${r.cash_in_hand == null ? "—" : money0(r.cash_in_hand)}</td><td class="r num">${r.cash_in_hand == null ? "—" : money0(r.closing - r.cash_in_hand)}</td><td class="r">${r.status === "final" ? "Final" : "Draft"}</td></tr>`).join(""))), note);
     dcFit(v, "cm-in");
   }
-  bindPeriod(v, "cm", F, draw); const unb = repBind(v, "cm", "cm-in", () => `Cash_Summary_${cashPeriod(F.p, F.f, F.t).join("_")}`, () => { const [a, b] = cashPeriod(F.p, F.f, F.t); return `Cash summary ${dmy(a)} → ${dmy(b)}`; });
+  pbBind(v, "cm", F, draw); const unb = repBind(v, "cm", "cm-in", () => `Cash_Summary_${cashPeriod(F).join("_")}`, () => { const [a, b] = cashPeriod(F); return `Cash summary ${dmy(a)} → ${dmy(b)}`; });
   $("#cm-x", v).onclick = () => rows.length ? exportXlsx({ Daily: [["Date", "Opening Cash", "Opening Bank", "Receipt", "Payment", "Closing", "Cash in hand", "Bank", "Status", "By", "Remarks"], ...rows.map(r => [dmy(r.date), +r.opening_cash, +r.opening_bank, +r.total_receipt, +r.total_payment, +r.closing, r.cash_in_hand == null ? "" : +r.cash_in_hand, r.cash_in_hand == null ? "" : r.closing - r.cash_in_hand, r.status, r.entered_by || "", r.remarks || ""])] }, `Cash_Summary_${today()}.xlsx`) : toast("ডাটা নেই", "err");
   await draw(); return unb;
 }
@@ -1895,11 +1938,11 @@ async function vCashSum(v) {
 
 /* =================== v6: CASH — reports (category breakdown) =================== */
 async function vCashRep(v) {
-  const F = { p: "month" };
-  v.innerHTML = head("ক্যাশ রিপোর্ট", `${repBtns("cr")}<button class="btn" id="cr-x">${ico("dl")} Excel</button>`) + `<div class="card noprint" style="margin-bottom:14px">${periodBar("cr", F.p)}</div><div class="card rep-wrap"><div class="rep-scroll"><div id="cr-out"></div></div></div>`;
+  const F = pbInit("month");
+  v.innerHTML = head("ক্যাশ রিপোর্ট", `${repBtns("cr")}<button class="btn" id="cr-x">${ico("dl")} Excel</button>`) + `<div class="card noprint" style="margin-bottom:14px">${pbBar("cr", F)}</div><div class="card rep-wrap"><div class="rep-scroll"><div id="cr-out"></div></div></div>`;
   let cur = null;
   async function draw() {
-    const [f, t] = cashPeriod(F.p, F.f, F.t), out = $("#cr-out", v); out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
+    const [f, t] = cashPeriod(F), out = $("#cr-out", v); out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
     let rows; try { rows = (await API.cashRange(f, t)).filter(r => r.status === "final"); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(cashErr(e))}</div>`; return; }
     if (!rows.length) { out.innerHTML = `<div class="card empty">এই সময়ে কোনো ফাইনাল ক্যাশ রেকর্ড নেই</div>`; cur = null; return; }
     const cat = k => rows.reduce((s, r) => s + (+r.items?.[k]?.a || 0), 0), days = k => rows.filter(r => +r.items?.[k]?.a).length;
@@ -1914,18 +1957,18 @@ async function vCashRep(v) {
       (months.length > 1 ? repOne(repBox("By Month", ["Category", ...months.map(mName), "Total"], ["receipt", "payment"].map(t => CASH_KEYS(t).map(k => `<tr><td>${esc(cashLabel(k))}</td>${months.map(m => `<td class="r num">${money0(mcat(m, k)) || "—"}</td>`).join("")}<td class="r num b">${money0(cat(k))}</td></tr>`).join("") + `<tr class="tot"><td>Total ${t === "receipt" ? "Receipt" : "Payment"}</td>${months.map(m => `<td class="r num">${money0(CASH_KEYS(t).reduce((q, k) => q + mcat(m, k), 0))}</td>`).join("")}<td class="r num">${money0(t === "receipt" ? R : P)}</td></tr>`).join(""))) : ""));
     dcFit(v, "cr-in");
   }
-  bindPeriod(v, "cr", F, draw); const unb = repBind(v, "cr", "cr-in", () => `Cash_Report_${cur ? cur.f + "_" + cur.t : today()}`, () => cur ? `Cash report ${dmy(cur.f)} → ${dmy(cur.t)}` : "");
+  pbBind(v, "cr", F, draw); const unb = repBind(v, "cr", "cr-in", () => `Cash_Report_${cur ? cur.f + "_" + cur.t : today()}`, () => cur ? `Cash report ${dmy(cur.f)} → ${dmy(cur.t)}` : "");
   $("#cr-x", v).onclick = () => { if (!cur) return toast("ডাটা নেই", "err"); const all = [...CASH_KEYS("receipt"), ...CASH_KEYS("payment")]; exportXlsx({ Categories: [["Type", "Category", "Amount"], ...all.map(k => [cashType(k), cashLabel(k), cur.cat(k)])], Monthly: [["Category", ...cur.months, "Total"], ...all.map(k => [cashLabel(k), ...cur.months.map(m => cur.mcat(m, k)), cur.cat(k)])] }, `Cash_Report_${cur.f}_${cur.t}.xlsx`); };
   await draw(); return unb;
 }
 
 /* =================== v6: Cash Register (every line of every day) =================== */
 async function vRegister(v) {
-  const F = { p: "30", q: "", type: "", k: "" };
-  v.innerHTML = head("ক্যাশ রেজিস্টার", `<button class="btn" id="rg-x">${ico("dl")} Excel</button>`) + `<div class="card noprint" style="margin-bottom:14px">${periodBar("rg", F.p)}<div class="row" style="margin-top:10px"><div style="flex:2 1 220px"><label class="f">খুঁজুন (নোট, খাত, অংক)</label><input class="in" id="rg-q" type="search" autocomplete="off"></div><div><label class="f">ধরন</label><select class="in" id="rg-t"><option value="">সব</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div><div><label class="f">খাত</label><select class="in" id="rg-k"><option value="">সব</option>${[...CASH_KEYS("receipt"), ...CASH_KEYS("payment")].map(k => `<option value="${k}">${esc(cashLabel(k))}</option>`).join("")}</select></div></div></div><div id="rg-sum" class="mut sm" style="margin-bottom:8px"></div><div class="card flush" id="rg-out"></div>`;
+  const F = { ...pbInit("month"), q: "", type: "", k: "" };
+  v.innerHTML = head("ক্যাশ রেজিস্টার", `<button class="btn" id="rg-x">${ico("dl")} Excel</button>`) + `<div class="card noprint" style="margin-bottom:14px">${pbBar("rg", F)}<div class="row" style="margin-top:10px"><div style="flex:2 1 220px"><label class="f">খুঁজুন (নোট, খাত, অংক)</label><input class="in" id="rg-q" type="search" autocomplete="off"></div><div><label class="f">ধরন</label><select class="in" id="rg-t"><option value="">সব</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div><div><label class="f">খাত</label><select class="in" id="rg-k"><option value="">সব</option>${[...CASH_KEYS("receipt"), ...CASH_KEYS("payment")].map(k => `<option value="${k}">${esc(cashLabel(k))}</option>`).join("")}</select></div></div></div><div id="rg-sum" class="mut sm" style="margin-bottom:8px"></div><div class="card flush" id="rg-out"></div>`;
   let lines = [], shown = [];
   async function load() {
-    const [f, t] = cashPeriod(F.p, F.f, F.t); $("#rg-out", v).innerHTML = `<div class="empty">লোড হচ্ছে…</div>`;
+    const [f, t] = cashPeriod(F); $("#rg-out", v).innerHTML = `<div class="empty">লোড হচ্ছে…</div>`;
     try { const rows = await API.cashRange(f, t); lines = rows.flatMap(r => Object.entries(r.items || {}).filter(([, it]) => it.a).map(([k, it]) => ({ date: r.date, k, type: cashType(k), a: +it.a, n: it.n || "", x: it.x || "", st: r.status, by: r.entered_by }))).sort((a, b) => b.date.localeCompare(a.date)); }
     catch (e) { $("#rg-out", v).innerHTML = `<div class="alert rd" style="margin:12px">${esc(cashErr(e))}</div>`; return; }
     draw();
@@ -1936,7 +1979,7 @@ async function vRegister(v) {
     $("#rg-sum", v).innerHTML = `<b>${shown.length}</b>টি লাইন · <span class="gr">Receipt ৳ ${money0(R)}</span> · <span class="rd">Payment ৳ ${money0(P)}</span>`;
     $("#rg-out", v).innerHTML = shown.length ? `<div class="tw cards"><table><thead><tr><th>তারিখ</th><th>ধরন</th><th>খাত</th><th class="r">টাকা</th><th>নোট</th><th>অবস্থা</th></tr></thead><tbody>${shown.slice(0, 1000).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td><td>${esc(cashLabel(l.k))}</td><td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money0(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td><td class="sm">${esc(l.n)}</td><td class="mut sm">${l.st === "final" ? "ফাইনাল" : "ড্রাফট"} · ${esc(l.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">কিছু পাওয়া যায়নি</div>`;
   }
-  bindPeriod(v, "rg", F, load); $("#rg-q", v).oninput = e => { F.q = e.target.value; draw(); }; $("#rg-t", v).onchange = e => { F.type = e.target.value; draw(); }; $("#rg-k", v).onchange = e => { F.k = e.target.value; draw(); };
+  pbBind(v, "rg", F, load); $("#rg-q", v).oninput = e => { F.q = e.target.value; draw(); }; $("#rg-t", v).onchange = e => { F.type = e.target.value; draw(); }; $("#rg-k", v).onchange = e => { F.k = e.target.value; draw(); };
   $("#rg-x", v).onclick = () => shown.length ? exportXlsx({ Register: [["Date", "Type", "Category", "Amount", "Expression", "Note", "Status", "By"], ...shown.map(l => [dmy(l.date), l.type, cashLabel(l.k), l.a, l.x, l.n, l.st, l.by || ""])] }, `Cash_Register_${today()}.xlsx`) : toast("ডাটা নেই", "err");
   await load();
 }
@@ -2068,15 +2111,14 @@ function auChips(r, all) {
   return es.slice(0, all ? 99 : 4).map(([k, val]) => `<span class="auc">${L(k)}<b>${esc(auV(val))}</b></span>`).join("") + (!all && es.length > 4 ? `<button class="btn sm ghost au-more">+${es.length - 4}</button>` : "");
 }
 async function vAudit(v) {
-  const admin = S.me.role === "admin", F = { p: "30", tbl: "", act: "", who: "", q: "", from: "", to: "" };
+  const admin = S.me.role === "admin", F = { ...pbInit("month"), tbl: "", act: "", who: "", q: "" };
   v.innerHTML = head("Audit log", `<div class="dd"><button class="btn" id="au-dl">${ico("dl")} ডাউনলোড ▾</button><div class="ddm hide" id="au-menu"><button data-dl="xlsx">${ico("dl")} Excel (.xlsx)</button><button data-dl="csv">${ico("list")} CSV</button><button data-dl="print">${ico("print")} প্রিন্ট / PDF</button></div></div>${admin ? `<button class="btn rdo" id="au-clr">${ico("trash")} লগ পরিষ্কার</button>` : ""}`) + `
-   <div class="card noprint" style="margin-bottom:12px"><div class="seg wrap" id="au-p">${[["1", "আজ"], ["7", "৭ দিন"], ["30", "৩০ দিন"], ["90", "৯০ দিন"], ["custom", "তারিখ"]].map(([k, l]) => `<span class="chip ${k === F.p ? "on" : ""}" data-p="${k}">${l}</span>`).join("")}</div>
-    <div class="row hide" id="au-cu" style="margin-top:8px"><input class="in" type="date" id="au-f"><input class="in" type="date" id="au-to"></div>
+   <div class="card noprint" style="margin-bottom:12px">${pbBar("au", F)}
     <div class="srch"><label class="si">${ico("search")}<input class="in" id="au-q" placeholder="খুঁজুন — A/C, চেক নং, ইমেইল…" autocomplete="off" type="search"></label></div>
     <div class="aufl"><select class="in" id="au-t"><option value="">সব জায়গা</option>${Object.entries({ ...AU_T, cash_records: "ক্যাশ" }).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select><select class="in" id="au-a"><option value="">সব কাজ</option>${Object.entries(AU_A).map(([k, l]) => `<option value="${k}">${l[0]}</option>`).join("")}</select><select class="in" id="au-w"><option value="">সবাই</option></select></div></div>
    <div class="grid g4 au-k4" id="au-kpi"></div><div id="au-out" style="margin-top:12px"><div class="card empty">লোড হচ্ছে…</div></div>`;
   let rows = [], shown = [], more = false;
-  const range = () => { if (F.p === "custom") return [F.from || addDays(today(), -30), F.to || today()]; return [addDays(today(), -(+F.p - 1)), today()]; };
+  const range = () => pbRange(F);
   async function load(append) {
     const [from, to] = range(); if (!append) $("#au-out", v).innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
     try { const r = await API.audit({ tbl: F.tbl, act: F.act, from, to, offset: append ? rows.length : 0 }); rows = append ? rows.concat(r) : r; more = r.length >= 500; }
@@ -2110,8 +2152,7 @@ async function vAudit(v) {
   $$("#au-menu [data-dl]", v).forEach(b => b.onclick = () => download(b.dataset.dl));
   const hideMenu = () => $("#au-menu", v)?.classList.add("hide"); document.addEventListener("click", hideMenu);
   $("#au-clr", v) && ($("#au-clr", v).onclick = () => clearAuditModal(() => load()));
-  $$("#au-p .chip", v).forEach(c => c.onclick = () => { F.p = c.dataset.p; $$("#au-p .chip", v).forEach(x => x.classList.toggle("on", x === c)); $("#au-cu", v).classList.toggle("hide", F.p !== "custom"); if (F.p === "custom" && !F.from) { F.from = addDays(today(), -30); F.to = today(); $("#au-f", v).value = F.from; $("#au-to", v).value = F.to; } load(); });
-  ["au-f", "au-to"].forEach(id => $("#" + id, v).onchange = () => { F.from = $("#au-f", v).value; F.to = $("#au-to", v).value; load(); });
+  pbBind(v, "au", F, load);
   $("#au-t", v).onchange = e => { F.tbl = e.target.value; load(); }; $("#au-a", v).onchange = e => { F.act = e.target.value; load(); }; $("#au-w", v).onchange = e => { F.who = e.target.value; draw(); };
   $("#au-q", v).oninput = e => { F.q = e.target.value; draw(); };
   await load();
@@ -2516,18 +2557,9 @@ async function vDcol(v) {
 }
 
 /* ---------- period bar shared by Summary and Report ---------- */
-function dcPeriodBar(id, F) {
-  return `<div class="seg wrap" id="${id}">${[["today", "আজ"], ["day", "নির্দিষ্ট তারিখ"], ["month", "এই মাস"], ["last", "গত মাস"], ["custom", "যেকোনো তারিখ"]].map(([k, l]) => `<span class="chip ${k === F.p ? "on" : ""}" data-p="${k}">${l}</span>`).join("")}</div>
-   <div class="row ${F.p === "day" ? "" : "hide"}" id="${id}-day" style="margin-top:8px">${dateNav(id + "x", F.d)}</div>
-   <div class="row ${F.p === "custom" ? "" : "hide"}" id="${id}-cu" style="margin-top:8px"><div><label class="f">From</label><input class="in" type="date" id="${id}-f" value="${F.f}"></div><div><label class="f">To</label><input class="in" type="date" id="${id}-t" value="${F.t}"></div></div>`;
-}
-const dcEmptyPeriod = msg => `<div class="dcx-empty big"><span class="ei">${ico("chart")}</span><b>${msg}</b><span class="mut">অন্য সময় বেছে দেখুন</span><div class="chips" style="justify-content:center"><span class="chip" data-qp="month">এই মাস</span><span class="chip" data-qp="last">গত মাস</span><span class="chip" data-qp="custom">যেকোনো তারিখ</span></div></div>`;
-function dcRange(F) { if (F.p === "today") return [today(), today()]; if (F.p === "day") return [F.d, F.d]; if (F.p === "custom") return [F.f <= F.t ? F.f : F.t, F.f <= F.t ? F.t : F.f]; return periodRange(F.p); }
-function dcBindPeriod(v, id, F, draw) {
-  $$(`#${id} .chip`, v).forEach(c => c.onclick = () => { F.p = c.dataset.p; $$(`#${id} .chip`, v).forEach(x => x.classList.toggle("on", x === c)); $(`#${id}-day`, v).classList.toggle("hide", F.p !== "day"); $(`#${id}-cu`, v).classList.toggle("hide", F.p !== "custom"); draw(); });
-  bindDateNav(v, id + "x", () => { F.d = $(`#${id}x-d`, v).value; draw(); });
-  [`${id}-f`, `${id}-t`].forEach(x => $("#" + x, v).onchange = () => { F.f = $(`#${id}-f`, v).value; F.t = $(`#${id}-t`, v).value; draw(); });
-}
+const dcPeriodBar = pbBar;
+const dcEmptyPeriod = msg => `<div class="dcx-empty big"><span class="ei">${ico("chart")}</span><b>${msg}</b><span class="mut">${LANG === "en" ? "Try another period" : "অন্য সময় বেছে দেখুন"}</span><div class="chips" style="justify-content:center">${PB_M().filter(x => x[0] !== "day" && x[0] !== "week").map(([k, l]) => `<span class="chip" data-qp="${k}">${l}</span>`).join("")}</div></div>`;
+const dcRange = pbRange, dcBindPeriod = pbBind;
 const dcRangeLabel = (f, t) => f === t ? new Date(f + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : `${dmy(f)} → ${dmy(t)}`;
 const dcStatLabel = s => ({ approved: "Approved", pending: "Pending", cancelled: "Cancelled", live: "All (Cancelled বাদে)" }[s]);
 const dcStatPass = (r, s) => s === "live" ? r.status !== "cancelled" : r.status === s;
@@ -2575,7 +2607,7 @@ const repBtns = p => `<button class="btn" id="${p}-png">${ico("img")} স্ক�
 
 /* =================== Collection Summary (screenshot) =================== */
 async function vDsum(v) {
-  const F = { p: "today", d: today(), f: addDays(today(), -6), t: today(), s: "approved", all: false }; let cur = null;
+  const F = { ...pbInit("day"), s: "approved", all: false }; let cur = null;
   v.innerHTML = head("কালেকশন সামারি", `<button class="btn" id="ds-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="ds-pdf">${ico("print")} PDF</button>${navigator.share ? `<button class="btn" id="ds-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
    <div class="card noprint dcx-filt">${dcPeriodBar("ds", F)}<div class="dcx-frow"><div class="dcx-fs"><label class="f">কোন Status ধরব</label><select class="in" id="ds-s">${dcStatOpts(F.s)}</select></div><label class="keep dcx-keep"><input type="checkbox" id="ds-z"> ০ টাকার Account/ASM-ও দেখাও</label><span class="dcx-per mut" id="ds-per"></span></div></div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="ds-out"></div></div></div>`;
@@ -2596,7 +2628,7 @@ async function vDsum(v) {
       <div class="dcs-two">${tbl("Per Division", divs, "Division")}${tbl(`Per District${dists.length >= 25 ? " (Top 25)" : ""}`, dists, "District")}</div>
       ${days.length ? `<div class="dcs-box" style="margin:0 16px 12px"><div class="dcs-t">Per Day</div><table class="rep-t"><thead><tr><th>Date</th><th class="r">Entry</th><th class="r">Amount</th><th style="width:50%"></th></tr></thead><tbody>${days.map(x => `<tr><td class="cd">${dcShort(x.k)}</td><td class="r num">${x.n}</td><td class="r num us">${money0(x.amt)}</td><td><div class="dcbar"><i style="width:${(x.amt / mx(days) * 100).toFixed(1)}%"></i></div></td></tr>`).join("")}</tbody></table></div>` : ""}
       ${others.length ? `<div class="dcs-note">Note: এই তারিখে আরও ${others.length}টি এন্ট্রি (৳ ${money0(dcSum(others))}) অন্য Status-এ আছে — এখানে ধরা হয়নি।</div>` : ""}${dcFoot()}</div>` : dcEmptyPeriod(`এই সময়ে ${esc(dcStatLabel(F.s))} কোনো কালেকশন নেই`);
-    $$("[data-qp]", out).forEach(b => b.onclick = () => $(`#ds [data-p="${b.dataset.qp}"]`, v).click());
+    $$("[data-qp]", out).forEach(b => b.onclick = () => $(`#ds [data-m="${b.dataset.qp}"]`, v).click());
     const pe = $("#ds-per", v); if (pe) pe.textContent = dcRangeLabel(f, t);
     dcFit(v, "ds-in");
   }
@@ -2611,7 +2643,7 @@ async function vDsum(v) {
 
 /* =================== Collection Report (screenshot / Excel) =================== */
 async function vDrep(v) {
-  const F = { p: "today", d: today(), f: addDays(today(), -6), t: today(), s: "approved", asm: "", ac: "", dv: "", ds: "", q: "", ca: false, cd: false, cs: false, sub: true }; let cur = null, all = [];
+  const F = { ...pbInit("day"), s: "approved", asm: "", ac: "", dv: "", ds: "", q: "", ca: false, cd: false, cs: false, sub: true }; let cur = null, all = [];
   v.innerHTML = head("কালেকশন রিপোর্ট", `<button class="btn" id="dr-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="dr-pdf">${ico("print")} PDF</button><button class="btn" id="dr-xl">${ico("dl")} Excel</button>${navigator.share ? `<button class="btn" id="dr-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
    <div class="card noprint dcx-filt">${dcPeriodBar("dr", F)}
     <div class="dcx-fgrid"><div><label class="f">Status</label><select class="in" id="dr-s">${dcStatOpts(F.s)}</select></div><div><label class="f">ASM</label><select class="in" id="dr-asm"><option value="">সব ASM</option></select></div><div><label class="f">Account</label><select class="in" id="dr-ac"><option value="">সব Account</option></select></div><div><label class="f">বিভাগ</label><select class="in" id="dr-dv"><option value="">সব বিভাগ</option></select></div><div><label class="f">জেলা</label><select class="in" id="dr-ds"><option value="">সব জেলা</option></select></div><div class="dcx-q"><label class="f">পার্টি খুঁজুন</label><input class="in" id="dr-q" type="search" autocomplete="off" placeholder="পার্টির নাম / টাকা / মন্তব্য"></div></div>
@@ -2636,7 +2668,7 @@ async function vDrep(v) {
     const [f, t] = dcRange(F), out = $("#dr-out", v), q = norm(F.q);
     const gm = dpGeoMap(), gOf = r => dpGeoOf(gm, r);
     const rows = all.filter(r => dcStatPass(r, F.s) && (!F.asm || r.asm === F.asm) && (!F.ac || r.account === F.ac) && (!F.dv || gOf(r).division === F.dv) && (!F.ds || gOf(r).district === F.ds) && (!q || norm([r.party, r.amount, r.remarks, r.account].join(" ")).includes(q)));
-    cur = { f, t, rows }; if (!rows.length) { out.innerHTML = dcEmptyPeriod(all.length ? "ফিল্টারের সাথে কোনো এন্ট্রি মেলেনি" : "এই সময়ে কোনো এন্ট্রি নেই"); $$("[data-qp]", out).forEach(b => b.onclick = () => $(`#dr [data-p="${b.dataset.qp}"]`, v).click()); return; }
+    cur = { f, t, rows }; if (!rows.length) { out.innerHTML = dcEmptyPeriod(all.length ? "ফিল্টারের সাথে কোনো এন্ট্রি মেলেনি" : "এই সময়ে কোনো এন্ট্রি নেই"); $$("[data-qp]", out).forEach(b => b.onclick = () => $(`#dr [data-m="${b.dataset.qp}"]`, v).click()); return; }
     const multi = f !== t && F.sub, cols = 4 + (F.ca ? 1 : 0) + (F.cd ? 1 : 0) + (F.cs ? 1 : 0); let n = 0, html = "", day = null, dsum = 0, dn = 0;
     const flush = () => { if (multi && day) html += `<tr class="dsub"><td></td><td colspan="${cols - 2}">${dcShort(day)} — ${dn}টি</td><td class="r num">${money0(dsum)}</td>${F.cs ? "<td></td>" : ""}</tr>`; dsum = 0; dn = 0; };
     rows.forEach(r => { if (multi && r.date !== day) { flush(); day = r.date; } n++; dsum += r.amount; dn++; html += `<tr><td class="n">${n}</td><td class="cd">${dcShort(r.date)}</td><td class="ho">${esc(r.party)}${r.remarks ? `<span class="rm"> · ${esc(r.remarks)}</span>` : ""}</td>${F.ca ? `<td class="rm">${esc(r.asm)}</td>` : ""}${F.cd ? `<td class="rm">${esc(gOf(r).district)}</td>` : ""}<td class="cd"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account)}</td><td class="r num">${money0(r.amount)}</td>${F.cs ? `<td><span class="dst ${r.status}">${DC_ST[r.status]}</span></td>` : ""}</tr>`; });
