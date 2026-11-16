@@ -2361,6 +2361,7 @@ async function vSettings(v) {
      <div><label class="f">${LANG === "en" ? "Auto-lock when idle" : "কিছুক্ষণ ব্যবহার না করলে অটো-লক"}</label>${sel("st-lk", [[0, LANG === "en" ? "Off" : "বন্ধ"], [1, LANG === "en" ? "1 minute" : "১ মিনিট"], [5, LANG === "en" ? "5 minutes" : "৫ মিনিট"], [10, LANG === "en" ? "10 minutes" : "১০ মিনিট"], [15, LANG === "en" ? "15 minutes" : "১৫ মিনিট"], [30, LANG === "en" ? "30 minutes" : "৩০ মিনিট"], [60, LANG === "en" ? "1 hour" : "১ ঘণ্টা"]], lockMin())}<div class="mut xs">${LANG === "en" ? "This device only. Unlock with your password. Shortcut: Ctrl+Shift+L." : "শুধু এই ডিভাইসে। পাসওয়ার্ড দিয়ে আনলক। শর্টকাট: Ctrl+Shift+L।"}</div></div>
      <div class="row"><button class="btn fix" id="st-lock">🔒 ${LANG === "en" ? "Lock now" : "এখনই লক করুন"}</button></div>
      ${DEMO ? "" : `<div id="st-mfa" class="scrow"><div class="mut sm">…</div></div>`}</div></div>
+   ${!DEMO && "serviceWorker" in navigator && "PushManager" in window ? `<div class="card"><h3>🔔 ${bi("পুশ নোটিফিকেশন", "Push notifications")}</h3><div id="st-push" class="scrow"><div class="mut sm">…</div></div><div class="mut xs" style="margin-top:6px">${bi("Boss/Admin চালু করলে প্রতিদিন রাত ৮টায় (বাংলাদেশ সময়) সারাংশ পাবেন। iPhone-এ আগে অ্যাপটি Home Screen-এ Add করতে হবে।", "Boss/Admin get a daily summary at 8 pm (Bangladesh time). On iPhone, add the app to the Home Screen first.")}</div></div>` : ""}
    ${admin ? `<div class="card" style="grid-column:1/-1"><h3>🛡 Admin শর্টকাট</h3><div class="row"><a class="btn fix" href="#/admin">${ico("gear")} ব্যবহারকারী ও অ্যাকাউন্ট</a><a class="btn fix" href="#/audit">${ico("shield")} Audit ও Backup</a><a class="btn fix" href="#/books">${ico("book")} চেক বই</a></div></div>` : ""}</div>`;
   const g = id => $("#" + id, v);
   { const f = g("pf-f"), rm = g("pf-rm"); g("pf-up").onclick = () => f.click();
@@ -2371,6 +2372,11 @@ async function vSettings(v) {
   g("st-th").onchange = e => setTheme(e.target.value); g("st-lg").onchange = e => setLang(e.target.value);
   g("st-lk").onchange = e => { try { localStorage.setItem(LOCK_KEY, e.target.value); } catch { } lastAct = Date.now(); toast(LANG === "en" ? "✔ Saved" : "✔ সেভ হয়েছে"); };
   g("st-lock").onclick = () => lockNow();
+  if (g("st-push")) { const paintP = async () => { const box = g("st-push"); if (!box) return; let m = null; try { m = await API.pushMine(); } catch (e) { } const on = !!(m && m.row), denied = "Notification" in window && Notification.permission === "denied";
+    box.innerHTML = `<div style="flex:1"><b>${bi("এই ডিভাইসে", "On this device")}: ${on ? bi("চালু", "ON") : bi("বন্ধ", "OFF")}</b>${denied ? `<div class="rd xs">${bi("ব্রাউজারে নোটিফিকেশন ব্লক করা আছে — সাইট সেটিংস থেকে Allow করুন", "Notifications are blocked — allow them in site settings")}</div>` : ""}${on ? `<label class="euac" style="margin-top:6px"><input type="checkbox" id="st-pushs" ${m.row.summary ? "checked" : ""}><span class="sw"></span> ${bi("রাতের সারাংশ", "Nightly summary")}</label>` : ""}</div><div class="row">${on ? `<button class="btn sm" id="st-pusht">${bi("টেস্ট", "Test")}</button>` : ""}<button class="btn sm ${on ? "" : "pri"}" id="st-pushb">${on ? bi("বন্ধ করুন", "Turn off") : bi("চালু করুন", "Turn on")}</button></div>`;
+    g("st-pushb").onclick = async () => { try { if (on) { await API.pushOff(m.sub.endpoint); await m.sub.unsubscribe(); } else { const perm = await Notification.requestPermission(); if (perm !== "granted") { toast(bi("অনুমতি দেওয়া হয়নি", "Permission not granted"), "err"); return paintP(); } const reg = await navigator.serviceWorker.ready; const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(VAPID_PUB) }); await API.pushOn(sub); toast(bi("✔ নোটিফিকেশন চালু হয়েছে", "✔ Notifications on")); } } catch (e) { toast(e.message || String(e), "err"); } paintP(); };
+    if (g("st-pusht")) g("st-pusht").onclick = async () => { try { const r = await API.pushTest(); toast(r && r.ok ? bi("✔ টেস্ট পাঠানো হয়েছে", "✔ Test sent") : bi("পাঠানো যায়নি — একটু পরে আবার চেষ্টা করুন", "Not delivered — try again"), r && r.ok ? "ok" : "err"); } catch (e) { toast(e.message || String(e), "err"); } };
+    if (g("st-pushs")) g("st-pushs").onchange = async e => { try { await API.pushSummary(m.sub.endpoint, e.target.checked); } catch (er) { toast(er.message, "err"); } }; }; paintP(); }
   if (g("st-mfa")) { const en = LANG === "en", paint = async () => { const f = await API.mfaFactor().catch(() => null), box = g("st-mfa"); if (!box) return;
     box.innerHTML = `<div style="flex:1"><b>${en ? "2-step verification (2FA)" : "টু-স্টেপ ভেরিফিকেশন (2FA)"}: ${f ? (en ? "ON" : "চালু") : (en ? "OFF" : "বন্ধ")}</b><div class="mut xs">${en ? "Adds a 6-digit code from your phone at sign-in. Strongly recommended for Admin and Boss." : "লগইনের সময় ফোনের ৬ অঙ্কের কোড লাগে। Admin ও Boss-এর জন্য জোরালোভাবে সুপারিশ।"}</div></div><button class="btn sm ${f ? "bad" : "pri"} fix" id="st-mfab">${f ? (en ? "Turn off" : "বন্ধ করুন") : (en ? "Turn on" : "চালু করুন")}</button>`;
     g("st-mfab").onclick = async () => { if (!f) return mfaEnrollModal(paint); if (!ask(en ? "Turn off 2FA?" : "2FA বন্ধ করবেন?")) return; try { const { error } = await sb.auth.mfa.unenroll({ factorId: f.id }); if (error) throw error; toast(en ? "✔ 2FA is off" : "✔ 2FA বন্ধ হয়েছে"); paint(); } catch (e) { toast(e.message || String(e), "err"); } }; }; paint(); }
@@ -2532,6 +2538,11 @@ Object.assign(SbAPI, {
   async setUserEmail(id, e) { const { error } = await sb.rpc("admin_set_email", { p_user: id, p_email: e }); if (error) throw error; },
   async deleteUser(id) { const { error } = await sb.rpc("admin_delete_user", { p_user: id }); if (error) throw error; },
   async userActivity(id) { const { data, error } = await sb.from("audit_log").select("*").eq("user_id", id).order("at", { ascending: false }).limit(25); if (error) throw error; return data || []; },
+  async pushMine() { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (!sub) return null; const { data } = await sb.from("push_subs").select("summary").eq("endpoint", sub.endpoint).maybeSingle(); return { sub, row: data }; },
+  async pushOn(sub) { const j = sub.toJSON(), { data: { user } } = await sb.auth.getUser(); const { error } = await sb.from("push_subs").upsert({ user_id: user.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, ua: navigator.userAgent.slice(0, 160), summary: true }, { onConflict: "endpoint" }); if (error) throw error; },
+  async pushOff(endpoint) { await sb.from("push_subs").delete().eq("endpoint", endpoint); },
+  async pushSummary(endpoint, on) { const { error } = await sb.from("push_subs").update({ summary: on }).eq("endpoint", endpoint); if (error) throw error; },
+  async pushTest() { const { data, error } = await sb.functions.invoke("notify", { body: {} }); if (error) throw error; return data; },
   async mfaNeeded() { const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel(); return !!data && data.nextLevel === "aal2" && data.currentLevel !== "aal2"; },
   async mfaFactor() { const { data } = await sb.auth.mfa.listFactors(); return (data?.totp || []).find(f => f.status === "verified") || null; },
 });
@@ -2543,7 +2554,7 @@ Object.assign(DemoAPI, {
   async verifyPassword() { return true; }, async userSec() { return []; },
   async userSessions() { return [{ id: "d1", created_at: new Date().toISOString(), last_seen: new Date().toISOString(), user_agent: navigator.userAgent, ip: "demo", aal: "aal1", mine: true }]; },
   async revokeSessions() { return 0; }, async reset2fa() { }, async setUserEmail(id, e) { const u = (demoStore.users || []).find(x => x.id === id); if (u) { u.email = e; this.save(); } }, async deleteUser(id) { demoStore.users = (demoStore.users || []).filter(x => x.id !== id); this.save(); },
-  async userActivity() { return []; }, async mfaNeeded() { return false; }, async mfaFactor() { return null; },
+  async userActivity() { return []; }, async pushMine() { return null; }, async pushOn() {}, async pushOff() {}, async pushSummary() {}, async pushTest() { return { ok: 0 }; }, async mfaNeeded() { return false; }, async mfaFactor() { return null; },
 });
 
 /* =================== v6.15: Distribution Collection (daily record · approval · summary · report · parties) =================== */
@@ -3081,6 +3092,9 @@ document.addEventListener("visibilitychange", () => { if (document.hidden) { if 
 
 /* ---------- v6.45: Excel cheque import · party ledger · bank reconciliation ---------- */
 const bi = (bn, en) => LANG === "en" ? en : bn;
+const VAPID_PUB = "BAu_jln2X-7dGMt7X2w_GeqjYbgieXX1Db-4zBx5ff-U2e2y6951Gdov3pk8v9qTcJTZbybpi4Fi88ldkgGfAl0";
+const b64u = s => { const p = "=".repeat((4 - s.length % 4) % 4), r = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); };
+try { navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", e => { const g = e.data && e.data.go; if (g && /^#\//.test(g)) location.hash = g; }); } catch (e) { }
 async function readSheetFile(file) { await loadScript("vendor/xlsx.min.js"); const wb = XLSX.read(await file.arrayBuffer(), { type: "array" }); const ws = wb.Sheets[wb.SheetNames[0]]; return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" }); }
 function toIsoDate(v) {
   if (v === "" || v == null) return "";

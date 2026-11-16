@@ -521,3 +521,37 @@ begin
 end $$;
 revoke execute on function public.verify_my_password(text) from anon, public;
 grant execute on function public.verify_my_password(text) to authenticated;
+
+-- ===== v6.46: Web Push subscriptions + daily summary (edge function `notify`, pg_cron) =====
+-- v6.46: push subscriptions + daily summary
+create table if not exists public.push_subs(
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null, auth text not null, ua text,
+  summary boolean not null default true,
+  created_at timestamptz not null default now());
+alter table public.push_subs enable row level security;
+drop policy if exists ps_sel on public.push_subs; drop policy if exists ps_ins on public.push_subs; drop policy if exists ps_upd on public.push_subs; drop policy if exists ps_del on public.push_subs;
+create policy ps_sel on public.push_subs for select to authenticated using (user_id = auth.uid());
+create policy ps_ins on public.push_subs for insert to authenticated with check (user_id = auth.uid() and my_role() is not null);
+create policy ps_upd on public.push_subs for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy ps_del on public.push_subs for delete to authenticated using (user_id = auth.uid());   -- own device subscription only
+
+create or replace function public.daily_summary(p_day date default ((now() at time zone 'Asia/Dhaka')::date))
+returns jsonb language sql security definer set search_path=public as $$
+ select jsonb_build_object(
+  'day', p_day,
+  'chq_n', (select count(*) from cheques where chq_date = p_day),
+  'chq_amt', (select coalesce(sum(amount),0) from cheques where chq_date = p_day),
+  'bal_date', (select max(date) from balances where date <= p_day),
+  'bal_total', (select coalesce(sum(total),0) from balances where date = (select max(date) from balances where date <= p_day)),
+  'col_amt', (select coalesce(sum(amount),0) from dist_collections where date = p_day and status <> 'cancelled'),
+  'col_pending_n', (select count(*) from dist_collections where status = 'pending'),
+  'col_pending_amt', (select coalesce(sum(amount),0) from dist_collections where status = 'pending'),
+  'rem_due', (select count(*) from reminders where not done and coalesce(snooze_until, due_at) <= now()));
+$$;
+revoke all on function public.daily_summary(date) from public, anon, authenticated;
+grant execute on function public.daily_summary(date) to service_role;
+-- (applied via dashboard) pg_net enabled; vault secret 'notify_cron_secret'; edge function `notify` (source: dev/fn/notify.ts, verify_jwt=false, own x-cron-secret check)
+-- select cron.schedule('nabiad-daily-summary','0 14 * * *', $c$ select net.http_post(url:='https://<ref>.supabase.co/functions/v1/notify', headers:=jsonb_build_object('content-type','application/json','x-cron-secret',(select decrypted_secret from vault.decrypted_secrets where name='notify_cron_secret')), body:='{}'::jsonb) $c$);   -- 20:00 Asia/Dhaka

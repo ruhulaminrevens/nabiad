@@ -1,6 +1,6 @@
 /* Nabiad service worker: network-first (revalidated) for app files, cache-first for vendor libraries */
-const C = "nabiad-v6-45";
-const CORE = ["./", "index.html", "style.css?v=6.45", "app.js?v=6.45", "config.js?v=6.45", "i18n.js?v=6.45", "vendor/supabase.js", "icon.svg", "icon-192.png", "manifest.json"];
+const C = "nabiad-v6-46";
+const CORE = ["./", "index.html", "style.css?v=6.46", "app.js?v=6.46", "config.js?v=6.46", "i18n.js?v=6.46", "vendor/supabase.js", "icon.svg", "icon-192.png", "manifest.json"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(C).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", e => {
@@ -14,4 +14,8 @@ self.addEventListener("fetch", e => {
 self.addEventListener("notificationclick", e => {
   e.notification.close(); const url = (e.notification.data && e.notification.data.url) || "#/rem";
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(cs => { for (const c of cs) { if ("focus" in c) { c.navigate ? c.focus().then(() => c.postMessage({ go: url })) : c.focus(); return; } } return self.clients.openWindow("./" + url); }));
+});
+self.addEventListener("push", e => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || "Nabiad", { body: d.body || "", icon: "icon-192.png", badge: "icon-192.png", tag: d.tag || "nabiad", renotify: true, data: { url: (d.url || "").replace(/^\//, "") || "#/dash" } }));
 });
