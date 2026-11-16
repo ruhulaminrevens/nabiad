@@ -308,7 +308,7 @@ Object.assign(I18N, {
   "শুধু যে তারিখ+A/C ডাটাবেসে নেই সেগুলোই যোগ হয় — আপনার app-এ সেভ/এডিট করা কোনো ব্যালেন্স বদলায় না, ডুপ্লিকেটও হয় না।": "Only date + A/C rows missing from the database are added — balances you saved or edited in the app never change, and no duplicates are created.",
   // v6.31 — dashboard
   "ট্রেন্ড দেখাতে আরও ডাটা লাগবে": "More data is needed to show a trend",
-  "৭ দিন": "7 days", "১৫ দিন": "15 days", "৩০ দিন": "30 days", "গড়": "avg", "সর্বোচ্চ": "Max", "সর্বনিম্ন": "Min",
+  "৭দি": "7D", "১৫দি": "15D", "৩০দি": "30D", "গড়": "avg", "সর্বোচ্চ": "Max", "সর্বনিম্ন": "Min",
   "আঙুল/মাউস দিয়ে দেখুন": "Touch / hover the chart",
   "ব্যাংক-ওয়াইজ ব্যালেন্স": "Balance by bank", "বিস্তারিত": "Details", "সব দেখুন": "see all",
   "চেক পাইপলাইন · এই মাস": "Cheque pipeline · this month", "এই মাসে এখনো কোনো চেক নেই": "No cheques this month yet",
