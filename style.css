@@ -1245,3 +1245,27 @@ html[data-theme="dark"] .lk.blank{color:#fca5a5}html[data-theme="dark"] .lk.lost
   .tw.cards table.ptab .pa .iconbtn{width:36px;height:36px}
   .tw.cards table.ptab td.pact .pa{margin-left:4px}
 }
+
+/* v6.54 — period picker never overflows its card on narrow phones */
+.pb{grid-template-columns:minmax(0,1fr)} .pb>*{min-width:0}
+.pbm{grid-template-columns:repeat(5,minmax(0,1fr))} .pb6 .pbm{grid-template-columns:repeat(6,minmax(0,1fr))}
+.pbm .chip{overflow:hidden;text-overflow:ellipsis}
+.pbnav{min-width:0}
+@media (max-width:520px){
+  .pbm .chip{font-size:12px;padding:8px 0}
+  .pbnav{gap:6px} .pbnav .btn{padding:0 10px;font-size:13px}
+  .pbnav input,.pbnav select,.pbnav .pbw{font-size:15px;padding-left:6px;padding-right:6px}
+  .pbcu{gap:8px}
+}
+@media (max-width:380px){
+  .pbm .chip{font-size:11.5px}
+  .pbnav .btn{padding:0 8px;font-size:12.5px}
+  .pbnav input,.pbnav select,.pbnav .pbw{font-size:14px}
+}
+.pbcu{grid-template-columns:repeat(2,minmax(0,1fr))} .pbcu>div{min-width:0} .pbcu .in{width:100%;min-width:0;max-width:100%;padding-left:8px;padding-right:8px}
+@media (max-width:380px){ .pbcu .in{font-size:14px} }
+@media (max-width:900px){
+  .row.cflt{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 10px;margin-top:10px!important}
+  .row.cflt>div{min-width:0;flex:none!important} .row.cflt>div:nth-child(1),.row.cflt>div:nth-child(2){grid-column:1/-1}
+  .row.cflt label.f{margin-bottom:3px;font-size:12px} .row.cflt .in{height:42px}
+}
