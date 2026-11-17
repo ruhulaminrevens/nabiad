@@ -642,7 +642,7 @@ function shell() {
   const keys = allowed(), bd = badges();
   const link = k => { const r = ROUTES[k]; const n = bd[k]; return `<a href="#/${k}" data-k="${k}" title="${esc(r.t)}">${ico(r.ic)}<span>${r.t}</span>${n ? `<span class="badge">${n}</span>` : ""}</a>`; };
   /* v6.49: accordion sidebar — Dashboard · 5 collapsible groups · pinned utilities */
-  const UTIL = ["rem", "settings", "audit", "admin"], GR = [["main", bi("চেক", "Cheque"), "chq", "#818cf8"], ["bank", bi("ব্যাংক", "Bank"), "vault", "#38bdf8"], ["cash", bi("ক্যাশ", "Cash"), "note", "#34d399"], ["dist", bi("কালেকশন", "Collection"), "net", "#fbbf24"], ["more", bi("আরও", "More"), "grid", "#c4b5fd"]];
+  const UTIL = ["rem", "settings", "audit", "admin"], GR = [["main", bi("চেক", "Cheque"), "chq", "#818cf8"], ["bank", bi("ব্যাংক", "Bank"), "vault", "#38bdf8"], ["cash", bi("ক্যাশ", "Cash"), "note", "#34d399"], ["dist", bi("কালেকশন", "Collection"), "net", "#fbbf24"], ["inv", bi("ইনভেন্টরি", "Inventory"), "ivbox", "#38bdf8"], ["more", bi("আরও", "More"), "grid", "#c4b5fd"]];
   const inGroup = g => keys.filter(k => ROUTES[k].sec === g && !UTIL.includes(k));
   let nav = keys.includes("dash") ? link("dash") : "";
   GR.forEach(([g, lab, ic, col]) => { const ks = inGroup(g); if (!ks.length) return; const n = ks.reduce((a, k) => a + (bd[k] || 0), 0);
@@ -2196,7 +2196,7 @@ Object.assign(SbAPI, {
   async setMyName(n) { const { error } = await sb.rpc("set_my_name", { n }); if (error) throw error; },
   async changePassword(p) { const { error } = await sb.auth.updateUser({ password: p }); if (error) throw error; },
   async signOutOthers() { const { error } = await sb.auth.signOut({ scope: "others" }); if (error) throw error; },
-  async dumpAll() { const T = ["accounts", "cheques", "cheque_status", "balances", "books", "reminders", "cash_records", "balance_drafts", "dist_parties", "dist_collections"], o = {}; for (const t of T) { try { o[t] = await fetchAll(t, t === "accounts" ? "code" : t === "balances" ? "date" : t === "balance_drafts" || t === "cash_records" ? "date" : t === "dist_parties" ? "name" : "id"); } catch (e) { o[t] = { error: e.message }; } } return o; }
+  async dumpAll() { const T = ["accounts", "cheques", "cheque_status", "balances", "books", "reminders", "cash_records", "balance_drafts", "dist_parties", "dist_collections", "inv_items", "inv_orders", "inv_demand", "rm_products", "rm_daily", "rm_ledger", "inv_locks"], o = {}; for (const t of T) { try { o[t] = await fetchAll(t, t === "accounts" ? "code" : t === "balances" ? "date" : t === "balance_drafts" || t === "cash_records" ? "date" : t === "dist_parties" ? "name" : t === "inv_demand" || t === "inv_locks" ? "month" : t === "rm_products" ? "code" : t === "rm_daily" ? "date" : "id"); } catch (e) { o[t] = { error: e.message }; } } return o; }
 });
 Object.assign(DemoAPI, {
   async balancesRange(from, to) { const h = await this.hist(), out = []; for (const [d, m] of h) if (d >= from && d <= to) for (const c in m) out.push({ date: d, code: c, total: Number(m[c].total) || 0, block: Number(m[c].block) || 0 }); return out.sort((a, b) => a.date.localeCompare(b.date)); },

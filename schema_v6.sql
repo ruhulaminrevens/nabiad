@@ -670,3 +670,239 @@ end $$;
 revoke all on function public.make_backup(text) from public, anon;
 grant execute on function public.make_backup(text) to authenticated;
 revoke execute on function public.leaf_mark_guard(), public.leaf_mark_autoresolve(), public.audit_trg() from anon, public;
+
+-- =====================================================================
+-- v6.71 — INVENTORY (Niramoy delivery, Distribution order→delivery, RM Factory)
+-- Safe to re-run. Roles: admin = all; staff = add/edit (no delete; delivered/cancelled orders locked); boss = read.
+-- =====================================================================
+
+-- 1) product master: one list, separate rate per channel (orders keep their own rate snapshot)
+create table if not exists public.inv_items (
+  id serial primary key,
+  name text not null unique,
+  grp text not null default 'coil' check (grp in ('coil','detergent','cleaner','other')),
+  unit text not null default 'ctn',
+  rate_nir numeric(12,2), rate_dist numeric(12,2),
+  in_nir boolean not null default false, in_dist boolean not null default false,
+  sort int not null default 100, active boolean not null default true,
+  updated_at timestamptz not null default now());
+drop trigger if exists touch_inv_items on public.inv_items;
+create trigger touch_inv_items before update on public.inv_items for each row execute function touch_updated_at();
+
+-- 2) orders / trips. lines = {"<item id>": {"q": qty, "r": rate}}; totals are computed by the trigger
+create table if not exists public.inv_orders (
+  id uuid primary key default gen_random_uuid(),
+  ch text not null check (ch in ('nir','dist')),
+  date date not null,
+  party text, location text, asm text,
+  transport text, vehicle text, rent numeric(12,2),
+  lines jsonb not null default '{}'::jsonb,
+  free text, remarks text,
+  status text not null default 'pending' check (status in ('pending','today','ok','cancel')),
+  delivery_date date,
+  total_qty numeric(14,2) not null default 0,
+  value numeric(16,2) not null default 0,
+  entered_by text, user_id uuid default auth.uid(),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+create index if not exists inv_orders_ch_date on public.inv_orders(ch, date);
+create index if not exists inv_orders_status on public.inv_orders(status);
+
+create or replace function public.inv_order_calc() returns trigger language plpgsql set search_path = public as $$
+declare k text; v jsonb; q numeric; r numeric; tq numeric := 0; tv numeric := 0; clean jsonb := '{}'::jsonb;
+begin
+  for k, v in select * from jsonb_each(coalesce(new.lines, '{}'::jsonb)) loop
+    q := coalesce((v->>'q')::numeric, 0); r := coalesce((v->>'r')::numeric, 0);
+    if q < 0 or r < 0 then raise exception 'negative_qty'; end if;
+    if q > 0 then clean := clean || jsonb_build_object(k, jsonb_build_object('q', q, 'r', r)); tq := tq + q; tv := tv + q * r; end if;
+  end loop;
+  new.lines := clean; new.total_qty := tq; new.value := round(tv, 2);
+  if new.status = 'ok' and new.delivery_date is null then new.delivery_date := (now() at time zone 'Asia/Dhaka')::date; end if;
+  if new.status in ('pending','today') then new.delivery_date := null; end if;
+  if tg_op = 'UPDATE' then new.updated_at := now();
+    if coalesce(my_role(), '') <> 'admin' then new.user_id := old.user_id; new.created_at := old.created_at; new.entered_by := old.entered_by; end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists inv_order_calc on public.inv_orders;
+create trigger inv_order_calc before insert or update on public.inv_orders for each row execute function public.inv_order_calc();
+
+-- 3) monthly demand per channel: lines = {"<item id>": qty}
+create table if not exists public.inv_demand (
+  ch text not null check (ch in ('nir','dist')),
+  month date not null,
+  lines jsonb not null default '{}'::jsonb,
+  entered_by text, updated_at timestamptz not null default now(),
+  primary key (ch, month));
+drop trigger if exists touch_inv_demand on public.inv_demand;
+create trigger touch_inv_demand before update on public.inv_demand for each row execute function touch_updated_at();
+
+-- 4) RM Factory: products (bag size + opening), daily ready/delivery, party ledger (receive/return)
+create table if not exists public.rm_products (
+  code text primary key, name text not null, bag_kg numeric(8,2) not null,
+  opening_date date not null, opening_bag numeric(12,2) not null default 0,
+  sort int not null default 100, active boolean not null default true);
+create table if not exists public.rm_daily (
+  date date not null, product text not null references public.rm_products(code) on delete restrict,
+  ready_bag numeric(12,2) not null default 0 check (ready_bag >= 0),
+  delivery_bag numeric(12,2) not null default 0 check (delivery_bag >= 0),
+  remarks text, entered_by text, updated_at timestamptz not null default now(),
+  primary key (date, product));
+drop trigger if exists touch_rm_daily on public.rm_daily;
+create trigger touch_rm_daily before update on public.rm_daily for each row execute function touch_updated_at();
+create table if not exists public.rm_ledger (
+  id uuid primary key default gen_random_uuid(),
+  party text not null, product text not null references public.rm_products(code) on delete restrict,
+  date date not null,
+  receive_bag numeric(12,2) not null default 0 check (receive_bag >= 0),
+  return_bag numeric(12,2) not null default 0 check (return_bag >= 0),
+  remarks text, entered_by text, user_id uuid default auth.uid(), created_at timestamptz not null default now());
+create index if not exists rm_ledger_party on public.rm_ledger(party, date);
+insert into public.rm_products(code, name, bag_kg, opening_date, opening_bag, sort) values
+  ('tamarind', 'Tamarind Powder', 50, '2026-09-30', 25, 1),
+  ('wood', 'Wood Powder', 40, '2026-09-30', 0, 2)
+on conflict (code) do nothing;
+
+-- 4b) month lock: a locked month cannot be written by anyone (admin unlocks first)
+create table if not exists public.inv_locks (
+  month date primary key check (extract(day from month) = 1),
+  locked_by text, locked_at timestamptz not null default now());
+create or replace function public.inv_lock_chk() returns trigger language plpgsql set search_path = public as $$
+declare d1 date; d2 date;
+begin
+  if tg_table_name = 'inv_demand' then
+    if tg_op <> 'INSERT' then d1 := old.month; end if;
+    if tg_op <> 'DELETE' then d2 := new.month; end if;
+  else
+    if tg_op <> 'INSERT' then d1 := old.date; end if;
+    if tg_op <> 'DELETE' then d2 := new.date; end if;
+  end if;
+  if exists (select 1 from inv_locks where month in (date_trunc('month', d1)::date, date_trunc('month', d2)::date)) then
+    raise exception 'month_locked';
+  end if;
+  return coalesce(new, old);
+end $$;
+revoke execute on function public.inv_lock_chk() from anon, public;
+do $$ declare t text; begin
+  foreach t in array array['inv_orders','inv_demand','rm_daily','rm_ledger'] loop
+    execute format('drop trigger if exists %I on public.%I', 'lock_' || t, t);
+    execute format('create trigger %I before insert or update or delete on public.%I for each row execute function inv_lock_chk()', 'lock_' || t, t);
+  end loop; end $$;
+
+-- 5) RLS
+alter table public.inv_items enable row level security;
+alter table public.inv_orders enable row level security;
+alter table public.inv_demand enable row level security;
+alter table public.rm_products enable row level security;
+alter table public.rm_daily enable row level security;
+alter table public.rm_ledger enable row level security;
+alter table public.inv_locks enable row level security;
+do $$ declare t text; begin
+  foreach t in array array['inv_items','inv_orders','inv_demand','rm_products','rm_daily','rm_ledger','inv_locks'] loop
+    execute format('drop policy if exists %I on public.%I', t || '_r', t);
+    execute format('drop policy if exists %I on public.%I', t || '_i', t);
+    execute format('drop policy if exists %I on public.%I', t || '_u', t);
+    execute format('drop policy if exists %I on public.%I', t || '_d', t);
+    execute format('create policy %I on public.%I for select to authenticated using (my_role() is not null)', t || '_r', t);
+    execute format('create policy %I on public.%I for delete to authenticated using (my_role() = ''admin'')', t || '_d', t);
+  end loop; end $$;
+-- master data (items, RM products/opening): admin only
+create policy inv_items_i on public.inv_items for insert to authenticated with check (my_role() = 'admin');
+create policy inv_items_u on public.inv_items for update to authenticated using (my_role() = 'admin') with check (my_role() = 'admin');
+create policy inv_locks_i on public.inv_locks for insert to authenticated with check (my_role() = 'admin');
+create policy rm_products_i on public.rm_products for insert to authenticated with check (my_role() = 'admin');
+create policy rm_products_u on public.rm_products for update to authenticated using (my_role() = 'admin') with check (my_role() = 'admin');
+-- orders: staff adds and edits open (pending / today) orders; delivered or cancelled orders are locked for staff
+create policy inv_orders_i on public.inv_orders for insert to authenticated with check (my_role() in ('admin','staff'));
+create policy inv_orders_u on public.inv_orders for update to authenticated
+  using (my_role() = 'admin' or (my_role() = 'staff' and status in ('pending','today')))
+  with check (my_role() in ('admin','staff'));
+-- demand, daily RM, ledger: admin + staff add/edit
+create policy inv_demand_i on public.inv_demand for insert to authenticated with check (my_role() in ('admin','staff'));
+create policy inv_demand_u on public.inv_demand for update to authenticated using (my_role() in ('admin','staff')) with check (my_role() in ('admin','staff'));
+create policy rm_daily_i on public.rm_daily for insert to authenticated with check (my_role() in ('admin','staff'));
+create policy rm_daily_u on public.rm_daily for update to authenticated using (my_role() in ('admin','staff')) with check (my_role() in ('admin','staff'));
+create policy rm_ledger_i on public.rm_ledger for insert to authenticated with check (my_role() in ('admin','staff'));
+create policy rm_ledger_u on public.rm_ledger for update to authenticated using (my_role() = 'admin') with check (my_role() = 'admin');
+revoke all on public.inv_items, public.inv_orders, public.inv_demand, public.rm_products, public.rm_daily, public.rm_ledger, public.inv_locks from anon;
+revoke execute on function public.inv_order_calc() from anon, public;
+
+-- 6) audit (row key per new table) + triggers
+create or replace function public.audit_trg() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare o jsonb; n jsonb; r jsonb; k text; nm text;
+begin
+  if tg_op <> 'INSERT' then o := to_jsonb(old); end if;
+  if tg_op <> 'DELETE' then n := to_jsonb(new); end if;
+  r := coalesce(n, o);
+  if r->>'entered_by' = 'Old file (Foysal)' then return null; end if;
+  if tg_op = 'UPDATE' and o = n then return null; end if;
+  k := case tg_table_name
+    when 'cheques'  then (r->>'code') || ' · ' || (r->>'chq_no')
+    when 'balances' then (r->>'date') || ' · ' || (r->>'code')
+    when 'accounts' then r->>'code'
+    when 'books'    then (r->>'code') || ' · ' || coalesce(r->>'first_leaf','') || '–' || coalesce(r->>'last_leaf','')
+    when 'cheque_status' then coalesce((select code || ' · ' || chq_no from cheques where id = (r->>'cheque_id')::uuid), '?') || ' → ' || (r->>'new_status')
+    when 'profiles' then r->>'email'
+    when 'cash_records' then 'Cash ' || (r->>'date') || ' (' || (r->>'status') || ')'
+    when 'dist_collections' then 'Collection ' || (r->>'date') || ' · ' || (r->>'party') || ' · ' || (r->>'amount')
+    when 'dist_parties' then 'Party ' || (r->>'name')
+    when 'leaf_marks' then 'Leaf ' || (r->>'code') || ' · ' || (r->>'leaf_no') || ' (' || (r->>'kind') || ')'
+    when 'inv_orders' then (case r->>'ch' when 'nir' then 'Niramoy ' else 'Order ' end) || (r->>'date') || ' · ' || coalesce(nullif(r->>'party',''), r->>'transport', '') || ' · ' || coalesce(r->>'value','0') || ' (' || (r->>'status') || ')'
+    when 'inv_items' then 'Item ' || (r->>'name')
+    when 'inv_demand' then 'Demand ' || (r->>'ch') || ' ' || (r->>'month')
+    when 'rm_daily' then 'RM ' || (r->>'product') || ' ' || (r->>'date')
+    when 'rm_products' then 'RM product ' || (r->>'code')
+    when 'rm_ledger' then 'RM ledger ' || (r->>'party') || ' ' || (r->>'date')
+    when 'inv_locks' then 'Lock ' || (r->>'month')
+    else r->>'id' end;
+  select name into nm from profiles where id = auth.uid();
+  insert into audit_log(user_name, tbl, action, row_key, old, new)
+    values (coalesce(nm, 'system'), tg_table_name, lower(tg_op), k, o, n);
+  return null;
+end $$;
+revoke execute on function public.audit_trg() from anon, public;
+do $$ declare t text; begin
+  foreach t in array array['inv_items','inv_orders','inv_demand','rm_products','rm_daily','rm_ledger','inv_locks'] loop
+    execute format('drop trigger if exists %I on public.%I', 'audit_' || t, t);
+    execute format('create trigger %I after insert or update or delete on public.%I for each row execute function audit_trg()', 'audit_' || t, t);
+  end loop; end $$;
+
+-- 7) backup includes the inventory tables
+create or replace function public.make_backup(k text default 'auto') returns bigint
+language plpgsql security definer set search_path = public as $$
+declare d jsonb; n int; bid bigint;
+begin
+  if auth.uid() is not null and coalesce(my_role(), '') <> 'admin' then raise exception 'not allowed'; end if;
+  d := jsonb_build_object(
+    'taken_at', now(),
+    'accounts',         (select coalesce(jsonb_agg(t), '[]') from accounts t),
+    'cheques',          (select coalesce(jsonb_agg(t), '[]') from cheques t),
+    'cheque_status',    (select coalesce(jsonb_agg(t), '[]') from cheque_status t),
+    'balances',         (select coalesce(jsonb_agg(t), '[]') from balances t),
+    'books',            (select coalesce(jsonb_agg(t), '[]') from books t),
+    'profiles',         (select coalesce(jsonb_agg(t), '[]') from profiles t),
+    'reminders',        (select coalesce(jsonb_agg(t), '[]') from reminders t),
+    'cash_records',     (select coalesce(jsonb_agg(t), '[]') from cash_records t),
+    'balance_drafts',   (select coalesce(jsonb_agg(t), '[]') from balance_drafts t),
+    'dist_parties',     (select coalesce(jsonb_agg(t), '[]') from dist_parties t),
+    'dist_collections', (select coalesce(jsonb_agg(t), '[]') from dist_collections t),
+    'leaf_marks',       (select coalesce(jsonb_agg(t), '[]') from leaf_marks t),
+    'inv_items',        (select coalesce(jsonb_agg(t), '[]') from inv_items t),
+    'inv_orders',       (select coalesce(jsonb_agg(t), '[]') from inv_orders t),
+    'inv_demand',       (select coalesce(jsonb_agg(t), '[]') from inv_demand t),
+    'rm_products',      (select coalesce(jsonb_agg(t), '[]') from rm_products t),
+    'rm_daily',         (select coalesce(jsonb_agg(t), '[]') from rm_daily t),
+    'rm_ledger',        (select coalesce(jsonb_agg(t), '[]') from rm_ledger t),
+    'inv_locks',        (select coalesce(jsonb_agg(t), '[]') from inv_locks t));
+  n := (select count(*) from accounts) + (select count(*) from cheques) + (select count(*) from cheque_status)
+     + (select count(*) from balances) + (select count(*) from books) + (select count(*) from reminders) + (select count(*) from cash_records)
+     + (select count(*) from dist_parties) + (select count(*) from dist_collections) + (select count(*) from leaf_marks)
+     + (select count(*) from inv_items) + (select count(*) from inv_orders) + (select count(*) from inv_demand)
+     + (select count(*) from rm_products) + (select count(*) from rm_daily) + (select count(*) from rm_ledger);
+  insert into backups(kind, size_rows, data) values (k, n, d) returning id into bid;
+  delete from backups where kind = 'auto' and at < now() - interval '14 days';
+  delete from backups where kind = 'manual' and id not in (select id from backups where kind = 'manual' order by at desc limit 10);
+  return bid;
+end $$;
+revoke all on function public.make_backup(text) from public, anon;
+grant execute on function public.make_backup(text) to authenticated;
