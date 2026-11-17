@@ -885,7 +885,7 @@ async function vEntry(v) {
     const entered = cashAccSum(src, "bank_in")[code] || 0;
     const posted = S.cheques.filter(c => c.date === date && c.code === code && purposeKey(c.purpose) === "cash" && isLive(c)).reduce((q, c) => q + c.amount, 0), cur = num($e("e-amt").value) || 0;
     el.style.display = ""; el.className = "s4 cbm";
-    el.innerHTML = `<div class="cbm-h"><span>🔗 Cash Entry (${dmy(date)}) · Total Bank · <b>${esc(code)}</b>: <b class="num">${src ? "৳ " + money0(entered) : ok ? bi("এখনো এন্ট্রি নেই", "no entry yet") : "—"}</b> · ${bi("চেক পোস্টিং", "Cheque Posting")}: <b class="num">৳ ${money0(posted)}</b>${cur ? ` <span class="mut xs">(+ ৳ ${money0(cur)} ${bi("এই চেক", "this cheque")})</span>` : ""}</span><a class="btn sm" href="#/cash" id="e-cashgo">${bi("Cash Entry খুলুন", "Open Cash Entry")}</a></div>`;
+    el.innerHTML = `<div class="cbm-h"><span>🔗 Cash Entry (${dmy(date)}) · Receipt › Bank · <b>${esc(code)}</b>: <b class="num">${src ? "৳ " + money0(entered) : ok ? bi("এখনো এন্ট্রি নেই", "no entry yet") : "—"}</b> · ${bi("চেক পোস্টিং", "Cheque Posting")}: <b class="num">৳ ${money0(posted)}</b>${cur ? ` <span class="mut xs">(+ ৳ ${money0(cur)} ${bi("এই চেক", "this cheque")})</span>` : ""}</span><a class="btn sm" href="#/cash" id="e-cashgo">${bi("Cash Entry খুলুন", "Open Cash Entry")}</a></div>`;
     $("#e-cashgo", el).onclick = () => sessionStorage.setItem("nabiad_cash_date", date);
   }
   function sum() {
@@ -1171,8 +1171,8 @@ async function vClosing(v) {
     const nAuto = rows.filter(r => r.adr || r.acc || r.acb).length, tD = Object.values(aDr).reduce((q, x) => q + x, 0), tCb = Object.values(aCb).reduce((q, x) => q + x, 0), tCc = Object.values(aCc).reduce((q, x) => q + x, 0);
     const stTxt = ce.state === "final" ? bi("ফাইনাল", "final") : ce.state === "draft" ? bi("ড্রাফট", "draft") : bi("এন্ট্রি নেই", "no entry");
     const linkBox = `<div class="clink"><div class="cl-h"><b>🔗 ${bi("অটো লিংক", "Auto link")}</b><span class="mut xs">${bi("এই তারিখের ডাটা থেকে নিজে আসে", "pulled from this date's data")}</span><span class="sp"></span><a class="btn sm" href="#/cash" data-go="cash">${bi("ক্যাশ এন্ট্রি", "Cash Entry")}</a><a class="btn sm" href="#/dcol" data-go="dcol">${bi("কালেকশন", "Collection")}</a></div>
-      <div class="cl-g"><span class="c-dr"><em>${bi("ক্যাশ এন্ট্রি", "Cash Entry")} (${stTxt}) · Total Bank</em> <b class="num">৳ ${money0(tD)}</b> <i>→ Debit / Withdraw</i></span><span class="c-cr"><em>${bi("কালেকশন (Approved)", "Collection (approved)")}</em> <b class="num">৳ ${money0(tCc)}</b> <i>→ Credit / Deposit</i></span><span class="c-cr"><em>${bi("ক্যাশ এন্ট্রি", "Cash Entry")} · Bank</em> <b class="num">৳ ${money0(tCb)}</b> <i>→ Credit / Deposit</i></span></div>
-      ${lostDr || lostCb || lostCc ? `<div class="cl-w">⚠ ${bi("এই A/C-গুলো ডেইলি ক্লোজিং তালিকায় নেই বা A/C বাছা হয়নি, তাই এখানে ধরা হয়নি", "Not counted here — A/C is not in the daily-closing list or not selected")}: ${[lostDr ? `Total Bank ৳ ${money0(lostDr)}` : "", lostCb ? `Bank ৳ ${money0(lostCb)}` : "", lostCc ? `${bi("কালেকশন", "Collection")} ৳ ${money0(lostCc)}` : ""].filter(Boolean).join(" · ")}</div>` : ""}</div>`;
+      <div class="cl-g"><span class="c-dr"><em>${bi("ক্যাশ এন্ট্রি", "Cash Entry")} (${stTxt}) · Receipt › Bank</em> <b class="num">৳ ${money0(tD)}</b> <i>→ Debit / Withdraw</i></span><span class="c-cr"><em>${bi("কালেকশন (Approved)", "Collection (approved)")}</em> <b class="num">৳ ${money0(tCc)}</b> <i>→ Credit / Deposit</i></span><span class="c-cr"><em>${bi("ক্যাশ এন্ট্রি", "Cash Entry")} · Bank</em> <b class="num">৳ ${money0(tCb)}</b> <i>→ Credit / Deposit</i></span></div>
+      ${lostDr || lostCb || lostCc ? `<div class="cl-w">⚠ ${bi("এই A/C-গুলো ডেইলি ক্লোজিং তালিকায় নেই বা A/C বাছা হয়নি, তাই এখানে ধরা হয়নি", "Not counted here — A/C is not in the daily-closing list or not selected")}: ${[lostDr ? `Receipt › Bank ৳ ${money0(lostDr)}` : "", lostCb ? `Bank ৳ ${money0(lostCb)}` : "", lostCc ? `${bi("কালেকশন", "Collection")} ৳ ${money0(lostCc)}` : ""].filter(Boolean).join(" · ")}</div>` : ""}</div>`;
     const autoDr = r => r.adr ? `<span><em>${bi("ক্যাশ এন্ট্রি", "Cash Entry")}</em> <b class="num">${money(r.adr)}</b></span>` : `<span class="mut">—</span>`;
     const autoCr = r => (r.acc || r.acb) ? `${r.acc ? `<span><em>${bi("কালেকশন", "Collection")}</em> <b class="num">${money(r.acc)}</b></span>` : ""}${r.acb ? `<span><em>${bi("ক্যাশ জমা", "Cash dep.")}</em> <b class="num">${money(r.acb)}</b></span>` : ""}` : `<span class="mut">—</span>`;
     body.innerHTML = `${linkBox}<div class="tw cards closing" style="max-height:72vh"><table id="ct"><thead><tr><th>#</th><th>A/C</th><th class="r">আগের ক্লোজিং</th><th class="r c-dr">${bi("ডেবিট / উত্তোলন", "Debit / Withdraw")}</th><th class="r c-cr">${bi("ক্রেডিট / জমা", "Credit / Deposit")}</th><th class="r">হিসাব মতে</th><th class="r c-bk">ব্যাংক ক্লোজিং</th><th class="r">BLOCK</th><th class="r">USABLE</th><th class="r">Diff</th><th>মন্তব্য</th></tr></thead><tbody>
@@ -2425,7 +2425,7 @@ async function vReports(v) {
 
 /* =================== v6: CASH — daily record =================== */
 const CASH = {
-  receipt: [{ g: "Chawkbazar", items: [["cz_cos", "Cosmetics Parties"], ["cz_food", "Food Parties"], ["cz_chem", "Chemicals"], ["cz_cash", "Cash/Counter Sales"], ["cz_oth", "Others"]] }, { g: "", items: [["niramoy", "Niramoy"], ["dist", "Distribution"], ["suspense", "Suspense"], ["bank_in", "Total Bank"]] }],
+  receipt: [{ g: "Chawkbazar", items: [["cz_cos", "Cosmetics Parties"], ["cz_food", "Food Parties"], ["cz_cash", "Cash/Counter Sales"], ["cz_oth", "Others"]] }, { g: "", items: [["cz_chem", "Chemicals"], ["niramoy", "Niramoy"], ["dist", "Distribution"], ["suspense", "Suspense"], ["bank_in", "Bank"]] }],
   payment: [{ g: "", items: [["bank_out", "Bank"], ["lc", "LC/CC/OD"], ["loans", "Loans/Bills/Etc."], ["supp", "Suppliers"], ["p_oth", "Others"]] }]
 };
 const CASH_KEYS = t => CASH[t].flatMap(g => g.items.map(i => i[0]));
@@ -2548,7 +2548,7 @@ async function vCash(v) {
       const rm = e.target.closest(".cbx"); if (rm) { const r = rm.closest(".crow"); rm.closest(".cbl").remove(); if (!$(".cbl", r)) addLine(r, {}); calc(); autosave(); return; }
       if (e.target.closest("#cs-chfill")) {
         const r = $('.crow.cbk[data-k="bank_in"]', body), cl = chqCash(), cm = {}; cl.forEach(c => cm[c.code] = (cm[c.code] || 0) + c.amount);
-        if (collect().row.items.bank_in?.a && !ask(bi("বর্তমান Total Bank লাইনগুলো চেক পোস্টিংয়ের তথ্য দিয়ে বদলাবেন?", "Replace the current Total Bank lines with Cheque Posting data?"))) return;
+        if (collect().row.items.bank_in?.a && !ask(bi("বর্তমান Receipt › Bank লাইনগুলো চেক পোস্টিংয়ের তথ্য দিয়ে বদলাবেন?", "Replace the current Receipt › Bank lines with Cheque Posting data?"))) return;
         $(".cbls", r).innerHTML = ""; Object.keys(cm).sort().forEach(c => addLine(r, { c, a: cm[c] })); calc(); autosave();
       }
     };
