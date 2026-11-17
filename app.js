@@ -2394,7 +2394,7 @@ async function vReports(v) {
   const F = { ...pbInit("month"), tab: sessionStorage.getItem("nabiad_rep_tab") || "bank", holder: "" }; const holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort();
   v.innerHTML = head("রিপোর্ট", `${repBtns("p")}<button class="btn" id="p-x">${ico("dl")} Excel</button>`) + `
    <div class="tabs noprint">${[["bank", "🏦 ব্যাংক ব্যালেন্স"], ["chq", "🧾 চেক"]].map(([k, l]) => `<span class="chip ${k === F.tab ? "on" : ""}" data-tab="${k}">${l}</span>`).join("")}</div>
-   <div class="card tbar noprint">${pbBar("p", F)}
+   <div class="card tbar noprint tb-inl">${pbBar("p", F)}
    <div class="row" style="margin-top:10px"><div style="flex:1 1 200px"><label class="f">অ্যাকাউন্ট হোল্ডার</label><select class="in" id="p-h"><option value="">সব</option>${holders.map(h => `<option>${esc(h)}</option>`).join("")}</select></div></div></div><div class="card rep-wrap"><div class="rep-scroll"><div id="p-out"></div></div></div>`;
   let cur = null;
   const tbl = (title, rows, cols, total = true, fmt = r => [r.n, money0(r.amt)]) => { const T = rows.reduce((q, r) => ({ n: q.n + (r.n || 0), a: q.a + r.amt }), { n: 0, a: 0 });
@@ -3334,7 +3334,7 @@ async function dcShare(el, name, text) {
 }
 function dcPdf(el, name) { if (!el) return toast("ডাটা নেই", "err"); document.body.classList.add("print-rep"); const t = document.title; document.title = name; window.print(); document.title = t; setTimeout(() => document.body.classList.remove("print-rep"), 500); }
 function dcFit(v, id) { const el = $("#" + id, v); if (!el) return; el.style.zoom = ""; const w = el.parentElement.clientWidth - 8; if (w < 794) el.style.zoom = (w / 794).toFixed(3); }
-const dcHead = (title, f, t, org = "NABIAD GROUP") => { const one = f === t, d = new Date(f + "T00:00:00"); return `<div class="rep-hd"><div class="lg"><img src="icon-192.png" alt=""></div><div class="tt"><b>${org}</b><span>${title}</span></div><div class="dt"><b>${esc(dcRangeLabel(f, t))}</b><span>${one ? d.toLocaleDateString("en-GB", { weekday: "long" }) : ""}</span></div></div>`; };
+const dcHead = (title, f, t, org = "NABIAD GROUP") => { if (LANG === "en" && title.includes(" · ")) title = title.split(" · ").filter((p, i) => i === 0 || !/[\u0980-\u09FF]/.test(p)).join(" · "); const one = f === t, d = new Date(f + "T00:00:00"); return `<div class="rep-hd"><div class="lg"><img src="icon-192.png" alt=""></div><div class="tt"><b>${org}</b><span>${title}</span></div><div class="dt"><b>${esc(dcRangeLabel(f, t))}</b><span>${one ? d.toLocaleDateString("en-GB", { weekday: "long" }) : ""}</span></div></div>`; };
 const dcFoot = (extra = "") => `<div class="rep-ft"><span>Generated ${new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}${extra} · by ${esc(S.me.name)}</span><span>NABIAD Smart Finance Suite</span></div>`;
 
 /* ---------- A4 standard sheet helpers (shared by every report) ---------- */
@@ -3420,7 +3420,7 @@ async function vDsum(v) {
       ${main}${perDay ? `<div class="dcs-one">${perDay}</div>` : ""}${none}
       ${others.length ? `<div class="dcs-note">${bi(`Note: এই সময়ে আরও ${others.length}টি এন্ট্রি (৳ ${money0(dcSum(others))}) অন্য Status-এ আছে — এখানে ধরা হয়নি।`, `Note: ${others.length} more entries (৳ ${money0(dcSum(others))}) in this period have another status and are not counted here.`)}</div>` : ""}${dcFoot()}</div>` : dcEmptyPeriod(bi(`এই সময়ে ${dcStatLabel(F.s)} কোনো কালেকশন নেই`, `No ${dcStatLabel(F.s)} collection in this period`));
     $$("[data-qp]", out).forEach(b => b.onclick = () => $(`#ds [data-m="${b.dataset.qp}"]`, v).click());
-    const pe = $("#ds-per", v); if (pe) pe.textContent = dcRangeLabel(f, t);
+    const pe = $("#ds-per", v); if (pe) pe.textContent = f === t ? "" : dcRangeLabel(f, t);
     dcFit(v, "ds-in");
   }
   dcBindPeriod(v, "ds", F, load);
