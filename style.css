@@ -1195,17 +1195,15 @@ html[data-theme="dark"] .lk.blank{color:#fca5a5}html[data-theme="dark"] .lk.lost
   .tw.cards #ct tbody tr[data-i] td:nth-child(2){grid-column:1/-1;grid-row:1;display:flex;flex-direction:row;align-items:baseline;justify-content:space-between;gap:10px;margin:0 0 2px;padding-bottom:6px}
   .tw.cards #ct tbody tr[data-i] td:nth-child(2) .mut{text-align:right;font-size:12px}
   .tw.cards #ct tbody tr[data-i] td:nth-child(3){grid-column:1;grid-row:2}
-  .tw.cards #ct tbody tr[data-i] td:nth-child(8){grid-column:2;grid-row:2}
+  .tw.cards #ct tbody tr[data-i] td:nth-child(6){grid-column:2;grid-row:2}
   .tw.cards #ct tbody tr[data-i] td:nth-child(4){grid-column:1;grid-row:3}
-  .tw.cards #ct tbody tr[data-i] td:nth-child(6){grid-column:2;grid-row:3}
-  .tw.cards #ct tbody tr[data-i] td:nth-child(5){grid-column:1;grid-row:4}
-  .tw.cards #ct tbody tr[data-i] td:nth-child(7){grid-column:2;grid-row:4}
+  .tw.cards #ct tbody tr[data-i] td:nth-child(5){grid-column:2;grid-row:3}
+  .tw.cards #ct tbody tr[data-i] td:nth-child(7){grid-column:1;grid-row:4}
+  .tw.cards #ct tbody tr[data-i] td:nth-child(8){grid-column:2;grid-row:4}
   .tw.cards #ct tbody tr[data-i] td:nth-child(9){grid-column:1;grid-row:5}
   .tw.cards #ct tbody tr[data-i] td:nth-child(10){grid-column:2;grid-row:5}
-  .tw.cards #ct tbody tr[data-i] td:nth-child(11){grid-column:1;grid-row:6}
-  .tw.cards #ct tbody tr[data-i] td:nth-child(12){grid-column:2;grid-row:6}
-  .tw.cards #ct tbody tr[data-i] td:nth-child(13){grid-column:1/-1;grid-row:7}
-  .tw.cards #ct tbody tr[data-i] td:nth-child(4),.tw.cards #ct tbody tr[data-i] td:nth-child(5),.tw.cards #ct tbody tr[data-i] td:nth-child(6),.tw.cards #ct tbody tr[data-i] td:nth-child(7),.tw.cards #ct tbody tr[data-i] td:nth-child(9){padding:4px 6px}
+  .tw.cards #ct tbody tr[data-i] td:nth-child(11){grid-column:1/-1;grid-row:6}
+  .tw.cards #ct tbody tr[data-i] td:nth-child(4),.tw.cards #ct tbody tr[data-i] td:nth-child(5),.tw.cards #ct tbody tr[data-i] td:nth-child(6),.tw.cards #ct tbody tr[data-i] td:nth-child(7),.tw.cards #ct tbody tr[data-i] td:nth-child(8){padding:4px 6px}
   .tw.cards #ct .cell{max-width:100%;width:100%;height:38px;font-size:16px}
   .tw.cards #ct td.dif:empty,.tw.cards #ct td.dif.z{opacity:.55}
 }
@@ -1328,3 +1326,53 @@ html[data-theme="dark"] .lk.blank{color:#fca5a5}html[data-theme="dark"] .lk.lost
 .dcs-led .rep-t td.ho{font-size:11px} .dcs-led .rep-t th:first-child{width:28px}
 .dcs-led .rep-t td.rm{font-size:10px}
 @media (max-width:760px){ .dcx-tg .dcx-lm{margin-left:0;flex:1 1 100%} .dcx-tg .dcx-lm .in{flex:1} }
+
+/* ---- v6.60: Cash Entry — account-wise bank rows + Cheque/Collection match ---- */
+.crow.cbk{display:block;padding:6px 0 8px;border-bottom:1px dashed var(--line2)}
+.crow.cbk .cbh{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:4px}
+.crow.cbk .cbt{font-size:15px}
+.cbls{display:flex;flex-direction:column;gap:6px}
+.cbl{display:grid;grid-template-columns:minmax(0,1fr) minmax(110px,170px) 34px;gap:6px;align-items:center}
+.cbl .cbac{min-width:0}
+.cbl .cba{height:40px;width:100%}
+.cbl .cbamt{height:40px;text-align:right;width:100%}
+.cbl .cbamt.chg{color:#1d4ed8;font-weight:800;background:#eff6ff;border-color:#93c5fd}
+.cbl .cbamt.bad{border-color:var(--rd);background:var(--rd-soft)}
+:root[data-theme="dark"] .cbl .cbamt.chg{color:#93c5fd;background:rgba(59,130,246,.15)}
+.cbx{height:34px;width:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--mut);font-size:18px;line-height:1;cursor:pointer}
+.cbx:hover{color:var(--rd);border-color:var(--rd)}
+.cbact{margin-top:6px}
+.cbm{grid-column:1/-1;margin-top:7px;padding:7px 10px;border-radius:10px;background:var(--surface2);font-size:12.5px;display:flex;flex-direction:column;gap:4px}
+.cbm:empty{display:none}
+.cbm .cbm-h{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.cbm .cbm-ok{color:var(--gr);font-weight:600}
+.cbm .cbm-w{color:var(--am);font-weight:600;line-height:1.4}
+.crow.cr2 .cbm-d{margin-top:4px}
+@media(max-width:600px){
+  .cbl{grid-template-columns:minmax(0,1fr) 36px}
+  .cbl .cbac{grid-column:1/-1}
+  .cbl .cbamt{grid-column:1}
+  .cbl .cbx{grid-column:2}
+  .cbl .cba,.cbl .cbamt{font-size:16px}
+}
+.cbl .cbac .sg-list{min-width:min(360px,calc(100vw - 48px));right:auto}
+.cbl .cbac .sg-list div{flex-wrap:wrap}
+
+/* ---- v6.60: Bank Closing — Debit/Withdraw & Credit/Deposit (auto from Cash Entry + Collection) ---- */
+#ct td .au{display:flex;flex-direction:column;align-items:flex-end;gap:1px;font-size:11.5px;line-height:1.25;margin-bottom:3px;min-height:15px}
+#ct td .au em{font-style:normal;color:var(--mut);font-size:10.5px;margin-right:3px}
+#ct td .au b{font-weight:700}
+#ct td .eff{font-size:11px;color:var(--mut);text-align:right;min-height:0}
+#ct td .eff:empty{display:none}
+.clink{margin-bottom:12px;padding:10px 12px;border-radius:12px;background:var(--surface2);border:1px solid var(--line2);display:flex;flex-direction:column;gap:7px}
+.clink .cl-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.clink .cl-h .sp{flex:1}
+.clink .cl-g{display:flex;flex-wrap:wrap;gap:6px 10px;font-size:12.5px}
+.clink .cl-g span{padding:4px 10px;border-radius:9px;display:inline-flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.clink .cl-g span.c-dr{background:rgba(244,63,94,.08)} .clink .cl-g span.c-cr{background:rgba(16,185,129,.09)}
+.clink .cl-g em{font-style:normal;color:var(--mut)} .clink .cl-g i{font-style:normal;font-size:11px;color:var(--mut)}
+.clink .cl-w{color:var(--am);font-size:12.5px;font-weight:600;line-height:1.4}
+@media(max-width:700px){
+  .tw.cards #ct td .au{align-items:flex-start;flex-direction:row;flex-wrap:wrap;gap:2px 8px}
+  .tw.cards #ct td .eff{text-align:left}
+}

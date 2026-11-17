@@ -601,7 +601,8 @@ function suggest(input, getItems, onPick) {
     $$("div", list).forEach((d, i) => d.classList.toggle("on", i === idx)); $$("div", list)[idx]?.scrollIntoView({ block: "nearest" });
   });
   list.addEventListener("mousedown", e => { const d = e.target.closest("[data-i]"); if (d) { e.preventDefault(); pick(items[+d.dataset.i]); input.dispatchEvent(new CustomEvent("picked")); } });
-  input.addEventListener("blur", () => setTimeout(() => list.classList.add("hide"), 120));
+  let bt = 0; input.addEventListener("blur", () => { clearTimeout(bt); bt = setTimeout(() => list.classList.add("hide"), 120); });
+  input.addEventListener("focus", () => clearTimeout(bt));
   return { get: () => picked, set: it => { if (it) pick(it); else { picked = null; input.value = ""; } }, setSilent: it => { picked = it; input.value = it ? `${it.value} (${it.label})` : ""; } };
 }
 const acItems = (all = false) => (all ? S.accounts : activeAccounts()).map(a => ({ value: a.code, label: a.holder || "", sub: a.bank || "" }));
@@ -835,7 +836,8 @@ async function vEntry(v) {
      <div class="s2"><label class="f">টাকা (বাতিল পাতা হলে 0)</label><input class="in big num" id="e-amt" inputmode="decimal" autocomplete="off"><div class="hint num" id="e-amthint"></div></div>
      <div class="s4"><label class="f">খাত</label><div class="chips" id="e-purp"></div></div>
      <div class="s2" id="x-cash" style="display:none"><label class="f">কে তুলেছে *</label><select class="in" id="e-taker"><option value=""></option>${TAKERS.map(t => `<option>${t}</option>`).join("")}</select></div>
-     <div class="s2" id="x-own" style="display:none"><label class="f">কোন A/C তে জমা *</label><div><input class="in" id="e-toac" autocomplete="off" placeholder="যে অ্যাকাউন্টে টাকা গেছে"></div></div>
+     <div class="s4" id="x-own" style="display:none"><label class="f">কোন A/C তে জমা * <span class="mut">(${bi("শুধু রেকর্ড", "record only")})</span></label><div><input class="in" id="e-toac" autocomplete="off" placeholder="${bi("যে অ্যাকাউন্টে টাকা গেছে — কোড বা নাম টাইপ করুন", "Receiving account — type code or name")}"></div></div>
+     <div class="s4 cbm" id="e-cashlink" style="display:none"></div>
      <div class="s4"><label class="f">নোট / মন্তব্য / সাপ্লায়ার / অন্যান্য</label><input class="in" id="e-rem" autocomplete="off" list="dl-rem" placeholder="যেমন: সাপ্লায়ারের নাম — বিলের বিবরণ"></div>
      <div class="s4" id="e-sum" style="display:none"></div>
     </div>${datalist("dl-rem", [...S.cheques.map(c => c.remarks), ...S.cheques.map(c => c.party)])}
@@ -849,10 +851,11 @@ async function vEntry(v) {
     if (it) { const n = nextNo(it.value); $e("e-no").value = n; const last = S.cheques.filter(c => c.code === it.value).sort((x, y) => y.no - x.no)[0]; $e("e-nohint").textContent = last ? `শেষ এন্ট্রি: ${last.no} (${dmy(last.date)})` : "এই অ্যাকাউন্টে এখনো এন্ট্রি নেই"; }
     sum();
   });
-  const toac = suggest($e("e-toac"), () => acItems(true), () => sum());
+  const toac = suggest($e("e-toac"), () => acItems(true).filter(i => i.value !== ac.get()?.value), () => sum());
   const clearPhoto = photoPicker(v, st, { inp: "e-ph", cam: "e-ph-c", img: "e-phv", x: "e-phx" }, () => { $e("e-ocrw").classList.toggle("hide", !st.photo); $e("e-ocro").innerHTML = ""; });
   $e("e-ocr").onclick = () => runOcr(st, $e("e-ocro"), val => { $e("e-no").value = val; $e("e-no").dispatchEvent(new Event("input")); }, val => { $e("e-amt").value = val; $e("e-amt").dispatchEvent(new Event("input")); });
   const purpKey = () => st.purpose ? purposeKey(st.purpose) : "";
+  let clTok = 0, clT = 0;
   function drawPurp() {
     $e("e-purp").innerHTML = allPurposes().map(p => `<span class="chip" data-p="${esc(p)}">${esc(p.split(" (")[0])}</span>`).join("") + `<span class="chip add" id="e-padd" title="${bi("নতুন খাত যোগ করুন", "Add a new purpose")}">＋ নতুন</span>` + (S.me.role === "admin" ? `<span class="chip add" id="e-pmg" title="${LANG === "en" ? "Edit / delete purposes" : "খাত এডিট / মুছুন"}">⚙ ${LANG === "en" ? "Manage" : "ম্যানেজ"}</span>` : "");
     if ($e("e-pmg")) $e("e-pmg").onclick = () => purposeManage(() => { if (st.purpose && !allPurposes().includes(st.purpose)) st.purpose = ""; drawPurp(); });
@@ -870,7 +873,21 @@ async function vEntry(v) {
   }
   drawPurp(); loadPurposes().then(() => { if (v.isConnected) drawPurp(); });
   $e("e-imp").onclick = () => chequeImportModal(() => { list(); });
+  /* Cheque Posting (Cash Withdrawal) ↔ Cash Entry "Total Bank" link */
+  async function cashLink() {
+    const el = $e("e-cashlink"), tok = ++clTok; if (!el) return;
+    const code = ac.get()?.value, date = $e("e-date").value;
+    if (purpKey() !== "cash" || !code || !date) { el.style.display = "none"; return; }
+    const { src, ok } = await cashEff(date);
+    if (tok !== clTok || !el.isConnected) return;
+    const entered = cashAccSum(src, "bank_in")[code] || 0;
+    const posted = S.cheques.filter(c => c.date === date && c.code === code && purposeKey(c.purpose) === "cash" && isLive(c)).reduce((q, c) => q + c.amount, 0), cur = num($e("e-amt").value) || 0;
+    el.style.display = ""; el.className = "s4 cbm";
+    el.innerHTML = `<div class="cbm-h"><span>🔗 Cash Entry (${dmy(date)}) · Total Bank · <b>${esc(code)}</b>: <b class="num">${src ? "৳ " + money0(entered) : ok ? bi("এখনো এন্ট্রি নেই", "no entry yet") : "—"}</b> · ${bi("চেক পোস্টিং", "Cheque Posting")}: <b class="num">৳ ${money0(posted)}</b>${cur ? ` <span class="mut xs">(+ ৳ ${money0(cur)} ${bi("এই চেক", "this cheque")})</span>` : ""}</span><a class="btn sm" href="#/cash" id="e-cashgo">${bi("Cash Entry খুলুন", "Open Cash Entry")}</a></div>`;
+    $("#e-cashgo", el).onclick = () => sessionStorage.setItem("nabiad_cash_date", date);
+  }
   function sum() {
+    clearTimeout(clT); clT = setTimeout(cashLink, 350);
     const code = ac.get()?.value, no = $e("e-no").value, amt = num($e("e-amt").value);
     $e("e-amthint").textContent = amt ? "৳ " + money(amt) : ""; const el = $e("e-sum");
     if (code && no) {
@@ -886,6 +903,7 @@ async function vEntry(v) {
   $e("e-amt").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (st.purpose) save(); else $e("e-err").textContent = "খাত বাছুন"; } });
   $$("#e-taker,#e-rem", v).forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); save(); } }));
   $e("e-toac").addEventListener("picked", () => $e("e-rem").focus());
+  $e("e-date").addEventListener("change", () => { clearTimeout(clT); clT = setTimeout(cashLink, 100); });
   function clearAll(full) {
     if (full || !$("#keep", v).checked) { ac.set(null); st.purpose = null; $e("e-taker").value = ""; $e("e-achint").textContent = ""; $e("e-nohint").textContent = ""; }
     toac.set(null); $e("e-no").value = ac.get() ? nextNo(ac.get().value) : ""; $e("e-amt").value = ""; $e("e-rem").value = ""; clearPhoto(); applyPurpose();
@@ -920,7 +938,7 @@ async function vEntry(v) {
       }
       const party = "";
       const row = await API.addCheque({ id, photo, date, code, no, amount: k === "cancel" ? 0 : amount, purpose: st.purpose, taker: k === "cash" ? $e("e-taker").value : "", party, toac: k === "own" ? toac.get().value : "", remarks: $e("e-rem").value.trim() });
-      S.cheques.push(derive(row)); saveCache();
+      S.cheques.push(derive(row)); saveCache(); cashLink();
       if (warn) toast(warn.slice(3), /হয়নি/.test(warn) ? "err" : "ok"); toast(row.pending ? `✔ অফলাইনে জমা হয়েছে: ${code} · ${no} · ৳ ${money(row.amount)} — নেট এলে সিঙ্ক হবে` : `✔ সেভ হয়েছে: ${code} · ${no} · ৳ ${money(row.amount)}`); clearAll(false); list();
       const n = $e("e-no"); n.focus(); n.select();
     } catch (e) { err.textContent = e.message || String(e); toast(e.message || String(e), "err"); }
@@ -1126,45 +1144,61 @@ async function vClosing(v) {
     const accs = S.accounts.filter(a => a.daily && (a.status === "Active" || ex[a.code])).sort((a, b) => a.sort - b.sort);
     const has = Object.values(ex).some(r => r.total != null); const locked = has && (S.me.role !== "admin" || Object.values(ex).some(r => r.pending));
     const draft = has ? null : await Draft.get(date); const dr = draft?.rows || {};
-    const cl = {}, tin = {}; S.cheques.forEach(c => { if (c.status === "Cleared" && c.sdate === date) { cl[c.code] = (cl[c.code] || 0) + c.amount; if (c.toac) tin[c.toac] = (tin[c.toac] || 0) + c.amount; } });
+    /* Debit/Withdraw ← Cash Entry "Total Bank" · Credit/Deposit ← approved Collection + Cash Entry "Bank" (per A/C, this date) */
+    const [ce, colRows] = await Promise.all([cashEff(date), API.dcolRange(date, date).catch(() => null)]);
+    const srcOk = ce.ok && colRows !== null, aDr = cashAccSum(ce.src, "bank_in"), aCb = cashAccSum(ce.src, "bank_out"), aCc = {};
+    (colRows || []).forEach(r => { if (r.date === date && r.status === "approved" && r.account) aCc[r.account] = (aCc[r.account] || 0) + (+r.amount || 0); });
     const gap = prev.date ? workGap(prev.date, date) : 0;
     const msgs = [];
     if (has) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 এই তারিখের ব্যালেন্স ফাইনাল সেভ হয়েছে। বদলাতে Admin কে বলুন।" : "⚠ এই তারিখ আগেই ফাইনাল সেভ আছে — সেভ করলে Admin হিসেবে নতুন মান বসবে।"}</div>`);
     else if (prev.date) msgs.push(`<div class="mut sm">আগের ডাটা: <b>${dmy(prev.date)}</b>${gap ? ` <b class="am">(${bi("মাঝে " + gap + " কর্মদিবসের ডাটা নেই", gap + " working days of data missing in between")})</b>` : ""} · ${bi("আগের দিনের ক্লোজিং নিজে থেকে বসানো আছে — শুধু যেগুলো বদলেছে সেগুলো লিখুন।", "Previous day's closing is pre-filled — only edit what changed.")}</div>`);
     if (draft) msgs.push(`<div class="alert vi">📝 <span>ড্রাফট লোড হয়েছে — ${esc(draft.by || "")} · ${new Date(draft.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}${draft.local ? " (এই ডিভাইস)" : ""}</span><button class="btn sm" id="c-dd" style="margin-left:auto">ড্রাফট বাদ দিন</button></div>`);
     if (isFri(date) && !has) msgs.push(`<div class="alert am">শুক্রবার — সাধারণত ব্যাংক বন্ধ থাকে। দরকার না হলে "পরের ›" চাপুন।</div>`);
+    if (!srcOk) msgs.push(`<div class="alert am">⚠ ${bi("Cash Entry / কালেকশনের ডাটা আনা যায়নি (ইন্টারনেট নেই?) — Debit/Credit-এর auto অংশ ০ ধরা হয়েছে, Diff ভুল দেখাতে পারে।", "Could not load Cash Entry / Collection data (offline?) — the auto part of Debit/Credit is taken as 0, Diff may be wrong.")}</div>`);
     $("#c-msg", v).innerHTML = msgs.join("");
     $("#c-dd", v) && ($("#c-dd", v).onclick = async () => { if (!ask("এই তারিখের ড্রাফট মুছে আগের দিনের ক্লোজিং থেকে নতুন করে শুরু করবেন?")) return; await Draft.drop(date); draw(); });
     const rows = accs.map(a => {
       const p = prev.map[a.code] || {}, e = ex[a.code] || {}, d = dr[a.code] || {};
       const src = has ? e : d;
-      return { a, code: a.code, holder: a.holder, prevT: p.total || 0, prevB: p.block || 0, chq: cl[a.code] || 0, tin: tin[a.code] || 0, od: src.od || 0, odp: src.odp || 0,
+      return { a, code: a.code, holder: a.holder, prevT: p.total || 0, prevB: p.block || 0, adr: aDr[a.code] || 0, acc: aCc[a.code] || 0, acb: aCb[a.code] || 0, od: src.od || 0, odp: src.odp || 0,
         total: has ? e.total : (d.tot ?? null), block: has ? (e.block ?? 0) : (d.blk ?? p.block ?? 0), remark: src.remark ?? src.rem ?? "" };
     });
     const B = a => brandOf(a);
-    body.innerHTML = `<div class="tw cards closing" style="max-height:72vh"><table id="ct"><thead><tr><th>#</th><th>A/C</th><th class="r">আগের ক্লোজিং</th><th class="r c-dr">চেক খরচ</th><th class="r c-dr">অন্য খরচ</th><th class="r c-cr">ট্রান্সফার জমা</th><th class="r c-cr">অন্য জমা</th><th class="r">হিসাব মতে</th><th class="r c-bk">ব্যাংক ক্লোজিং</th><th class="r">BLOCK</th><th class="r">USABLE</th><th class="r">Diff</th><th>মন্তব্য</th></tr></thead><tbody>
-    ${rows.map((r, i) => { const b = B(r.a); return `<tr data-i="${i}" class="${r.chq || r.tin ? "mv" : ""}"><td class="mut">${i + 1}</td><td class="acc-c" style="--b1:${b.c1}"><b>${esc(r.code)}</b>${r.chq || r.tin ? ` <span class="mvdot" title="আজ অ্যাপে লেনদেন আছে — যাচাই করুন">●</span>` : ""}<div class="mut sm">${esc(r.holder)}</div></td><td class="r num">${money(r.prevT)}</td><td class="r num c-dr">${r.chq ? money(r.chq) : "-"}</td>
-     <td class="c-dr"><input class="cell od" value="${fmtIn(r.od || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td><td class="r num c-cr">${r.tin ? money(r.tin) : "-"}</td><td class="c-cr"><input class="cell odp" value="${fmtIn(r.odp || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
+    const mapped = new Set(accs.map(a => a.code)), lost = (m, skip) => Object.entries(m).filter(([c]) => !mapped.has(c) && !(skip && skip(c))).reduce((q, [, x]) => q + x, 0);
+    const lostDr = lost(aDr), lostCb = lost(aCb), lostCc = lost(aCc, c => String(c).trim().toLowerCase() === "cash");
+    const nAuto = rows.filter(r => r.adr || r.acc || r.acb).length, tD = Object.values(aDr).reduce((q, x) => q + x, 0), tCb = Object.values(aCb).reduce((q, x) => q + x, 0), tCc = Object.values(aCc).reduce((q, x) => q + x, 0);
+    const stTxt = ce.state === "final" ? bi("ফাইনাল", "final") : ce.state === "draft" ? bi("ড্রাফট", "draft") : bi("এন্ট্রি নেই", "no entry");
+    const linkBox = `<div class="clink"><div class="cl-h"><b>🔗 ${bi("অটো লিংক", "Auto link")}</b><span class="mut xs">${bi("এই তারিখের ডাটা থেকে নিজে আসে", "pulled from this date's data")}</span><span class="sp"></span><a class="btn sm" href="#/cash" data-go="cash">${bi("ক্যাশ এন্ট্রি", "Cash Entry")}</a><a class="btn sm" href="#/dcol" data-go="dcol">${bi("কালেকশন", "Collection")}</a></div>
+      <div class="cl-g"><span class="c-dr"><em>${bi("ক্যাশ এন্ট্রি", "Cash Entry")} (${stTxt}) · Total Bank</em> <b class="num">৳ ${money0(tD)}</b> <i>→ Debit / Withdraw</i></span><span class="c-cr"><em>${bi("কালেকশন (Approved)", "Collection (approved)")}</em> <b class="num">৳ ${money0(tCc)}</b> <i>→ Credit / Deposit</i></span><span class="c-cr"><em>${bi("ক্যাশ এন্ট্রি", "Cash Entry")} · Bank</em> <b class="num">৳ ${money0(tCb)}</b> <i>→ Credit / Deposit</i></span></div>
+      ${lostDr || lostCb || lostCc ? `<div class="cl-w">⚠ ${bi("এই A/C-গুলো ডেইলি ক্লোজিং তালিকায় নেই বা A/C বাছা হয়নি, তাই এখানে ধরা হয়নি", "Not counted here — A/C is not in the daily-closing list or not selected")}: ${[lostDr ? `Total Bank ৳ ${money0(lostDr)}` : "", lostCb ? `Bank ৳ ${money0(lostCb)}` : "", lostCc ? `${bi("কালেকশন", "Collection")} ৳ ${money0(lostCc)}` : ""].filter(Boolean).join(" · ")}</div>` : ""}</div>`;
+    const autoDr = r => r.adr ? `<span><em>${bi("ক্যাশ এন্ট্রি", "Cash Entry")}</em> <b class="num">${money(r.adr)}</b></span>` : `<span class="mut">—</span>`;
+    const autoCr = r => (r.acc || r.acb) ? `${r.acc ? `<span><em>${bi("কালেকশন", "Collection")}</em> <b class="num">${money(r.acc)}</b></span>` : ""}${r.acb ? `<span><em>${bi("ক্যাশ জমা", "Cash dep.")}</em> <b class="num">${money(r.acb)}</b></span>` : ""}` : `<span class="mut">—</span>`;
+    body.innerHTML = `${linkBox}<div class="tw cards closing" style="max-height:72vh"><table id="ct"><thead><tr><th>#</th><th>A/C</th><th class="r">আগের ক্লোজিং</th><th class="r c-dr">${bi("ডেবিট / উত্তোলন", "Debit / Withdraw")}</th><th class="r c-cr">${bi("ক্রেডিট / জমা", "Credit / Deposit")}</th><th class="r">হিসাব মতে</th><th class="r c-bk">ব্যাংক ক্লোজিং</th><th class="r">BLOCK</th><th class="r">USABLE</th><th class="r">Diff</th><th>মন্তব্য</th></tr></thead><tbody>
+    ${rows.map((r, i) => { const b = B(r.a), mv = r.adr || r.acc || r.acb; return `<tr data-i="${i}" class="${mv ? "mv" : ""}"><td class="mut">${i + 1}</td><td class="acc-c" style="--b1:${b.c1}"><b>${esc(r.code)}</b>${mv ? ` <span class="mvdot" title="${bi("ক্যাশ এন্ট্রি / কালেকশনে লেনদেন আছে — যাচাই করুন", "Cash Entry / Collection has activity — please verify")}">●</span>` : ""}<div class="mut sm">${esc(r.holder)}</div></td><td class="r num">${money(r.prevT)}</td>
+     <td class="c-dr"><div class="au">${autoDr(r)}</div><input class="cell od" value="${fmtIn(r.od || "")}" inputmode="decimal" placeholder="${bi("+ অন্য", "+ other")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
+     <td class="c-cr"><div class="au">${autoCr(r)}</div><input class="cell odp" value="${fmtIn(r.odp || "")}" inputmode="decimal" placeholder="${bi("+ অন্য", "+ other")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
      <td class="r num exp"></td><td class="c-bk"><input class="cell tot" value="${r.total == null ? "" : fmtIn(r.total)}" data-dirty="${r.total == null ? "" : "1"}" inputmode="decimal" ${locked ? "disabled" : ""}></td><td><input class="cell blk" value="${fmtIn(r.block || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
      <td class="r num usa b"></td><td class="r num dif"></td><td><input class="cell t rem" value="${esc(r.remark)}" ${locked ? "disabled" : ""}></td></tr>`; }).join("")}
-    <tr class="tot"><td></td><td>মোট <span class="mut sm" id="T-n"></span></td><td class="r num" id="T0"></td><td class="r num c-dr" id="T1"></td><td class="r num c-dr" id="T2"></td><td class="r num c-cr" id="T3"></td><td class="r num c-cr" id="T4"></td><td class="r num" id="T5"></td><td class="r num c-bk t-bank" id="T6"></td><td class="r num" id="T7"></td><td class="r num t-usa" id="T8"></td><td class="r num t-diff" id="T9"></td><td></td></tr></tbody></table></div>
+    <tr class="tot"><td></td><td>মোট <span class="mut sm" id="T-n"></span></td><td class="r num" id="T0"></td><td class="r num c-dr" id="T1"></td><td class="r num c-cr" id="T2"></td><td class="r num" id="T3"></td><td class="r num c-bk t-bank" id="T4"></td><td class="r num" id="T5"></td><td class="r num t-usa" id="T6"></td><td class="r num t-diff" id="T7"></td><td></td></tr></tbody></table></div>
     ${locked ? "" : `<div class="cbar"><button class="btn lg fix" id="c-draft">${ico("edit")} ড্রাফট সেভ</button><button class="btn pri lg fix" id="c-save">${ico("save")} <span class="bl">ফাইনাল সেভ<small>${date === today() ? "আজকের" : dmy(date)}</small></span></button><div class="hint" id="c-err"></div><div class="sp"></div><span class="mut sm" id="c-auto"></span></div>`}
-    <div class="legend"><span><i class="lg-chg"></i>নীল = আপডেট করা</span><span><i class="lg-same"></i>কালো = আগের দিনের মতোই</span><span><i class="lg-mv"></i>আজ অ্যাপে লেনদেন আছে</span><span><i class="lg-dr"></i>খরচ</span><span><i class="lg-cr"></i>জমা</span></div>
-    <div class="mut sm" style="margin-top:6px">ফাইনাল সেভের পর Staff আর বদলাতে পারবে না। মাঝপথে থামতে "ড্রাফট সেভ" চাপুন — এই ডিভাইসে নিজে থেকেও জমা হয়। Diff ≠ 0 হলে মন্তব্য বাধ্যতামূলক।</div>`;
+    <div class="legend"><span><i class="lg-chg"></i>নীল = আপডেট করা</span><span><i class="lg-same"></i>কালো = আগের দিনের মতোই</span><span><i class="lg-mv"></i>${bi("ক্যাশ এন্ট্রি / কালেকশনে লেনদেন আছে", "Cash Entry / Collection activity")}</span><span><i class="lg-dr"></i>Debit</span><span><i class="lg-cr"></i>Credit</span></div>
+    <div class="mut sm" style="margin-top:6px">${bi("হিসাব মতে = আগের ক্লোজিং − Debit/Withdraw + Credit/Deposit। প্রতিটি ঘরের উপরের লাইন ক্যাশ এন্ট্রি ও কালেকশন থেকে নিজে আসে; নিচের ঘরে শুধু বাড়তি/অন্য লেনদেন লিখুন। ফাইনাল সেভের পর Staff আর বদলাতে পারবে না। মাঝপথে থামতে \"ড্রাফট সেভ\" চাপুন — এই ডিভাইসে নিজে থেকেও জমা হয়। Diff ≠ 0 হলে মন্তব্য বাধ্যতামূলক।", "Expected = Previous closing − Debit/Withdraw + Credit/Deposit. The top line of each cell comes from Cash Entry and Collection automatically; type only extra/other transactions in the box below. After final save Staff cannot edit. Use \"Save draft\" to pause — it also auto-saves on this device. A remark is required when Diff ≠ 0.")}</div>`;
+    $$("[data-go]", body).forEach(a => a.onclick = () => { const k = a.dataset.go; if (k === "cash") sessionStorage.setItem("nabiad_cash_date", date); });
     const trs = $$("#ct tbody tr[data-i]", body);
     const calc = () => {
-      const T = Array(10).fill(0); let nChg = 0, nMv = 0;
+      const T = Array(8).fill(0); let nChg = 0, nMv = 0;
       trs.forEach(tr => {
         const r = rows[+tr.dataset.i]; const od = num($(".od", tr).value), odp = num($(".odp", tr).value), ti = $(".tot", tr), blkI = $(".blk", tr), blk = num(blkI.value);
-        const exp = r.prevT - r.chq - od + r.tin + odp;
+        const dr = r.adr + od, cr = r.acc + r.acb + odp, exp = r.prevT - dr + cr;
         if (!ti.dataset.dirty && document.activeElement !== ti) ti.value = fmtIn(exp);
         const tot = ti.value.trim() === "" ? exp : num(ti.value), diff = tot - exp, usa = tot - blk;
         const chg = !same(tot, exp) || (has && !same(tot, r.prevT) && !same(tot, exp));
         ti.classList.toggle("chg", chg); blkI.classList.toggle("chg", !same(blk, r.prevB));
         $(".od", tr).classList.toggle("chg", od !== 0); $(".odp", tr).classList.toggle("chg", odp !== 0);
-        tr.classList.toggle("chgrow", chg); if (chg) nChg++; if (r.chq || r.tin) nMv++;
+        const e1 = $$(".eff", tr); e1[0].textContent = r.adr && od ? "= " + money(dr) : ""; e1[1].textContent = (r.acc || r.acb) && odp ? "= " + money(cr) : "";
+        tr.classList.toggle("chgrow", chg); if (chg) nChg++; if (r.adr || r.acc || r.acb) nMv++;
         $(".exp", tr).textContent = money(exp); $(".usa", tr).textContent = money(usa); const d = $(".dif", tr); d.textContent = diff ? money(diff) : "0"; d.className = "r num dif " + (Math.abs(diff) > 0.001 ? "diffx" : "diff0");
-        [r.prevT, r.chq, od, r.tin, odp, exp, tot, blk, usa, diff].forEach((x, i) => T[i] += x);
+        [r.prevT, dr, cr, exp, tot, blk, usa, diff].forEach((x, i) => T[i] += x);
         Object.assign(r, { _od: od, _odp: odp, _tot: tot, _blk: blk, _diff: diff, _exp: exp, _rem: $(".rem", tr).value.trim(), _chg: chg, _dirty: !!ti.dataset.dirty });
       });
       T.forEach((x, i) => $("#T" + i, body).textContent = money0(x));
@@ -1174,7 +1208,7 @@ async function vClosing(v) {
     };
     const filter = () => {
       const q = norm($("#c-q", v).value), f = $("#c-f", v).value;
-      trs.forEach(tr => { const r = rows[+tr.dataset.i]; const ok = (!q || accHay(r.a).includes(q)) && (!f || (f === "chg" && r._chg) || (f === "same" && !r._chg) || (f === "mv" && (r.chq || r.tin))); tr.style.display = ok ? "" : "none"; });
+      trs.forEach(tr => { const r = rows[+tr.dataset.i]; const ok = (!q || accHay(r.a).includes(q)) && (!f || (f === "chg" && r._chg) || (f === "same" && !r._chg) || (f === "mv" && (r.adr || r.acc || r.acb))); tr.style.display = ok ? "" : "none"; });
     };
     const collect = () => Object.fromEntries(rows.map(r => [r.code, { od: r._od || 0, odp: r._odp || 0, tot: r._dirty ? r._tot : null, blk: r._blk || 0, rem: r._rem || "" }]));
     const autosave = () => { if (locked) return; clearTimeout(autoT); autoT = setTimeout(() => { Draft.saveLocal(date, collect()); const a = $("#c-auto", body); if (a) a.textContent = "✓ এই ডিভাইসে অটো-সেভ " + new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); }, 700); };
@@ -2398,6 +2432,14 @@ const cashType = k => CASH_KEYS("receipt").includes(k) ? "receipt" : "payment";
 function evalAmt(s) { s = String(s ?? "").replace(/[,৳\s]/g, ""); if (!s) return 0; if (!/^[-+]?\d*\.?\d+([+-]\d*\.?\d+)*$/.test(s)) return NaN; return s.match(/[+-]?\d*\.?\d+/g).reduce((a, b) => a + parseFloat(b), 0); }
 function cashTotals(items) { const sum = t => CASH_KEYS(t).reduce((s, k) => s + (+items?.[k]?.a || 0), 0); return { r: sum("receipt"), p: sum("payment") }; }
 const CASH_DRAFT = d => "nabiad_cash_draft_" + d;
+/* the Cash Entry record that counts for a date: final > newer local draft > saved draft */
+async function cashEff(date) {
+  let rec = null, ok = true; try { rec = await API.cashOn(date); } catch { ok = false; }
+  let loc = null; try { loc = JSON.parse(localStorage.getItem(CASH_DRAFT(date)) || "null"); } catch { }
+  const src = rec?.status === "final" ? rec : (loc && (!rec || new Date(loc.updated_at) > new Date(rec.updated_at)) ? loc : rec);
+  return { src, ok, state: !src ? "none" : src.status === "final" ? "final" : "draft" };
+}
+const cashAccSum = (src, k) => { const m = {}; (src?.items?.[k]?.accs || []).forEach(z => { if (z.c) m[z.c] = (m[z.c] || 0) + (+z.a || 0); }); return m; };
 
 async function vCash(v) {
   const t = today(); let date = sessionStorage.getItem("nabiad_cash_date") || (S.lastCash && S.lastCash < t ? stepDay(S.lastCash, 1) : t); sessionStorage.removeItem("nabiad_cash_date"); if (date > t) date = t;
@@ -2426,40 +2468,98 @@ async function vCash(v) {
     $("#cs-dd", v) && ($("#cs-dd", v).onclick = async () => { if (!ask("এই তারিখের ড্রাফট মুছবেন?")) return; localStorage.removeItem(CASH_DRAFT(date)); if (ex && !final) { try { await API.cashSave({ date, opening_cash: oc, opening_bank: ob, items: {}, total_receipt: 0, total_payment: 0, closing: oc + ob, cash_in_hand: null, remarks: null, status: "draft" }); } catch { } } draw(); });
     const dis = locked ? "disabled" : "";
     const row = (k, l) => { const it = items[k] || {}; return `<div class="crow cr2" data-k="${k}"><label>${esc(l)}</label><div class="cv"><input class="cell camt" value="${esc(it.x ?? (it.a ? fmtIn(it.a) : ""))}" inputmode="decimal" placeholder="0" ${dis}><span class="cval num"></span></div></div>`; };
-    const side = (t, title, cls) => `<div class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num" id="cs-T${t[0]}">0</b></div>${CASH[t].map(g => `${g.g ? `<div class="cgrp"><span>${g.g}</span><b class="num" data-g="${g.g}">0</b></div>` : ""}<div class="${g.g ? "cin" : ""}">${g.items.map(([k, l]) => row(k, l)).join("")}</div>`).join("")}</div>`;
-    body.innerHTML = `<div class="card csec c-open"><div class="csh"><h3>Opening Balance <span class="mut sm">(Cash in hand + Bank)</span></h3><b class="num" id="cs-OT">0</b></div>
-       <div class="crow"><label>Cash in hand</label><input class="cell" id="cs-oc" value="${fmtIn(oc)}" inputmode="decimal" ${dis}></div><div class="crow"><label>Bank</label><input class="cell" id="cs-ob" value="${fmtIn(ob)}" inputmode="decimal" ${dis}></div></div>
+    const bankLine = a => `<div class="cbl" data-c="${esc(a.c || "")}"><div class="cbac"><input class="in cba" autocomplete="off" placeholder="${bi("A/C বাছুন (কোড বা নাম)", "Select A/C (code or name)")}" ${dis}></div><input class="cell cbamt" value="${esc(a.x ?? (a.a ? fmtIn(a.a) : ""))}" inputmode="decimal" placeholder="0" ${dis}>${locked ? "" : `<button type="button" class="cbx" title="${bi("মুছুন", "Remove")}">×</button>`}</div>`;
+    const bankRow = (k, l) => { const it = items[k] || {}, accs = Array.isArray(it.accs) && it.accs.length ? it.accs : it.a ? [{ c: "", a: it.a, x: it.x }] : [{}]; return `<div class="crow cbk" data-k="${k}"><div class="cbh"><label>${esc(l)} <span class="mut xs">${bi("A/C ভিত্তিক", "by A/C")}</span></label><b class="num cbt">0</b></div><div class="cbls">${accs.map(bankLine).join("")}</div>${locked ? "" : `<div class="cbact"><button type="button" class="btn sm cbadd">+ ${bi("আরেকটা A/C", "Add A/C")}</button></div>`}${k === "bank_in" ? `<div class="cbm" id="cs-chm"></div>` : ""}</div>`; };
+    const BANKK = ["bank_in", "bank_out"];
+    const side = (t, title, cls) => `<div class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num" id="cs-T${t[0]}">0</b></div>${CASH[t].map(g => `${g.g ? `<div class="cgrp"><span>${g.g}</span><b class="num" data-g="${g.g}">0</b></div>` : ""}<div class="${g.g ? "cin" : ""}">${g.items.map(([k, l]) => BANKK.includes(k) ? bankRow(k, l) : row(k, l)).join("")}</div>`).join("")}</div>`;
+    body.innerHTML = `<div class="card csec c-open"><div class="csh"><h3>Opening Balance <span class="mut sm">(${bi("পেটি ক্যাশ + Total Bank", "Petty cash + Total Bank")})</span></h3><b class="num" id="cs-OT">0</b></div>
+       <div class="crow"><label>Cash in Hand <span class="mut xs">(${bi("পেটি ক্যাশ", "petty cash")})</span></label><input class="cell" id="cs-oc" value="${fmtIn(oc)}" inputmode="decimal" ${dis}></div><div class="crow"><label>Total Bank</label><input class="cell" id="cs-ob" value="${fmtIn(ob)}" inputmode="decimal" ${dis}></div></div>
       <div class="grid g2" style="margin-top:14px">${side("receipt", "Total Receipt", "c-rec")}${side("payment", "Total Payment", "c-pay")}</div>
       <div class="card csec c-close" style="margin-top:14px"><div class="csh"><h3>Closing Balance</h3><b class="num big" id="cs-CL">0</b></div>
        <div class="cbox"><div><span>Opening</span><b class="num" id="cs-x1"></b></div><div class="gr"><span>+ Receipt</span><b class="num" id="cs-x2"></b></div><div class="rd"><span>− Payment</span><b class="num" id="cs-x3"></b></div><div class="eq"><span>= Closing</span><b class="num" id="cs-x4"></b></div></div>
-       <div class="crow hl"><label>Cash in hand <span class="mut xs">(গুনে লিখুন)</span></label><input class="cell" id="cs-ch" value="${src?.cash_in_hand == null ? "" : fmtIn(src.cash_in_hand)}" inputmode="decimal" placeholder="হাতে নগদ" ${dis}></div>
-       <div class="crow"><label>Bank <span class="mut xs">(Closing − Cash)</span></label><b class="num" id="cs-cb"></b></div>
+       <div class="crow hl"><label>Cash in Hand <span class="mut xs">(${bi("পেটি ক্যাশ — গুনে লিখুন", "petty cash — count and enter")})</span></label><input class="cell" id="cs-ch" value="${src?.cash_in_hand == null ? "" : fmtIn(src.cash_in_hand)}" inputmode="decimal" placeholder="হাতে নগদ" ${dis}></div>
+       <div class="crow"><label>Total Bank <span class="mut xs">(Closing − Cash in Hand)</span></label><b class="num" id="cs-cb"></b></div>
        ${bankRef != null ? `<div class="crow"><label class="mut">Daily Bank Closing (${dmy(date)})</label><span class="num mut">৳ ${money0(bankRef)}</span></div>` : ""}
        <div class="crow"><label>মন্তব্য</label><input class="cell t" id="cs-rm" value="${esc(src?.remarks || "")}" ${dis}></div></div>
       ${locked ? "" : `<div class="cbar"><button class="btn lg fix" id="cs-draft">${ico("edit")} ড্রাফট সেভ</button><button class="btn pri lg fix" id="cs-save">${ico("save")} <span class="bl">ফাইনাল সেভ<small>${dmy(date)}</small></span></button><div class="hint" id="cs-err"></div><div class="sp"></div><span class="mut sm" id="cs-auto"></span></div>`}`;
     const collect = () => {
       const it = {}; let bad = null;
-      $$(".crow[data-k]", body).forEach(r => { const k = r.dataset.k, x = $(".camt", r).value.trim(), n = items[k]?.n || "", a = evalAmt(x); r.classList.toggle("err", isNaN(a)); if (isNaN(a)) bad ||= k; $(".cval", r).textContent = /[+-]/.test(x.replace(/^[-+]/, "")) && !isNaN(a) ? "= " + money0(a) : ""; $(".camt", r).classList.toggle("chg", !!a); if (a || n) it[k] = { a: isNaN(a) ? 0 : a, ...(x && /[+-]/.test(x.replace(/^[-+]/, "")) ? { x } : {}), ...(n ? { n } : {}) }; });
+      $$(".crow.cbk", body).forEach(r => {
+        const k = r.dataset.k, n = items[k]?.n || "", accs = []; let tot = 0;
+        $$(".cbl", r).forEach(ln => {
+          const ai = $(".cba", ln), ax = $(".cbamt", ln), x = ax.value.trim(), a = evalAmt(x), nan = isNaN(a);
+          ax.classList.toggle("chg", !!a && !nan); ax.classList.toggle("bad", nan); if (nan) bad ||= k;
+          const c = ln._sg?.get()?.value || (S.accounts.find(z => String(z.code).toLowerCase() === ai.value.trim().toLowerCase()) || {}).code || "";
+          if (a && !nan) { accs.push({ c, a, ...(/[+-]/.test(x.replace(/^[-+]/, "")) ? { x } : {}) }); tot += a; }
+        });
+        $(".cbt", r).textContent = money0(tot);
+        if (tot || n) it[k] = { a: tot, accs, ...(n ? { n } : {}) };
+      });
+      $$(".crow[data-k]:not(.cbk)", body).forEach(r => { const k = r.dataset.k, x = $(".camt", r).value.trim(), n = items[k]?.n || "", a = evalAmt(x); r.classList.toggle("err", isNaN(a)); if (isNaN(a)) bad ||= k; $(".cval", r).textContent = /[+-]/.test(x.replace(/^[-+]/, "")) && !isNaN(a) ? "= " + money0(a) : ""; $(".camt", r).classList.toggle("chg", !!a); if (a || n) it[k] = { a: isNaN(a) ? 0 : a, ...(x && /[+-]/.test(x.replace(/^[-+]/, "")) ? { x } : {}), ...(n ? { n } : {}) }; });
       const T = cashTotals(it), oc = num($("#cs-oc", body).value), ob = num($("#cs-ob", body).value), cl = oc + ob + T.r - T.p, chv = $("#cs-ch", body).value.trim();
       return { bad, row: { date, opening_cash: oc, opening_bank: ob, items: it, total_receipt: T.r, total_payment: T.p, closing: cl, cash_in_hand: chv === "" ? null : num(chv), remarks: $("#cs-rm", body).value.trim() || null } };
     };
+    /* ---- Cheque Posting ↔ Cash Entry (Total Bank) match ---- */
+    const chqCash = () => (S.cheques || []).filter(c => c.date === date && purposeKey(c.purpose) === "cash" && isLive(c) && c.amount > 0);
+    const renderChm = its => {
+      const el = $("#cs-chm", body); if (!el) return;
+      const cl = chqCash(), cm = {}, ce = {}; cl.forEach(c => cm[c.code] = (cm[c.code] || 0) + c.amount);
+      (its.bank_in?.accs || []).forEach(z => ce[z.c || ""] = (ce[z.c || ""] || 0) + z.a);
+      const keys = [...new Set([...Object.keys(cm), ...Object.keys(ce)])].sort(); if (!keys.length) { el.innerHTML = ""; return; }
+      const diffs = keys.filter(c => Math.abs((cm[c] || 0) - (ce[c] || 0)) > 0.001), cT = cl.reduce((q, c) => q + c.amount, 0);
+      el.innerHTML = `<div class="cbm-h"><span>🧾 ${bi("চেক পোস্টিং (ক্যাশ উত্তোলন)", "Cheque Posting (cash withdrawal)")}: <b class="num">${cl.length ? "৳ " + money0(cT) : "—"}</b>${cl.length ? ` <span class="mut xs">${cl.length} ${bi("চেক", "cheque(s)")}</span>` : ""}</span>${!locked && cl.length && diffs.length ? `<button type="button" class="btn sm" id="cs-chfill">${bi("চেক থেকে ভরুন", "Fill from cheques")}</button>` : ""}</div>` +
+        (diffs.length ? `<div class="cbm-w">⚠ ${bi("অমিল", "Mismatch")}: ${diffs.slice(0, 5).map(c => `<b>${esc(c || "—")}</b> ${bi("চেক", "cheque")} ${money0(cm[c] || 0)} ≠ ${bi("এন্ট্রি", "entry")} ${money0(ce[c] || 0)}`).join(" · ")}${diffs.length > 5 ? " …" : ""}</div>` : `<div class="cbm-ok">✔ ${bi("চেক পোস্টিং-এর সাথে মিলেছে", "Matches Cheque Posting")}</div>`);
+    };
+    const initLine = ln => {
+      const inp = $(".cba", ln), sg = suggest(inp, () => acItems(true).map(it => ({ value: it.value, label: it.sub, sub: it.label })), () => { calc(); autosave(); }); ln._sg = sg;
+      const c = ln.dataset.c; if (c) { const a = accMap()[c]; sg.setSilent({ value: c, label: a?.bank || "", sub: a?.holder || "" }); }
+      inp.addEventListener("picked", () => $(".cbamt", ln).focus());
+      const ax = $(".cbamt", ln); ax.addEventListener("input", () => { calc(); autosave(); }); ax.addEventListener("focus", () => ax.select());
+      ax.addEventListener("blur", () => { if (/[+-]/.test(ax.value.replace(/^[-+]/, ""))) return; if (ax.value.trim() !== "" && !isNaN(evalAmt(ax.value))) ax.value = fmtIn(evalAmt(ax.value)); calc(); });
+    };
+    $$(".cbl", body).forEach(initLine);
     const calc = () => {
       const { row: r } = collect();
       $("#cs-OT", body).textContent = money0(r.opening_cash + r.opening_bank); $("#cs-Tr", body).textContent = money0(r.total_receipt); $("#cs-Tp", body).textContent = money0(r.total_payment);
       CASH.receipt.filter(g => g.g).forEach(g => { const el = $(`[data-g="${g.g}"]`, body); if (el) el.textContent = money0(g.items.reduce((s, [k]) => s + (r.items[k]?.a || 0), 0)); });
       $("#cs-CL", body).textContent = "৳ " + money0(r.closing); $("#cs-x1", body).textContent = money0(r.opening_cash + r.opening_bank); $("#cs-x2", body).textContent = money0(r.total_receipt); $("#cs-x3", body).textContent = money0(r.total_payment); $("#cs-x4", body).textContent = money0(r.closing);
       const cb = $("#cs-cb", body); cb.textContent = r.cash_in_hand == null ? "—" : money0(r.closing - r.cash_in_hand); cb.className = "num " + (r.cash_in_hand != null && r.closing - r.cash_in_hand < 0 ? "rd b" : "");
+      renderChm(r.items);
       return r;
     };
     const autosave = () => { if (locked) return; clearTimeout(autoT); autoT = setTimeout(() => { const { row } = collect(); try { localStorage.setItem(CASH_DRAFT(date), JSON.stringify({ ...row, status: "draft", entered_by: S.me.name, updated_at: new Date().toISOString() })); } catch { } const a = $("#cs-auto", body); if (a) a.textContent = "✓ এই ডিভাইসে অটো-সেভ " + new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); }, 700); };
-    $$("input", body).forEach(i => { i.addEventListener("input", () => { calc(); autosave(); }); if (!i.classList.contains("t") && !i.classList.contains("cnote")) { i.addEventListener("focus", () => i.select()); i.addEventListener("blur", () => { if (i.classList.contains("camt") && /[+-]/.test(i.value.replace(/^[-+]/, ""))) return; if (i.value.trim() !== "" && !isNaN(evalAmt(i.value))) i.value = fmtIn(evalAmt(i.value)); calc(); }); } });
-    const amts = $$("input.camt, #cs-oc, #cs-ob, #cs-ch", body); amts.forEach((i, n) => i.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); const nx = amts[n + 1]; nx ? nx.focus() : $("#cs-save", body)?.focus(); } }));
+    $$("input:not(.cba):not(.cbamt)", body).forEach(i => { i.addEventListener("input", () => { calc(); autosave(); }); if (!i.classList.contains("t") && !i.classList.contains("cnote")) { i.addEventListener("focus", () => i.select()); i.addEventListener("blur", () => { if (i.classList.contains("camt") && /[+-]/.test(i.value.replace(/^[-+]/, ""))) return; if (i.value.trim() !== "" && !isNaN(evalAmt(i.value))) i.value = fmtIn(evalAmt(i.value)); calc(); }); } });
+    const AMTSEL = "input.camt, input.cbamt, #cs-oc, #cs-ob, #cs-ch";
+    body.onkeydown = e => { if (e.key !== "Enter" || !e.target.matches?.(AMTSEL)) return; e.preventDefault(); const l = $$(AMTSEL, body), nx = l[l.indexOf(e.target) + 1]; nx ? nx.focus() : $("#cs-save", body)?.focus(); };
+    const addLine = (r, a = {}) => { const box = $(".cbls", r); box.insertAdjacentHTML("beforeend", bankLine(a)); const ln = box.lastElementChild; initLine(ln); return ln; };
+    body.onclick = e => {
+      if (locked) return;
+      const add = e.target.closest(".cbadd"); if (add) { addLine(add.closest(".crow"), {}).querySelector(".cba").focus(); return; }
+      const rm = e.target.closest(".cbx"); if (rm) { const r = rm.closest(".crow"); rm.closest(".cbl").remove(); if (!$(".cbl", r)) addLine(r, {}); calc(); autosave(); return; }
+      if (e.target.closest("#cs-chfill")) {
+        const r = $('.crow.cbk[data-k="bank_in"]', body), cl = chqCash(), cm = {}; cl.forEach(c => cm[c.code] = (cm[c.code] || 0) + c.amount);
+        if (collect().row.items.bank_in?.a && !ask(bi("বর্তমান Total Bank লাইনগুলো চেক পোস্টিংয়ের তথ্য দিয়ে বদলাবেন?", "Replace the current Total Bank lines with Cheque Posting data?"))) return;
+        $(".cbls", r).innerHTML = ""; Object.keys(cm).sort().forEach(c => addLine(r, { c, a: cm[c] })); calc(); autosave();
+      }
+    };
     calc();
+    /* Distribution ← approved Collection (account = Cash) hint — never auto-overrides */
+    const drow = $('.crow[data-k="dist"]', body);
+    if (drow) API.dcolRange(date, date).then(rs => {
+      if (!drow.isConnected) return;
+      const cash = (rs || []).filter(r => r.date === date && r.status === "approved" && String(r.account || "").trim().toLowerCase() === "cash").reduce((q, r) => q + (+r.amount || 0), 0);
+      if (!cash) return;
+      const hint = document.createElement("div"); hint.className = "cbm cbm-d"; drow.appendChild(hint);
+      const upd = () => { const cur = evalAmt($(".camt", drow).value) || 0, same = Math.abs(cur - cash) < 0.001; hint.innerHTML = `<div class="cbm-h"><span>🧾 ${bi("কালেকশন (Cash, Approved)", "Collection (Cash, approved)")}: <b class="num">৳ ${money0(cash)}</b></span>${!same && !locked ? `<button type="button" class="btn sm" id="cs-dfill">${bi("ব্যবহার করুন", "Use")}</button>` : ""}</div>${same ? `<div class="cbm-ok">✔ ${bi("কালেকশনের সাথে মিলেছে", "Matches Collection")}</div>` : ""}`; $("#cs-dfill", hint) && ($("#cs-dfill", hint).onclick = () => { $(".camt", drow).value = fmtIn(cash); calc(); autosave(); upd(); }); };
+      $(".camt", drow).addEventListener("input", upd); upd();
+    }).catch(() => { });
     if (locked) return;
     const save = async status => {
       const { row, bad } = collect(), err = $("#cs-err", body); err.className = "hint rd"; err.textContent = "";
       if (bad) { err.textContent = `ভুল অঙ্ক: ${cashLabel(bad)} — শুধু সংখ্যা আর + / − লিখুন`; return; }
       if (status === "final") {
+        const noAc = BANKK.find(k => (row.items[k]?.accs || []).some(z => z.a && !z.c));
+        if (noAc) { err.textContent = bi(`${cashLabel(noAc)}: প্রতিটি লাইনে A/C বাছুন`, `${cashLabel(noAc)}: select an A/C on every line`); const ln = $$(`.crow.cbk[data-k="${noAc}"] .cbl`, body).find(l => !(l._sg?.get() || accMap()[l.querySelector(".cba").value.trim()])); (ln ? $(".cba", ln) : null)?.focus(); return; }
         if (row.cash_in_hand == null) { err.textContent = "Cash in hand লিখুন (হাতে কত নগদ আছে)"; $("#cs-ch", body).focus(); return; }
         if (row.cash_in_hand > row.closing && !ask(bi("Cash in hand Closing-এর চেয়ে বেশি — Bank ঋণাত্মক হবে। তবুও সেভ করবেন?", "Cash in hand is more than Closing — Bank will be negative. Save anyway?"))) return;
         if (!ask(bi(`${dmy(date)} — ক্যাশ ফাইনাল সেভ\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nClosing ৳ ${money0(row.closing)} · Cash in hand ৳ ${money0(row.cash_in_hand)}${S.me.role !== "admin" ? "\n\nসেভের পর আর বদলানো যাবে না (শুধু Admin পারবে)।" : ""}`, `${dmy(date)} — cash final save\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nClosing ৳ ${money0(row.closing)} · Cash in hand ৳ ${money0(row.cash_in_hand)}${S.me.role !== "admin" ? "\n\nAfter saving it cannot be changed (only an Admin can)." : ""}`))) return;
