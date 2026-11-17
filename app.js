@@ -717,9 +717,12 @@ async function route() {
   const cr = $("#crumb"); if (cr) cr.textContent = ROUTES[k].t;
   document.title = tr(ROUTES[k].t) + " · NABIAD Smart Finance Suite";
   const v = $("#view"); v.innerHTML = `<div class="card"><div class="skel" style="width:40%"></div><div class="skel" style="margin-top:12px"></div><div class="skel" style="margin-top:12px;width:70%"></div></div>`;
-  try { cleanup = await ROUTES[k].f()(v) || null; } catch (e) { console.error(e); v.innerHTML = `<div class="alert rd">ত্রুটি: ${esc(e.message || e)}</div>`; }
+  const tok = ++ROUTE_TOK;   // v6.67: a slow page that finishes after the user moved on must never paint its error over the newer page
+  try { const c = await ROUTES[k].f()(v) || null; if (tok !== ROUTE_TOK) { try { c && c(); } catch { } return; } cleanup = c; }
+  catch (e) { console.error(e); if (tok !== ROUTE_TOK) return; v.innerHTML = `<div class="alert rd">${bi("ত্রুটি", "Error")}: ${esc(e.message || e)}</div>`; }
   window.scrollTo(0, 0);
 }
+let ROUTE_TOK = 0;
 /* ---------- command palette (Ctrl+K) ---------- */
 function palette() {
   if ($(".pal")) return;
@@ -1095,7 +1098,7 @@ async function vCheques(v) {
     stOpts();
     const arr = filt(), pages = Math.max(1, Math.ceil(arr.length / PS)); F.page = Math.min(F.page, pages - 1); const part = arr.slice(F.page * PS, F.page * PS + PS), live = arr.filter(isLive);
     const kc = (l, n, a, cls = "") => `<div class="kc ${cls}"><span>${l}</span><div class="kv"><b>${n}</b>${a != null ? `<small class="num">৳ ${money0(a)}</small>` : ""}</div></div>`;
-    $("#k-sum", v).innerHTML = kc(bi("মোট চেক", "Cheques"), arr.length, null) + kc(bi("কার্যকর মোট", "Live total"), live.length, sumAmt(live), "main") + ["Pending", "Cleared", "Bounced", "Cancelled"].map(s => { const x = arr.filter(c => c.status === s); return x.length ? kc(stTag(s), x.length, sumAmt(x)) : ""; }).join("");
+    $("#k-sum", v).innerHTML = kc(bi("মোট চেক", "Cheques"), arr.length, null) + kc(bi("কার্যকর মোট", "Live total"), live.length, sumAmt(live), "main") + ["Pending", "Cleared", "Bounced", "Cancelled"].map(s => { const x = arr.filter(c => c.status === s); return x.length ? kc(stTag(s), x.length, sumAmt(x), "st-" + s.toLowerCase()) : ""; }).join("");
     $("#k-tab", v).innerHTML = part.length ? `<div class="tw cards"><table><thead><tr><th>তারিখ</th><th>A/C · চেক</th><th>হোল্ডার</th><th class="r">টাকা</th><th>খাত / বিবরণ</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${part.map(c => `<tr data-id="${c.id}" style="cursor:pointer"><td>${dmy(c.date)}</td><td><b>${esc(c.code)}</b> · ${c.no}${chqIcons(c)}</td><td class="mut sm">${esc((accMap()[c.code] || {}).holder || "")}</td><td class="r num">${money(c.amount)}</td><td>${esc(c.purpose.split(" (")[0])}<div class="mut sm">${esc([c.taker, c.party, c.toac && "→ " + c.toac, c.remarks].filter(Boolean).join(" · "))}</div></td><td><span class="stc">${stTag(c.status)}${pendTag(c)}${c.sdate && c.status !== "Pending" ? `<span class="mut sm stc-d">${dmy(c.sdate)}</span>` : ""}</span></td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">কিছু পাওয়া যায়নি</div>`;
     $("#k-pg", v).innerHTML = pages > 1 ? `<button class="btn sm fix" id="pv" ${F.page ? "" : "disabled"}>‹ আগের</button><span class="mut fix">পাতা ${F.page + 1} / ${pages}</span><button class="btn sm fix" id="nx" ${F.page < pages - 1 ? "" : "disabled"}>পরের ›</button>` : "";
     $("#pv", v) && ($("#pv", v).onclick = () => { F.page--; draw(); }); $("#nx", v) && ($("#nx", v).onclick = () => { F.page++; draw(); });
@@ -1288,6 +1291,7 @@ async function vCrep(v) {
   let data = null, bm = {};
   async function load() { date = $("#r-d", v).value; bm = await balancesOn(date); draw(); }
   function draw() {
+    if (!$("#crep", v)) return;   // page already replaced (user navigated away)
     const q = norm($("#r-q", v).value);
     const all = S.accounts.filter(a => a.daily && bm[a.code] && bm[a.code].total != null).sort((a, b) => a.sort - b.sort);
     const rows = all.filter(a => !q || accHay(a).includes(q)).map(a => ({ n: 0, a, total: bm[a.code].total, block: bm[a.code].block || 0, remark: bm[a.code].remark || "" }));
@@ -1574,12 +1578,12 @@ function leafRegister(host, redraw) {
      <div><label class="f">${bi("কারণ", "Reason")}</label><select class="in" id="lf-k"><option value="">${bi("সব", "All")}</option>${LK_ORD.map(k => `<option value="${k}" ${k === F.kind ? "selected" : ""}>${lkName(k)}</option>`).join("")}</select></div>
      <div><label class="f">${bi("অবস্থা", "State")}</label><select class="in" id="lf-s"><option value="all" ${F.st === "all" ? "selected" : ""}>${bi("সব", "All")}</option><option value="open" ${F.st === "open" ? "selected" : ""}>${bi("খোলা (খুঁজতে হবে)", "Open (to trace)")}</option><option value="done" ${F.st === "done" ? "selected" : ""}>${bi("নিষ্পত্তি", "Closed")}</option></select></div></div>
      <div style="margin-top:10px"><input class="in" id="lf-q" placeholder="${bi("পাতার নম্বর / মন্তব্য খুঁজুন", "Search leaf no. / note")}" value="${esc(F.q)}"></div></div>
-   <div class="ksum" id="lf-sum"></div><div class="row noprint" style="gap:8px;margin:12px 0;flex-wrap:wrap"><button class="btn" style="flex:none" id="lf-x">${ico("dl")} Excel</button><button class="btn" style="flex:none" id="lf-p">${ico("print")} ${bi("প্রিন্ট", "Print")}</button></div>
+   <div class="ksum" id="lf-sum"></div><div class="tb-act noprint"><button class="btn" id="lf-x">${ico("dl")} Excel</button><button class="btn" id="lf-p">${ico("print")} ${bi("প্রিন্ট", "Print")}</button></div>
    <div class="card flush" id="lf-list"></div>`;
   const filt = () => { const [a, b] = pbRange(PF), q = F.q.trim().toLowerCase(); return S.marks.filter(m => (!F.code || m.code === F.code) && (!F.kind || m.kind === F.kind) && (F.st === "all" || (F.st === "open") === !m.resolved) && (PF.m === "all" || (m.at && m.at.slice(0, 10) >= a && m.at.slice(0, 10) <= b)) && (!q || String(m.no).includes(q) || (m.note || "").toLowerCase().includes(q) || m.code.toLowerCase().includes(q))).sort((x, y) => (x.at < y.at ? 1 : -1)); };
   const draw = () => {
     const arr = filt(), kc = (l, n, cls = "") => `<div class="kc ${cls}"><span>${l}</span><div class="kv"><b>${n}</b></div></div>`, c = k => arr.filter(m => m.kind === k).length;
-    $("#lf-sum", host).innerHTML = kc(bi("খোলা (খুঁজতে হবে)", "Open (to trace)"), arr.filter(m => !m.resolved).length, "main") + kc(bi("মোট মার্ক", "Total marked"), arr.length) + LK_ORD.filter(k => c(k)).map(k => kc(`${LK[k].ic} ${lkName(k)}`, c(k))).join("") + kc(bi("নিষ্পত্তি", "Closed"), arr.filter(m => m.resolved).length);
+    $("#lf-sum", host).innerHTML = kc(bi("খোলা (খুঁজতে হবে)", "Open (to trace)"), arr.filter(m => !m.resolved).length, "main") + kc(bi("মোট মার্ক", "Total marked"), arr.length) + LK_ORD.filter(k => c(k)).map(k => kc(`${LK[k].ic} ${lkName(k)}`, c(k))).join("") + kc(bi("নিষ্পত্তি", "Closed"), arr.filter(m => m.resolved).length, "st-cleared");
     $("#lf-list", host).innerHTML = arr.length ? `<div class="tw cards"><table><thead><tr><th>${bi("মার্কের তারিখ", "Marked on")}</th><th>A/C</th><th>${bi("পাতা নং", "Leaf no.")}</th><th>${bi("কারণ", "Reason")}</th><th>${bi("অবস্থা", "State")}</th><th>${bi("মন্তব্য / নিষ্পত্তি", "Note / settlement")}</th><th>${bi("ছবি", "Photo")}</th><th>${bi("মার্ক করেছেন", "By")}</th>${admin ? "<th></th>" : ""}</tr></thead><tbody>${arr.map(m => `<tr><td data-l="${bi("মার্কের তারিখ", "Marked on")}">${m.at ? dmy(m.at.slice(0, 10)) : "—"}</td><td data-l="A/C"><b>${esc(m.code)}</b><div class="mut sm">${esc((am[m.code] || {}).holder || "")}</div></td><td class="num b" data-l="${bi("পাতা নং", "Leaf no.")}">${esc(leafLabel(m.code, m.no))}</td><td data-l="${bi("কারণ", "Reason")}">${lkTag(m.kind)}</td>
       <td data-l="${bi("অবস্থা", "State")}">${m.resolved ? `<span class="tag ok">✓ ${bi("নিষ্পত্তি", "Closed")}</span>` : `<span class="tag" style="background:var(--rd-soft,rgba(239,68,68,.12));color:var(--rd,#dc2626)">${bi("খোলা", "Open")}</span>`}</td>
       <td data-l="${bi("মন্তব্য", "Note")}"><span class="nt">${m.note ? esc(m.note) : ""}${m.resolved && (m.rnote || m.rby) ? `<div class="mut sm">✓ ${esc(m.rnote || "")} ${m.rby ? `· ${esc(m.rby)}` : ""} ${m.rat ? `· ${dmy(m.rat.slice(0, 10))}` : ""}</div>` : ""}</span></td>
