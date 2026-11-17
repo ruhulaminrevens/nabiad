@@ -906,3 +906,10 @@ begin
 end $$;
 revoke all on function public.make_backup(text) from public, anon;
 grant execute on function public.make_backup(text) to authenticated;
+
+-- =====================================================================
+-- v6.72 — Inventory: link Distribution orders to the Collection party list (Delivery ↔ Collection)
+-- Safe to re-run.
+-- =====================================================================
+alter table public.inv_orders add column if not exists party_id uuid references public.dist_parties(id) on delete restrict;
+create index if not exists inv_orders_party on public.inv_orders(party_id);

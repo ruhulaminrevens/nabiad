@@ -135,3 +135,72 @@
   .ksum .kc.iv-k .kv b{font-size:18px}
 }
 @media print{.iv-bulk,.iv-seg{display:none!important}}
+
+/* ======== v6.72 · fast entry (Collection-style), delivery vs collection, party match ======== */
+.iv-mode.hide{display:none}
+.pbm.iv-seg#ivdist-mode,.pbm.iv-seg#ivnir-mode{margin-bottom:14px}
+.iv-eg{display:grid;gap:12px 12px}
+.iv-eg.dist{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"pt pt" "as tr" "it it" "qt ad"}
+.iv-eg.nir{grid-template-columns:minmax(0,2fr) minmax(0,1.3fr) minmax(0,1fr);grid-template-areas:"tr vh rt" "it it it" "qt qt ad"}
+.iv-eg .g-pt{grid-area:pt} .iv-eg .g-as{grid-area:as} .iv-eg .g-tr{grid-area:tr} .iv-eg .g-vh{grid-area:vh} .iv-eg .g-rt{grid-area:rt} .iv-eg .g-it{grid-area:it} .iv-eg .g-qt{grid-area:qt} .iv-eg .g-ad{grid-area:ad}
+.iv-eg.dist{grid-template-areas:"pt pt" "as tr" "it it" "qt ad"} 
+@media (min-width:520px){.iv-eg.dist{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 110px 56px;grid-template-areas:"pt pt pt pt" "as as tr tr" "it it qt ad"}.iv-eg.nir{grid-template-columns:minmax(0,2fr) minmax(0,1.3fr) minmax(0,1fr) 56px;grid-template-areas:"tr tr vh rt" "it it qt ad"}}
+.iv-eg label.f{display:block;font-size:11.5px;font-weight:700;color:var(--mut);margin-bottom:4px}
+.iv-eg .in{width:100%} .iv-eg .g-ad .btn{width:100%;padding:0}
+.iv-eg .g-ad .btn svg{width:20px;height:20px}
+.iv-cart{margin:12px 0 4px}
+.iv-cl{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface2)}
+.iv-cr{display:grid;grid-template-columns:minmax(0,1fr) 78px auto 88px 34px;gap:8px;align-items:center;padding:6px 8px 6px 12px;border-bottom:1px solid var(--line2)}
+.iv-cr:last-child{border-bottom:0}
+.iv-cr .nm{font-weight:600;font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.iv-cr .in{height:32px;padding:0 6px;text-align:right}
+.iv-cr .rt{font-size:12px;color:var(--mut);white-space:nowrap;display:flex;align-items:center;gap:4px} .iv-cr .rt .in{width:76px}
+.iv-cr b{text-align:right;font-size:13px}
+.iv-cr .btn.sm{width:30px;padding:0} .iv-cr .btn svg{width:14px;height:14px}
+.iv-ce{padding:12px;border:1px dashed var(--line);border-radius:12px;text-align:center}
+.iv-eg2{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;margin:10px 0}
+.iv-sts{display:inline-flex;gap:4px;padding:3px;border-radius:12px;background:var(--surface2);border:1px solid var(--line)}
+.iv-sts .chip{padding:7px 12px;border-radius:9px;font-size:12.5px;font-weight:600;cursor:pointer;border:0}
+.iv-sts .chip.on{background:var(--grad);color:#fff}
+.iv-b{margin-top:4px}
+/* order list on the entry page */
+.iv-ol{display:flex;flex-direction:column}
+.iv-or{display:grid;grid-template-columns:22px minmax(0,1fr) 92px 96px auto;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line2);border-left:3px solid transparent}
+.iv-or.s-pending{border-left-color:var(--am)} .iv-or.s-today{border-left-color:#0ea5e9} .iv-or.s-ok{border-left-color:var(--gr)} .iv-or.s-cancel{border-left-color:var(--rd);opacity:.6}
+.iv-or:hover{background:var(--surface2)}
+.iv-om{min-width:0}
+.iv-ot1{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap} .iv-ot1 b{font-size:14px}
+.iv-ot2{display:flex;flex-wrap:wrap;gap:3px 10px;font-size:12px;color:var(--txt2);margin-top:2px} .iv-ot2 b{color:var(--pri-ink)}
+.iv-ov{display:flex;flex-direction:column;align-items:flex-end} .iv-ov b{font-size:15px} .iv-ov small{font-size:11.5px;color:var(--mut)}
+.iv-oa{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+.iv-ob{display:flex;gap:5px;justify-content:flex-end} .iv-ob .btn.sm{min-width:32px;padding:0 8px;font-weight:700}
+.iv-nl{display:inline-grid;place-items:center;width:15px;height:15px;border-radius:50%;background:var(--am-soft);color:var(--am);font-size:10px;font-style:normal;font-weight:800;cursor:help}
+.iv-chk.sm{font-size:12.5px}
+.iv-due{color:var(--rd)!important} .iv-paid{color:var(--gr)!important}
+/* RM quick entry */
+.card.iv-rmq{padding:14px 16px;margin-bottom:12px}
+.iv-rq{display:grid;grid-template-columns:160px repeat(2,minmax(0,1fr)) minmax(140px,1fr) auto;gap:12px;align-items:end;margin-top:8px}
+.iv-rq label.f{display:block;font-size:11.5px;font-weight:700;color:var(--mut);margin-bottom:4px}
+.iv-rqp{border:1px solid var(--line2);border-radius:12px;padding:8px 10px;background:var(--surface2)} .iv-rqp>b{font-size:12.5px} .iv-rqp small{display:block;font-size:11px;margin-top:3px}
+.iv-rq2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.iv-rq .bt .btn{height:46px}
+/* party match */
+.iv-ml{max-height:60vh;overflow:auto;margin-top:10px;border:1px solid var(--line);border-radius:12px}
+.iv-mr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) auto;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line2)}
+.iv-mn{display:flex;flex-direction:column;min-width:0} .iv-mn small{font-size:11.5px}
+.iv-mc{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.iv-mc .chip{display:inline-flex;flex-direction:column;align-items:flex-start;padding:4px 9px;border-radius:9px;font-size:12px;cursor:pointer;line-height:1.3}
+.iv-mc .chip small{font-size:10.5px;opacity:.75}
+.iv-ms{flex:1 1 160px} .iv-ms .in{width:100%}
+@media (max-width:900px){
+  .iv-or{grid-template-columns:22px minmax(0,1fr) auto;grid-template-areas:"c m v" "c a b";row-gap:6px}
+  .iv-or>:first-child{grid-area:c} .iv-om{grid-area:m} .iv-ov{grid-area:v} .iv-oa{grid-area:a;flex-direction:row;align-items:center;gap:6px} .iv-ob{grid-area:b}
+  .iv-eg2{grid-template-columns:1fr} .iv-sts{display:flex} .iv-sts .chip{flex:1;text-align:center}
+  .iv-rq{grid-template-columns:1fr} .iv-rq .bt .btn{width:100%}
+  .iv-mr{grid-template-columns:1fr} .iv-mr [data-go]{width:100%}
+  .iv-cr{grid-template-columns:minmax(0,1fr) 64px 76px 30px;grid-template-areas:"n q v x" "r r r r";row-gap:2px}
+  .iv-cr .nm{grid-area:n} .iv-cr>.in{grid-area:q} .iv-cr .rt{grid-area:r} .iv-cr>b{grid-area:v} .iv-cr>.btn{grid-area:x}
+}
+.iv-mk{font-style:normal;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px;background:var(--am-soft);color:var(--am)} .iv-mk.ok{background:var(--gr-soft);color:var(--gr)} .iv-mk.no{background:var(--rd-soft);color:var(--rd)}
+.iv-np{font-size:12px;font-weight:600}
+#mt-all{flex:0 0 auto}
