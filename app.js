@@ -835,7 +835,7 @@ async function vEntry(v) {
      <div class="s2"><label class="f">চেক নং (শুধু সংখ্যা)</label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off"><div class="hint" id="e-nohint"></div><div id="e-ocrw" class="hide noprint" style="margin-top:4px"><button type="button" class="btn sm" id="e-ocr">🔍 ${bi("ছবি থেকে পড়ুন", "Read from photo")}</button><div id="e-ocro" style="margin-top:4px"></div></div></div>
      <div class="s2"><label class="f">টাকা (বাতিল পাতা হলে 0)</label><input class="in big num" id="e-amt" inputmode="decimal" autocomplete="off"><div class="hint num" id="e-amthint"></div></div>
      <div class="s4"><label class="f">খাত</label><div class="chips" id="e-purp"></div></div>
-     <div class="s2" id="x-cash" style="display:none"><label class="f">কে তুলেছে *</label><select class="in" id="e-taker"><option value=""></option>${TAKERS.map(t => `<option>${t}</option>`).join("")}</select></div>
+     <div class="s4" id="x-cash" style="display:none"><label class="f">${bi("কে তুলেছে *", "Withdrawn by *")}</label><input type="hidden" id="e-taker"><div class="chips takers" id="e-takers">${TAKERS.map(t => `<span class="chip" data-t="${esc(t)}">${esc(t)}</span>`).join("")}</div></div>
      <div class="s4" id="x-own" style="display:none"><label class="f">কোন A/C তে জমা * <span class="mut">(${bi("শুধু রেকর্ড", "record only")})</span></label><div><input class="in" id="e-toac" autocomplete="off" placeholder="${bi("যে অ্যাকাউন্টে টাকা গেছে — কোড বা নাম টাইপ করুন", "Receiving account — type code or name")}"></div></div>
      <div class="s4 cbm" id="e-cashlink" style="display:none"></div>
      <div class="s4"><label class="f">নোট / মন্তব্য / সাপ্লায়ার / অন্যান্য</label><input class="in" id="e-rem" autocomplete="off" list="dl-rem" placeholder="যেমন: সাপ্লায়ারের নাম — বিলের বিবরণ"></div>
@@ -856,10 +856,12 @@ async function vEntry(v) {
   $e("e-ocr").onclick = () => runOcr(st, $e("e-ocro"), val => { $e("e-no").value = val; $e("e-no").dispatchEvent(new Event("input")); }, val => { $e("e-amt").value = val; $e("e-amt").dispatchEvent(new Event("input")); });
   const purpKey = () => st.purpose ? purposeKey(st.purpose) : "";
   let clTok = 0, clT = 0;
+  const setTaker = t => { $e("e-taker").value = t || ""; $$("#e-takers .chip", v).forEach(c => c.classList.toggle("on", c.dataset.t === t)); };
+  $$("#e-takers .chip", v).forEach(c => c.onclick = () => { setTaker($e("e-taker").value === c.dataset.t ? "" : c.dataset.t); $e("e-err").textContent = ""; if (!matchMedia("(pointer:coarse)").matches) $e("e-rem").focus(); });
   function drawPurp() {
     $e("e-purp").innerHTML = allPurposes().map(p => `<span class="chip" data-p="${esc(p)}">${esc(p.split(" (")[0])}</span>`).join("") + `<span class="chip add" id="e-padd" title="${bi("নতুন খাত যোগ করুন", "Add a new purpose")}">＋ নতুন</span>` + (S.me.role === "admin" ? `<span class="chip add" id="e-pmg" title="${LANG === "en" ? "Edit / delete purposes" : "খাত এডিট / মুছুন"}">⚙ ${LANG === "en" ? "Manage" : "ম্যানেজ"}</span>` : "");
     if ($e("e-pmg")) $e("e-pmg").onclick = () => purposeManage(() => { if (st.purpose && !allPurposes().includes(st.purpose)) st.purpose = ""; drawPurp(); });
-    $$(".chip[data-p]", v).forEach(c => c.onclick = () => { st.purpose = c.dataset.p; applyPurpose(); if (purpKey() === "cash") $e("e-taker").focus(); else if (purpKey() === "own") $e("e-toac").focus(); else $e("e-rem").focus(); });
+    $$(".chip[data-p]", v).forEach(c => c.onclick = () => { st.purpose = c.dataset.p; applyPurpose(); if (purpKey() === "cash") $e("x-cash").scrollIntoView({ block: "nearest" }); else if (purpKey() === "own") $e("e-toac").focus(); else $e("e-rem").focus(); });
     $e("e-padd").onclick = () => askText("নতুন খাত (Purpose)", "খাতের নাম লিখুন (যেমন: Salary)", "", async n => {
       if (allPurposes(true).some(p => p.split(" (")[0].trim().toLowerCase() === n.split(" (")[0].trim().toLowerCase())) throw new Error("এই খাত আগেই আছে");
       await API.purposeAdd(n); PURP_X = [...allPurposes(), n]; if (!DEMO) localStorage.setItem("nb_purp_v2", JSON.stringify(PURP_X));
@@ -896,7 +898,7 @@ async function vEntry(v) {
       el.innerHTML = dup ? `⛔ <b>${esc(code)} · ${no}</b> আগেই এন্ট্রি আছে (${dmy(dup.date)}, ৳ ${money(dup.amount)}, ${dup.status})` : `<span class="tag">${esc(code)}</span><span>চেক নং <b>${no}</b></span><span class="big num">৳ ${money(amt) || 0}</span><span class="mut">${esc((st.purpose || "খাত বাছুন").split(" (")[0])}</span>`;
     } else el.style.display = "none";
   }
-  $$(".chip[data-p]", v).forEach(c => c.onclick = () => { st.purpose = c.dataset.p; applyPurpose(); if (purpKey() === "cash") $e("e-taker").focus(); else if (purpKey() === "own") $e("e-toac").focus(); else $e("e-rem").focus(); });
+  $$(".chip[data-p]", v).forEach(c => c.onclick = () => { st.purpose = c.dataset.p; applyPurpose(); if (purpKey() === "cash") $e("x-cash").scrollIntoView({ block: "nearest" }); else if (purpKey() === "own") $e("e-toac").focus(); else $e("e-rem").focus(); });
   ["e-no", "e-amt"].forEach(i => $e(i).addEventListener("input", sum));
   $e("e-ac").addEventListener("picked", () => $e("e-no").select() || $e("e-no").focus());
   $e("e-no").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $e("e-amt").focus(); } });
@@ -905,7 +907,7 @@ async function vEntry(v) {
   $e("e-toac").addEventListener("picked", () => $e("e-rem").focus());
   $e("e-date").addEventListener("change", () => { clearTimeout(clT); clT = setTimeout(cashLink, 100); });
   function clearAll(full) {
-    if (full || !$("#keep", v).checked) { ac.set(null); st.purpose = null; $e("e-taker").value = ""; $e("e-achint").textContent = ""; $e("e-nohint").textContent = ""; }
+    if (full || !$("#keep", v).checked) { ac.set(null); st.purpose = null; setTaker(""); $e("e-achint").textContent = ""; $e("e-nohint").textContent = ""; }
     toac.set(null); $e("e-no").value = ac.get() ? nextNo(ac.get().value) : ""; $e("e-amt").value = ""; $e("e-rem").value = ""; clearPhoto(); applyPurpose();
   }
   function list() {
@@ -922,7 +924,7 @@ async function vEntry(v) {
     if (!st.purpose) return err.textContent = "খাত বাছুন";
     if (!date) return err.textContent = "তারিখ দিন";
     if (k !== "cancel" && !(amount > 0)) return err.textContent = "টাকার অঙ্ক দিন (বাতিল পাতা হলে খাত 'বাতিল/নষ্ট পাতা' বাছুন)", $e("e-amt").focus();
-    if (k === "cash" && !$e("e-taker").value) return err.textContent = "কে তুলেছে — বাছুন", $e("e-taker").focus();
+    if (k === "cash" && !$e("e-taker").value) return err.textContent = bi("কে তুলেছে — বাছুন", "Select who withdrew"), $e("x-cash").scrollIntoView({ block: "nearest" });
     if (k === "own" && !toac.get()) return err.textContent = "কোন A/C তে জমা — বাছুন", $e("e-toac").focus();
     if (k === "own" && toac.get().value === code) return err.textContent = "From ও To একই A/C হতে পারে না";
     if (S.cheques.some(c => c.code === code && c.no === no)) return err.textContent = "এই চেক আগেই এন্ট্রি আছে";
