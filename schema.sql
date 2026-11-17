@@ -1,4 +1,4 @@
--- Nabiad Cheque & Bank System — Supabase schema
+-- NABIAD Smart Finance Suite — Supabase schema
 -- Run once in Supabase → SQL Editor. Accounts are added from the app (Admin).
 
 create table if not exists profiles (

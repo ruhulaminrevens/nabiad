@@ -2,7 +2,7 @@
 
 <img src="icon.svg" width="72" alt="Nabiad logo">
 
-# NABIAD — Cheque & Bank Control
+# NABIAD Smart Finance Suite
 
 **চেক রেজিস্টার · দৈনিক ব্যাংক ক্লোজিং · দৈনিক ক্যাশ রেকর্ড · রিপোর্ট — এক জায়গায়**
 

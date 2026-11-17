@@ -321,7 +321,7 @@ Object.assign(I18N, {
   "মনোযোগ দরকার": "Needs attention", "সব ঠিক আছে!": "All good!", "কোনো জরুরি কাজ বা সতর্কতা নেই — দারুণ চলছে।": "No urgent tasks or alerts — going great.",
   "দেখুন": "View", "খুলুন →": "Open →", "Pending/Hold": "Pending/Hold",
   // v6.48 — English-mode leak fixes (exact whole-string entries)
-  "ব্যাংক মিলান": "Bank reconciliation", "ক্লোজিং": "Closing", "ভাষা": "Language", "ঘটনা": "Event", "শুধু ২০২৬": "2026 only",
+  "ক্লোজিং": "Closing", "ভাষা": "Language", "ঘটনা": "Event", "শুধু ২০২৬": "2026 only",
   "মোছা যায়নি": "Could not delete", "চেক পাওয়া যায়নি": "Cheque not found", "লোড হয়নি": "Not loaded",
   "কপি হয়েছে": "Copied", "✔ কপি হয়েছে": "✔ Copied", "কোনো ব্যালেন্স সেভ নেই": "No balance saved",
   "2FA রিসেট": "Reset 2FA", "সাইডবার বড় করুন": "Expand sidebar", "সাইডবার ছোট করুন": "Minimize sidebar",

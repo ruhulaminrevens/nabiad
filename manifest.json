@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Nabiad — Cheque & Bank Control",
+  "name": "NABIAD Smart Finance Suite",
   "short_name": "Nabiad",
-  "description": "Cheque register, daily bank closing, cash and collection reports",
+  "description": "NABIAD Smart Finance Suite — cheques, bank closing, cash and distribution collection",
   "lang": "bn",
   "dir": "ltr",
   "start_url": "./",

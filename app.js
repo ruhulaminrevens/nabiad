@@ -1,4 +1,4 @@
-/* Nabiad — Cheque & Bank Control  (single-page app, no build step) */
+/* NABIAD Smart Finance Suite  (single-page app, no build step) */
 "use strict";
 const CFG = window.NABIAD_CONFIG || {};
 const DEMO = !CFG.SUPABASE_URL;
@@ -247,7 +247,6 @@ const ICON = {
   cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
   ledger: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>',
-  recon: '<path d="M4 8h13l-3-3M20 16H7l3 3"/><circle cx="12" cy="12" r="1"/>',
   coins: '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
   pie: '<path d="M12 3v9h9a9 9 0 1 1-9-9z"/><path d="M16 3.5A9 9 0 0 1 20.5 8H16z"/>',
   pulse: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
@@ -614,7 +613,6 @@ const ROUTES = {
   status: { t: "চেক স্ট্যাটাস", ic: "flag", roles: "as", sec: "main", f: () => vStatus },
   cheques: { t: "চেক রেজিস্টার", ic: "list", roles: "asb", sec: "main", f: () => vCheques },
   closing: { t: "ব্যাংক ক্লোজিং", ic: "bank", roles: "as", sec: "bank", f: () => vClosing },
-  recon: { t: "ব্যাংক মিলান", ic: "recon", roles: "as", sec: "bank", f: () => vRecon },
   crep: { t: "ব্যালেন্স স্ন্যাপশট", ic: "img", roles: "asb", sec: "bank", f: () => vCrep },
   reports: { t: "ব্যাংক রিপোর্ট", ic: "chart", roles: "asb", sec: "bank", f: () => vReports },
   cash: { t: "ক্যাশ এন্ট্রি", ic: "wallet", roles: "as", sec: "cash", f: () => vCash },
@@ -717,7 +715,7 @@ async function route() {
   $$("[data-k]").forEach(a => a.classList.toggle("on", a.dataset.k === k)); setTabActive(k); sideGroup(k, true);
   try { const on = $(".side .nav a.on"); if (on) { const n = on.closest(".nav"), r = on.getBoundingClientRect(), nr = n.getBoundingClientRect(); if (r.top < nr.top + 8 || r.bottom > nr.bottom - 16) n.scrollTop += (r.top < nr.top + 8 ? r.top - nr.top - 40 : r.bottom - nr.bottom + 40); } } catch { }
   const cr = $("#crumb"); if (cr) cr.textContent = ROUTES[k].t;
-  document.title = tr(ROUTES[k].t) + " · Nabiad";
+  document.title = tr(ROUTES[k].t) + " · NABIAD Smart Finance Suite";
   const v = $("#view"); v.innerHTML = `<div class="card"><div class="skel" style="width:40%"></div><div class="skel" style="margin-top:12px"></div><div class="skel" style="margin-top:12px;width:70%"></div></div>`;
   try { cleanup = await ROUTES[k].f()(v) || null; } catch (e) { console.error(e); v.innerHTML = `<div class="alert rd">ত্রুটি: ${esc(e.message || e)}</div>`; }
   window.scrollTo(0, 0);
@@ -756,7 +754,35 @@ function palette() {
 }
 document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && S.me) { e.preventDefault(); palette(); } });
 let CUR = "dash";
-const head = (title, extra = "", cls = "") => `<div class="top${cls ? " " + cls : ""}"><div class="pic">${ico(ROUTES[CUR]?.ic || "home")}</div><h1>${title}</h1><div class="sp"></div>${extra ? `<div class="acts">${extra}</div>` : ""}</div>`;
+/* v6.66 — one page header for every page: section-coloured icon, breadcrumb, title, one-line purpose, actions */
+const PH_SEC = { top: ["", ""], main: ["চেক", "Cheque"], bank: ["ব্যাংক", "Bank"], cash: ["ক্যাশ", "Cash"], dist: ["কালেকশন", "Collection"], more: ["আরও", "More"] };
+const PH_SUB = {
+  dash: ["আজকের ব্যবসার অবস্থা এক নজরে — ব্যালেন্স, চেক, কালেকশন", "Today's business at a glance — balances, cheques, collections"],
+  entry: ["চেক পোস্ট করুন · Enter চাপলে পরের ঘরে যাবে, শেষ ঘরে Enter = সেভ", "Post a cheque · Enter moves to the next field, Enter on the last one saves"],
+  status: ["চেকের অবস্থা (Cleared, Bounced…) আপডেট করুন", "Update cheque status — Cleared, Bounced and more"],
+  cheques: ["সব চেক খুঁজুন, ফিল্টার করুন, Excel ও প্রিন্ট নিন", "Search, filter, export and print every cheque"],
+  closing: ["দিনের শেষে প্রতিটি ব্যাংকের ক্লোজিং ব্যালেন্স — আগের দিনের মান আগে থেকে বসানো", "Closing balance of every bank at day end — yesterday's values are pre-filled"],
+  crep: ["ব্যালেন্সের ছবি/স্ন্যাপশট রিপোর্ট শেয়ার ও প্রিন্ট", "Balance snapshot report — share and print"],
+  reports: ["ব্যাংক ব্যালেন্সের সময়ভিত্তিক রিপোর্ট ও ট্রেন্ড", "Bank balance reports and trends over any period"],
+  cash: ["দিনের ক্যাশ আদায় ও খরচ — Opening আগের দিনের Closing থেকে নিজে আসে", "Daily cash receipts and payments — Opening carries from the previous closing"],
+  cashsum: ["ক্যাশের সামারি, ধারা ও ইতিহাস", "Cash summary, trend and history"],
+  cashrep: ["ক্যাশ রিপোর্ট — খাত ও মাস অনুযায়ী", "Cash report by category and month"],
+  dcol: ["ডিস্ট্রিবিউশন কালেকশন এন্ট্রি — পার্টি, অ্যাকাউন্ট ও টাকা", "Distribution collection entry — party, account and amount"],
+  dsum: ["কালেকশনের সামারি — পার্টি, ASM, ব্যাংক ও এলাকা অনুযায়ী", "Collection summary by party, ASM, bank and area"],
+  drep: ["কালেকশন রিপোর্ট — ফিল্টার, প্রিন্ট ও Excel", "Collection report — filters, print and Excel"],
+  books: ["চেক বই, ব্যবহৃত পাতা ও মিসিং/ফাঁকা পাতার হিসাব", "Cheque books, used leaves and missing or blank leaves"],
+  accounts: ["সব ব্যাংক অ্যাকাউন্টের তথ্য এক জায়গায় — খুঁজুন, কপি ও শেয়ার করুন", "All bank account details in one place — search, copy and share"],
+  register: ["ক্যাশ লেনদেনের খাতা — সময় ধরে খুঁজুন ও Excel নিন", "Cash transaction ledger — search any period and export"],
+  dparty: ["ডিস্ট্রিবিউশন পার্টি, ASM ও এলাকার তালিকা", "Distribution parties, ASMs and areas"],
+  rem: ["বাকি রিমাইন্ডার ও জরুরি সতর্কতা", "Pending reminders and alerts"],
+  settings: ["প্রোফাইল, ভাষা, থিম, নিরাপত্তা ও নোটিফিকেশন", "Profile, language, theme, security and notifications"],
+  audit: ["কে কখন কী বদলেছে, ব্যাকআপ ও নিরাপত্তা", "Who changed what and when, backups and security"],
+  admin: ["অ্যাকাউন্ট, ব্যবহারকারী ও পুরনো ডাটা ব্যবস্থাপনা", "Manage accounts, users and old data"]
+};
+const head = (title, extra = "", cls = "", sub) => {
+  const r = ROUTES[CUR] || {}, sec = r.sec || "top", sc = (PH_SEC[sec] || PH_SEC.top).map((x, i) => i ? x : x)[LANG === "en" ? 1 : 0], d = sub != null ? sub : (PH_SUB[CUR] ? bi(PH_SUB[CUR][0], PH_SUB[CUR][1]) : "");
+  return `<div class="top ph s-${sec}${cls ? " " + cls : ""}"><div class="ph-l"><div class="pic">${ico(r.ic || "home")}</div><div class="ph-t">${sc ? `<div class="ph-bc"><i></i>${sc}</div>` : ""}<h1>${title}</h1>${d ? `<p class="ph-sub">${d}</p>` : ""}</div></div>${extra ? `<div class="acts">${extra}</div>` : ""}</div>`;
+};
 const stTag = s => `<span class="st ${s}">${s}</span>`;
 const pendTag = c => c.pending || c.events?.some(e => e.pending) ? ` <span class="tag" style="background:var(--am-soft);color:var(--am)" title="সার্ভারে যাওয়া বাকি">⏳ সিঙ্ক বাকি</span>` : "";
 const chqIcons = c => `${c.photo ? ` <span class="ci" title="ছবি আছে">📷</span>` : ""}${(S.reminders || []).some(r => r.cheque_id === c.id && !r.done) ? ` <span class="ci" title="রিমাইন্ডার আছে">⏰</span>` : ""}`;
@@ -802,11 +828,11 @@ function loginView() {
   const demoBox = DEMO ? `<div class="alert am" style="margin-top:14px"><span>⚠ <b>${bi("DEMO মোড", "DEMO mode")}</b> — ${bi("Supabase সেট করা হয়নি, ডাটা শুধু এই ব্রাউজারে থাকবে।", "Supabase is not configured; data stays in this browser only.")}</span></div>
     <div class="chips" style="margin-top:12px">${[["admin", "Ruhul"], ["staff", "Foysal"], ["boss", "Boss"]].map(([r, n]) => `<span class="chip" data-demo="${r}|${n}">${r} (${n})</span>`).join("")}</div>` : "";
   $("#app").innerHTML = `<div class="login"><div class="tl-l"><button class="iconbtn th-ic" id="theme" title="Theme">${ico(getTheme() === "dark" ? "sun" : "moon")}</button></div><div class="tl">${langToggle()}</div>
-    <div class="art"><div class="brand" style="padding:0"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Cheque &amp; Bank Control</span></div></div>
+    <div class="art"><div class="brand" style="padding:0"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Smart Finance Suite</span></div></div>
       <div><h1>চেক রেজিস্টার, দৈনিক ব্যাংক ক্লোজিং আর রিপোর্ট — এক জায়গায়</h1><p>প্রতিটি চেক পাতার হিসাব, মিসিং পাতা ধরা, আর Boss-এর জন্য তাৎক্ষণিক এনকোয়ারি।</p>
       <ul><li>Staff শুধু যোগ করতে পারে, বদলাতে পারে শুধু Admin</li><li>দৈনিক ক্লোজিং রিপোর্ট — ছবি, PDF, Excel, WhatsApp</li><li>মোবাইল ও কম্পিউটার দুটোতেই চলে</li></ul></div>
       <div class="sm" style="opacity:.6">© ${new Date().getFullYear()} NABIAD Group</div></div>
-    <div class="pane"><div class="card"><div class="brand" style="padding:0 0 22px"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b style="color:var(--txt)">NABIAD</b><span class="mut">Cheque &amp; Bank Control</span></div></div>
+    <div class="pane"><div class="card"><div class="brand" style="padding:0 0 22px"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b style="color:var(--txt)">NABIAD</b><span class="mut">Smart Finance Suite</span></div></div>
     <h2>লগইন করুন</h2><p class="mut">আপনার অফিস ইমেইল ও পাসওয়ার্ড দিন</p>
     ${DEMO ? "" : `<form id="lf"><label class="f">ইমেইল</label><input class="in" id="em" type="email" autocomplete="username" required>
     <label class="f" style="margin-top:14px">পাসওয়ার্ড</label><input class="in" id="pw" type="password" autocomplete="current-password" required>
@@ -826,7 +852,7 @@ async function setStatus(c, status, date, remarks) {
 }
 async function vEntry(v) {
   const st = { purpose: null, photo: null };
-  v.innerHTML = head("চেক পোস্টিং<span class=\"mut kbh\">Enter চাপলে পরের ঘরে যাবে · শেষ ঘরে Enter = সেভ</span>", `<button class="btn" id="e-imp">${ico("dl")} ${bi("Excel ইম্পোর্ট", "Excel import")}</button>`, "tc") + `
+  v.innerHTML = head("চেক পোস্টিং", `<button class="btn" id="e-imp">${ico("dl")} ${bi("Excel ইম্পোর্ট", "Excel import")}</button>`, "tc") + `
   <div class="split">
    <div class="card efc">
     <div class="fgrid ef">
@@ -964,7 +990,7 @@ function statusModal(c, after) {
   });
 }
 async function vStatus(v) {
-  v.innerHTML = head("চেক স্ট্যাটাস আপডেট") + `<div class="card noprint" style="margin-bottom:14px"><div class="row">
+  v.innerHTML = head("চেক স্ট্যাটাস আপডেট") + `<div class="card tbar noprint"><div class="row">
     <div style="flex:2 1 260px"><label class="f">খুঁজুন (A/C বা চেক নং — যেমন: pbl 12565)</label><input class="in big" id="s-q" autocomplete="off" placeholder="চেক নং / কোড…" autofocus></div>
     <div class="fix" style="width:180px"><label class="f">স্ট্যাটাসের তারিখ (Quick বাটনে)</label><input class="in" type="date" id="s-d" value="${today()}"></div>
     <div class="fix"><label class="f">দেখান</label><select class="in" id="s-f"><option value="Pending">শুধু Pending</option><option value="">সব</option></select></div></div></div>
@@ -1053,7 +1079,7 @@ function editChequeModal(c, after) {
 }
 async function vCheques(v) {
   const F = { q: "", code: "", status: "", purpose: "", taker: "", page: 0 }, PF = pbInit("all"), PS = 100, PBO = { all: true };
-  v.innerHTML = head("চেক তালিকা ও এনকোয়ারি", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>`) + `<div class="card noprint" style="margin-bottom:14px">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
+  v.innerHTML = head("চেক তালিকা ও এনকোয়ারি", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>`) + `<div class="card tbar noprint">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
    <div style="flex:2 1 220px"><label class="f">খুঁজুন (কোড, চেক নং, পার্টি, মন্তব্য, টাকা)</label><input class="in" id="k-q" placeholder="যেকোনো কিছু লিখুন…"></div>
    <div style="flex:1 1 220px"><label class="f">A/C</label><select class="in" id="k-c"><option value="">সব</option>${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)}${a.holder ? " · " + esc(a.holder) : ""}${a.bank ? " · " + esc(a.bank) : ""}</option>`).join("")}</select></div>
    <div><label class="f">স্ট্যাটাস</label><select class="in" id="k-s"></select></div>
@@ -1126,7 +1152,7 @@ const Draft = {
 async function vClosing(v) {
   const t = today(); let date = S.lastBal && S.lastBal < t ? stepDay(S.lastBal, 1) : t;
   if (date > t) date = t;
-  v.innerHTML = head("ব্যাংক ক্লোজিং", `<span id="c-info" class="cinfo"></span>`) + `<div class="card navcard" style="margin-bottom:14px">${dateNav("c", date)}
+  v.innerHTML = head("ব্যাংক ক্লোজিং", `<span id="c-info" class="cinfo"></span>`) + `<div class="card tbar navcard">${dateNav("c", date)}
    ${searchBox("c-q", "A/C খুঁজুন — কোড, হোল্ডার, ব্যাংক, A/C নং…", `<select class="in fix" id="c-f"><option value="">সব অ্যাকাউন্ট</option><option value="chg">শুধু আপডেট করা</option><option value="same">শুধু অপরিবর্তিত</option><option value="mv">আজ লেনদেন আছে</option></select>`)}
    <div id="c-msg" style="margin-top:10px"></div></div>
    <div class="card"><div id="c-body"><div class="empty">লোড হচ্ছে…</div></div></div>`;
@@ -1256,7 +1282,7 @@ async function vCrep(v) {
   let date = sessionStorage.getItem("nabiad_crep_date") || S.lastBal || today(); sessionStorage.removeItem("nabiad_crep_date");
   const canShare = !!navigator.share;
   v.innerHTML = head("ব্যাংক ক্লোজিং রিপোর্ট", `<button class="btn" id="r-png">${ico("img")} ছবি</button><button class="btn" id="r-pdf">${ico("print")} PDF</button><button class="btn" id="r-xl">${ico("dl")} Excel</button>${canShare ? `<button class="btn" id="r-sh">${ico("share")} শেয়ার</button>` : ""}<button class="btn pri" id="r-em">${ico("mail")} Boss-কে ইমেইল</button>`) + `
-   <div class="card noprint navcard" style="margin-bottom:14px">${dateNav("r", date)}${searchBox("r-q", "রিপোর্টে খুঁজুন — কোড, হোল্ডার, ব্যাংক…")}</div>
+   <div class="card tbar noprint navcard">${dateNav("r", date)}${searchBox("r-q", "রিপোর্টে খুঁজুন — কোড, হোল্ডার, ব্যাংক…")}</div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="crep"></div></div></div>
    <div class="card noprint" style="margin-top:14px"><h3>অ্যাকাউন্ট ইতিহাস</h3><div class="row"><div style="flex:2 1 240px"><label class="f">A/C</label><div><input class="in" id="h-ac" placeholder="কোড টাইপ করুন"></div></div><div><label class="f">From</label><input class="in" type="date" id="h-f" value="${addDays(today(), -60)}"></div><div><label class="f">To</label><input class="in" type="date" id="h-t" value="${today()}"></div></div><div id="h-out" style="margin-top:12px"></div></div>`;
   let data = null, bm = {};
@@ -1290,7 +1316,7 @@ async function vCrep(v) {
   });
   $("#r-em", v).onclick = () => {
     if (!data?.rows.length) return toast("ডাটা নেই", "err"); const T = data.T;
-    const L = [`Bank Closing — ${dmy(date)}`, "", `Total Balance: ${money0(T.t)}`, `Block / Lien: ${money0(T.b)}`, `Usable: ${money0(T.t - T.b)}`, `Accounts: ${data.rows.length}`, "", ...data.rows.map(r => `${r.n}. ${r.a.code} — ${r.a.holder}: ${money0(r.total)}${r.block ? ` (Block ${money0(r.block)})` : ""}${r.remark ? " · " + r.remark : ""}`), "", `— ${S.me.name}, NABIAD Cheque & Bank Control`];
+    const L = [`Bank Closing — ${dmy(date)}`, "", `Total Balance: ${money0(T.t)}`, `Block / Lien: ${money0(T.b)}`, `Usable: ${money0(T.t - T.b)}`, `Accounts: ${data.rows.length}`, "", ...data.rows.map(r => `${r.n}. ${r.a.code} — ${r.a.holder}: ${money0(r.total)}${r.block ? ` (Block ${money0(r.block)})` : ""}${r.remark ? " · " + r.remark : ""}`), "", `— ${S.me.name}, NABIAD Smart Finance Suite`];
     let body = L.join("\n"); if (body.length > 1800) body = L.slice(0, 7).join("\n") + "\n\n" + bi("(পূর্ণ রিপোর্ট PDF/ছবি সংযুক্ত করুন)", "(attach the full report PDF/image)") + "\n— " + S.me.name;
     location.href = `mailto:${encodeURIComponent(CFG.BOSS_EMAIL || "")}?subject=${encodeURIComponent(`Bank Closing ${dmy(date)} — Usable ${money0(T.t - T.b)}`)}&body=${encodeURIComponent(body)}`;
   };
@@ -1543,7 +1569,7 @@ const LF_F = { code: "", kind: "", st: "all", q: "" }, LF_PF = pbInit("all"), LF
 function leafRegister(host, redraw) {
   const admin = S.me.role === "admin", am = accMap(), F = LF_F, PF = LF_PF;
   const codes = [...new Set(S.marks.map(m => m.code))].sort();
-  host.innerHTML = `<div class="card noprint" style="margin-bottom:14px">${pbBar("lf", PF, LF_PBO)}<div class="grid g3" style="margin-top:10px;gap:10px">
+  host.innerHTML = `<div class="card tbar noprint">${pbBar("lf", PF, LF_PBO)}<div class="grid g3" style="margin-top:10px;gap:10px">
      <div><label class="f">A/C</label><select class="in" id="lf-c"><option value="">${bi("সব", "All")}</option>${codes.map(c => `<option ${c === F.code ? "selected" : ""} value="${esc(c)}">${esc(c)} · ${esc((am[c] || {}).holder || "")}</option>`).join("")}</select></div>
      <div><label class="f">${bi("কারণ", "Reason")}</label><select class="in" id="lf-k"><option value="">${bi("সব", "All")}</option>${LK_ORD.map(k => `<option value="${k}" ${k === F.kind ? "selected" : ""}>${lkName(k)}</option>`).join("")}</select></div>
      <div><label class="f">${bi("অবস্থা", "State")}</label><select class="in" id="lf-s"><option value="all" ${F.st === "all" ? "selected" : ""}>${bi("সব", "All")}</option><option value="open" ${F.st === "open" ? "selected" : ""}>${bi("খোলা (খুঁজতে হবে)", "Open (to trace)")}</option><option value="done" ${F.st === "done" ? "selected" : ""}>${bi("নিষ্পত্তি", "Closed")}</option></select></div></div>
@@ -1800,7 +1826,7 @@ function bookImportModal(after) {
 async function vAccounts(v) {
   const admin = S.me.role === "admin", sel = new Set(); const F = { q: "", b: "", h: "", st: "Active", miss: "" };
   const banks = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort(), holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort();
-  v.innerHTML = head("অ্যাকাউন্ট খুঁজুন", admin ? `<button class="btn" id="ad-imp">${ico("cam")} ছবি ইমপোর্ট</button><button class="btn pri" id="ad-add">${ico("plus")} নতুন অ্যাকাউন্ট</button>` : "") + `<div class="card noprint" style="margin-bottom:12px">
+  v.innerHTML = head("অ্যাকাউন্ট খুঁজুন", admin ? `<button class="btn" id="ad-imp">${ico("cam")} ছবি ইমপোর্ট</button><button class="btn pri" id="ad-add">${ico("plus")} নতুন অ্যাকাউন্ট</button>` : "") + `<div class="card tbar noprint">
     ${searchBox("ad-q", "কোড, নাম, ব্যাংক, শাখা, A/C বা Routing নং — যেমন: 483, pubali")}
     <div class="aufl" style="margin-top:8px"><select class="in" id="ad-b"><option value="">সব ব্যাংক</option>${banks.map(b => `<option>${esc(b)}</option>`).join("")}</select><select class="in" id="ad-h"><option value="">সব হোল্ডার</option>${holders.map(b => `<option>${esc(b)}</option>`).join("")}</select><select class="in" id="ad-s"><option value="Active">Active</option><option value="">সব</option><option value="Closed">Closed</option></select></div>
     <div class="mchips" id="ad-m"></div></div>
@@ -2107,7 +2133,7 @@ function remTick() {
   try { localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); } catch { }
   if (PREFS.sound) beep();
   due.forEach(r => sysNotify("⏰ " + r.title, r.note || "Nabiad রিমাইন্ডার", "rem-" + r.id));
-  sysN.forEach(a => sysNotify("⚠ " + a.t, "NABIAD Cheque & Bank Control", a.id));
+  sysN.forEach(a => sysNotify("⚠ " + a.t, "NABIAD Smart Finance Suite", a.id));
   if (due.length && !$(".mback")) dueModal(due); else if (sysN.length) toast(sysN[0].t, "err");
 }
 setInterval(remTick, 30000);
@@ -2136,7 +2162,7 @@ function icsFile(r) {
   const z = d => new Date(d).toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
   const e = s => String(s || "").replace(/[\\;,]/g, m => "\\" + m).replace(/\n/g, "\\n");
   const rr = { hourly: "HOURLY", daily: "DAILY", weekly: "WEEKLY", monthly: "MONTHLY" }[r.repeat];
-  const L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Nabiad//Reminder//BN", "BEGIN:VEVENT", `UID:${r.id}@nabiad`, `DTSTAMP:${z(Date.now())}`, `DTSTART:${z(remDue(r))}`, `DTEND:${z(remDue(r).getTime() + 15 * 6e4)}`, `SUMMARY:${e(r.title)}`, `DESCRIPTION:${e((r.note || "") + "\nNABIAD Cheque & Bank Control")}`, rr ? `RRULE:FREQ=${rr}` : "", "BEGIN:VALARM", "TRIGGER:PT0M", "ACTION:DISPLAY", `DESCRIPTION:${e(r.title)}`, "END:VALARM", "END:VEVENT", "END:VCALENDAR"].filter(Boolean);
+  const L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Nabiad//Reminder//BN", "BEGIN:VEVENT", `UID:${r.id}@nabiad`, `DTSTAMP:${z(Date.now())}`, `DTSTART:${z(remDue(r))}`, `DTEND:${z(remDue(r).getTime() + 15 * 6e4)}`, `SUMMARY:${e(r.title)}`, `DESCRIPTION:${e((r.note || "") + "\nNABIAD Smart Finance Suite")}`, rr ? `RRULE:FREQ=${rr}` : "", "BEGIN:VALARM", "TRIGGER:PT0M", "ACTION:DISPLAY", `DESCRIPTION:${e(r.title)}`, "END:VALARM", "END:VEVENT", "END:VCALENDAR"].filter(Boolean);
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([L.join("\r\n")], { type: "text/calendar" })); a.download = `reminder_${norm(r.title).slice(0, 20) || "nabiad"}.ics`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 const remErrMsg = e => /relation|does not exist|schema cache|not find/i.test(e?.message || "") ? "রিমাইন্ডার টেবিল নেই — Supabase-এ schema_v2.sql চালাতে হবে" : (e?.message || String(e));
@@ -2364,7 +2390,7 @@ async function vReports(v) {
   const F = { ...pbInit("month"), tab: sessionStorage.getItem("nabiad_rep_tab") || "bank", holder: "" }; const holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort();
   v.innerHTML = head("রিপোর্ট", `${repBtns("p")}<button class="btn" id="p-x">${ico("dl")} Excel</button>`) + `
    <div class="tabs noprint">${[["bank", "🏦 ব্যাংক ব্যালেন্স"], ["chq", "🧾 চেক"]].map(([k, l]) => `<span class="chip ${k === F.tab ? "on" : ""}" data-tab="${k}">${l}</span>`).join("")}</div>
-   <div class="card noprint" style="margin-bottom:14px">${pbBar("p", F)}
+   <div class="card tbar noprint">${pbBar("p", F)}
    <div class="row" style="margin-top:10px"><div style="flex:1 1 200px"><label class="f">অ্যাকাউন্ট হোল্ডার</label><select class="in" id="p-h"><option value="">সব</option>${holders.map(h => `<option>${esc(h)}</option>`).join("")}</select></div></div></div><div class="card rep-wrap"><div class="rep-scroll"><div id="p-out"></div></div></div>`;
   let cur = null;
   const tbl = (title, rows, cols, total = true, fmt = r => [r.n, money0(r.amt)]) => { const T = rows.reduce((q, r) => ({ n: q.n + (r.n || 0), a: q.a + r.amt }), { n: 0, a: 0 });
@@ -2448,7 +2474,7 @@ const cashAccSum = (src, k) => { const m = {}; (src?.items?.[k]?.accs || []).for
 
 async function vCash(v) {
   const t = today(); let date = sessionStorage.getItem("nabiad_cash_date") || (S.lastCash && S.lastCash < t ? stepDay(S.lastCash, 1) : t); sessionStorage.removeItem("nabiad_cash_date"); if (date > t) date = t;
-  v.innerHTML = head("ক্যাশ এন্ট্রি", `<a class="btn" href="#/cashsum">${ico("chart")} সামারি</a>`, "tc") + `<div class="card navcard" style="margin-bottom:14px">${dateNav("cs", date)}<div id="cs-msg" style="margin-top:10px"></div></div><div id="cs-body"><div class="card empty">লোড হচ্ছে…</div></div>`;
+  v.innerHTML = head("ক্যাশ এন্ট্রি", `<a class="btn" href="#/cashsum">${ico("chart")} সামারি</a>`, "tc") + `<div class="card tbar navcard">${dateNav("cs", date)}<div id="cs-msg" style="margin-top:10px"></div></div><div id="cs-body"><div class="card empty">লোড হচ্ছে…</div></div>`;
   const body = $("#cs-body", v); let autoT = null;
   async function draw() {
     date = $("#cs-d", v).value; if (!date) return; body.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
@@ -2594,7 +2620,7 @@ const cashPeriod = F => pbRange(F);
 const cashErr = e => /relation|does not exist|schema cache|not find/i.test(e.message || "") ? "ক্যাশ টেবিল নেই — Supabase-এ schema_v3.sql চালাতে হবে" : isNetErr(e) ? "ইন্টারনেট নেই" : (e.message || String(e));
 async function vCashSum(v) {
   const F = pbInit("month");
-  v.innerHTML = head("ক্যাশ সামারি ও ইতিহাস", `${repBtns("cm")}<button class="btn" id="cm-x">${ico("dl")} Excel</button>${S.me.role !== "boss" ? `<a class="btn pri" href="#/cash">${ico("plus")} আজকের রেকর্ড</a>` : ""}`) + `<div class="card noprint" style="margin-bottom:14px">${pbBar("cm", F)}</div><div class="card rep-wrap"><div class="rep-scroll"><div id="cm-out"></div></div></div>`;
+  v.innerHTML = head("ক্যাশ সামারি ও ইতিহাস", `${repBtns("cm")}<button class="btn" id="cm-x">${ico("dl")} Excel</button>${S.me.role !== "boss" ? `<a class="btn pri" href="#/cash">${ico("plus")} আজকের রেকর্ড</a>` : ""}`) + `<div class="card tbar noprint">${pbBar("cm", F)}</div><div class="card rep-wrap"><div class="rep-scroll"><div id="cm-out"></div></div></div>`;
   let rows = [];
   async function draw() {
     const [f, t] = cashPeriod(F), out = $("#cm-out", v); out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
@@ -2618,7 +2644,7 @@ async function vCashSum(v) {
 /* =================== v6: CASH — reports (category breakdown) =================== */
 async function vCashRep(v) {
   const F = pbInit("month");
-  v.innerHTML = head("ক্যাশ রিপোর্ট", `${repBtns("cr")}<button class="btn" id="cr-x">${ico("dl")} Excel</button>`) + `<div class="card noprint" style="margin-bottom:14px">${pbBar("cr", F)}</div><div class="card rep-wrap"><div class="rep-scroll"><div id="cr-out"></div></div></div>`;
+  v.innerHTML = head("ক্যাশ রিপোর্ট", `${repBtns("cr")}<button class="btn" id="cr-x">${ico("dl")} Excel</button>`) + `<div class="card tbar noprint">${pbBar("cr", F)}</div><div class="card rep-wrap"><div class="rep-scroll"><div id="cr-out"></div></div></div>`;
   let cur = null;
   async function draw() {
     const [f, t] = cashPeriod(F), out = $("#cr-out", v); out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
@@ -2644,7 +2670,7 @@ async function vCashRep(v) {
 /* =================== v6: Cash Register (every line of every day) =================== */
 async function vRegister(v) {
   const F = { ...pbInit("month"), q: "", type: "", k: "" };
-  v.innerHTML = head("ক্যাশ রেজিস্টার", `<button class="btn" id="rg-x">${ico("dl")} Excel</button>`) + `<div class="card noprint" style="margin-bottom:14px">${pbBar("rg", F)}<div class="row" style="margin-top:10px"><div style="flex:2 1 220px"><label class="f">খুঁজুন (নোট, খাত, অঙ্ক)</label><input class="in" id="rg-q" type="search" autocomplete="off"></div><div><label class="f">ধরন</label><select class="in" id="rg-t"><option value="">সব</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div><div><label class="f">খাত</label><select class="in" id="rg-k"><option value="">সব</option>${[...CASH_KEYS("receipt"), ...CASH_KEYS("payment")].map(k => `<option value="${k}">${esc(cashLabel(k))}</option>`).join("")}</select></div></div></div><div id="rg-sum" class="mut sm" style="margin-bottom:8px"></div><div class="card flush" id="rg-out"></div>`;
+  v.innerHTML = head("ক্যাশ রেজিস্টার", `<button class="btn" id="rg-x">${ico("dl")} Excel</button>`) + `<div class="card tbar noprint">${pbBar("rg", F)}<div class="row" style="margin-top:10px"><div style="flex:2 1 220px"><label class="f">খুঁজুন (নোট, খাত, অঙ্ক)</label><input class="in" id="rg-q" type="search" autocomplete="off"></div><div><label class="f">ধরন</label><select class="in" id="rg-t"><option value="">সব</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div><div><label class="f">খাত</label><select class="in" id="rg-k"><option value="">সব</option>${[...CASH_KEYS("receipt"), ...CASH_KEYS("payment")].map(k => `<option value="${k}">${esc(cashLabel(k))}</option>`).join("")}</select></div></div></div><div id="rg-sum" class="mut sm" style="margin-bottom:8px"></div><div class="card flush" id="rg-out"></div>`;
   let lines = [], shown = [];
   async function load() {
     const [f, t] = cashPeriod(F); $("#rg-out", v).innerHTML = `<div class="empty">লোড হচ্ছে…</div>`;
@@ -2705,12 +2731,19 @@ function reminderModal(r, opts = {}, after) {
   });
 }
 async function vRem(v) {
-  let tab = "up";
+  let tab = "up", lv = "all";
   const draw = () => {
     const all = (S.reminders || []).slice().sort((a, b) => remDue(a) - remDue(b)), now = new Date(), sys = sysAlerts();
     const list = tab === "up" ? all.filter(r => !r.done) : tab === "done" ? all.filter(r => r.done).reverse() : all;
     const perm = "Notification" in window ? Notification.permission : "na", nUp = all.filter(r => !r.done).length, nDue = all.filter(r => !r.done && remDue(r) <= now).length;
-    v.innerHTML = head("রিমাইন্ডার ও সতর্কতা") +
+    const LVN = { rd: bi("জরুরি", "Urgent"), am: bi("গুরুত্বপূর্ণ", "Important"), vi: bi("সাধারণ", "Normal") };
+    const dueR = all.filter(r => !r.done && remDue(r) <= now);
+    const items = [...dueR.map(r => ({ k: "rd", ic: "bell", t: r.title, sub: r.note || "", when: remDue(r), rid: r.id, cid: r.cheque_id, src: bi("রিমাইন্ডার", "Reminder") })), ...sys.map(a => ({ k: a.k === "gr" ? "vi" : a.k, ic: a.ic, t: a.t, go: a.go, src: bi("সিস্টেম", "System") }))];
+    const cnt = k => items.filter(x => x.k === k).length, shown = lv === "all" ? items : items.filter(x => x.k === lv);
+    const nbStats = () => `<div class="dcx-stats s4 nb-stats">${[["rd", "t", "bell"], ["am", "a", "clock"], ["vi", "p", "list"]].map(([k, c, ic]) => `<button class="dcx-stat ${c} kclick ${lv === k ? "on" : ""}" data-lv="${k}"><span class="si">${ico(ic)}</span><span><b>${cnt(k)}</b><small>${LVN[k]}</small></span></button>`).join("")}<button class="dcx-stat h kclick" data-t="up"><span class="si">${ico("list")}</span><span><b>${nUp}</b><small>${bi("চালু রিমাইন্ডার", "Active reminders")}</small></span></button></div>`;
+    const nbBoard = () => `<div class="card nb"><div class="nb-hd"><h3>${ico("bell").replace("<svg", '<svg width="18" height="18"')} ${bi("নোটিফিকেশন বোর্ড", "Notification board")} <span class="tag">${items.length}</span></h3><div class="chips nb-f">${[["all", bi("সব", "All"), items.length], ["rd", LVN.rd, cnt("rd")], ["am", LVN.am, cnt("am")], ["vi", LVN.vi, cnt("vi")]].map(([k, l, n]) => `<span class="chip ${k === lv ? "on" : ""}" data-lv="${k}">${l} <b>${n}</b></span>`).join("")}</div></div>
+      ${shown.length ? `<div class="nb-list">${shown.map(x => `<div class="nb-it lv-${x.k}"><div class="nb-ic">${ico(x.ic).replace("<svg", '<svg width="18" height="18"')}</div><div class="nb-b"><div class="nb-m"><span class="nb-tg">${LVN[x.k]}</span><span class="nb-src">${x.src}</span>${x.when ? `<span class="nb-tm">${relTime(x.when)}</span>` : ""}</div><b>${esc(x.t)}</b>${x.sub ? `<div class="mut sm">${esc(x.sub)}</div>` : ""}</div><div class="nb-a">${x.rid ? `<button class="btn ok sm" data-dn="${x.rid}">✓ ${bi("সম্পন্ন", "Done")}</button>${snoozeBtns(x.rid)}${x.cid ? `<button class="btn sm" data-oc="${x.cid}">${bi("চেক", "Cheque")}</button>` : ""}` : x.go ? `<a class="btn sm" href="${x.go}">${bi("খুলুন", "Open")} →</a>` : ""}</div></div>`).join("")}</div>` : `<div class="nb-ok">${ico("check").replace("<svg", '<svg width="22" height="22"')}<b>${bi("সব ঠিক আছে", "All clear")}</b><span class="mut sm">${bi("কোনো নোটিফিকেশন বা সতর্কতা নেই", "No notifications or alerts")}</span></div>`}</div>`;
+    v.innerHTML = head(bi("রিমাইন্ডার ও নোটিফিকেশন", "Reminders & Notifications"), `<button class="btn pri" id="rm-add2">${ico("plus")} ${bi("নতুন রিমাইন্ডার", "New reminder")}</button>`) + nbStats() + nbBoard() +
       (S.remErr ? `<div class="alert rd" style="margin-bottom:12px">${esc(remErrMsg({ message: S.remErr }))}</div>` : "") +
       (perm === "default" ? `<div class="alert vi" style="margin-bottom:12px">🔔 <span>নোটিফিকেশন চালু করলে সময় হলে ফোনে জানাবে।</span><button class="btn sm pri" id="rm-perm" style="margin-left:auto">চালু করুন</button></div>` : perm === "denied" ? `<div class="alert am" style="margin-bottom:12px">${bi("ব্রাউজারে নোটিফিকেশন বন্ধ — সাইট সেটিং থেকে চালু করুন। অ্যাপের ভেতরে রিমাইন্ডার তবুও আসবে।", "Notifications are blocked in the browser — enable them in site settings. Reminders will still appear inside the app.")}</div>` : "") +
       `<div class="remtop"><div class="tabs" style="margin:0">${[["up", "চালু", nUp], ["done", "সম্পন্ন", null], ["all", "সব", null]].map(([k, l, n]) => `<span class="chip ${k === tab ? "on" : ""}" data-t="${k}"><span>${l}</span>${n != null ? ` <b>${n}</b>` : ""}</span>`).join("")}</div>${nDue ? `<span class="tag t-due">${nDue} <span>টির সময় হয়েছে</span></span>` : ""}</div>
@@ -2718,9 +2751,10 @@ async function vRem(v) {
       ${list.length ? list.map(r => { const due = !r.done && remDue(r) <= now; const ch = r.cheque_id && S.cheques.find(c => c.id === r.cheque_id); return `<div class="card rem ${due ? "due" : ""} ${r.done ? "dn" : ""}"><div class="ri">${ico(r.kind === "cheque" ? "list" : r.photo ? "cam" : "bell")}</div><div class="rt"><b>${esc(r.title)}</b>${r.note ? `<div class="mut sm">${esc(r.note)}</div>` : ""}
         <div class="rmeta"><span class="tag ${due ? "t-due" : ""}">${ico("clock").replace("<svg", '<svg width="12" height="12"')} ${new Date(remDue(r)).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })} · ${r.done ? "সম্পন্ন" : relTime(remDue(r))}</span>${r.repeat !== "none" ? `<span class="tag">${REPEATS[r.repeat] || ""}</span>` : ""}<span class="tag">${FOR_ROLE[r.for_role] || ""}</span>${ch ? `<span class="tag t-mv">${esc(ch.code)} · ${ch.no} ${stTag(ch.status)}</span>` : ""}<span class="mut xs">${esc(r.created_by || "")}</span></div>${r.photo ? `<div class="rph" data-ph="${esc(r.photo)}"></div>` : ""}</div>
         <div class="ra">${r.done ? "" : `<button class="btn ok sm" data-dn="${r.id}">✓ সম্পন্ন</button>${due ? snoozeBtns(r.id) : ""}`}${r.cheque_id ? `<button class="btn sm" data-oc="${r.cheque_id}">চেক</button>` : ""}<button class="btn sm" data-ics="${r.id}" title="ফোনের ক্যালেন্ডারে অ্যালার্ম সহ যোগ করুন">${ico("cal")}</button><button class="btn sm ghost" data-ed="${r.id}" title="এডিট">${ico("edit")}</button>${S.me.role === "admin" ? `<button class="btn sm ghost" data-rm="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></div>`; }).join("") : `<div class="card empty">${tab === "done" ? bi("কোনো সম্পন্ন রিমাইন্ডার নেই", "No completed reminders") : bi("এখনো কোনো রিমাইন্ডার নেই — উপরের \"নতুন রিমাইন্ডার\" চাপুন।", "No reminders yet — tap \"New reminder\" above.")}</div>`}</div>
-      <div class="card" style="margin-top:14px"><div class="ch" style="padding:0 0 10px"><h3>সিস্টেম সতর্কতা</h3><span class="tag">${sys.length}</span></div>${sys.length ? `<div class="grid" style="gap:8px">${sys.map(a => `<div class="alert ${a.k}">${ico(a.ic).replace("<svg", '<svg width="18" height="18"')}<span>${esc(a.t)}</span>${a.go ? `<a class="btn sm" style="margin-left:auto" href="${a.go}">খুলুন →</a>` : ""}</div>`).join("")}</div>` : `<div class="alert gr">✔ কোনো সতর্কতা নেই</div>`}</div>
       <div class="mut sm" style="margin-top:12px">💡 অ্যাপ পুরো বন্ধ থাকলেও অ্যালার্ম চাইলে ${ico("cal").replace("<svg", '<svg width="13" height="13" style="vertical-align:-2px"')} বাটন চাপুন — ফোনের ক্যালেন্ডারে অ্যালার্মসহ যোগ হবে।</div>`;
     $$("[data-t]", v).forEach(c => c.onclick = () => { tab = c.dataset.t; draw(); });
+    $$("[data-lv]", v).forEach(c => c.onclick = () => { lv = lv === c.dataset.lv && c.classList.contains("dcx-stat") ? "all" : c.dataset.lv; draw(); });
+    $("#rm-add2", v) && ($("#rm-add2", v).onclick = () => reminderModal(null, {}, draw));
     $("#rm-add", v) && ($("#rm-add", v).onclick = () => reminderModal(null, {}, draw));
     $("#rm-perm", v) && ($("#rm-perm", v).onclick = async () => { const p = await Notification.requestPermission(); if (p === "granted") sysNotify("✔ নোটিফিকেশন চালু হয়েছে", "রিমাইন্ডারের সময় এখানে জানাবে", "test"); draw(); });
     bindRemActions(v, draw);
@@ -2810,7 +2844,7 @@ function auChips(r, all) {
 async function vAudit(v) {
   const admin = S.me.role === "admin", F = { ...pbInit("month"), tbl: "", act: "", who: "", q: "" };
   v.innerHTML = head("Audit log", `<div class="dd"><button class="btn" id="au-dl">${ico("dl")} ডাউনলোড ▾</button><div class="ddm hide" id="au-menu"><button data-dl="xlsx">${ico("dl")} Excel (.xlsx)</button><button data-dl="csv">${ico("list")} CSV</button><button data-dl="print">${ico("print")} প্রিন্ট / PDF</button></div></div>${admin ? `<button class="btn rdo" id="au-clr">${ico("trash")} লগ পরিষ্কার</button>` : ""}`) + `
-   <div class="card noprint" style="margin-bottom:12px">${pbBar("au", F)}
+   <div class="card tbar noprint">${pbBar("au", F)}
     <div class="srch"><label class="si">${ico("search")}<input class="in" id="au-q" placeholder="খুঁজুন — A/C, চেক নং, ইমেইল…" autocomplete="off" type="search"></label></div>
     <div class="aufl"><select class="in" id="au-t"><option value="">সব জায়গা</option>${Object.entries({ ...AU_T, cash_records: "ক্যাশ" }).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select><select class="in" id="au-a"><option value="">সব কাজ</option>${Object.entries(AU_A).map(([k, l]) => `<option value="${k}">${l[0]}</option>`).join("")}</select><select class="in" id="au-w"><option value="">সবাই</option></select></div></div>
    <div class="grid g4 au-k4" id="au-kpi"></div><div id="au-out" style="margin-top:12px"><div class="card empty">লোড হচ্ছে…</div></div>`;
@@ -3177,7 +3211,7 @@ async function vDcol(v) {
   let date = sessionStorage.getItem("nabiad_dc_date") || today(); sessionStorage.removeItem("nabiad_dc_date");
   const F = { st: "", ac: "", q: "" }; let rows = [], sel = new Set(), busy = false;
   v.innerHTML = head("কালেকশন এন্ট্রি", `<a class="btn" href="#/dsum">${ico("clock")} সামারি</a><a class="btn" href="#/drep">${ico("chart")} রিপোর্ট</a>`) + `
-   <div class="card dcx-bar"><div class="dcx-date">${dateNav("dc", date)}</div><div class="dcx-stats" id="dc-kpi"></div></div>
+   <div class="card tbar dcx-bar"><div class="dcx-date">${dateNav("dc", date)}</div><div class="dcx-stats" id="dc-kpi"></div></div>
    <div class="dcx-split">
    <div class="card dcx-entry"><div class="dcx-et"><h3>${ico("plus")} নতুন এন্ট্রি</h3><span class="mut xs">${bi("শুধু Enter চাপুন: পার্টি → Account → টাকা → যোগ হবে · টাকার ঘরে <b>50000+300</b> লেখা যায়", "Just press Enter: Party → Account → Amount → Add · you can type <b>50000+300</b> in the amount box")}</span></div>
     <div class="dcx-grid">
@@ -3297,7 +3331,7 @@ async function dcShare(el, name, text) {
 function dcPdf(el, name) { if (!el) return toast("ডাটা নেই", "err"); document.body.classList.add("print-rep"); const t = document.title; document.title = name; window.print(); document.title = t; setTimeout(() => document.body.classList.remove("print-rep"), 500); }
 function dcFit(v, id) { const el = $("#" + id, v); if (!el) return; el.style.zoom = ""; const w = el.parentElement.clientWidth - 8; if (w < 794) el.style.zoom = (w / 794).toFixed(3); }
 const dcHead = (title, f, t, org = "NABIAD GROUP") => { const one = f === t, d = new Date(f + "T00:00:00"); return `<div class="rep-hd"><div class="lg"><img src="icon-192.png" alt=""></div><div class="tt"><b>${org}</b><span>${title}</span></div><div class="dt"><b>${esc(dcRangeLabel(f, t))}</b><span>${one ? d.toLocaleDateString("en-GB", { weekday: "long" }) : ""}</span></div></div>`; };
-const dcFoot = (extra = "") => `<div class="rep-ft"><span>Generated ${new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}${extra} · by ${esc(S.me.name)}</span><span>NABIAD Cheque &amp; Bank Control</span></div>`;
+const dcFoot = (extra = "") => `<div class="rep-ft"><span>Generated ${new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}${extra} · by ${esc(S.me.name)}</span><span>NABIAD Smart Finance Suite</span></div>`;
 
 /* ---------- A4 standard sheet helpers (shared by every report) ---------- */
 /* print any A4 sheet html directly (used where the page itself is not a sheet) */
@@ -3336,7 +3370,7 @@ async function vDsum(v) {
   const F = { ...pbInit("day"), s: "approved", all: false, lm: "entry" }; let cur = null, all = [];
   const SH = [["led", "Party ledger", "পার্টি লেজার"], ["bank", "Bank", "ব্যাংক"], ["asm", "ASM", "ASM"], ["div", "Division", "বিভাগ"], ["dist", "District", "জেলা"], ["day", "Per day", "দিন অনুযায়ী"]];
   v.innerHTML = head("কালেকশন সামারি", `<button class="btn" id="ds-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="ds-pdf">${ico("print")} PDF</button>${navigator.share ? `<button class="btn" id="ds-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
-   <div class="card noprint dcx-filt">${dcPeriodBar("ds", F)}<div class="dcx-frow"><div class="dcx-fs"><label class="f">${bi("কোন Status ধরব", "Status to include")}</label><select class="in" id="ds-s">${dcStatOpts(F.s)}</select></div><label class="keep dcx-keep"><input type="checkbox" id="ds-z"> ${bi("০ টাকার Account/ASM-ও দেখাও", "Also show accounts/ASM with 0")}</label><span class="dcx-per mut" id="ds-per"></span></div>
+   <div class="card tbar noprint dcx-filt">${dcPeriodBar("ds", F)}<div class="dcx-frow"><div class="dcx-fs"><label class="f">${bi("কোন Status ধরব", "Status to include")}</label><select class="in" id="ds-s">${dcStatOpts(F.s)}</select></div><label class="keep dcx-keep"><input type="checkbox" id="ds-z"> ${bi("০ টাকার Account/ASM-ও দেখাও", "Also show accounts/ASM with 0")}</label><span class="dcx-per mut" id="ds-per"></span></div>
     <div class="dcx-tg" id="ds-tg"><span class="mut xs"><b>${bi("সামারিতে দেখাও", "Show in Summary")}:</b></span>${SH.map(([k, en, bn]) => `<label class="keep"><input type="checkbox" data-sh="${k}" ${show[k] ? "checked" : ""}> ${bi(bn, en)}</label>`).join("")}<span class="dcx-lm" id="ds-lmw"><label class="f">${bi("লেজার", "Ledger")}</label><select class="in" id="ds-lm"><option value="entry">${bi("এন্ট্রি অনুযায়ী", "Entry-wise")}</option><option value="party">${bi("পার্টি অনুযায়ী মোট", "Party-wise total")}</option></select></span></div></div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="ds-out"></div></div></div>`;
   const out = $("#ds-out", v);
@@ -3399,7 +3433,7 @@ async function vDsum(v) {
 async function vDrep(v) {
   const F = { ...pbInit("day"), s: "approved", asm: "", ac: "", dv: "", ds: "", q: "", ca: false, cd: false, cs: false, sub: true }; let cur = null, all = [];
   v.innerHTML = head("কালেকশন রিপোর্ট", `<button class="btn" id="dr-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="dr-pdf">${ico("print")} PDF</button><button class="btn" id="dr-xl">${ico("dl")} Excel</button>${navigator.share ? `<button class="btn" id="dr-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
-   <div class="card noprint dcx-filt">${dcPeriodBar("dr", F)}
+   <div class="card tbar noprint dcx-filt">${dcPeriodBar("dr", F)}
     <div class="dcx-fgrid"><div><label class="f">Status</label><select class="in" id="dr-s">${dcStatOpts(F.s)}</select></div><div><label class="f">ASM</label><select class="in" id="dr-asm"><option value="">সব ASM</option></select></div><div><label class="f">Account</label><select class="in" id="dr-ac"><option value="">সব Account</option></select></div><div><label class="f">বিভাগ</label><select class="in" id="dr-dv"><option value="">সব বিভাগ</option></select></div><div><label class="f">জেলা</label><select class="in" id="dr-ds"><option value="">সব জেলা</option></select></div><div class="dcx-q"><label class="f">পার্টি খুঁজুন</label><input class="in" id="dr-q" type="search" autocomplete="off" placeholder="পার্টির নাম / টাকা / মন্তব্য"></div></div>
     <div class="dcx-tg"><span class="mut xs">রিপোর্টে দেখাও:</span><label class="keep"><input type="checkbox" id="dr-ca"> ASM কলাম</label><label class="keep"><input type="checkbox" id="dr-cd"> জেলা কলাম</label><label class="keep"><input type="checkbox" id="dr-cs"> Status কলাম</label><label class="keep"><input type="checkbox" id="dr-sub" checked> দিন অনুযায়ী সাবটোটাল</label></div></div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="dr-out"></div></div></div>`;
@@ -3448,8 +3482,7 @@ async function vDrep(v) {
 /* =================== Distribution Party (master list) =================== */
 async function vDparty(v) {
   const admin = S.me.role === "admin", canAdd = S.me.role !== "boss"; const F = { q: "", asm: "", dv: "", ds: "", act: "1", lim: 200 }; let list = [];
-  v.innerHTML = head("ডিস্ট্রিবিউশন পার্টি", `<button class="btn" id="dp-asm">${ico("users")} ASM তালিকা</button><button class="btn" id="dp-geo">${ico("map")} এলাকা অনুযায়ী</button><button class="btn" id="dp-xl">${ico("dl")} Excel</button>${canAdd ? `<button class="btn pri" id="dp-new">${ico("plus")} নতুন পার্টি</button>` : ""}`) + `<div id="dp-kpi"></div>
-   <div class="card noprint" style="margin:14px 0"><div class="row pflt"><div class="pq"><label class="f">খুঁজুন</label><input class="in" id="dp-q" type="search" autocomplete="off" placeholder="পার্টি, ASM, জেলা, ফোন, ঠিকানা…"></div><div><label class="f">ASM</label><select class="in" id="dp-fa"></select></div><div><label class="f">বিভাগ</label><select class="in" id="dp-fv"></select></div><div><label class="f">জেলা</label><select class="in" id="dp-fd"></select></div><div><label class="f">অবস্থা</label><select class="in" id="dp-fs"><option value="1">সক্রিয়</option><option value="0">নিষ্ক্রিয়</option><option value="">সব</option></select></div></div></div>
+  v.innerHTML = head("ডিস্ট্রিবিউশন পার্টি", `<button class="btn" id="dp-asm">${ico("users")} ASM তালিকা</button><button class="btn" id="dp-geo">${ico("map")} এলাকা অনুযায়ী</button><button class="btn" id="dp-xl">${ico("dl")} Excel</button>${canAdd ? `<button class="btn pri" id="dp-new">${ico("plus")} নতুন পার্টি</button>` : ""}`) + `<div class="card tbar tb-stack noprint"><div class="dcx-stats s4" id="dp-kpi"></div><div class="row pflt"><div class="pq"><label class="f">খুঁজুন</label><input class="in" id="dp-q" type="search" autocomplete="off" placeholder="পার্টি, ASM, জেলা, ফোন, ঠিকানা…"></div><div><label class="f">ASM</label><select class="in" id="dp-fa"></select></div><div><label class="f">বিভাগ</label><select class="in" id="dp-fv"></select></div><div><label class="f">জেলা</label><select class="in" id="dp-fd"></select></div><div><label class="f">অবস্থা</label><select class="in" id="dp-fs"><option value="1">সক্রিয়</option><option value="0">নিষ্ক্রিয়</option><option value="">সব</option></select></div></div></div>
    <div class="card flush"><div class="ch"><h3>পার্টি তালিকা</h3><span class="tag" id="dp-cnt">0</span><div class="sp"></div><button class="btn sm hide" id="dp-rs">${ico("x")} ${bi("ফিল্টার মুছুন", "Clear filters")}</button></div><div id="dp-out"></div></div>`;
   const out = $("#dp-out", v);
   try { list = await dpLoad(true); } catch (e) { out.innerHTML = `<div class="alert rd" style="margin:12px">${esc(dcErr(e))}</div>`; return; }
@@ -3463,7 +3496,7 @@ async function vDparty(v) {
   function draw() {
     list = DPARTY || list; const q = norm(F.q);
     const vis = list.filter(p => (F.act === "" || (F.act === "1") === p.active) && (!F.asm || (F.asm === "__none" ? !p.asm : p.asm === F.asm)) && (!F.dv || (F.dv === "__none" ? !p.division : p.division === F.dv)) && (!F.ds || (F.ds === "__none" ? !p.district : p.district === F.ds)) && (!q || norm([p.name, p.asm, p.district, p.division, p.phone, p.contact_person, p.address, p.note].join(" ")).includes(q)));
-    $("#dp-kpi", v).innerHTML = `<div class="grid g4"><div class="kpi card k-vi"><div class="l">মোট পার্টি<span class="ki">${ico("users")}</span></div><div class="v num">${list.length}</div><div class="s">সক্রিয় ${list.filter(p => p.active).length}</div></div><div class="kpi card k-gr"><div class="l">ASM / Salesman<span class="ki">${ico("users")}</span></div><div class="v num">${dcAsms().length}</div><div class="s">জন</div></div><div class="kpi card k-am kclick" data-kf="asm" title="${bi("ট্যাপ করলে শুধু এগুলো দেখাবে", "Tap to filter")}"><div class="l">ASM ঠিক করা নেই<span class="ki">${ico("flag")}</span></div><div class="v num">${list.filter(p => !p.asm).length}</div><div class="s">পার্টি</div></div><div class="kpi card kclick" data-kf="ds" title="${bi("ট্যাপ করলে শুধু এগুলো দেখাবে", "Tap to filter")}"><div class="l">জেলা ঠিক করা নেই<span class="ki">${ico("flag")}</span></div><div class="v num">${list.filter(p => !p.district).length}</div><div class="s">পার্টি · ${new Set(list.map(p => p.district).filter(Boolean)).size}টি জেলায় বাকিরা</div></div></div>`;
+    $("#dp-kpi", v).innerHTML = (() => { const tip = bi("ট্যাপ করলে শুধু এগুলো দেখাবে", "Tap to filter"), tile = (cls, ic, lab, val, sub, kf) => `<${kf ? "button type=\"button\"" : "div"} class="dcx-stat ${cls}${kf ? " kclick" : ""}"${kf ? ` data-kf="${kf}" title="${tip}"` : ""}><span class="si">${ico(ic)}</span><span class="tx"><small>${lab}</small><b class="num">${val}</b><i>${sub}</i></span></${kf ? "button" : "div"}>`; return tile("t", "users", bi("মোট পার্টি", "Total parties"), list.length, bi(`সক্রিয় ${list.filter(p => p.active).length}`, `Active ${list.filter(p => p.active).length}`)) + tile("a", "users", "ASM / Salesman", dcAsms().length, bi("জন", "people")) + tile("p", "flag", bi("ASM ঠিক করা নেই", "ASM not set"), list.filter(p => !p.asm).length, bi("পার্টি", "Party"), "asm") + tile("h", "flag", bi("জেলা ঠিক করা নেই", "District not set"), list.filter(p => !p.district).length, bi(`পার্টি · ${new Set(list.map(p => p.district).filter(Boolean)).size}টি জেলায় বাকিরা`, `Party · ${new Set(list.map(p => p.district).filter(Boolean)).size} districts among the rest`), "ds"); })();
     $("#dp-cnt", v).textContent = vis.length;
     $$(".kclick", v).forEach(k => k.onclick = () => { if (k.dataset.kf === "asm") F.asm = "__none"; else { F.ds = "__none"; F.dv = ""; } F.act = ""; $("#dp-fs", v).value = ""; F.lim = 200; filters(); draw(); window.scrollTo({ top: $("#dp-out", v).getBoundingClientRect().top + scrollY - 120, behavior: "smooth" }); });
     $("#dp-rs", v).classList.toggle("hide", !(F.q || F.asm || F.dv || F.ds || F.act !== "1"));
@@ -3529,7 +3562,7 @@ setTimeout(checkUpdate, 8000); setInterval(checkUpdate, 3 * 60 * 1000);
 window.addEventListener("online", () => setTimeout(checkUpdate, 2000));
 document.addEventListener("visibilitychange", () => { if (document.hidden) { if (updReady && !DIRTY && !Outbox.busy) location.reload(); } else checkUpdate(); });
 
-/* ---------- v6.45: Excel cheque import · party ledger · bank reconciliation ---------- */
+/* ---------- v6.45: Excel cheque import · party ledger ---------- */
 const bi = (bn, en) => LANG === "en" ? en : bn;
 const VAPID_PUB = "BAu_jln2X-7dGMt7X2w_GeqjYbgieXX1Db-4zBx5ff-U2e2y6951Gdov3pk8v9qTcJTZbybpi4Fi88ldkgGfAl0";
 const b64u = s => { const p = "=".repeat((4 - s.length % 4) % 4), r = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); };
@@ -3611,61 +3644,6 @@ function partyLedgerModal(p) {
       printSheet(repSheet("pl-sheet", bi("পার্টি খাতা", "Party Ledger"), f, t, repKpi([[bi("মোট", "Total"), money(tot)], ["Approved", money(data.filter(r => r.status === "approved").reduce((a, r) => a + r.amount, 0))], ["Pending", money(data.filter(r => r.status === "pending").reduce((a, r) => a + r.amount, 0))], [bi("এন্ট্রি", "Entries"), data.length]]), body), `Ledger_${p.name}`); };
     load();
   });
-}
-
-/* ----- bank reconciliation page ----- */
-async function vRecon(v) {
-  const st = { tab: "bal", aoa: null, name: "" };
-  const draw = () => {
-    v.innerHTML = head(bi("ব্যাংক মিলান", "Bank reconciliation")) + `<div class="seg noprint" style="margin:6px 0 14px"><span class="chip ${st.tab === "bal" ? "on" : ""}" data-tab="bal">${bi("ব্যালেন্স মিলান", "Balances")}</span><span class="chip ${st.tab === "chq" ? "on" : ""}" data-tab="chq">${bi("চেক পাস মিলান", "Cleared cheques")}</span></div><div id="rc-body"></div>`;
-    $$("[data-tab]", v).forEach(c => c.onclick = () => { st.tab = c.dataset.tab; st.aoa = null; draw(); });
-    (st.tab === "bal" ? reconBal : reconChq)($("#rc-body", v));
-  };
-  const pickFile = (box, hint, cb) => {
-    box.innerHTML = `<div class="card"><div class="mut sm" style="margin-bottom:10px">${hint}</div><div class="row"><label class="btn pri" for="rc-f">${ico("plus")} ${bi("স্টেটমেন্ট ফাইল (Excel/CSV)", "Statement file (Excel/CSV)")}</label><input type="file" id="rc-f" accept=".xlsx,.xls,.csv" hidden></div><div id="rc-map" style="margin-top:12px"></div><div id="rc-res" style="margin-top:12px"></div></div>`;
-    $("#rc-f", box).onchange = async e => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; try { st.aoa = (await readSheetFile(f)).filter(r => r.some(c => c !== "")); st.name = f.name; } catch (er) { return toast(er.message || String(er), "err"); } cb(box); };
-  };
-  const colSel = (id, head, guess) => `<select class="in" id="${id}"><option value="-1">—</option>${head.map((h, i) => `<option value="${i}" ${i === guess ? "selected" : ""}>${esc(String(h).slice(0, 30) || "col " + (i + 1))}</option>`).join("")}</select>`;
-  function reconBal(box) {
-    pickFile(box, bi("ব্যাংক স্টেটমেন্ট/ক্লোজিং তালিকা দিন — প্রতি সারিতে তারিখ ও ব্যালেন্স (সাথে A/C কোড, অথবা একটি অ্যাকাউন্টের স্টেটমেন্ট হলে নিচে অ্যাকাউন্ট বাছুন)। অ্যাপের ক্লোজিং ব্যালেন্সের সাথে মেলানো হবে।", "Upload a statement / closing list — a date and balance per row (plus A/C code, or choose one account below for a single-account statement). Compared with the app's closing balances."), b => {
-      const A = st.aoa, hi = Math.max(0, A.findIndex(r => r.filter(c => c !== "").length >= 2)), H = A[hi].map(String), g = names => colOf(H, names);
-      $("#rc-map", b).innerHTML = `<div class="row"><div><label class="f">${bi("তারিখ কলাম", "Date column")}</label>${colSel("rm-d", H, g(["Date", "Txn Date", "Value Date", "তারিখ"]))}</div><div><label class="f">${bi("ব্যালেন্স কলাম", "Balance column")}</label>${colSel("rm-b", H, g(["Balance", "Closing Balance", "Running Balance", "Total", "ব্যালেন্স"]))}</div><div><label class="f">${bi("A/C কোড কলাম (ঐচ্ছিক)", "A/C column (optional)")}</label>${colSel("rm-a", H, g(["A/C Code", "Code", "Account", "AC", "A/C No"]))}</div><div><label class="f">${bi("অথবা একটাই অ্যাকাউন্ট", "Or single account")}</label><select class="in" id="rm-s"><option value="">—</option>${S.accounts.map(a => `<option>${esc(a.code)}</option>`).join("")}</select></div></div><div class="row" style="margin-top:10px"><button class="btn pri" id="rm-go">${bi("মিলান", "Reconcile")}</button><span class="mut xs">${esc(st.name)} · ${A.length - hi - 1} ${bi("সারি", "rows")}</span></div>`;
-      $("#rm-go", b).onclick = async () => {
-        const ci = { d: +$("#rm-d", b).value, b: +$("#rm-b", b).value, a: +$("#rm-a", b).value }, single = $("#rm-s", b).value;
-        if (ci.d < 0 || ci.b < 0 || (ci.a < 0 && !single)) return toast(bi("তারিখ, ব্যালেন্স ও (A/C কলাম বা অ্যাকাউন্ট) দিন", "Choose date, balance and (A/C column or account)"), "err");
-        const items = []; A.slice(hi + 1).forEach(r => { const d = toIsoDate(r[ci.d]), bal = typeof r[ci.b] === "number" ? r[ci.b] : num(r[ci.b]), acc = single ? findAcc(single) : findAcc(r[ci.a]); if (d && acc && r[ci.b] !== "") items.push({ d, code: acc.code, bal, raw: single ? "" : String(r[ci.a]) }); });
-        if (!items.length) return $("#rc-res", b).innerHTML = `<div class="alert rd">${bi("মেলানোর মতো সারি পাওয়া যায়নি (তারিখ/অ্যাকাউন্ট চেনা যায়নি)", "No usable rows (dates / accounts not recognised)")}</div>`;
-        const desc = items.length > 1 && items[0].d > items[items.length - 1].d, last = new Map(); (desc ? [...items].reverse() : items).forEach(x => last.set(x.d + "|" + x.code, x));   // keep the day's closing balance of a running-balance statement
-        const list = [...last.values()], from = list.reduce((m, x) => x.d < m ? x.d : m, "9999"), to = list.reduce((m, x) => x.d > m ? x.d : m, "0000");
-        let app = []; try { app = await API.balancesRange(from, to); } catch (e) { return toast(e.message, "err"); }
-        const am = new Map(app.map(x => [x.date + "|" + x.code, x])); const res = list.map(x => { const a = am.get(x.d + "|" + x.code), has = a && a.total != null; const diff = has ? x.bal - a.total : null; return { ...x, app: has ? a.total : null, diff, s: !has ? "miss" : Math.abs(diff) <= 1 ? "ok" : "diff" }; }).sort((a, b) => a.d.localeCompare(b.d) || a.code.localeCompare(b.code));
-        const n = k => res.filter(x => x.s === k).length;
-        $("#rc-res", b).innerHTML = `<div class="row" style="gap:8px"><span class="tag ok">✓ ${n("ok")} ${bi("মিলেছে", "match")}</span><span class="tag ${n("diff") ? "au-delete" : ""}">≠ ${n("diff")} ${bi("গরমিল", "differ")}</span><span class="tag">∅ ${n("miss")} ${bi("অ্যাপে নেই", "not in app")}</span><button class="btn sm" id="rr-xl">${ico("dl")} Excel</button></div>
-          <div class="tw" style="max-height:52vh;overflow:auto;margin-top:8px"><table><thead><tr><th>${bi("তারিখ", "Date")}</th><th>A/C</th><th class="r">${bi("স্টেটমেন্ট", "Statement")}</th><th class="r">${bi("অ্যাপ", "App")}</th><th class="r">${bi("পার্থক্য", "Diff")}</th><th></th></tr></thead><tbody>${res.slice(0, 500).map(x => `<tr class="${x.s === "ok" ? "" : x.s === "diff" ? "" : "dim"}"><td>${dmy(x.d)}</td><td>${esc(x.code)}</td><td class="r num">${money(x.bal)}</td><td class="r num">${x.app == null ? "—" : money(x.app)}</td><td class="r num ${x.s === "diff" ? "rd" : ""}">${x.diff == null ? "—" : money(x.diff)}</td><td>${x.s === "ok" ? '<span class="gr">✓</span>' : x.s === "diff" ? '<span class="rd">≠</span>' : '<span class="am">∅</span>'}</td></tr>`).join("")}</tbody></table></div>`;
-        $("#rr-xl", b).onclick = () => exportXlsx({ Reconcile: [["Date", "A/C", "Statement", "App", "Diff", "Result"], ...res.map(x => [dmy(x.d), x.code, x.bal, x.app, x.diff, x.s])] }, `Balance_Reconcile_${today()}.xlsx`);
-      };
-    });
-  }
-  function reconChq(box) {
-    pickFile(box, bi("ব্যাংকে পাস হওয়া চেকের তালিকা দিন (চেক নং ও টাকা; তারিখ/A/C কোড থাকলে আরও নির্ভুল)। অ্যাপের চেক রেজিস্টারের সাথে মিলিয়ে দেখাবে — কোনটা অ্যাপে নেই, কোনটা পাস হয়নি, টাকা ভিন্ন।", "Upload the bank's cleared-cheque list (cheque no. and amount; date / A/C code make it more exact). Compared with the cheque register: not in app, not marked cleared, amount differs."), b => {
-      const A = st.aoa, hi = Math.max(0, A.findIndex(r => r.filter(c => c !== "").length >= 2)), H = A[hi].map(String), g = names => colOf(H, names);
-      $("#rc-map", b).innerHTML = `<div class="row"><div><label class="f">${bi("চেক নং কলাম", "Cheque no column")}</label>${colSel("rc-n", H, g(["Cheque No", "Chq No", "Cheque Number", "Instrument No", "Chq"]))}</div><div><label class="f">${bi("টাকা কলাম", "Amount column")}</label>${colSel("rc-m", H, g(["Amount", "Debit", "Withdrawal", "Taka"]))}</div><div><label class="f">${bi("A/C কোড কলাম (ঐচ্ছিক)", "A/C column (optional)")}</label>${colSel("rc-a", H, g(["A/C Code", "Code", "Account", "AC"]))}</div><div><label class="f">${bi("অথবা একটাই অ্যাকাউন্ট", "Or single account")}</label><select class="in" id="rc-s"><option value="">—</option>${S.accounts.map(a => `<option>${esc(a.code)}</option>`).join("")}</select></div></div><div class="row" style="margin-top:10px"><button class="btn pri" id="rc-go">${bi("মিলান", "Reconcile")}</button><span class="mut xs">${esc(st.name)} · ${A.length - hi - 1} ${bi("সারি", "rows")}</span></div>`;
-      $("#rc-go", b).onclick = () => {
-        const ci = { n: +$("#rc-n", b).value, m: +$("#rc-m", b).value, a: +$("#rc-a", b).value }, single = $("#rc-s", b).value;
-        if (ci.n < 0) return toast(bi("চেক নং কলাম দিন", "Choose the cheque-no column"), "err");
-        const res = []; A.slice(hi + 1).forEach(r => { const no = parseInt(String(r[ci.n]).replace(/\D/g, "")); if (!no) return; const amt = ci.m >= 0 ? (typeof r[ci.m] === "number" ? r[ci.m] : num(r[ci.m])) : null, code = single ? (findAcc(single) || {}).code : ci.a >= 0 ? (findAcc(r[ci.a]) || {}).code : null;
-          const cands = S.cheques.filter(c => c.no === no && (!code || c.code === code)); let s, c = null; if (!cands.length) s = "miss"; else if (cands.length > 1 && !code) { c = cands[0]; s = "multi"; } else { c = cands[0]; s = c.status !== "Cleared" ? "notclr" : (amt != null && amt > 0 && Math.abs(c.amount - amt) > 1) ? "amt" : "ok"; }
-          res.push({ no, amt, c, s }); });
-        const L = { ok: bi("✓ মিলেছে", "✓ OK"), miss: bi("অ্যাপে নেই", "not in app"), notclr: bi("অ্যাপে পাস হয়নি", "not cleared in app"), amt: bi("টাকা ভিন্ন", "amount differs"), multi: bi("একাধিক A/C-তে আছে", "in several A/Cs") }, n = k => res.filter(x => x.s === k).length;
-        const bankNos = new Set(res.map(x => x.no)), code = single ? (findAcc(single) || {}).code : null; const unseen = S.cheques.filter(c => c.status === "Cleared" && purposeKey(c.purpose) !== "cash" && purposeKey(c.purpose) !== "own" && (!code || c.code === code) && !bankNos.has(c.no));
-        $("#rc-res", b).innerHTML = `<div class="row" style="gap:8px;flex-wrap:wrap"><span class="tag ok">✓ ${n("ok")}</span><span class="tag ${n("miss") ? "au-delete" : ""}">${bi("অ্যাপে নেই", "not in app")} ${n("miss")}</span><span class="tag ${n("notclr") ? "au-update" : ""}">${bi("পাস হয়নি", "not cleared")} ${n("notclr")}</span><span class="tag ${n("amt") ? "au-delete" : ""}">${bi("টাকা ভিন্ন", "amount")} ${n("amt")}</span><button class="btn sm" id="rc-xl">${ico("dl")} Excel</button></div>
-          <div class="tw" style="max-height:48vh;overflow:auto;margin-top:8px"><table><thead><tr><th>${bi("চেক নং", "Chq no")}</th><th>A/C</th><th class="r">${bi("ব্যাংক", "Bank")}</th><th class="r">${bi("অ্যাপ", "App")}</th><th>${bi("ফলাফল", "Result")}</th></tr></thead><tbody>${res.slice(0, 500).map(x => `<tr class="${x.s === "ok" ? "" : ""}"><td>${x.no}</td><td>${esc(x.c ? x.c.code : "—")}</td><td class="r num">${x.amt == null ? "—" : money(x.amt)}</td><td class="r num">${x.c ? money(x.c.amount) : "—"}</td><td class="${x.s === "ok" ? "gr" : "rd"}">${L[x.s]}${x.s === "notclr" ? ` (${esc(x.c.status)})` : ""}${x.s === "miss" ? S.marks.filter(m => m.no === x.no && (!code || m.code === code)).map(m => ` <span class="lk ${m.kind}" title="${esc(m.code)}">${LK[m.kind].ic} ${lkName(m.kind)}${m.resolved ? "" : " · " + bi("খোলা", "open")}</span>`).join("") : ""}</td></tr>`).join("")}</tbody></table></div>
-          ${unseen.length ? `<div class="mut sm" style="margin-top:10px">${bi(`অ্যাপে Cleared কিন্তু এই স্টেটমেন্টে নেই: ${unseen.length}টি (সব সময়ের মধ্যে — স্টেটমেন্টের সময়সীমার বাইরেরগুলোও থাকতে পারে)`, `Cleared in app but not in this statement: ${unseen.length} (may include cheques outside the statement period)`)}</div>` : ""}`;
-        $("#rc-xl", b).onclick = () => exportXlsx({ Cheques: [["Cheque No", "A/C", "Bank amount", "App amount", "Result"], ...res.map(x => [x.no, x.c && x.c.code, x.amt, x.c && x.c.amount, L[x.s] + (x.s === "miss" ? S.marks.filter(m => m.no === x.no && (!code || m.code === code)).map(m => " · " + LK[m.kind].en + (m.resolved ? "" : " (open)")).join("") : "")])], "Cleared in app, not in statement": [["A/C", "Cheque No", "Amount", "Date"], ...unseen.map(c => [c.code, c.no, c.amount, dmy(c.date)])] }, `Cheque_Reconcile_${today()}.xlsx`);
-      };
-    });
-  }
-  draw();
 }
 
 /* ---------- v6.44 security: auto-lock, 2FA (TOTP), user sessions / activity / email / delete ---------- */

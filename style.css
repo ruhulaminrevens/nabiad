@@ -1,4 +1,4 @@
-/* Nabiad — Cheque & Bank Control · design system v3 (colour) */
+/* NABIAD Smart Finance Suite · design system v3 (colour) */
 :root{
   --bg:#f2f4fb; --surface:#ffffff; --surface2:#f7f8fd; --line:#e2e6f3; --line2:#edf0f8;
   --txt:#111733; --txt2:#353d5c; --mut:#69718f;
@@ -1378,3 +1378,62 @@ html[data-theme="dark"] .lk.blank{color:#fca5a5}html[data-theme="dark"] .lk.lost
 }
 /* v6.65: bank transfer lines are memo only (not in Total/Closing) */
 .crow.cbk .cbh label .cbn{display:block;font-size:11.5px;font-weight:500;color:var(--mut,#64748b);margin-top:2px;line-height:1.3}
+
+/* ======== v6.66 · unified page header (.ph) + toolbar (.tbar) + notification board (.nb) ======== */
+.top.ph{--sc:var(--pri);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:0 0 14px;padding:14px 18px;border-radius:18px;border:1px solid color-mix(in srgb,var(--sc) 22%,var(--line));background:linear-gradient(100deg,color-mix(in srgb,var(--sc) 11%,var(--surface)),var(--surface) 62%);box-shadow:var(--sh);position:relative;overflow:hidden}
+.top.ph::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--sc)}
+.ph.s-main{--sc:#4f46e5} .ph.s-bank{--sc:#2563eb} .ph.s-cash{--sc:#059669} .ph.s-dist{--sc:#d97706} .ph.s-more{--sc:#7c3aed} .ph.s-top{--sc:#4f46e5}
+:root[data-theme="dark"] .ph.s-main{--sc:#818cf8} :root[data-theme="dark"] .ph.s-bank{--sc:#60a5fa} :root[data-theme="dark"] .ph.s-cash{--sc:#34d399} :root[data-theme="dark"] .ph.s-dist{--sc:#fbbf24} :root[data-theme="dark"] .ph.s-more{--sc:#a78bfa}
+.ph .ph-l{display:flex;align-items:center;gap:13px;min-width:0;flex:1 1 280px}
+.ph .pic{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,var(--sc),color-mix(in srgb,var(--sc) 62%,#000));box-shadow:0 6px 16px color-mix(in srgb,var(--sc) 38%,transparent)}
+.ph .ph-t{min-width:0}
+.ph .ph-bc{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--sc)}
+.ph .ph-bc i{width:6px;height:6px;border-radius:50%;background:var(--sc)}
+.ph h1{font-size:21px;line-height:1.25;margin:1px 0 0}
+.ph .ph-sub{margin:3px 0 0;font-size:12.5px;line-height:1.4;color:var(--mut)}
+.ph .acts{flex:0 0 auto}
+.ph .acts .btn{height:40px}
+/* toolbar card under the header */
+.card.tbar{padding:12px 14px;margin-bottom:14px;border-radius:16px;border:1px solid var(--line);background:var(--surface)}
+.card.tbar .in{height:40px} .card.tbar .btn{height:40px}
+.card.tb-stack{display:grid;gap:12px}
+.dcx-stats.s4{grid-template-columns:repeat(4,minmax(0,1fr));flex:none;width:100%}
+.dcx-stat b{font-size:18px;line-height:1.1;display:block;font-variant-numeric:tabular-nums} .dcx-stat small{display:block;font-size:11.5px;color:var(--mut);margin-top:1px}
+.dcx-stat>span:last-child{min-width:0}
+/* notification board */
+.nb-stats{margin-bottom:14px}
+.nb-stats .dcx-stat:nth-child(1){--c1:#e11d48} .nb-stats .dcx-stat:nth-child(2){--c1:#f59e0b} .nb-stats .dcx-stat:nth-child(3){--c1:#7c3aed} .nb-stats .dcx-stat:nth-child(4){--c1:#3b82f6}
+.nb-stats .dcx-stat{background:var(--surface);box-shadow:var(--sh)}
+.card.nb{padding:0;overflow:hidden;margin-bottom:16px}
+.nb-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--surface2)}
+.nb-hd h3{margin:0;display:flex;align-items:center;gap:8px;font-size:15px}
+.nb-f .chip{padding:5px 11px;font-size:12.5px}
+.nb-list{display:grid}
+.nb-it{--lc:#7c3aed;display:flex;gap:12px;align-items:flex-start;padding:13px 16px 13px 14px;border-left:4px solid var(--lc);border-bottom:1px solid var(--line2);background:linear-gradient(90deg,color-mix(in srgb,var(--lc) 7%,var(--surface)),var(--surface) 55%);transition:background .15s}
+.nb-it:last-child{border-bottom:0}
+.nb-it.lv-rd{--lc:#e11d48} .nb-it.lv-am{--lc:#f59e0b} .nb-it.lv-vi{--lc:#7c3aed}
+.nb-ic{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex:none;color:#fff;background:var(--lc)}
+.nb-b{flex:1 1 auto;min-width:0} .nb-b>b{display:block;font-size:14px;line-height:1.4;margin-top:3px;word-break:break-word}
+.nb-m{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px}
+.nb-tg{padding:2px 8px;border-radius:99px;font-weight:700;color:#fff;background:var(--lc);letter-spacing:.2px}
+.nb-src{color:var(--mut);font-weight:600} .nb-tm{color:var(--mut);margin-left:auto}
+.nb-a{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-self:center;max-width:46%}
+.nb-ok{display:flex;flex-direction:column;align-items:center;gap:4px;padding:26px 16px;color:var(--gr);text-align:center}
+.nb-ok svg{padding:8px;box-sizing:content-box;border-radius:50%;background:var(--gr-soft)}
+@media (max-width:900px){
+  .top.ph{padding:12px 14px;border-radius:16px;margin-bottom:12px;gap:10px}
+  .ph .ph-l{flex-basis:100%} .ph .pic{width:40px;height:40px;border-radius:12px} .ph h1{font-size:18px}
+  .ph .acts{width:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))} .ph .acts .btn{flex:none;width:100%;justify-content:center}
+  .top.ph.tc{flex-wrap:wrap;margin-bottom:10px}
+  .top.ph.tc .ph-sub{display:none} .top.ph.tc .ph-l{flex:1 1 0} .top.ph.tc .acts{width:auto;display:flex}
+  .top.ph.tc .acts .btn{height:38px}
+  .card.tbar{padding:10px 12px;border-radius:14px;margin-bottom:12px}
+  .card.tbar .in,.card.tbar .btn{height:44px}
+  .dcx-stats.s4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .nb-it{flex-wrap:wrap} .nb-a{max-width:none;width:100%;justify-content:flex-start;padding-left:48px}
+}
+@media (max-width:420px){ .ph .ph-sub{font-size:12px} .dcx-stat{padding:8px 10px} .dcx-stat .si{width:30px;height:30px} }
+@media print{ .top.ph{display:none!important} }
+@media (max-width:900px){ .dcx-stats.s4 .dcx-stat.t{grid-column:auto} }
+@media (max-width:420px){ .dcx-stats.s4 .dcx-stat .si{display:grid;width:30px;height:30px} .dcx-stat b{font-size:16px} .dcx-stat small{font-size:11px;text-transform:none;letter-spacing:0} }
+.dcx-stat small{text-transform:none;letter-spacing:0;font-weight:600}
