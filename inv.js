@@ -15,13 +15,6 @@ Object.assign(ROUTES, {
 });
 SECS.inv = "ইনভেন্টরি";
 PH_SEC.inv = ["ইনভেন্টরি", "Inventory"];
-Object.assign(PH_SUB, {
-  ivdash: ["মাসের অর্ডার, ডেলিভারি, Pending ও ফ্যাক্টরির স্টক এক নজরে", "This month's orders, deliveries, pending and factory stock at a glance"],
-  ivnir: ["নিরাময় ট্রেডার্সে গাড়ি অনুযায়ী ডেলিভারি — পণ্য, পরিমাণ, মূল্য ও ভাড়া", "Trip-wise delivery to Niramoy Traders — items, quantity, value and rent"],
-  ivdist: ["ডিলার অর্ডার → ডেলিভারি → Pending · মাসের Demand", "Dealer orders → delivery → pending · monthly demand"],
-  ivrm: ["Tamarind ও Wood Powder — দৈনিক Ready, Delivery, Stock এবং AH Star Agro খাতা", "Tamarind and Wood Powder — daily ready, delivery, stock and the AH Star Agro ledger"],
-  ivrep: ["Pending অবস্থা, সতর্কতা ও যেকোনো সময়ের রিপোর্ট — প্রিন্ট, PDF ও Excel", "Pending status, alerts and reports for any period — print, PDF and Excel"]
-});
 Object.assign(ICON, {
   ivbox: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
   ivtruck: '<path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
@@ -797,22 +790,21 @@ async function vInvDash(v) {
     /* daily delivered value (both channels) */
     const days = []; for (let d = f; d <= t && days.length < 62; d = addDays(d, 1)) days.push(d);
     const dv = days.map(d => ivSum(INV.orders.filter(o => o.status === "ok" && (o.delivery_date || o.date) === d), o => o.value)), mx = Math.max(1, ...dv);
-    const bars = F.m === "day" ? "" : `<div class="card iv-dc"><div class="ch"><h3>${bi("দৈনিক ডেলিভারি মূল্য", "Daily delivered value")}</h3><span class="mut sm">৳ ${money0(dv.reduce((a, b) => a + b, 0))}</span></div><div class="iv-bars">${dv.map((x, i) => `<span title="${dmy(days[i])} · ৳ ${money0(x)}" style="height:${Math.max(2, x / mx * 100)}%" class="${x ? "" : "z"}"></span>`).join("")}</div><div class="iv-bx"><span>${pbFmt(days[0])}</span><span>${pbFmt(days.at(-1))}</span></div></div>`;
+    const bars = F.m === "day" ? "" : `<div class="card iv-dc"><div class="ch"><h3>${bi("দৈনিক ডেলিভারি মূল্য", "Daily delivered value")}</h3><span class="mut sm">৳ ${money0(dv.reduce((a, b) => a + b, 0))}</span></div><div class="iv-bw"><span class="iv-bm">৳ ${money0(mx)}</span><div class="iv-bars">${dv.map((x, i) => `<span title="${dmy(days[i])} · ৳ ${money0(x)}" style="height:${Math.max(2, x / mx * 100)}%" class="${x ? "" : "z"}"></span>`).join("")}</div></div><div class="iv-bx"><span>${pbFmt(days[0])}</span><span>${pbFmt(days.at(-1))}</span></div></div>`;
     const dm = ms.length ? ivDemandOf("dist", ms[0]) : {}, it = ivItemTotals(D, f, t), top = Object.keys(dm).length ? Object.keys(dm).sort((a, b) => dm[b] - dm[a]).slice(0, 8) : Object.keys(it).sort((a, b) => it[b].ord - it[a].ord).slice(0, 8);
     const prog = `<div class="card iv-dc"><div class="ch"><h3>${Object.keys(dm).length ? bi("আইটেম: Demand বনাম ডেলিভারি", "Items: demand vs delivered") : bi("সবচেয়ে বেশি অর্ডার হওয়া আইটেম", "Top ordered items")}</h3><a class="mut sm" href="#/ivdist">${bi("সব দেখুন", "See all")} ›</a></div>${top.length ? top.map(id => { const tg = +dm[id] || it[id]?.ord || 0, dl = it[id]?.del || 0, od = it[id]?.ord || 0, w = tg ? Math.min(100, dl / tg * 100) : 0, w2 = tg ? Math.min(100, od / tg * 100) : 0; return `<div class="iv-pr"><div class="iv-prl"><span>${esc(ivItemName(id))}</span><b class="num">${ivQ(dl)} / ${ivQ(tg)}</b></div><div class="iv-prb"><i class="o" style="width:${w2}%"></i><i style="width:${w}%"></i></div></div>`; }).join("") + `<div class="iv-lg"><span><i></i>${bi("ডেলিভারি", "Delivered")}</span><span><i class="o"></i>${bi("অর্ডার", "Ordered")}</span></div>` : ivEmpty(bi("কিছু নেই", "Nothing yet"))}</div>`;
     const late = Dop.filter(o => ivDays(o.date, today()) > 3).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8);
-    out.innerHTML = `<div class="ksum iv-ks iv-dk">
+    out.innerHTML = `<div class="iv-gl">${bi("ডিস্ট্রিবিউশন ও নিরাময়", "Distribution & Niramoy")}</div><div class="ksum iv-ks iv-dk">
         ${ivTile("#4f46e5", "ivcart", bi("ডিস্ট্রিবিউশন অর্ডার", "Distribution orders"), D.length, `${ivQ(oq)} ctn · ৳ ${money0(ivSum(D, o => o.value))}`)}
         ${ivTile("#059669", "check", bi("ডেলিভারি হয়েছে", "Delivered"), "৳ " + money0(ivSum(Dok, o => o.value)), `${ivQ(dq)} ctn${dem ? ` · Demand-এর ${pct}%`.replace("Demand-এর", bi("Demand-এর", "of demand")) : ""}`)}
         ${ivTile("#d97706", "clock", bi("ডেলিভারি বাকি", "Pending delivery"), ivQ(ivSum(Dop, o => o.total_qty)) + " ctn", `${Dop.length} ${bi("অর্ডার", "orders")} · ৳ ${money0(ivSum(Dop, o => o.value))}`)}
         ${ivTile("#0ea5e9", "ivtruck", bi("নিরাময়", "Niramoy"), "৳ " + money0(ivSum(N, o => o.value)), `${N.length} ${bi("ট্রিপ", "trips")} · ${ivQ(ivSum(N, o => o.total_qty))} ctn · ${bi("ভাড়া", "rent")} ৳ ${money0(ivSum(N, o => o.rent))}`)}
+        </div><div class="iv-gl">${bi("ফ্যাক্টরি স্টক ও পাওনা", "Factory stock & payable")}</div><div class="ksum iv-ks iv-dk iv-f">
         ${stk.map(x => ivTile(x.b < 0 ? "#dc2626" : "#7c3aed", "ivfac", esc(x.p.name), ivQ(x.b) + " bag", `${ivQ(x.b * x.p.bag_kg)} kg · ${dmy(t > today() ? today() : t)}`)).join("")}
         ${pay.map(x => ivTile("#64748b", "users", esc(x.pt), ivQ(x.b) + " bag", bi("বাকি (Receive − Return)", "Payable (receive − return)"))).join("")}
       </div>
       ${dem ? `<div class="card iv-goal"><div class="iv-prl"><span>${bi("মাসের Demand পূরণ", "Monthly demand met")} · ${ivMonName(f)}</span><b class="num">${ivQ(dq)} / ${ivQ(dem)} ctn · ${pct}%</b></div><div class="iv-prb big"><i class="o" style="width:${Math.min(100, oq / dem * 100)}%"></i><i style="width:${pct}%"></i></div></div>` : ""}
-      <div class="iv-dg">${bars}${prog}
-        <div class="card iv-dc"><div class="ch"><h3>${bi("পুরনো Pending অর্ডার", "Oldest pending orders")}</h3><a class="mut sm" href="#/ivrep">${bi("সব", "All")} ›</a></div>${late.length ? `<div class="iv-ll">${late.map(o => `<a href="#/ivdist" class="iv-li"><span><b>${esc(ivPname(o))}</b><small class="mut">${dmy(o.date)} · ${esc(o.asm || "")}</small></span><span class="r"><b class="num">${ivQ(o.total_qty)}</b><small class="iv-age ${ivDays(o.date, today()) > 7 ? "late" : ""}">${ivDays(o.date, today())} ${bi("দিন", "days")}</small></span></a>`).join("")}</div>` : ivEmpty(bi("৩ দিনের বেশি পুরনো Pending নেই", "No pending orders older than 3 days"))}</div>
-        <div class="card iv-dc"><div class="ch"><h3>${bi("সতর্কতা", "Alerts")}</h3><span class="tag">${X.length}</span></div>${X.length ? `<div class="iv-ll">${X.slice(0, 8).map(x => `<div class="iv-xi" style="--xc:${IV_XK[x.k][2]}"><i></i><span><small>${bi(IV_XK[x.k][0], IV_XK[x.k][1])} · ${x.d.length > 7 ? dmy(x.d) : x.d}</small>${x.txt}</span></div>`).join("")}</div>` : ivEmpty(bi("সব ঠিক আছে ✓", "All clear ✓"))}</div>
+      <div class="iv-dg"><div class="iv-col">${bars}<div class="card iv-dc"><div class="ch"><h3>${bi("পুরনো Pending অর্ডার", "Oldest pending orders")}</h3><a class="mut sm" href="#/ivrep">${bi("সব", "All")} ›</a></div>${late.length ? `<div class="iv-ll">${late.map(o => `<a href="#/ivdist" class="iv-li"><span><b>${esc(ivPname(o))}</b><small class="mut">${dmy(o.date)} · ${esc(o.asm || "")}</small></span><span class="r"><b class="num">${ivQ(o.total_qty)}</b><small class="iv-age ${ivDays(o.date, today()) > 7 ? "late" : ""}">${ivDays(o.date, today())} ${bi("দিন", "days")}</small></span></a>`).join("")}</div>` : ivEmpty(bi("৩ দিনের বেশি পুরনো Pending নেই", "No pending orders older than 3 days"))}</div></div><div class="iv-col">${prog}<div class="card iv-dc"><div class="ch"><h3>${bi("সতর্কতা", "Alerts")}</h3><span class="tag">${X.length}</span></div>${X.length ? `<div class="iv-ll">${X.slice(0, 8).map(x => `<div class="iv-xi" style="--xc:${IV_XK[x.k][2]}"><i></i><span><small>${bi(IV_XK[x.k][0], IV_XK[x.k][1])} · ${x.d.length > 7 ? dmy(x.d) : x.d}</small>${x.txt}</span></div>`).join("")}</div>` : ivEmpty(bi("সব ঠিক আছে ✓", "All clear ✓"))}</div></div>
       </div>`;
     labelTables(out);
   }

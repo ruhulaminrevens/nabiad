@@ -759,32 +759,9 @@ document.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.ke
 let CUR = "dash";
 /* v6.66 — one page header for every page: section-coloured icon, breadcrumb, title, one-line purpose, actions */
 const PH_SEC = { top: ["", ""], main: ["চেক", "Cheque"], bank: ["ব্যাংক", "Bank"], cash: ["ক্যাশ", "Cash"], dist: ["কালেকশন", "Collection"], more: ["আরও", "More"] };
-const PH_SUB = {
-  dash: ["আজকের ব্যবসার অবস্থা এক নজরে — ব্যালেন্স, চেক, কালেকশন", "Today's business at a glance — balances, cheques, collections"],
-  entry: ["চেক পোস্ট করুন · Enter চাপলে পরের ঘরে যাবে, শেষ ঘরে Enter = সেভ", "Post a cheque · Enter moves to the next field, Enter on the last one saves"],
-  status: ["চেকের অবস্থা (Cleared, Bounced…) আপডেট করুন", "Update cheque status — Cleared, Bounced and more"],
-  cheques: ["সব চেক খুঁজুন, ফিল্টার করুন, Excel ও প্রিন্ট নিন", "Search, filter, export and print every cheque"],
-  closing: ["দিনের শেষে প্রতিটি ব্যাংকের ক্লোজিং ব্যালেন্স — আগের দিনের মান আগে থেকে বসানো", "Closing balance of every bank at day end — yesterday's values are pre-filled"],
-  crep: ["ব্যালেন্সের ছবি/স্ন্যাপশট রিপোর্ট শেয়ার ও প্রিন্ট", "Balance snapshot report — share and print"],
-  reports: ["ব্যাংক ব্যালেন্সের সময়ভিত্তিক রিপোর্ট ও ট্রেন্ড", "Bank balance reports and trends over any period"],
-  cash: ["দিনের ক্যাশ আদায় ও খরচ — Opening আগের দিনের Closing থেকে নিজে আসে", "Daily cash receipts and payments — Opening carries from the previous closing"],
-  cashsum: ["ক্যাশের সামারি, ধারা ও ইতিহাস", "Cash summary, trend and history"],
-  cashrep: ["ক্যাশ রিপোর্ট — খাত ও মাস অনুযায়ী", "Cash report by category and month"],
-  dcol: ["ডিস্ট্রিবিউশন কালেকশন এন্ট্রি — পার্টি, অ্যাকাউন্ট ও টাকা", "Distribution collection entry — party, account and amount"],
-  dsum: ["কালেকশনের সামারি — পার্টি, ASM, ব্যাংক ও এলাকা অনুযায়ী", "Collection summary by party, ASM, bank and area"],
-  drep: ["কালেকশন রিপোর্ট — ফিল্টার, প্রিন্ট ও Excel", "Collection report — filters, print and Excel"],
-  books: ["চেক বই, ব্যবহৃত পাতা ও মিসিং/ফাঁকা পাতার হিসাব", "Cheque books, used leaves and missing or blank leaves"],
-  accounts: ["সব ব্যাংক অ্যাকাউন্টের তথ্য এক জায়গায় — খুঁজুন, কপি ও শেয়ার করুন", "All bank account details in one place — search, copy and share"],
-  register: ["ক্যাশ লেনদেনের খাতা — সময় ধরে খুঁজুন ও Excel নিন", "Cash transaction ledger — search any period and export"],
-  dparty: ["ডিস্ট্রিবিউশন পার্টি, ASM ও এলাকার তালিকা", "Distribution parties, ASMs and areas"],
-  rem: ["বাকি রিমাইন্ডার ও জরুরি সতর্কতা", "Pending reminders and alerts"],
-  settings: ["প্রোফাইল, ভাষা, থিম, নিরাপত্তা ও নোটিফিকেশন", "Profile, language, theme, security and notifications"],
-  audit: ["কে কখন কী বদলেছে, ব্যাকআপ ও নিরাপত্তা", "Who changed what and when, backups and security"],
-  admin: ["অ্যাকাউন্ট, ব্যবহারকারী ও পুরনো ডাটা ব্যবস্থাপনা", "Manage accounts, users and old data"]
-};
-const head = (title, extra = "", cls = "", sub) => {
-  const r = ROUTES[CUR] || {}, sec = r.sec || "top", sc = (PH_SEC[sec] || PH_SEC.top).map((x, i) => i ? x : x)[LANG === "en" ? 1 : 0], d = sub != null ? sub : (PH_SUB[CUR] ? bi(PH_SUB[CUR][0], PH_SUB[CUR][1]) : "");
-  return `<div class="top ph s-${sec}${cls ? " " + cls : ""}"><div class="ph-l"><div class="pic">${ico(r.ic || "home")}</div><div class="ph-t">${sc ? `<div class="ph-bc"><i></i>${sc}</div>` : ""}<h1>${title}</h1>${d ? `<p class="ph-sub">${d}</p>` : ""}</div></div>${extra ? `<div class="acts">${extra}</div>` : ""}</div>`;
+const head = (title, extra = "", cls = "") => {
+  const r = ROUTES[CUR] || {}, sec = r.sec || "top", sc = (PH_SEC[sec] || PH_SEC.top).map((x, i) => i ? x : x)[LANG === "en" ? 1 : 0];
+  return `<div class="top ph s-${sec}${cls ? " " + cls : ""}"><div class="ph-l"><div class="pic">${ico(r.ic || "home")}</div><div class="ph-t">${sc ? `<div class="ph-bc"><i></i>${sc}</div>` : ""}<h1>${title}</h1></div></div>${extra ? `<div class="acts">${extra}</div>` : ""}</div>`;
 };
 const stTag = s => `<span class="st ${s}">${s}</span>`;
 const pendTag = c => c.pending || c.events?.some(e => e.pending) ? ` <span class="tag" style="background:var(--am-soft);color:var(--am)" title="সার্ভারে যাওয়া বাকি">⏳ সিঙ্ক বাকি</span>` : "";
