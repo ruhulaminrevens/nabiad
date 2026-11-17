@@ -3374,13 +3374,12 @@ async function vDsum(v) {
   const F = { ...pbInit("day"), s: "approved", all: false, lm: "entry" }; let cur = null, all = [];
   const SH = [["led", "Party ledger", "পার্টি লেজার"], ["bank", "Bank", "ব্যাংক"], ["asm", "ASM", "ASM"], ["div", "Division", "বিভাগ"], ["dist", "District", "জেলা"], ["day", "Per day", "দিন অনুযায়ী"]];
   v.innerHTML = head("কালেকশন সামারি", `<button class="btn" id="ds-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="ds-pdf">${ico("print")} PDF</button>${navigator.share ? `<button class="btn" id="ds-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
-   <div class="card tbar noprint dcx-filt fx">
-    <div class="fx-row"><div class="fx-h">${ico("cal")}<span>${bi("সময়", "Period")}</span></div><div class="fx-c">${dcPeriodBar("ds", F)}<span class="dcx-per" id="ds-per"></span></div></div>
-    <div class="fx-row"><div class="fx-h">${ico("sliders")}<span>${bi("ফিল্টার", "Filters")}</span></div><div class="fx-c fx-opts">
-     <label class="fx-fld"><span class="fx-k">${bi("Status", "Status")}</span><select class="in" id="ds-s" title="${bi("কোন Status ধরব", "Status to include")}">${dcStatOpts(F.s)}</select></label>
-     <label class="fx-fld dcx-lm" id="ds-lmw"><span class="fx-k">${bi("লেজার", "Ledger")}</span><select class="in" id="ds-lm"><option value="entry">${bi("এন্ট্রি অনুযায়ী", "Entry-wise")}</option><option value="party">${bi("পার্টি অনুযায়ী মোট", "Party-wise total")}</option></select></label>
-     <label class="fx-sw"><input type="checkbox" id="ds-z"><i class="swt"></i><span>${bi("০ টাকার Account/ASM-ও দেখাও", "Also show accounts/ASM with 0")}</span></label></div></div>
-    <div class="fx-row dcx-tg" id="ds-tg"><div class="fx-h">${ico("grid")}<span>${bi("সামারিতে দেখাও", "Show in Summary")}</span><em class="fx-n" id="ds-shn"></em></div><div class="fx-c fx-pills">${SH.map(([k, en, bn]) => `<label class="keep"><input type="checkbox" data-sh="${k}" ${show[k] ? "checked" : ""}> ${bi(bn, en)}</label>`).join("")}<span class="fx-qa"><button type="button" class="fx-lnk" data-shall="1">${bi("সব", "All")}</button><button type="button" class="fx-lnk" data-shall="0">${bi("কোনোটি না", "None")}</button></span></div></div></div>
+   <div class="card tbar noprint dcx-filt fx2">
+    <div class="fx2-r">${dcPeriodBar("ds", F)}<div class="fx2-g"><span class="dcx-per" id="ds-per"></span>
+     <label class="fx-fld"><span class="fx-k">Status</span><select class="in" id="ds-s" title="${bi("কোন Status ধরব", "Status to include")}">${dcStatOpts(F.s)}</select></label>
+     <label class="fx-fld dcx-lm" id="ds-lmw"><span class="fx-k">${bi("লেজার", "Ledger")}</span><select class="in" id="ds-lm"><option value="entry">${bi("এন্ট্রি অনুযায়ী", "Entry-wise")}</option><option value="party">${bi("পার্টি অনুযায়ী মোট", "Party-wise total")}</option></select></label></div></div>
+    <div class="fx2-r dcx-tg" id="ds-tg"><span class="fx-lb">${ico("grid")}<span>${bi("সামারিতে দেখাও", "Show in Summary")}</span><em class="fx-n" id="ds-shn"></em></span>${SH.map(([k, en, bn]) => `<label class="keep"><input type="checkbox" data-sh="${k}" ${show[k] ? "checked" : ""}> ${bi(bn, en)}</label>`).join("")}<span class="fx-qa"><button type="button" class="fx-lnk" data-shall="1">${bi("সব", "All")}</button><button type="button" class="fx-lnk" data-shall="0">${bi("কোনোটি না", "None")}</button></span>
+     <label class="fx-sw fx-end"><input type="checkbox" id="ds-z"><i class="swt"></i><span>${bi("০ টাকার Account/ASM-ও দেখাও", "Also show accounts/ASM with 0")}</span></label></div></div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="ds-out"></div></div></div>`;
   const out = $("#ds-out", v);
   async function load() {
@@ -3444,23 +3443,24 @@ async function vDsum(v) {
 async function vDrep(v) {
   const F = { ...pbInit("day"), s: "approved", asm: "", ac: "", dv: "", ds: "", q: "", ca: false, cd: false, cs: false, sub: true }; let cur = null, all = [];
   v.innerHTML = head("কালেকশন রিপোর্ট", `<button class="btn" id="dr-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="dr-pdf">${ico("print")} PDF</button><button class="btn" id="dr-xl">${ico("dl")} Excel</button>${navigator.share ? `<button class="btn" id="dr-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
-   <div class="card tbar noprint dcx-filt">${dcPeriodBar("dr", F)}
-    <div class="dcx-fgrid"><div><label class="f">Status</label><select class="in" id="dr-s">${dcStatOpts(F.s)}</select></div><div><label class="f">ASM</label><select class="in" id="dr-asm"><option value="">সব ASM</option></select></div><div><label class="f">Account</label><select class="in" id="dr-ac"><option value="">সব Account</option></select></div><div><label class="f">বিভাগ</label><select class="in" id="dr-dv"><option value="">সব বিভাগ</option></select></div><div><label class="f">জেলা</label><select class="in" id="dr-ds"><option value="">সব জেলা</option></select></div><div class="dcx-q"><label class="f">পার্টি খুঁজুন</label><input class="in" id="dr-q" type="search" autocomplete="off" placeholder="পার্টির নাম / টাকা / মন্তব্য"></div></div>
-    <div class="dcx-tg"><span class="mut xs">রিপোর্টে দেখাও:</span><label class="keep"><input type="checkbox" id="dr-ca"> ASM কলাম</label><label class="keep"><input type="checkbox" id="dr-cd"> জেলা কলাম</label><label class="keep"><input type="checkbox" id="dr-cs"> Status কলাম</label><label class="keep"><input type="checkbox" id="dr-sub" checked> দিন অনুযায়ী সাবটোটাল</label></div></div>
+   <div class="card tbar noprint dcx-filt fx2">
+    <div class="fx2-r">${dcPeriodBar("dr", F)}<div class="fx2-g"><div class="fx2-q"><input class="in" id="dr-q" type="search" autocomplete="off" aria-label="${bi("পার্টি খুঁজুন", "Search party")}" placeholder="${bi("পার্টি, টাকা, মন্তব্য খুঁজুন…", "Search party, amount…")}"></div></div></div>
+    <div class="fx2-r fx2-sels"><label class="fx-fld"><span class="fx-k">Status</span><select class="in" id="dr-s">${dcStatOpts(F.s)}</select></label><div class="fx2-g"><select class="in" id="dr-asm" aria-label="ASM"><option value="">${bi("সব ASM", "All ASM")}</option></select><select class="in" id="dr-ac" aria-label="Account"><option value="">${bi("সব Account", "All accounts")}</option></select><select class="in" id="dr-dv" aria-label="${bi("বিভাগ", "Division")}"><option value="">${bi("সব বিভাগ", "All divisions")}</option></select><select class="in" id="dr-ds" aria-label="${bi("জেলা", "District")}"><option value="">${bi("সব জেলা", "All districts")}</option></select></div>
+     <span class="fx-sepv"></span><span class="fx-lb">${bi("কলাম", "Columns")}</span><label class="keep"><input type="checkbox" id="dr-ca"> ASM</label><label class="keep"><input type="checkbox" id="dr-cd"> ${bi("জেলা", "District")}</label><label class="keep"><input type="checkbox" id="dr-cs"> Status</label><label class="keep"><input type="checkbox" id="dr-sub" checked> ${bi("দিনের সাবটোটাল", "Daily subtotal")}</label></div></div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="dr-out"></div></div></div>`;
   async function load() {
     const [f, t] = dcRange(F), out = $("#dr-out", v); out.innerHTML = `<div class="skel" style="height:160px"></div>`;
     try { await dpLoad().catch(() => { }); all = await API.dcolRange(f, t); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(dcErr(e))}</div>`; cur = null; return; }
     const asmSel = $("#dr-asm", v), acSel = $("#dr-ac", v), a0 = asmSel.value, c0 = acSel.value;
-    asmSel.innerHTML = `<option value="">সব ASM</option>` + [...new Set(all.map(r => r.asm).filter(Boolean))].sort().map(a => `<option ${a === a0 ? "selected" : ""}>${esc(a)}</option>`).join("");
-    acSel.innerHTML = `<option value="">সব Account</option>` + [...new Set(all.map(r => r.account).filter(Boolean))].sort().map(a => `<option ${a === c0 ? "selected" : ""}>${esc(a)}</option>`).join("");
+    asmSel.innerHTML = `<option value="">${bi("সব ASM", "All ASM")}</option>` + [...new Set(all.map(r => r.asm).filter(Boolean))].sort().map(a => `<option ${a === a0 ? "selected" : ""}>${esc(a)}</option>`).join("");
+    acSel.innerHTML = `<option value="">${bi("সব Account", "All accounts")}</option>` + [...new Set(all.map(r => r.account).filter(Boolean))].sort().map(a => `<option ${a === c0 ? "selected" : ""}>${esc(a)}</option>`).join("");
     F.asm = asmSel.value; F.ac = acSel.value; geoSel(); draw();
   }
   function geoSel() {
     const gm = dpGeoMap(), dvS = $("#dr-dv", v), dsS = $("#dr-ds", v), g = all.map(r => dpGeoOf(gm, r));
-    dvS.innerHTML = `<option value="">সব বিভাগ</option>` + [...new Set(g.map(x => x.division).filter(Boolean))].sort().map(a => `<option ${a === F.dv ? "selected" : ""}>${esc(a)}</option>`).join("");
+    dvS.innerHTML = `<option value="">${bi("সব বিভাগ", "All divisions")}</option>` + [...new Set(g.map(x => x.division).filter(Boolean))].sort().map(a => `<option ${a === F.dv ? "selected" : ""}>${esc(a)}</option>`).join("");
     const ds = [...new Set(g.filter(x => x.district && (!dvS.value || x.division === dvS.value)).map(x => x.district))].sort();
-    dsS.innerHTML = `<option value="">সব জেলা</option>` + ds.map(a => `<option ${a === F.ds ? "selected" : ""}>${esc(a)}</option>`).join("");
+    dsS.innerHTML = `<option value="">${bi("সব জেলা", "All districts")}</option>` + ds.map(a => `<option ${a === F.ds ? "selected" : ""}>${esc(a)}</option>`).join("");
     F.dv = dvS.value; F.ds = dsS.value;
   }
   function draw() {
