@@ -1376,3 +1376,5 @@ html[data-theme="dark"] .lk.blank{color:#fca5a5}html[data-theme="dark"] .lk.lost
   .tw.cards #ct td .au{align-items:flex-start;flex-direction:row;flex-wrap:wrap;gap:2px 8px}
   .tw.cards #ct td .eff{text-align:left}
 }
+/* v6.65: bank transfer lines are memo only (not in Total/Closing) */
+.crow.cbk .cbh label .cbn{display:block;font-size:11.5px;font-weight:500;color:var(--mut,#64748b);margin-top:2px;line-height:1.3}
