@@ -3374,8 +3374,13 @@ async function vDsum(v) {
   const F = { ...pbInit("day"), s: "approved", all: false, lm: "entry" }; let cur = null, all = [];
   const SH = [["led", "Party ledger", "পার্টি লেজার"], ["bank", "Bank", "ব্যাংক"], ["asm", "ASM", "ASM"], ["div", "Division", "বিভাগ"], ["dist", "District", "জেলা"], ["day", "Per day", "দিন অনুযায়ী"]];
   v.innerHTML = head("কালেকশন সামারি", `<button class="btn" id="ds-png">${ico("img")} স্ক্রিনশট</button><button class="btn" id="ds-pdf">${ico("print")} PDF</button>${navigator.share ? `<button class="btn" id="ds-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
-   <div class="card tbar noprint dcx-filt">${dcPeriodBar("ds", F)}<div class="dcx-frow"><div class="dcx-fs"><label class="f">${bi("কোন Status ধরব", "Status to include")}</label><select class="in" id="ds-s">${dcStatOpts(F.s)}</select></div><label class="keep dcx-keep"><input type="checkbox" id="ds-z"> ${bi("০ টাকার Account/ASM-ও দেখাও", "Also show accounts/ASM with 0")}</label><span class="dcx-per mut" id="ds-per"></span></div>
-    <div class="dcx-tg" id="ds-tg"><span class="mut xs"><b>${bi("সামারিতে দেখাও", "Show in Summary")}:</b></span>${SH.map(([k, en, bn]) => `<label class="keep"><input type="checkbox" data-sh="${k}" ${show[k] ? "checked" : ""}> ${bi(bn, en)}</label>`).join("")}<span class="dcx-lm" id="ds-lmw"><label class="f">${bi("লেজার", "Ledger")}</label><select class="in" id="ds-lm"><option value="entry">${bi("এন্ট্রি অনুযায়ী", "Entry-wise")}</option><option value="party">${bi("পার্টি অনুযায়ী মোট", "Party-wise total")}</option></select></span></div></div>
+   <div class="card tbar noprint dcx-filt fx">
+    <div class="fx-row"><div class="fx-h">${ico("cal")}<span>${bi("সময়", "Period")}</span></div><div class="fx-c">${dcPeriodBar("ds", F)}<span class="dcx-per" id="ds-per"></span></div></div>
+    <div class="fx-row"><div class="fx-h">${ico("sliders")}<span>${bi("ফিল্টার", "Filters")}</span></div><div class="fx-c fx-opts">
+     <label class="fx-fld"><span class="fx-k">${bi("Status", "Status")}</span><select class="in" id="ds-s" title="${bi("কোন Status ধরব", "Status to include")}">${dcStatOpts(F.s)}</select></label>
+     <label class="fx-fld dcx-lm" id="ds-lmw"><span class="fx-k">${bi("লেজার", "Ledger")}</span><select class="in" id="ds-lm"><option value="entry">${bi("এন্ট্রি অনুযায়ী", "Entry-wise")}</option><option value="party">${bi("পার্টি অনুযায়ী মোট", "Party-wise total")}</option></select></label>
+     <label class="fx-sw"><input type="checkbox" id="ds-z"><i class="swt"></i><span>${bi("০ টাকার Account/ASM-ও দেখাও", "Also show accounts/ASM with 0")}</span></label></div></div>
+    <div class="fx-row dcx-tg" id="ds-tg"><div class="fx-h">${ico("grid")}<span>${bi("সামারিতে দেখাও", "Show in Summary")}</span><em class="fx-n" id="ds-shn"></em></div><div class="fx-c fx-pills">${SH.map(([k, en, bn]) => `<label class="keep"><input type="checkbox" data-sh="${k}" ${show[k] ? "checked" : ""}> ${bi(bn, en)}</label>`).join("")}<span class="fx-qa"><button type="button" class="fx-lnk" data-shall="1">${bi("সব", "All")}</button><button type="button" class="fx-lnk" data-shall="0">${bi("কোনোটি না", "None")}</button></span></div></div></div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="ds-out"></div></div></div>`;
   const out = $("#ds-out", v);
   async function load() {
@@ -3415,6 +3420,7 @@ async function vDsum(v) {
     const none = !led && !tabs.length && !perDay ? `<div class="dcs-note">${bi("কিছু দেখানোর জন্য বাছা নেই — উপরে \"সামারিতে দেখাও\" থেকে বাছুন।", "Nothing selected — tick items under \"Show in Summary\" above.")}</div>` : "";
     cur = { f, t, rows, tot, banks, asms };
     $("#ds-lmw", v).style.display = show.led ? "" : "none";
+    { const n = $("#ds-shn", v); if (n) n.textContent = SH.filter(([k]) => show[k]).length + "/" + SH.length; }
     out.innerHTML = rows.length || F.all ? `<div class="rep" id="ds-in">${dcHead("Distribution Collection Summary · " + bi("কালেকশন সামারি", "Collection Summary"), f, t, "NABIAD DISTRIBUTION")}
       <div class="rep-kpi" style="grid-template-columns:1.5fr repeat(4,1fr)"><div class="k1"><span>Total ${esc(dcStatLabel(F.s).split(" ")[0])}</span><b>৳ ${money0(tot)}</b></div><div><span>Entries</span><b>${rows.length}</b></div><div><span>Parties</span><b>${new Set(rows.map(r => r.party)).size}</b></div><div class="k3"><span>Accounts</span><b>${banks.filter(b => b.amt).length}</b></div><div class="k3"><span>ASM</span><b>${asms.filter(b => b.amt).length}</b></div></div>
       ${main}${perDay ? `<div class="dcs-one">${perDay}</div>` : ""}${none}
@@ -3425,6 +3431,7 @@ async function vDsum(v) {
   }
   dcBindPeriod(v, "ds", F, load);
   $("#ds-s", v).onchange = e => { F.s = e.target.value; draw(); }; $("#ds-z", v).onchange = e => { F.all = e.target.checked; draw(); }; $("#ds-lm", v).onchange = e => { F.lm = e.target.value; draw(); };
+  $$("[data-shall]", v).forEach(b => b.onclick = () => { const on = b.dataset.shall === "1" ? 1 : 0; SH.forEach(([k]) => { show[k] = on; }); $$("[data-sh]", v).forEach(c => { c.checked = !!on; }); try { localStorage.setItem(SHK, JSON.stringify(show)); } catch (e) { } draw(); });
   $$("[data-sh]", v).forEach(c => c.onchange = () => { show[c.dataset.sh] = c.checked ? 1 : 0; try { localStorage.setItem(SHK, JSON.stringify(show)); } catch (e) { } draw(); });
   const nm = () => `Collection_Summary_${cur ? cur.f + (cur.t !== cur.f ? "_" + cur.t : "") : today()}`;
   $("#ds-png", v).onclick = () => dcPng($("#ds-in", v), nm()); $("#ds-pdf", v).onclick = () => dcPdf($("#ds-in", v), nm());
