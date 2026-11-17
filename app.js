@@ -2425,7 +2425,7 @@ async function vReports(v) {
 
 /* =================== v6: CASH — daily record =================== */
 const CASH = {
-  receipt: [{ g: "Chawkbazar", items: [["cz_cos", "Cosmetics Parties"], ["cz_food", "Food Parties"], ["cz_chem", "Chemicals"], ["cz_oth", "Others"]] }, { g: "", items: [["niramoy", "Niramoy"], ["dist", "Distribution"], ["bank_in", "Total Bank"]] }],
+  receipt: [{ g: "Chawkbazar", items: [["cz_cos", "Cosmetics Parties"], ["cz_food", "Food Parties"], ["cz_chem", "Chemicals"], ["cz_cash", "Cash/Counter Sales"], ["cz_oth", "Others"]] }, { g: "", items: [["niramoy", "Niramoy"], ["dist", "Distribution"], ["suspense", "Suspense"], ["bank_in", "Total Bank"]] }],
   payment: [{ g: "", items: [["bank_out", "Bank"], ["lc", "LC/CC/OD"], ["loans", "Loans/Bills/Etc."], ["supp", "Suppliers"], ["p_oth", "Others"]] }]
 };
 const CASH_KEYS = t => CASH[t].flatMap(g => g.items.map(i => i[0]));
