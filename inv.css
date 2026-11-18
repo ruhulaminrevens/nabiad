@@ -176,7 +176,7 @@
 .iv-ob{display:flex;gap:5px;justify-content:flex-end} .iv-ob .btn.sm{min-width:32px;padding:0 8px;font-weight:700}
 .iv-nl{display:inline-grid;place-items:center;width:15px;height:15px;border-radius:50%;background:var(--am-soft);color:var(--am);font-size:10px;font-style:normal;font-weight:800;cursor:help}
 .iv-chk.sm{font-size:12.5px}
-.iv-due{color:var(--rd)!important} .iv-paid{color:var(--gr)!important}
+.iv-due{color:var(--rd)!important} .iv-paid{color:var(--gr)!important} .iv-adv{color:#4f46e5!important}
 /* RM quick entry */
 .card.iv-rmq{padding:14px 16px;margin-bottom:12px}
 .iv-rq{display:grid;grid-template-columns:160px repeat(2,minmax(0,1fr)) minmax(140px,1fr) auto;gap:12px;align-items:end;margin-top:8px}

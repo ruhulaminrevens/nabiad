@@ -919,3 +919,79 @@ drop policy if exists inv_orders_u on public.inv_orders;
 create policy inv_orders_u on public.inv_orders for update to authenticated
   using (my_role() = 'admin' or (my_role() = 'staff' and status <> 'cancel'))
   with check (my_role() in ('admin','staff'));
+
+-- ======== v6.75 — Order vs Delivery: opening balance (01-01-2026) and Tally sales register ========
+-- Safe to re-run. Balance = opening + sales (Tally register up to its last date, then app deliveries after that date) - approved collections since the opening date.
+create table if not exists public.dist_opening (
+  id serial primary key,
+  party_name text not null unique,
+  party_id uuid references public.dist_parties(id) on delete set null,
+  opening numeric(14,2) not null default 0,
+  note text not null default '',            -- '', 'INACTIVE' or 'NEW' as in the source sheet
+  as_of date not null default '2026-01-01'
+);
+create table if not exists public.dist_sales_reg (
+  id bigserial primary key,
+  sale_date date not null,
+  party_name text not null,
+  party_id uuid references public.dist_parties(id) on delete set null,
+  voucher_no text not null default '',
+  amount numeric(14,2) not null
+);
+create index if not exists dist_opening_party on public.dist_opening(party_id);
+create index if not exists dist_sales_reg_party on public.dist_sales_reg(party_id);
+create index if not exists dist_sales_reg_date on public.dist_sales_reg(sale_date);
+alter table public.dist_opening enable row level security;
+alter table public.dist_sales_reg enable row level security;
+drop policy if exists dist_opening_r on public.dist_opening;
+drop policy if exists dist_opening_w on public.dist_opening;
+drop policy if exists dist_sales_reg_r on public.dist_sales_reg;
+drop policy if exists dist_sales_reg_w on public.dist_sales_reg;
+create policy dist_opening_r on public.dist_opening for select to authenticated using (my_role() is not null);
+create policy dist_opening_w on public.dist_opening for all to authenticated using (my_role() = 'admin') with check (my_role() = 'admin');
+create policy dist_sales_reg_r on public.dist_sales_reg for select to authenticated using (my_role() is not null);
+create policy dist_sales_reg_w on public.dist_sales_reg for all to authenticated using (my_role() = 'admin') with check (my_role() = 'admin');
+revoke all on public.dist_opening, public.dist_sales_reg from anon;
+grant usage, select on sequence public.dist_opening_id_seq, public.dist_sales_reg_id_seq to authenticated;
+
+create or replace function public.make_backup(k text default 'auto') returns bigint
+language plpgsql security definer set search_path = public as $$
+declare d jsonb; n int; bid bigint;
+begin
+  if auth.uid() is not null and coalesce(my_role(), '') <> 'admin' then raise exception 'not allowed'; end if;
+  d := jsonb_build_object(
+    'taken_at', now(),
+    'accounts',         (select coalesce(jsonb_agg(t), '[]') from accounts t),
+    'cheques',          (select coalesce(jsonb_agg(t), '[]') from cheques t),
+    'cheque_status',    (select coalesce(jsonb_agg(t), '[]') from cheque_status t),
+    'balances',         (select coalesce(jsonb_agg(t), '[]') from balances t),
+    'books',            (select coalesce(jsonb_agg(t), '[]') from books t),
+    'profiles',         (select coalesce(jsonb_agg(t), '[]') from profiles t),
+    'reminders',        (select coalesce(jsonb_agg(t), '[]') from reminders t),
+    'cash_records',     (select coalesce(jsonb_agg(t), '[]') from cash_records t),
+    'balance_drafts',   (select coalesce(jsonb_agg(t), '[]') from balance_drafts t),
+    'dist_parties',     (select coalesce(jsonb_agg(t), '[]') from dist_parties t),
+    'dist_collections', (select coalesce(jsonb_agg(t), '[]') from dist_collections t),
+    'leaf_marks',       (select coalesce(jsonb_agg(t), '[]') from leaf_marks t),
+    'inv_items',        (select coalesce(jsonb_agg(t), '[]') from inv_items t),
+    'inv_orders',       (select coalesce(jsonb_agg(t), '[]') from inv_orders t),
+    'inv_demand',       (select coalesce(jsonb_agg(t), '[]') from inv_demand t),
+    'rm_products',      (select coalesce(jsonb_agg(t), '[]') from rm_products t),
+    'rm_daily',         (select coalesce(jsonb_agg(t), '[]') from rm_daily t),
+    'rm_ledger',        (select coalesce(jsonb_agg(t), '[]') from rm_ledger t),
+    'inv_locks',        (select coalesce(jsonb_agg(t), '[]') from inv_locks t),
+    'dist_opening',     (select coalesce(jsonb_agg(t), '[]') from dist_opening t),
+    'dist_sales_reg',   (select coalesce(jsonb_agg(t), '[]') from dist_sales_reg t));
+  n := (select count(*) from accounts) + (select count(*) from cheques) + (select count(*) from cheque_status)
+     + (select count(*) from balances) + (select count(*) from books) + (select count(*) from reminders) + (select count(*) from cash_records)
+     + (select count(*) from dist_parties) + (select count(*) from dist_collections) + (select count(*) from leaf_marks)
+     + (select count(*) from inv_items) + (select count(*) from inv_orders) + (select count(*) from inv_demand)
+     + (select count(*) from rm_products) + (select count(*) from rm_daily) + (select count(*) from rm_ledger)
+     + (select count(*) from dist_opening) + (select count(*) from dist_sales_reg);
+  insert into backups(kind, size_rows, data) values (k, n, d) returning id into bid;
+  delete from backups where kind = 'auto' and at < now() - interval '14 days';
+  delete from backups where kind = 'manual' and id not in (select id from backups where kind = 'manual' order by at desc limit 10);
+  return bid;
+end $$;
+revoke all on function public.make_backup(text) from public, anon;
+grant execute on function public.make_backup(text) to authenticated;
