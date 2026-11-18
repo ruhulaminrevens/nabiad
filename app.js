@@ -573,27 +573,29 @@ const activeAccounts = () => S.accounts.filter(a => a.status === "Active");
 const sumAmt = a => a.reduce((s, c) => s + c.amount, 0);
 
 /* ---------- searchable combobox ---------- */
-function suggest(input, getItems, onPick) {
+function suggest(input, getItems, onPick, opts = {}) {
   const wrap = input.parentElement; wrap.classList.add("suggest");
   const list = document.createElement("div"); list.className = "sg-list hide"; wrap.appendChild(list);
-  let items = [], idx = 0, picked = null;
+  let items = [], idx = 0, picked = null, moved = false;
+  const fmt = it => opts.free ? it.value : `${it.value} (${it.label})`;
   const render = () => {
     const q = norm(input.value);
-    const rank = it => { const v = norm(it.value); if (!q) return 0; if (v === q) return 0; if (v.startsWith(q)) return 1; if (v.includes(q)) return 2; return 3; };
-    items = getItems().filter(it => !q || [it.value, it.label, it.sub].some(f => norm(f).includes(q)))
-      .map(it => ({ it, r: rank(it) })).sort((a, b) => a.r - b.r).slice(0, 40).map(x => x.it);
-    idx = 0; list.innerHTML = items.map((it, i) => `<div data-i="${i}" class="${i === 0 ? "on" : ""}">${it.html || `<span><b>${esc(it.value)}</b> ${esc(it.label)}</span>`}<small>${esc(it.sub || "")}</small></div>`).join("") || `<div class="mut">কিছু পাওয়া যায়নি</div>`;
+    const rank = it => { if (it.last) return 9; const v = norm(it.value); if (!q) return 0; if (v === q) return 0; if (v.startsWith(q)) return 1; if (v.includes(q)) return 2; return 3; };
+    items = getItems().filter(it => !q || it.last || [it.value, it.label, it.sub].some(f => norm(f).includes(q)))
+      .map(it => ({ it, r: rank(it) })).sort((a, b) => a.r - b.r).slice(0, opts.max || 40).map(x => x.it);
+    idx = 0; moved = false; list.innerHTML = items.map((it, i) => `<div data-i="${i}" class="${i === 0 ? "on" : ""}">${it.html || `<span><b>${esc(it.value)}</b> ${esc(it.label)}</span>`}<small>${esc(it.sub || "")}</small></div>`).join("") || `<div class="mut">কিছু পাওয়া যায়নি</div>`;
     list.classList.toggle("hide", !items.length && !input.value);
   };
-  const pick = it => { picked = it; input.value = `${it.value} (${it.label})`; list.classList.add("hide"); onPick && onPick(it); };
+  const pick = it => { picked = it; input.value = fmt(it); list.classList.add("hide"); onPick && onPick(it); };
   input.addEventListener("input", () => { picked = null; onPick && onPick(null); render(); });
   input.addEventListener("focus", () => { input.select(); render(); });
   input.addEventListener("keydown", e => {
     if (list.classList.contains("hide") && ["ArrowDown", "ArrowUp"].includes(e.key)) render();
-    if (e.key === "ArrowDown") { idx = Math.min(idx + 1, items.length - 1); e.preventDefault(); } else if (e.key === "ArrowUp") { idx = Math.max(idx - 1, 0); e.preventDefault(); }
+    if (e.key === "ArrowDown") { idx = Math.min(idx + 1, items.length - 1); moved = true; e.preventDefault(); } else if (e.key === "ArrowUp") { idx = Math.max(idx - 1, 0); moved = true; e.preventDefault(); }
     else if (e.key === "Enter" || e.key === "Tab") {
-      const exact = items.find(it => norm(it.value) === norm(input.value));
-      if (!picked && (exact || items.length) && !list.classList.contains("hide")) { pick(exact || items[idx]); if (e.key === "Enter") { e.preventDefault(); input.dispatchEvent(new CustomEvent("picked")); } }
+      const exact = items.find(it => !it.last && norm(it.value) === norm(input.value)), sel = items[idx];
+      const cand = opts.free && !input.value.trim() ? null : (exact || (sel && (!sel.last || moved) ? sel : null));
+      if (!picked && cand && !list.classList.contains("hide")) { pick(cand); if (e.key === "Enter") { e.preventDefault(); input.dispatchEvent(new CustomEvent("picked")); } }
       else if (picked && e.key === "Enter") { e.preventDefault(); input.dispatchEvent(new CustomEvent("picked")); }
       return;
     } else if (e.key === "Escape") { list.classList.add("hide"); return; } else return;
@@ -602,7 +604,7 @@ function suggest(input, getItems, onPick) {
   list.addEventListener("mousedown", e => { const d = e.target.closest("[data-i]"); if (d) { e.preventDefault(); pick(items[+d.dataset.i]); input.dispatchEvent(new CustomEvent("picked")); } });
   let bt = 0; input.addEventListener("blur", () => { clearTimeout(bt); bt = setTimeout(() => list.classList.add("hide"), 120); });
   input.addEventListener("focus", () => clearTimeout(bt));
-  return { get: () => picked, set: it => { if (it) pick(it); else { picked = null; input.value = ""; } }, setSilent: it => { picked = it; input.value = it ? `${it.value} (${it.label})` : ""; } };
+  return { get: () => picked, set: it => { if (it) pick(it); else { picked = null; input.value = ""; } }, setSilent: it => { picked = it; input.value = it ? fmt(it) : ""; } };
 }
 const acItems = (all = false) => (all ? S.accounts : activeAccounts()).map(a => ({ value: a.code, label: a.holder || "", sub: a.bank || "" }));
 
@@ -2466,7 +2468,7 @@ const cashAccSum = (src, k) => { const m = {}; (src?.items?.[k]?.accs || []).for
 
 async function vCash(v) {
   const t = today(); let date = sessionStorage.getItem("nabiad_cash_date") || (S.lastCash && S.lastCash < t ? stepDay(S.lastCash, 1) : t); sessionStorage.removeItem("nabiad_cash_date"); if (date > t) date = t;
-  v.innerHTML = head(ROUTES[CUR].t, `<a class="btn" href="#/cash">${ico("book")} ${bi("ক্যাশ খাতা", "Cash Book")}</a><a class="btn" href="#/cashsum">${ico("chart")} ${bi("সামারি", "Summary")}</a>`, "tc") + `<div class="card tbar navcard">${dateNav("cs", date)}<div id="cs-msg" style="margin-top:10px"></div></div><div id="cs-body"><div class="card empty">লোড হচ্ছে…</div></div>`;
+  v.innerHTML = head(ROUTES[CUR].t, `<a class="btn" href="#/cash" title="${bi("ক্যাশ খাতা", "Cash Book")}">${ico("book")}<span class="lb">${bi("ক্যাশ খাতা", "Cash Book")}</span></a><a class="btn" href="#/cashsum" title="${bi("সামারি", "Summary")}">${ico("chart")}<span class="lb">${bi("সামারি", "Summary")}</span></a>`, "tc") + `<div class="card tbar navcard">${dateNav("cs", date)}<div id="cs-msg" style="margin-top:10px"></div></div><div id="cs-body"><div class="card empty">লোড হচ্ছে…</div></div>`;
   const body = $("#cs-body", v); let autoT = null;
   async function draw() {
     date = $("#cs-d", v).value; if (!date) return; body.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
@@ -2673,18 +2675,24 @@ async function vRegister(v) {
   let lines = [], shown = [];
   async function load() {
     const [f, t] = cashPeriod(F); $("#rg-out", v).innerHTML = `<div class="empty">লোড হচ্ছে…</div>`;
-    try { const rows = await API.cashRange(f, t); lines = rows.flatMap(r => Object.entries(r.items || {}).filter(([, it]) => it.a).map(([k, it]) => ({ date: r.date, k, type: cashType(k), a: +it.a, n: it.n || "", x: it.x || "", st: r.status, by: r.entered_by }))).sort((a, b) => b.date.localeCompare(a.date)); }
+    try {
+      const [rows, books] = await Promise.all([API.cashRange(f, t), API.cbRange(f, t).catch(() => [])]), bd = new Map(books.map(b => [b.date, b]));
+      const fromChk = rows.filter(r => !bd.has(r.date)).flatMap(r => Object.entries(r.items || {}).filter(([, it]) => it.a).map(([k, it]) => ({ date: r.date, k, type: cashType(k), a: +it.a, led: "", n: it.n || "", x: it.x || "", st: r.status, by: r.entered_by })));
+      /* a day that has a Cash Book is listed line by line with the real ledger name; older days (no book) keep their category rows */
+      const fromBook = books.flatMap(b => ["r", "p"].flatMap(tt => (b.lines?.[tt] || []).filter(l => +l.a).map(l => { const k = l.k && CASH_KEYS(tt === "r" ? "receipt" : "payment").includes(l.k) ? l.k : tt === "r" ? "cz_oth" : "p_oth"; return { date: b.date, k, type: tt === "r" ? "receipt" : "payment", a: +l.a, led: l.n || "", n: l.c ? "A/C " + l.c : "", x: l.x || "", st: b.status === "final" ? "final" : "draft", by: b.entered_by, book: 1 }; })));
+      lines = [...fromChk, ...fromBook].sort((a, b) => b.date.localeCompare(a.date));
+    }
     catch (e) { $("#rg-out", v).innerHTML = `<div class="alert rd" style="margin:12px">${esc(cashErr(e))}</div>`; return; }
     draw();
   }
   function draw() {
-    const q = norm(F.q); shown = lines.filter(l => (!F.type || l.type === F.type) && (!F.k || l.k === F.k) && (!q || norm(cashLabel(l.k) + l.n + l.a + l.x).includes(q)));
+    const q = norm(F.q); shown = lines.filter(l => (!F.type || l.type === F.type) && (!F.k || l.k === F.k) && (!q || norm(l.led + cashLabel(l.k) + l.n + l.a + l.x).includes(q)));
     const R = shown.filter(l => l.type === "receipt").reduce((s, l) => s + l.a, 0), P = shown.filter(l => l.type === "payment").reduce((s, l) => s + l.a, 0);
     $("#rg-sum", v).innerHTML = `<b>${shown.length}</b>টি লাইন · <span class="gr">Receipt ৳ ${money0(R)}</span> · <span class="rd">Payment ৳ ${money0(P)}</span>`;
-    $("#rg-out", v).innerHTML = shown.length ? `<div class="tw cards"><table><thead><tr><th>তারিখ</th><th>ধরন</th><th>খাত</th><th class="r">টাকা</th><th>নোট</th><th>অবস্থা</th></tr></thead><tbody>${shown.slice(0, 1000).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td><td>${esc(cashLabel(l.k))}</td><td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money0(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td><td class="sm">${esc(l.n)}</td><td class="mut sm">${l.st === "final" ? "ফাইনাল" : "ড্রাফট"} · ${esc(l.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">কিছু পাওয়া যায়নি</div>`;
+    $("#rg-out", v).innerHTML = shown.length ? `<div class="tw cards"><table><thead><tr><th>তারিখ</th><th>ধরন</th><th>${bi("লেজার", "Ledger")}</th><th>খাত</th><th class="r">টাকা</th><th>নোট</th><th>অবস্থা</th></tr></thead><tbody>${shown.slice(0, 1500).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td><td>${l.led ? `<b>${esc(l.led)}</b>` : `<span class="mut">—</span>`}</td><td>${esc(cashLabel(l.k))}</td><td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money0(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td><td class="sm">${esc(l.n)}</td><td class="mut sm">${l.book ? bi("খাতা", "Book") + " · " : ""}${l.st === "final" ? "ফাইনাল" : "ড্রাফট"} · ${esc(l.by || "")}</td></tr>`).join("")}</tbody></table></div>${shown.length > 1500 ? `<div class="mut sm" style="padding:8px">${bi("প্রথম ১৫০০ লাইন দেখানো হচ্ছে — সময় ছোট করুন", "First 1500 lines shown — narrow the period")}</div>` : ""}` : `<div class="empty">কিছু পাওয়া যায়নি</div>`;
   }
   pbBind(v, "rg", F, load); $("#rg-q", v).oninput = e => { F.q = e.target.value; draw(); }; $("#rg-t", v).onchange = e => { F.type = e.target.value; draw(); }; $("#rg-k", v).onchange = e => { F.k = e.target.value; draw(); };
-  $("#rg-x", v).onclick = () => shown.length ? exportXlsx({ Register: [["Date", "Type", "Category", "Amount", "Expression", "Note", "Status", "By"], ...shown.map(l => [dmy(l.date), l.type, cashLabel(l.k), l.a, l.x, l.n, l.st, l.by || ""])] }, `Cash_Register_${today()}.xlsx`) : toast("ডাটা নেই", "err");
+  $("#rg-x", v).onclick = () => shown.length ? exportXlsx({ Register: [["Date", "Type", "Ledger", "Category", "Amount", "Expression", "Note", "Status", "By"], ...shown.map(l => [dmy(l.date), l.type, l.led || "", cashLabel(l.k), l.a, l.x, l.n, l.st, l.by || ""])] }, `Cash_Register_${today()}.xlsx`) : toast("ডাটা নেই", "err");
   await load();
 }
 

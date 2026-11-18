@@ -93,7 +93,7 @@ kbd{font:11px/1 var(--font);padding:3px 6px;border:1px solid var(--line);border-
 .top .acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .mnav{display:none}
 .hero{position:relative;overflow:hidden;border-radius:18px;padding:22px 24px;color:#fff;background:var(--grad);box-shadow:0 14px 36px rgba(79,70,229,.3);margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;animation:rise .45s var(--ease)}
-.hero::before,.hero::after{content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.12)}
+.hero::before,.hero::after{content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.12);pointer-events:none}
 .hero::before{width:260px;height:260px;right:-60px;top:-120px} .hero::after{width:180px;height:180px;right:160px;bottom:-110px;background:rgba(255,255,255,.08)}
 .hero>*{position:relative}
 .hero h1{margin:0;font-size:23px;font-weight:700} .hero p{margin:3px 0 0;opacity:.88;font-size:13.5px}

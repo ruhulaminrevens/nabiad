@@ -27,6 +27,46 @@ async function cbLearn(force) {
   } catch { }
   return CBL = L;
 }
+/* ---------- ledger master (v6.77): the Tally ledger names offered in the Cash Book dropdown ---------- */
+Object.assign(SbAPI, {
+  async cbLedgers() { const { data, error } = await sb.from("cashbook_ledgers").select("*").order("name").limit(3000); if (error) throw error; return data; },
+  async cbLedgerSave(r) {
+    const row = { name: r.name, kind: r.kind || "both", cat_r: r.cat_r || null, cat_p: r.cat_p || null, bank_code: r.bank_code || null, active: r.active !== false, updated_at: new Date().toISOString() };
+    if (r.id) { const { data, error } = await sb.from("cashbook_ledgers").update(row).eq("id", r.id).select().single(); if (error) throw error; return data; }
+    const { data, error } = await sb.from("cashbook_ledgers").insert({ ...row, created_by: S.me.name }).select().single(); if (error) throw error; return data;
+  },
+  async cbLedgerDel(id) { const { error } = await sb.from("cashbook_ledgers").delete().eq("id", id); if (error) throw error; }
+});
+Object.assign(DemoAPI, {
+  _cbl() { return demoStore.cbl ||= [["Demo Cosmetics Store", "r", "cz_cos", null], ["Demo Food Store", "r", "cz_food", null], ["Niramoy Traders", "both", "niramoy", "supp"], ["Demo Supplier Ltd", "p", null, "supp"], ["Office Expenses", "p", null, "p_oth"], ["Demo Bank Main", "both", "bank_in", "bank_out"]].map(([name, kind, cat_r, cat_p], i) => ({ id: i + 1, name, kind, cat_r, cat_p, bank_code: null, active: true })); },
+  async cbLedgers() { return this._cbl().map(x => ({ ...x })); },
+  async cbLedgerSave(r) {
+    const L = this._cbl(), dup = L.find(x => x.id !== r.id && x.name.toLowerCase() === String(r.name).toLowerCase()); if (dup) throw new Error('duplicate key value violates unique constraint "cashbook_ledgers_name_u"');
+    const row = { name: r.name, kind: r.kind || "both", cat_r: r.cat_r || null, cat_p: r.cat_p || null, bank_code: r.bank_code || null, active: r.active !== false };
+    if (r.id) { const i = L.findIndex(x => x.id === r.id); L[i] = { ...L[i], ...row }; this.save(); return { ...L[i] }; }
+    const n = { id: Math.max(0, ...L.map(x => x.id)) + 1, ...row }; L.push(n); this.save(); return { ...n };
+  },
+  async cbLedgerDel(id) { const L = this._cbl(), i = L.findIndex(x => x.id === id); if (i >= 0) L.splice(i, 1); this.save(); }
+});
+let CBLED = null;
+async function cbLedLoad(force) {
+  if (CBLED && !force && Date.now() - CBLED.t < 300000) return CBLED;
+  const L = { list: [], byNorm: new Map(), t: Date.now(), err: null };
+  try { L.list = await API.cbLedgers(); } catch (e) { L.err = e; }
+  L.list.forEach(m => L.byNorm.set(cbNorm(m.name), m));
+  return CBLED = L;
+}
+const cbLedCat = (m, t) => t === "r" ? m.cat_r : m.cat_p;
+/* dropdown items for one side: this side's ledgers first, then the rest, then names typed on earlier days that are not in the list */
+function cbLedItems(t) {
+  const used = CBL?.nm?.[t], seen = new Set(), out = [], other = t === "r" ? "p" : "r";
+  (CBLED?.list || []).filter(m => m.active !== false).forEach(m => {
+    const nn = cbNorm(m.name), side = m.kind === "both" || m.kind === t, k = cbLedCat(m, t); seen.add(nn);
+    out.push({ value: m.name, label: "", sub: "", c: (used?.get(nn)?.c || 0) + (side ? 1e6 : 0), html: `<span class="sgn"><b>${esc(m.name)}</b>${k ? `<em>${esc(cbCatName(k))}${CB_BANK.includes(k) && m.bank_code ? " · " + esc(m.bank_code) : ""}</em>` : ""}</span>` });
+  });
+  used?.forEach((x, nn) => { if (!seen.has(nn)) out.push({ value: x.n, label: "", sub: "", c: x.c + 5e5, html: `<span class="sgn"><b>${esc(x.n)}</b><em>${bi("আগের এন্ট্রি থেকে", "from earlier entries")}</em></span>` }); });
+  return out.sort((a, b) => b.c - a.c || a.value.localeCompare(b.value));
+}
 function cbBank(name) {
   const m = String(name || "").match(/([A-Za-z]{2,6})\s*[-–. ]?\s*(\d{1,6})/); if (!m) return null;
   const pre = m[1].toUpperCase(), dg = m[2], pa = c => { const x = String(c || "").toUpperCase().match(/^([A-Z]{2,6})[-\s]?(\d+)\s*$/); return x ? { p: x[1], d: x[2] } : null; };
@@ -37,6 +77,8 @@ function cbBank(name) {
 function cbGuess(name, t) {
   const n = cbNorm(name); if (!n) return null;
   const L = CBL?.[t]?.get(n); if (L) return L;
+  const M = CBLED?.byNorm.get(n), mk = M && cbLedCat(M, t);
+  if (mk && CB_CAT[t].includes(mk)) return { k: mk, ...(CB_BANK.includes(mk) ? { c: M.bank_code || cbBank(name) || undefined } : {}) };
   const b = cbBank(name); if (b) return { k: t === "r" ? "bank_in" : "bank_out", c: b };
   for (const [re, k] of CB_KW[t]) if (re.test(name)) return { k };
   return null;
@@ -98,7 +140,7 @@ function cbChecksHtml(L) {
 async function vCashBook(v) {
   const t0 = today(), last = [S.lastBook, S.lastCash].filter(Boolean).sort().pop();
   let date = sessionStorage.getItem("nabiad_cash_date") || (last && last < t0 ? stepDay(last, 1) : t0); sessionStorage.removeItem("nabiad_cash_date"); if (date > t0) date = t0;
-  v.innerHTML = head(ROUTES[CUR].t, `<a class="btn" href="#/cashchk">${ico("check")} ${bi("ক্যাশ চেকার", "Cash Checker")}</a><a class="btn" href="#/cashsum">${ico("chart")} ${bi("সামারি", "Summary")}</a>`, "tc") + `<div class="card tbar navcard">${dateNav("cb", date)}<div id="cb-msg" style="margin-top:10px"></div></div><div id="cb-body"><div class="card empty">${bi("লোড হচ্ছে…", "Loading…")}</div></div>`;
+  v.innerHTML = head(ROUTES[CUR].t, `<button type="button" class="btn" id="cb-led" title="${bi("লেজার তালিকা", "Ledger list")}">${ico("list")}<span class="lb">${bi("লেজার", "Ledgers")}</span></button><a class="btn" href="#/cashchk" title="${bi("ক্যাশ চেকার", "Cash Checker")}">${ico("check")}<span class="lb">${bi("ক্যাশ চেকার", "Cash Checker")}</span></a><a class="btn" href="#/cashsum" title="${bi("সামারি", "Summary")}">${ico("chart")}<span class="lb">${bi("সামারি", "Summary")}</span></a>`, "tc") + `<div class="card tbar navcard">${dateNav("cb", date)}<div id="cb-msg" style="margin-top:10px"></div></div><div id="cb-body"><div class="card empty">${bi("লোড হচ্ছে…", "Loading…")}</div></div>`;
   const body = $("#cb-body", v); let autoT = null;
   async function draw() {
     date = $("#cb-d", v).value; if (!date) return; body.innerHTML = `<div class="card empty">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
@@ -106,7 +148,7 @@ async function vCashBook(v) {
     try { [ex, pB, pC] = await Promise.all([API.cbOn(date), API.cbPrev(date), API.cashPrev(date).catch(() => null)]); } catch (e) {
       body.innerHTML = `<div class="alert rd">${/relation|does not exist|schema cache|not find/i.test(e.message || "") ? bi("ক্যাশ খাতার টেবিল নেই — Supabase-এ schema_v6.sql-এর v6.76 অংশ চালাতে হবে", "Cash Book table is missing — run the v6.76 part of schema_v6.sql in Supabase") : isNetErr(e) ? bi("ইন্টারনেট নেই — ক্যাশ খাতার জন্য অনলাইন থাকতে হবে", "Offline — the Cash Book needs an internet connection") : esc(e.message)}</div>`; return;
     }
-    const learn = await cbLearn();
+    const [learn] = await Promise.all([cbLearn(), cbLedLoad()]);
     const final = ex?.status === "final", admin = S.me.role === "admin", locked = (final && !admin) || S.me.role === "boss";
     let local = null; try { local = JSON.parse(localStorage.getItem(CB_DRAFT(date)) || "null"); } catch { }
     let src = ex, fromLocal = false;
@@ -123,14 +165,14 @@ async function vCashBook(v) {
     if (po != null && !final) msgs.push(`<div class="mut sm">🔗 ${bi("Opening নিজে এসেছে", "Opening is automatic")}: <b>${dmy(pdate)}</b> ${psrc === "book" ? bi("-এর ক্যাশ খাতার হাতে ক্যাশ থেকে", "cash in hand of the Cash Book") : bi("-এর ক্যাশ চেকার রেকর্ড থেকে", "cash in hand of the Cash Checker record")}${workGap(pdate, date) ? ` · <b class="am">${bi(`মাঝে ${workGap(pdate, date)} কর্মদিবসের রেকর্ড নেই`, `${workGap(pdate, date)} working day(s) without a record in between`)}</b>` : ""}</div>`);
     if (po == null && !final) msgs.push(`<div class="mut sm">${admin ? bi("এটা প্রথম রেকর্ড — শুরুর Cash in Hand একবারই লিখুন। এরপর প্রতিদিন নিজে আসবে।", "This is the first record — enter the starting Cash in Hand once. After that it carries over automatically.") : bi("শুরুর Opening এখনো বসানো হয়নি — Admin কে বসাতে বলুন।", "The starting Opening has not been set yet — ask the Admin to set it.")}</div>`);
     if (pend) msgs.push(`<div class="alert am">⚠ <b>${dmy(pend.date)}</b> ${bi("-এর ক্যাশ খাতা এখনো ড্রাফট — ফাইনাল না করলে তার হাতে ক্যাশ এখানে Opening-এ আসবে না।", "Cash Book is still a draft — until it is finalised its cash will not carry into this Opening.")} <button class="btn sm" id="cb-pd" style="margin-left:auto">${bi("খুলুন", "Open")}</button></div>`);
-    if (!locked) msgs.push(`<div class="mut xs">💡 ${bi("নাম লিখলে খাত নিজে বসবে (আগের দিনের অভ্যাস থেকে)। একই লাইনে কয়েকটা অঙ্ক হলে + দিয়ে লিখুন, যেমন 5000+12000।", "Type a name and the category is filled in from earlier days. Several amounts on one line: use +, e.g. 5000+12000.")}</div>`);
+    if (!locked) msgs.push(`<div class="mut xs">💡 ${bi("লেজার বাছলে খাত নিজে বসবে। Enter = পরের ঘর · খালি লাইনে Enter = পরের অংশ। একই লাইনে কয়েকটা অঙ্ক হলে + দিয়ে লিখুন, যেমন 5000+12000।", "Pick a ledger and its category fills in by itself. Enter = next box · Enter on an empty line = next section. Several amounts on one line: use +, e.g. 5000+12000.")}</div>`);
     $("#cb-msg", v).innerHTML = msgs.join("");
     $("#cb-dd", v) && ($("#cb-dd", v).onclick = async () => { if (!ask(bi("এই তারিখের ড্রাফট মুছবেন?", "Discard this date's draft?"))) return; localStorage.removeItem(CB_DRAFT(date)); if (ex && !final) { try { await API.cbSave({ date, opening_cash: oc, lines: { r: [], p: [] }, total_receipt: 0, total_payment: 0, cash_in_hand: null, remarks: null, status: "draft" }); } catch { } } draw(); });
     const dis = locked ? "disabled" : "", lines = src?.lines || { r: [], p: [] };
     const acOpts = `<option value="">${bi("A/C বাছুন", "Select A/C")}</option>` + (S.accounts || []).map(a => `<option value="${esc(a.code)}">${esc(a.code)} · ${esc(a.holder || "")}</option>`).join("");
     const catOpts = t => `<option value="">${bi("? খাত বাছুন", "? choose category")}</option>` + CB_CAT[t].map(k => `<option value="${k}">${esc(cbCatName(k))}</option>`).join("");
-    const rowHtml = (t, i, l = {}) => `<div class="cbr" data-t="${t}" data-auto="${l.k ? "0" : "1"}"><span class="cbi">${i + 1}</span><input class="cell cbname" list="cb-nm-${t}" autocomplete="off" placeholder="${t === "r" ? bi("কার কাছ থেকে / কী", "From whom / what") : bi("কাকে / কী খরচ", "To whom / what for")}" value="${esc(l.n || "")}" ${dis}><div class="cbav"><input class="cell cbamt2" inputmode="decimal" placeholder="0" value="${esc(l.x ?? (l.a ? fmtIn(l.a) : ""))}" ${dis}><span class="cbval num"></span></div><select class="in cbcat" ${dis}>${catOpts(t).replace(`value="${l.k || "-"}"`, `value="${l.k}" selected`)}</select>${locked ? "" : `<button type="button" class="cbx2" title="${bi("মুছুন", "Remove")}">×</button>`}<select class="in cbac" ${dis} ${CB_BANK.includes(l.k) ? "" : "hidden"}>${acOpts.replace(`value="${l.c || "-"}"`, `value="${l.c}" selected`)}</select></div>`;
-    const side = (t, title, cls) => { const ls = lines[t] || [], n = Math.max(8, ls.length + 3); return `<div class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num" id="cb-T${t}">0</b></div><div class="cbh"><span>#</span><span>${bi("বিবরণ", "Particulars")}</span><span>${bi("টাকা", "Amount")}</span><span>${bi("খাত", "Category")}</span></div><div class="cbrows" data-t="${t}">${Array.from({ length: n }, (_, i) => rowHtml(t, i, ls[i])).join("")}</div>${locked ? "" : `<button type="button" class="btn sm cbadd" data-t="${t}">+ ${bi("লাইন", "Line")}</button>`}<datalist id="cb-nm-${t}">${[...learn.nm[t].values()].sort((a, b) => b.c - a.c).slice(0, 300).map(x => `<option value="${esc(x.n)}">`).join("")}</datalist></div>`; };
+    const rowHtml = (t, i, l = {}) => `<div class="cbr" data-t="${t}" data-auto="${l.k ? "0" : "1"}"><span class="cbi">${i + 1}</span><div class="cbnm"><input class="cell cbname" autocomplete="off" placeholder="${t === "r" ? bi("কার কাছ থেকে / কী", "From whom / what") : bi("কাকে / কী খরচ", "To whom / what for")}" value="${esc(l.n || "")}" ${dis}></div><div class="cbav"><input class="cell cbamt2" inputmode="decimal" placeholder="0" value="${esc(l.x ?? (l.a ? fmtIn(l.a) : ""))}" ${dis}><span class="cbval num"></span></div><select class="in cbcat" ${dis}>${catOpts(t).replace(`value="${l.k || "-"}"`, `value="${l.k}" selected`)}</select>${locked ? "" : `<button type="button" class="cbx2" title="${bi("মুছুন", "Remove")}">×</button>`}<select class="in cbac" ${dis} ${CB_BANK.includes(l.k) ? "" : "hidden"}>${acOpts.replace(`value="${l.c || "-"}"`, `value="${l.c}" selected`)}</select></div>`;
+    const side = (t, title, cls) => { const ls = lines[t] || [], n = Math.max(8, ls.length + 3); return `<div class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num" id="cb-T${t}">0</b></div><div class="cbh"><span>#</span><span>${bi("বিবরণ", "Particulars")}</span><span>${bi("টাকা", "Amount")}</span><span>${bi("খাত", "Category")}</span></div><div class="cbrows" data-t="${t}">${Array.from({ length: n }, (_, i) => rowHtml(t, i, ls[i])).join("")}</div>${locked ? "" : `<button type="button" class="btn sm cbadd" data-t="${t}">+ ${bi("লাইন", "Line")}</button>`}</div>`; };
     body.innerHTML = `<div class="card csec c-open"><div class="csh"><h3>Cash in Hand <span class="mut sm">(${bi("শুরুর নগদ — Opening", "opening cash")})</span></h3>${po != null && !locked && admin ? `<button type="button" class="btn sm" id="cb-ounlock" style="margin-left:auto;margin-right:10px">✎ ${bi("বদলান", "Edit")}</button>` : ""}<input class="cell cbopen" id="cb-oc" value="${fmtIn(oc)}" inputmode="decimal" ${oLocked ? "disabled" : ""}></div></div>
       <div class="grid g2 cbgrid" style="margin-top:14px">${side("r", "Received", "c-rec")}${side("p", "Payment", "c-pay")}</div>
       <div class="card csec" style="margin-top:14px"><div class="csh"><h3>${bi("খাত অনুযায়ী যোগফল (অটো গ্রুপ)", "Totals by category (auto-grouped)")}</h3></div><div id="cb-sum"></div></div>
@@ -172,7 +214,21 @@ async function vCashBook(v) {
       return r;
     };
     const autosave = () => { if (locked) return; clearTimeout(autoT); autoT = setTimeout(() => { const { row } = collect(); try { localStorage.setItem(CB_DRAFT(date), JSON.stringify({ ...row, status: "draft", entered_by: S.me.name, updated_at: new Date().toISOString() })); } catch { } const a = $("#cb-auto", body); if (a) a.textContent = bi("✓ এই ডিভাইসে অটো-সেভ ", "✓ auto-saved on this device ") + new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); }, 700); };
-    const addRow = t => { const box = $(`.cbrows[data-t="${t}"]`, body); box.insertAdjacentHTML("beforeend", rowHtml(t, box.children.length, {})); return box.lastElementChild; };
+    const addLedger = async (r, name) => {
+      const t = r.dataset.t, k = $(".cbcat", r).value, c = $(".cbac", r).value;
+      try { const row = await API.cbLedgerSave({ name, kind: t, ...(t === "r" ? { cat_r: k } : { cat_p: k }), bank_code: CB_BANK.includes(k) ? c : "" }); CBLED.list.push(row); CBLED.byNorm.set(cbNorm(name), row); toast(bi("✔ লেজার তালিকায় যোগ হয়েছে: ", "✔ Added to the ledger list: ") + name); }
+      catch (e) { toast(/duplicate|unique/i.test(e.message || "") ? bi("এই নামে লেজার আগেই আছে", "A ledger with this name already exists") : /relation|does not exist|schema cache/i.test(e.message || "") ? bi("লেজার টেবিল নেই — schema_v6.sql-এর v6.77 অংশ চালাতে হবে", "Ledger table is missing — run the v6.77 part of schema_v6.sql") : e.message || String(e), "err"); }
+    };
+    const bindRow = r => {
+      if (locked) return; const t = r.dataset.t, nm = $(".cbname", r);
+      suggest(nm, () => {
+        const arr = cbLedItems(t), q = nm.value.trim();
+        if (q && CBLED && !CBLED.err && !arr.some(x => cbNorm(x.value) === cbNorm(q))) arr.push({ value: q, label: "", sub: "", last: true, add: true, html: `<span class="sgn"><b>＋ ${esc(q)}</b><em>${bi("লেজার তালিকায় নতুন যোগ করুন", "Add to the ledger list as new")}</em></span>` });
+        return arr;
+      }, it => { if (!it) return; if (it.add) { addLedger(r, it.value); return; } r.dataset.auto = "1"; guessRow(r); ensureSpare(t); calc(); autosave(); }, { free: true, max: 30 });
+      nm.addEventListener("picked", () => $(".cbamt2", r).focus());
+    };
+    const addRow = t => { const box = $(`.cbrows[data-t="${t}"]`, body); box.insertAdjacentHTML("beforeend", rowHtml(t, box.children.length, {})); bindRow(box.lastElementChild); return box.lastElementChild; };
     const ensureSpare = t => { const rs = $$(`.cbr[data-t="${t}"]`, body), l = rs[rs.length - 1]; if (l && ($(".cbname", l).value.trim() || $(".cbamt2", l).value.trim())) addRow(t); };
     body.addEventListener("input", e => {
       const r = e.target.closest(".cbr"); if (r) { if (e.target.classList.contains("cbname")) guessRow(r); ensureSpare(r.dataset.t); }
@@ -185,10 +241,18 @@ async function vCashBook(v) {
     });
     $$("input.cell", body).forEach(i => { i.addEventListener("focus", () => i.select()); });
     body.addEventListener("focusout", e => { const i = e.target; if (i.classList?.contains("cbamt2") || i.id === "cb-oc" || i.id === "cb-ch") { if (/[+-]/.test(i.value.replace(/^[-+]/, ""))) return; if (i.value.trim() !== "" && !isNaN(evalAmt(i.value))) i.value = fmtIn(evalAmt(i.value)); calc(); } });
+    /* Enter flow: ledger → amount → (category / A/C only if still missing) → next line; Enter on a blank ledger line = next section */
+    const rowNeeds = r => { const a = evalAmt($(".cbamt2", r).value); if (!a || isNaN(a)) return null; const k = $(".cbcat", r).value; if (!k) return $(".cbcat", r); if (CB_BANK.includes(k) && !$(".cbac", r).value) return $(".cbac", r); return null; };
+    const goNext = r => { let nx = r.nextElementSibling; if (!nx) { ensureSpare(r.dataset.t); addRow(r.dataset.t); nx = r.nextElementSibling; } nx && $(".cbname", nx).focus(); };
     body.onkeydown = e => {
       if (e.key !== "Enter") return; const r = e.target.closest?.(".cbr");
-      if (r && e.target.classList.contains("cbname")) { e.preventDefault(); $(".cbamt2", r).focus(); return; }
-      if (r && e.target.classList.contains("cbamt2")) { e.preventDefault(); let nx = r.nextElementSibling; if (!nx) { ensureSpare(r.dataset.t); addRow(r.dataset.t); nx = r.nextElementSibling; } nx && $(".cbname", nx).focus(); return; }
+      if (r && e.target.classList.contains("cbname")) {
+        e.preventDefault();
+        if (!e.target.value.trim() && !$(".cbamt2", r).value.trim()) { if (r.dataset.t === "r") { const p = $$('.cbr[data-t="p"] .cbname', body).find(i => !i.value) || $('.cbr[data-t="p"] .cbname', body); p && p.focus(); } else $("#cb-ch", body)?.focus(); return; }
+        $(".cbamt2", r).focus(); return;
+      }
+      if (r && e.target.classList.contains("cbamt2")) { e.preventDefault(); const n = rowNeeds(r); if (n) n.focus(); else goNext(r); return; }
+      if (r && (e.target.classList.contains("cbcat") || e.target.classList.contains("cbac"))) { e.preventDefault(); const n = rowNeeds(r); if (n && n !== e.target) n.focus(); else goNext(r); return; }
       if (e.target.id === "cb-oc") { e.preventDefault(); $(".cbname", body).focus(); } else if (e.target.id === "cb-ch") { e.preventDefault(); $("#cb-save", body)?.focus(); }
     };
     body.onclick = e => {
@@ -198,7 +262,9 @@ async function vCashBook(v) {
     };
     const ou = $("#cb-ounlock", body); if (ou) ou.onclick = () => { if (!ask(bi("Opening আগের দিনের হাতে ক্যাশ থেকে নিজে আসে। তবুও হাতে বদলাবেন?", "Opening carries over automatically from the previous day's cash. Edit it manually anyway?"))) return; $("#cb-oc", body).disabled = false; ou.remove(); $("#cb-oc", body).focus(); };
     const pdb = $("#cb-pd", v); if (pdb) pdb.onclick = () => { $("#cb-d", v).value = pend.date; draw(); };
-    calc(); if (locked) return;
+    $$(".cbr", body).forEach(bindRow); calc(); if (locked) return;
+    const ledBtn = $("#cb-led", v); if (ledBtn) ledBtn.onclick = () => cbLedgerModal(() => draw());
+    if (matchMedia("(pointer:fine)").matches) { const f = $$('.cbr[data-t="r"] .cbname', body).find(i => !i.value) || $(".cbname", body); f && f.focus(); }
     const save = async status => {
       const { row, bad, noName, noCat, noAc } = collect(), err = $("#cb-err", body); err.className = "hint rd"; err.textContent = "";
       if (bad) { err.textContent = bi(`ভুল অঙ্ক: ${bad} — শুধু সংখ্যা আর + / − লিখুন`, `Invalid amount: ${bad} — only numbers and + / −`); return; }
@@ -222,3 +288,46 @@ async function vCashBook(v) {
   }
   bindDateNav(v, "cb", draw); await draw(); return () => clearTimeout(autoT);
 }
+
+/* ---------- ledger list manager (v6.77) ---------- */
+function cbLedgerModal(after) {
+  const admin = S.me.role === "admin";
+  modal(`<h2>📒 ${bi("লেজার তালিকা", "Ledger list")}</h2>
+   <div class="mut sm" style="margin-bottom:10px">${bi("এখান থেকেই Cash Book-এর ড্রপডাউন আসে। প্রতিটি লেজারের ডিফল্ট খাত বসানো থাকলে লেজার বাছার সাথে সাথে খাত নিজে বসে।", "These feed the Cash Book dropdown. Set a default category per ledger and it fills in the moment the ledger is picked.")}</div>
+   <div id="lg-err"></div>
+   <div class="cblg-new"><input class="in" id="lg-n" placeholder="${bi("নতুন লেজারের নাম", "New ledger name")}" autocomplete="off"><select class="in" id="lg-r">${cbLgOpts("r")}</select><select class="in" id="lg-p">${cbLgOpts("p")}</select><button class="btn pri" id="lg-add">${ico("plus")} ${bi("যোগ", "Add")}</button></div>
+   <div class="cblg-h"><span>${bi("লেজার", "Ledger")}</span><span>Received ${bi("খাত", "category")}</span><span>Payment ${bi("খাত", "category")}</span><span>${bi("Bank A/C", "Bank A/C")}</span><span></span></div>
+   <input class="in" id="lg-q" type="search" placeholder="${bi("খুঁজুন…", "Search…")}" autocomplete="off" style="margin:8px 0">
+   <div class="mut sm" id="lg-c"></div><div class="cblg" id="lg-l"></div>`, async (root, close) => {
+    $(".modal", root).classList.add("wide"); const g = id => $("#" + id, root);
+    await cbLedLoad(true); let changed = false;
+    if (CBLED.err) g("lg-err").innerHTML = `<div class="alert rd">${/relation|does not exist|schema cache|not find/i.test(CBLED.err.message || "") ? bi("লেজার টেবিল নেই — Supabase-এ schema_v6.sql-এর v6.77 অংশ চালাতে হবে", "Ledger table is missing — run the v6.77 part of schema_v6.sql in Supabase") : esc(CBLED.err.message || "")}</div>`;
+    const acOpts = c => `<option value="">—</option>` + (S.accounts || []).map(a => `<option value="${esc(a.code)}" ${a.code === c ? "selected" : ""}>${esc(a.code)} · ${esc(a.holder || "")}</option>`).join("");
+    const draw = () => {
+      const q = norm(g("lg-q").value), L = CBLED.list.filter(m => !q || norm(m.name).includes(q)), shown = L.slice(0, 150);
+      g("lg-c").textContent = bi(`${CBLED.list.length}টি লেজার · দেখানো হচ্ছে ${shown.length}`, `${CBLED.list.length} ledgers · showing ${shown.length}`);
+      g("lg-l").innerHTML = shown.map(m => `<div class="cblg-r ${m.active === false ? "off" : ""}" data-id="${m.id}"><span class="nm" title="${esc(m.name)}"><input class="cell ln" value="${esc(m.name)}"></span><select class="in lr">${cbLgOpts("r", m.cat_r)}</select><select class="in lp">${cbLgOpts("p", m.cat_p)}</select><select class="in la">${acOpts(m.bank_code)}</select><span class="act"><label class="chk" title="${bi("চালু", "Active")}"><input type="checkbox" class="lo" ${m.active === false ? "" : "checked"}></label>${admin ? `<button type="button" class="cbx2 ld" title="${bi("মুছুন", "Delete")}">×</button>` : ""}</span></div>`).join("") || `<div class="empty">—</div>`;
+    };
+    const save = async (el, patch) => {
+      const m = CBLED.list.find(x => x.id === +el.closest(".cblg-r").dataset.id); if (!m) return;
+      const nx = { ...m, ...patch };
+      try { const row = await API.cbLedgerSave(nx); Object.assign(m, row); CBLED.byNorm = new Map(CBLED.list.map(x => [cbNorm(x.name), x])); changed = true; el.closest(".cblg-r").classList.toggle("off", m.active === false); }
+      catch (e) { toast(/duplicate|unique/i.test(e.message || "") ? bi("এই নামে লেজার আগেই আছে", "A ledger with this name already exists") : e.message || String(e), "err"); draw(); }
+    };
+    g("lg-q").oninput = draw;
+    g("lg-l").onchange = e => { const t = e.target; if (t.classList.contains("ln")) { const n = t.value.trim(); if (!n) return draw(); save(t, { name: n }); } else if (t.classList.contains("lr")) save(t, { cat_r: t.value || null }); else if (t.classList.contains("lp")) save(t, { cat_p: t.value || null }); else if (t.classList.contains("la")) save(t, { bank_code: t.value || null }); else if (t.classList.contains("lo")) save(t, { active: t.checked }); };
+    g("lg-l").onclick = async e => { const b = e.target.closest(".ld"); if (!b) return; const row = b.closest(".cblg-r"), m = CBLED.list.find(x => x.id === +row.dataset.id); if (!m || !ask(bi(`"${m.name}" লেজার মুছবেন? (আগের খাতার লাইন বদলাবে না)`, `Delete ledger "${m.name}"? (earlier book lines are not changed)`))) return; try { await API.cbLedgerDel(m.id); CBLED.list = CBLED.list.filter(x => x.id !== m.id); CBLED.byNorm.delete(cbNorm(m.name)); changed = true; draw(); } catch (er) { toast(er.message || String(er), "err"); } };
+    g("lg-add").onclick = async () => {
+      const name = g("lg-n").value.trim(); if (!name) return g("lg-n").focus(), toast(bi("লেজারের নাম লিখুন", "Enter the ledger name"), "err");
+      const cr = g("lg-r").value, cp = g("lg-p").value;
+      try { const row = await API.cbLedgerSave({ name, kind: cr && !cp ? "r" : cp && !cr ? "p" : "both", cat_r: cr, cat_p: cp }); CBLED.list.push(row); CBLED.list.sort((a, b) => a.name.localeCompare(b.name)); CBLED.byNorm.set(cbNorm(name), row); changed = true; g("lg-n").value = ""; g("lg-q").value = ""; draw(); g("lg-n").focus(); }
+      catch (e) { toast(/duplicate|unique/i.test(e.message || "") ? bi("এই নামে লেজার আগেই আছে", "A ledger with this name already exists") : e.message || String(e), "err"); }
+    };
+    g("lg-n").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); g("lg-add").click(); } };
+    $(".mback", root).addEventListener("mousedown", () => { }); const done = () => { close(); changed && after && after(); };
+    const bk = $(".mback", root); bk.addEventListener("mousedown", e => { if (e.target === bk && changed) after && after(); });
+    root.addEventListener("keydown", e => { if (e.key === "Escape") done(); });
+    draw();
+  });
+}
+const cbLgOpts = (t, sel) => `<option value="">${bi("— খাত নেই —", "— none —")}</option>` + CB_CAT[t].map(k => `<option value="${k}" ${k === sel ? "selected" : ""}>${esc(cbCatName(k))}</option>`).join("");
