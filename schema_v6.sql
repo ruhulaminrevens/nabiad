@@ -995,3 +995,114 @@ begin
 end $$;
 revoke all on function public.make_backup(text) from public, anon;
 grant execute on function public.make_backup(text) to authenticated;
+
+
+-- ============================================================
+-- v6.76 — ক্যাশ খাতা / Cash Book (daily paper-book style entry; Cash Checker groups it into cash_records)
+-- ============================================================
+create table if not exists public.cashbook_days (
+  date date primary key,
+  opening_cash numeric not null default 0,
+  lines jsonb not null default '{"r":[],"p":[]}'::jsonb,   -- r = received lines, p = payment lines: {n: name, a: amount, x: "5000+300", k: category key, c: bank A/C code}
+  total_receipt numeric not null default 0,
+  total_payment numeric not null default 0,
+  cash_in_hand numeric,                                      -- counted cash at the end of the day ("হাতে ক্যাশ")
+  remarks text,
+  status text not null default 'draft' check (status in ('draft','final')),
+  entered_by text,
+  user_id uuid default auth.uid(),
+  updated_at timestamptz default now()
+);
+alter table public.cashbook_days enable row level security;
+drop policy if exists p_cb_read on public.cashbook_days;
+drop policy if exists p_cb_ins on public.cashbook_days;
+drop policy if exists p_cb_upd on public.cashbook_days;
+drop policy if exists p_cb_del on public.cashbook_days;
+create policy p_cb_read on public.cashbook_days for select to authenticated using (my_role() is not null);
+create policy p_cb_ins on public.cashbook_days for insert to authenticated with check (my_role() in ('admin','staff'));
+create policy p_cb_upd on public.cashbook_days for update to authenticated
+  using (my_role() = 'admin' or (my_role() = 'staff' and status = 'draft'))
+  with check (my_role() in ('admin','staff'));
+create policy p_cb_del on public.cashbook_days for delete to authenticated using (my_role() = 'admin');
+revoke all on public.cashbook_days from anon;
+
+create or replace function public.audit_trg() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare o jsonb; n jsonb; r jsonb; k text; nm text;
+begin
+  if tg_op <> 'INSERT' then o := to_jsonb(old); end if;
+  if tg_op <> 'DELETE' then n := to_jsonb(new); end if;
+  r := coalesce(n, o);
+  if r->>'entered_by' = 'Old file (Foysal)' then return null; end if;
+  if tg_op = 'UPDATE' and o = n then return null; end if;
+  k := case tg_table_name
+    when 'cheques'  then (r->>'code') || ' · ' || (r->>'chq_no')
+    when 'balances' then (r->>'date') || ' · ' || (r->>'code')
+    when 'accounts' then r->>'code'
+    when 'books'    then (r->>'code') || ' · ' || coalesce(r->>'first_leaf','') || '–' || coalesce(r->>'last_leaf','')
+    when 'cheque_status' then coalesce((select code || ' · ' || chq_no from cheques where id = (r->>'cheque_id')::uuid), '?') || ' → ' || (r->>'new_status')
+    when 'profiles' then r->>'email'
+    when 'cash_records' then 'Cash ' || (r->>'date') || ' (' || (r->>'status') || ')'
+    when 'dist_collections' then 'Collection ' || (r->>'date') || ' · ' || (r->>'party') || ' · ' || (r->>'amount')
+    when 'dist_parties' then 'Party ' || (r->>'name')
+    when 'leaf_marks' then 'Leaf ' || (r->>'code') || ' · ' || (r->>'leaf_no') || ' (' || (r->>'kind') || ')'
+    when 'inv_orders' then (case r->>'ch' when 'nir' then 'Niramoy ' else 'Order ' end) || (r->>'date') || ' · ' || coalesce(nullif(r->>'party',''), r->>'transport', '') || ' · ' || coalesce(r->>'value','0') || ' (' || (r->>'status') || ')'
+    when 'inv_items' then 'Item ' || (r->>'name')
+    when 'inv_demand' then 'Demand ' || (r->>'ch') || ' ' || (r->>'month')
+    when 'rm_daily' then 'RM ' || (r->>'product') || ' ' || (r->>'date')
+    when 'rm_products' then 'RM product ' || (r->>'code')
+    when 'rm_ledger' then 'RM ledger ' || (r->>'party') || ' ' || (r->>'date')
+    when 'inv_locks' then 'Lock ' || (r->>'month')
+    when 'cashbook_days' then 'Cash Book ' || (r->>'date') || ' (' || (r->>'status') || ')'
+    else r->>'id' end;
+  select name into nm from profiles where id = auth.uid();
+  insert into audit_log(user_name, tbl, action, row_key, old, new)
+    values (coalesce(nm, 'system'), tg_table_name, lower(tg_op), k, o, n);
+  return null;
+end $$;
+revoke execute on function public.audit_trg() from anon, public;
+drop trigger if exists audit_cashbook on public.cashbook_days;
+create trigger audit_cashbook after insert or update or delete on public.cashbook_days for each row execute function audit_trg();
+
+create or replace function public.make_backup(k text default 'auto') returns bigint
+language plpgsql security definer set search_path = public as $$
+declare d jsonb; n int; bid bigint;
+begin
+  if auth.uid() is not null and coalesce(my_role(), '') <> 'admin' then raise exception 'not allowed'; end if;
+  d := jsonb_build_object(
+    'taken_at', now(),
+    'accounts',         (select coalesce(jsonb_agg(t), '[]') from accounts t),
+    'cheques',          (select coalesce(jsonb_agg(t), '[]') from cheques t),
+    'cheque_status',    (select coalesce(jsonb_agg(t), '[]') from cheque_status t),
+    'balances',         (select coalesce(jsonb_agg(t), '[]') from balances t),
+    'books',            (select coalesce(jsonb_agg(t), '[]') from books t),
+    'profiles',         (select coalesce(jsonb_agg(t), '[]') from profiles t),
+    'reminders',        (select coalesce(jsonb_agg(t), '[]') from reminders t),
+    'cash_records',     (select coalesce(jsonb_agg(t), '[]') from cash_records t),
+    'balance_drafts',   (select coalesce(jsonb_agg(t), '[]') from balance_drafts t),
+    'dist_parties',     (select coalesce(jsonb_agg(t), '[]') from dist_parties t),
+    'dist_collections', (select coalesce(jsonb_agg(t), '[]') from dist_collections t),
+    'leaf_marks',       (select coalesce(jsonb_agg(t), '[]') from leaf_marks t),
+    'inv_items',        (select coalesce(jsonb_agg(t), '[]') from inv_items t),
+    'inv_orders',       (select coalesce(jsonb_agg(t), '[]') from inv_orders t),
+    'inv_demand',       (select coalesce(jsonb_agg(t), '[]') from inv_demand t),
+    'rm_products',      (select coalesce(jsonb_agg(t), '[]') from rm_products t),
+    'rm_daily',         (select coalesce(jsonb_agg(t), '[]') from rm_daily t),
+    'rm_ledger',        (select coalesce(jsonb_agg(t), '[]') from rm_ledger t),
+    'inv_locks',        (select coalesce(jsonb_agg(t), '[]') from inv_locks t),
+    'dist_opening',     (select coalesce(jsonb_agg(t), '[]') from dist_opening t),
+    'dist_sales_reg',   (select coalesce(jsonb_agg(t), '[]') from dist_sales_reg t),
+    'cashbook_days',    (select coalesce(jsonb_agg(t), '[]') from cashbook_days t));
+  n := (select count(*) from accounts) + (select count(*) from cheques) + (select count(*) from cheque_status)
+     + (select count(*) from balances) + (select count(*) from books) + (select count(*) from reminders) + (select count(*) from cash_records)
+     + (select count(*) from dist_parties) + (select count(*) from dist_collections) + (select count(*) from leaf_marks)
+     + (select count(*) from inv_items) + (select count(*) from inv_orders) + (select count(*) from inv_demand)
+     + (select count(*) from rm_products) + (select count(*) from rm_daily) + (select count(*) from rm_ledger)
+     + (select count(*) from dist_opening) + (select count(*) from dist_sales_reg) + (select count(*) from cashbook_days);
+  insert into backups(kind, size_rows, data) values (k, n, d) returning id into bid;
+  delete from backups where kind = 'auto' and at < now() - interval '14 days';
+  delete from backups where kind = 'manual' and id not in (select id from backups where kind = 'manual' order by at desc limit 10);
+  return bid;
+end $$;
+revoke all on function public.make_backup(text) from public, anon;
+grant execute on function public.make_backup(text) to authenticated;

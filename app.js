@@ -528,8 +528,8 @@ async function balancesOn(d) {
   const m = await balCache.get(d); return Object.keys(pb).length ? { ...m, ...pb } : m;
 }
 async function reload() {
-  const [d, lb, lc, rm, mk] = await Promise.all([API.loadAll(), API.lastBalDate(), API.lastCashDate().then(x => { S.cashOff = false; return x; }).catch(() => { S.cashOff = true; return S.lastCash || null; }), API.reminders().then(x => { S.remErr = null; return x; }).catch(e => { S.remErr = e.message || String(e); return null; }), API.marks().then(x => { S.marksOff = false; return x; }).catch(() => { S.marksOff = true; return null; })]);
-  if (rm) S.reminders = rm; if (mk) S.marks = mk; S.lastCash = lc;
+  const [d, lb, lc, lbk, rm, mk] = await Promise.all([API.loadAll(), API.lastBalDate(), API.lastCashDate().then(x => { S.cashOff = false; return x; }).catch(() => { S.cashOff = true; return S.lastCash || null; }), API.lastBookDate().catch(() => S.lastBook || null), API.reminders().then(x => { S.remErr = null; return x; }).catch(e => { S.remErr = e.message || String(e); return null; }), API.marks().then(x => { S.marksOff = false; return x; }).catch(() => { S.marksOff = true; return null; })]);
+  if (rm) S.reminders = rm; if (mk) S.marks = mk; S.lastCash = lc; S.lastBook = lbk;
   S.accounts = d.accounts; S.books = d.books; S.cheques = d.cheques.map(derive); S.lastBal = lb; S.loaded = true; saveCache(); setTimeout(() => typeof remTick === "function" && remTick(), 50);
   if (!DEMO) { mergeOutbox(); const pd = pendingBalDates().sort().pop(); if (pd && (!S.lastBal || pd > S.lastBal)) S.lastBal = pd; if (S.lastBal && S.snap?.date !== S.lastBal) balancesOn(S.lastBal).catch(() => { }); }
 }
@@ -615,7 +615,8 @@ const ROUTES = {
   closing: { t: "ব্যাংক ক্লোজিং", ic: "bank", roles: "as", sec: "bank", f: () => vClosing },
   crep: { t: "ব্যালেন্স স্ন্যাপশট", ic: "img", roles: "asb", sec: "bank", f: () => vCrep },
   reports: { t: "ব্যাংক রিপোর্ট", ic: "chart", roles: "asb", sec: "bank", f: () => vReports },
-  cash: { t: "ক্যাশ এন্ট্রি", ic: "wallet", roles: "as", sec: "cash", f: () => vCash },
+  cash: { t: "ক্যাশ খাতা", ic: "book", roles: "as", sec: "cash", f: () => vCashBook },
+  cashchk: { t: "ক্যাশ চেকার", ic: "check", roles: "as", sec: "cash", f: () => vCash },
   cashsum: { t: "ক্যাশ সামারি", ic: "pulse", roles: "asb", sec: "cash", f: () => vCashSum },
   cashrep: { t: "ক্যাশ রিপোর্ট", ic: "pie", roles: "asb", sec: "cash", f: () => vCashRep },
   dcol: { t: "কালেকশন এন্ট্রি", ic: "coins", roles: "as", sec: "dist", f: () => vDcol },
@@ -623,7 +624,7 @@ const ROUTES = {
   drep: { t: "কালেকশন রিপোর্ট", ic: "table", roles: "asb", sec: "dist", f: () => vDrep },
   books: { t: "চেক বই", ic: "book", roles: "asb", sec: "more", f: () => vBooks },
   accounts: { t: "অ্যাকাউন্ট ফাইন্ডার", ic: "card", roles: "asb", sec: "more", f: () => vAccounts },
-  register: { t: "ক্যাশ খাতা", ic: "ledger", roles: "asb", sec: "more", f: () => vRegister },
+  register: { t: "ক্যাশ লেজার", ic: "ledger", roles: "asb", sec: "more", f: () => vRegister },
   dparty: { t: "পার্টি তালিকা", ic: "users", roles: "asb", sec: "more", f: () => vDparty },
   rem: { t: "রিমাইন্ডার", ic: "bell", roles: "asb", sec: "more", f: () => vRem },
   settings: { t: "সেটিংস", ic: "gear", roles: "asb", sec: "more", f: () => vSettings },
@@ -881,7 +882,7 @@ async function vEntry(v) {
   }
   drawPurp(); loadPurposes().then(() => { if (v.isConnected) drawPurp(); });
   $e("e-imp").onclick = () => chequeImportModal(() => { list(); });
-  /* Cheque Posting (Cash Withdrawal) ↔ Cash Entry "Total Bank" link */
+  /* Cheque Posting (Cash Withdrawal) ↔ Cash Checker "Total Bank" link */
   async function cashLink() {
     const el = $e("e-cashlink"), tok = ++clTok; if (!el) return;
     const code = ac.get()?.value, date = $e("e-date").value;
@@ -891,7 +892,7 @@ async function vEntry(v) {
     const entered = cashAccSum(src, "bank_in")[code] || 0;
     const posted = S.cheques.filter(c => c.date === date && c.code === code && purposeKey(c.purpose) === "cash" && isLive(c)).reduce((q, c) => q + c.amount, 0), cur = num($e("e-amt").value) || 0;
     el.style.display = ""; el.className = "s4 cbm";
-    el.innerHTML = `<div class="cbm-h"><span>🔗 Cash Entry (${dmy(date)}) · Receipt › Bank · <b>${esc(code)}</b>: <b class="num">${src ? "৳ " + money0(entered) : ok ? bi("এখনো এন্ট্রি নেই", "no entry yet") : "—"}</b> · ${bi("চেক পোস্টিং", "Cheque Posting")}: <b class="num">৳ ${money0(posted)}</b>${cur ? ` <span class="mut xs">(+ ৳ ${money0(cur)} ${bi("এই চেক", "this cheque")})</span>` : ""}</span><a class="btn sm" href="#/cash" id="e-cashgo">${bi("Cash Entry খুলুন", "Open Cash Entry")}</a></div>`;
+    el.innerHTML = `<div class="cbm-h"><span>🔗 Cash Checker (${dmy(date)}) · Receipt › Bank · <b>${esc(code)}</b>: <b class="num">${src ? "৳ " + money0(entered) : ok ? bi("এখনো এন্ট্রি নেই", "no entry yet") : "—"}</b> · ${bi("চেক পোস্টিং", "Cheque Posting")}: <b class="num">৳ ${money0(posted)}</b>${cur ? ` <span class="mut xs">(+ ৳ ${money0(cur)} ${bi("এই চেক", "this cheque")})</span>` : ""}</span><a class="btn sm" href="#/cashchk" id="e-cashgo">${bi("Cash Checker খুলুন", "Open Cash Checker")}</a></div>`;
     $("#e-cashgo", el).onclick = () => sessionStorage.setItem("nabiad_cash_date", date);
   }
   function sum() {
@@ -1152,7 +1153,7 @@ async function vClosing(v) {
     const accs = S.accounts.filter(a => a.daily && (a.status === "Active" || ex[a.code])).sort((a, b) => a.sort - b.sort);
     const has = Object.values(ex).some(r => r.total != null); const locked = has && (S.me.role !== "admin" || Object.values(ex).some(r => r.pending));
     const draft = has ? null : await Draft.get(date); const dr = draft?.rows || {};
-    /* Debit/Withdraw ← Cash Entry "Total Bank" · Credit/Deposit ← approved Collection + Cash Entry "Bank" (per A/C, this date) */
+    /* Debit/Withdraw ← Cash Checker "Total Bank" · Credit/Deposit ← approved Collection + Cash Checker "Bank" (per A/C, this date) */
     const [ce, colRows] = await Promise.all([cashEff(date), API.dcolRange(date, date).catch(() => null)]);
     const srcOk = ce.ok && colRows !== null, aDr = cashAccSum(ce.src, "bank_in"), aCb = cashAccSum(ce.src, "bank_out"), aCc = {};
     (colRows || []).forEach(r => { if (r.date === date && r.status === "approved" && r.account) aCc[r.account] = (aCc[r.account] || 0) + (+r.amount || 0); });
@@ -1162,7 +1163,7 @@ async function vClosing(v) {
     else if (prev.date) msgs.push(`<div class="mut sm">আগের ডাটা: <b>${dmy(prev.date)}</b>${gap ? ` <b class="am">(${bi("মাঝে " + gap + " কর্মদিবসের ডাটা নেই", gap + " working days of data missing in between")})</b>` : ""} · ${bi("আগের দিনের ক্লোজিং নিজে থেকে বসানো আছে — শুধু যেগুলো বদলেছে সেগুলো লিখুন।", "Previous day's closing is pre-filled — only edit what changed.")}</div>`);
     if (draft) msgs.push(`<div class="alert vi">📝 <span>ড্রাফট লোড হয়েছে — ${esc(draft.by || "")} · ${new Date(draft.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}${draft.local ? " (এই ডিভাইস)" : ""}</span><button class="btn sm" id="c-dd" style="margin-left:auto">ড্রাফট বাদ দিন</button></div>`);
     if (isFri(date) && !has) msgs.push(`<div class="alert am">শুক্রবার — সাধারণত ব্যাংক বন্ধ থাকে। দরকার না হলে "পরের ›" চাপুন।</div>`);
-    if (!srcOk) msgs.push(`<div class="alert am">⚠ ${bi("Cash Entry / কালেকশনের ডাটা আনা যায়নি (ইন্টারনেট নেই?) — Debit/Credit-এর auto অংশ ০ ধরা হয়েছে, Diff ভুল দেখাতে পারে।", "Could not load Cash Entry / Collection data (offline?) — the auto part of Debit/Credit is taken as 0, Diff may be wrong.")}</div>`);
+    if (!srcOk) msgs.push(`<div class="alert am">⚠ ${bi("Cash Checker / কালেকশনের ডাটা আনা যায়নি (ইন্টারনেট নেই?) — Debit/Credit-এর auto অংশ ০ ধরা হয়েছে, Diff ভুল দেখাতে পারে।", "Could not load Cash Checker / Collection data (offline?) — the auto part of Debit/Credit is taken as 0, Diff may be wrong.")}</div>`);
     $("#c-msg", v).innerHTML = msgs.join("");
     $("#c-dd", v) && ($("#c-dd", v).onclick = async () => { if (!ask("এই তারিখের ড্রাফট মুছে আগের দিনের ক্লোজিং থেকে নতুন করে শুরু করবেন?")) return; await Draft.drop(date); draw(); });
     const rows = accs.map(a => {
@@ -1176,22 +1177,22 @@ async function vClosing(v) {
     const lostDr = lost(aDr), lostCb = lost(aCb), lostCc = lost(aCc, c => String(c).trim().toLowerCase() === "cash");
     const nAuto = rows.filter(r => r.adr || r.acc || r.acb).length, tD = Object.values(aDr).reduce((q, x) => q + x, 0), tCb = Object.values(aCb).reduce((q, x) => q + x, 0), tCc = Object.values(aCc).reduce((q, x) => q + x, 0);
     const stTxt = ce.state === "final" ? bi("ফাইনাল", "final") : ce.state === "draft" ? bi("ড্রাফট", "draft") : bi("এন্ট্রি নেই", "no entry");
-    const linkBox = `<div class="clink"><div class="cl-h"><b>🔗 ${bi("অটো লিংক", "Auto link")}</b><span class="mut xs">${bi("এই তারিখের ডাটা থেকে নিজে আসে", "pulled from this date's data")}</span><span class="sp"></span><a class="btn sm" href="#/cash" data-go="cash">${bi("ক্যাশ এন্ট্রি", "Cash Entry")}</a><a class="btn sm" href="#/dcol" data-go="dcol">${bi("কালেকশন", "Collection")}</a></div>
-      <div class="cl-g"><span class="c-dr"><em>${bi("ক্যাশ এন্ট্রি", "Cash Entry")} (${stTxt}) · Receipt › Bank</em> <b class="num">৳ ${money0(tD)}</b> <i>→ Debit / Withdraw</i></span><span class="c-cr"><em>${bi("কালেকশন (Approved)", "Collection (approved)")}</em> <b class="num">৳ ${money0(tCc)}</b> <i>→ Credit / Deposit</i></span><span class="c-cr"><em>${bi("ক্যাশ এন্ট্রি", "Cash Entry")} · Bank</em> <b class="num">৳ ${money0(tCb)}</b> <i>→ Credit / Deposit</i></span></div>
+    const linkBox = `<div class="clink"><div class="cl-h"><b>🔗 ${bi("অটো লিংক", "Auto link")}</b><span class="mut xs">${bi("এই তারিখের ডাটা থেকে নিজে আসে", "pulled from this date's data")}</span><span class="sp"></span><a class="btn sm" href="#/cashchk" data-go="cashchk">${bi("ক্যাশ চেকার", "Cash Checker")}</a><a class="btn sm" href="#/dcol" data-go="dcol">${bi("কালেকশন", "Collection")}</a></div>
+      <div class="cl-g"><span class="c-dr"><em>${bi("ক্যাশ চেকার", "Cash Checker")} (${stTxt}) · Receipt › Bank</em> <b class="num">৳ ${money0(tD)}</b> <i>→ Debit / Withdraw</i></span><span class="c-cr"><em>${bi("কালেকশন (Approved)", "Collection (approved)")}</em> <b class="num">৳ ${money0(tCc)}</b> <i>→ Credit / Deposit</i></span><span class="c-cr"><em>${bi("ক্যাশ চেকার", "Cash Checker")} · Bank</em> <b class="num">৳ ${money0(tCb)}</b> <i>→ Credit / Deposit</i></span></div>
       ${lostDr || lostCb || lostCc ? `<div class="cl-w">⚠ ${bi("এই A/C-গুলো ডেইলি ক্লোজিং তালিকায় নেই বা A/C বাছা হয়নি, তাই এখানে ধরা হয়নি", "Not counted here — A/C is not in the daily-closing list or not selected")}: ${[lostDr ? `Receipt › Bank ৳ ${money0(lostDr)}` : "", lostCb ? `Bank ৳ ${money0(lostCb)}` : "", lostCc ? `${bi("কালেকশন", "Collection")} ৳ ${money0(lostCc)}` : ""].filter(Boolean).join(" · ")}</div>` : ""}</div>`;
-    const autoDr = r => r.adr ? `<span><em>${bi("ক্যাশ এন্ট্রি", "Cash Entry")}</em> <b class="num">${money(r.adr)}</b></span>` : `<span class="mut">—</span>`;
+    const autoDr = r => r.adr ? `<span><em>${bi("ক্যাশ চেকার", "Cash Checker")}</em> <b class="num">${money(r.adr)}</b></span>` : `<span class="mut">—</span>`;
     const autoCr = r => (r.acc || r.acb) ? `${r.acc ? `<span><em>${bi("কালেকশন", "Collection")}</em> <b class="num">${money(r.acc)}</b></span>` : ""}${r.acb ? `<span><em>${bi("ক্যাশ জমা", "Cash dep.")}</em> <b class="num">${money(r.acb)}</b></span>` : ""}` : `<span class="mut">—</span>`;
     body.innerHTML = `${linkBox}<div class="tw cards closing" style="max-height:72vh"><table id="ct"><thead><tr><th>#</th><th>A/C</th><th class="r">আগের ক্লোজিং</th><th class="r c-dr">${bi("ডেবিট / উত্তোলন", "Debit / Withdraw")}</th><th class="r c-cr">${bi("ক্রেডিট / জমা", "Credit / Deposit")}</th><th class="r">হিসাব মতে</th><th class="r c-bk">ব্যাংক ক্লোজিং</th><th class="r">BLOCK</th><th class="r">USABLE</th><th class="r">Diff</th><th>মন্তব্য</th></tr></thead><tbody>
-    ${rows.map((r, i) => { const b = B(r.a), mv = r.adr || r.acc || r.acb; return `<tr data-i="${i}" class="${mv ? "mv" : ""}"><td class="mut">${i + 1}</td><td class="acc-c" style="--b1:${b.c1}"><b>${esc(r.code)}</b>${mv ? ` <span class="mvdot" title="${bi("ক্যাশ এন্ট্রি / কালেকশনে লেনদেন আছে — যাচাই করুন", "Cash Entry / Collection has activity — please verify")}">●</span>` : ""}<div class="mut sm">${esc(r.holder)}</div></td><td class="r num">${money(r.prevT)}</td>
+    ${rows.map((r, i) => { const b = B(r.a), mv = r.adr || r.acc || r.acb; return `<tr data-i="${i}" class="${mv ? "mv" : ""}"><td class="mut">${i + 1}</td><td class="acc-c" style="--b1:${b.c1}"><b>${esc(r.code)}</b>${mv ? ` <span class="mvdot" title="${bi("ক্যাশ চেকার / কালেকশনে লেনদেন আছে — যাচাই করুন", "Cash Checker / Collection has activity — please verify")}">●</span>` : ""}<div class="mut sm">${esc(r.holder)}</div></td><td class="r num">${money(r.prevT)}</td>
      <td class="c-dr"><div class="au">${autoDr(r)}</div><input class="cell od" value="${fmtIn(r.od || "")}" inputmode="decimal" placeholder="${bi("+ অন্য", "+ other")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
      <td class="c-cr"><div class="au">${autoCr(r)}</div><input class="cell odp" value="${fmtIn(r.odp || "")}" inputmode="decimal" placeholder="${bi("+ অন্য", "+ other")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
      <td class="r num exp"></td><td class="c-bk"><input class="cell tot" value="${r.total == null ? "" : fmtIn(r.total)}" data-dirty="${r.total == null ? "" : "1"}" inputmode="decimal" ${locked ? "disabled" : ""}></td><td><input class="cell blk" value="${fmtIn(r.block || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
      <td class="r num usa b"></td><td class="r num dif"></td><td><input class="cell t rem" value="${esc(r.remark)}" ${locked ? "disabled" : ""}></td></tr>`; }).join("")}
     <tr class="tot"><td></td><td>মোট <span class="mut sm" id="T-n"></span></td><td class="r num" id="T0"></td><td class="r num c-dr" id="T1"></td><td class="r num c-cr" id="T2"></td><td class="r num" id="T3"></td><td class="r num c-bk t-bank" id="T4"></td><td class="r num" id="T5"></td><td class="r num t-usa" id="T6"></td><td class="r num t-diff" id="T7"></td><td></td></tr></tbody></table></div>
     ${locked ? "" : `<div class="cbar"><button class="btn lg fix" id="c-draft">${ico("edit")} ড্রাফট সেভ</button><button class="btn pri lg fix" id="c-save">${ico("save")} <span class="bl">ফাইনাল সেভ<small>${date === today() ? "আজকের" : dmy(date)}</small></span></button><div class="hint" id="c-err"></div><div class="sp"></div><span class="mut sm" id="c-auto"></span></div>`}
-    <div class="legend"><span><i class="lg-chg"></i>নীল = আপডেট করা</span><span><i class="lg-same"></i>কালো = আগের দিনের মতোই</span><span><i class="lg-mv"></i>${bi("ক্যাশ এন্ট্রি / কালেকশনে লেনদেন আছে", "Cash Entry / Collection activity")}</span><span><i class="lg-dr"></i>Debit</span><span><i class="lg-cr"></i>Credit</span></div>
-    <div class="mut sm" style="margin-top:6px">${bi("হিসাব মতে = আগের ক্লোজিং − Debit/Withdraw + Credit/Deposit। প্রতিটি ঘরের উপরের লাইন ক্যাশ এন্ট্রি ও কালেকশন থেকে নিজে আসে; নিচের ঘরে শুধু বাড়তি/অন্য লেনদেন লিখুন। ফাইনাল সেভের পর Staff আর বদলাতে পারবে না। মাঝপথে থামতে \"ড্রাফট সেভ\" চাপুন — এই ডিভাইসে নিজে থেকেও জমা হয়। Diff ≠ 0 হলে মন্তব্য বাধ্যতামূলক।", "Expected = Previous closing − Debit/Withdraw + Credit/Deposit. The top line of each cell comes from Cash Entry and Collection automatically; type only extra/other transactions in the box below. After final save Staff cannot edit. Use \"Save draft\" to pause — it also auto-saves on this device. A remark is required when Diff ≠ 0.")}</div>`;
-    $$("[data-go]", body).forEach(a => a.onclick = () => { const k = a.dataset.go; if (k === "cash") sessionStorage.setItem("nabiad_cash_date", date); });
+    <div class="legend"><span><i class="lg-chg"></i>নীল = আপডেট করা</span><span><i class="lg-same"></i>কালো = আগের দিনের মতোই</span><span><i class="lg-mv"></i>${bi("ক্যাশ চেকার / কালেকশনে লেনদেন আছে", "Cash Checker / Collection activity")}</span><span><i class="lg-dr"></i>Debit</span><span><i class="lg-cr"></i>Credit</span></div>
+    <div class="mut sm" style="margin-top:6px">${bi("হিসাব মতে = আগের ক্লোজিং − Debit/Withdraw + Credit/Deposit। প্রতিটি ঘরের উপরের লাইন ক্যাশ চেকার ও কালেকশন থেকে নিজে আসে; নিচের ঘরে শুধু বাড়তি/অন্য লেনদেন লিখুন। ফাইনাল সেভের পর Staff আর বদলাতে পারবে না। মাঝপথে থামতে \"ড্রাফট সেভ\" চাপুন — এই ডিভাইসে নিজে থেকেও জমা হয়। Diff ≠ 0 হলে মন্তব্য বাধ্যতামূলক।", "Expected = Previous closing − Debit/Withdraw + Credit/Deposit. The top line of each cell comes from Cash Checker and Collection automatically; type only extra/other transactions in the box below. After final save Staff cannot edit. Use \"Save draft\" to pause — it also auto-saves on this device. A remark is required when Diff ≠ 0.")}</div>`;
+    $$("[data-go]", body).forEach(a => a.onclick = () => { const k = a.dataset.go; if (k === "cashchk") sessionStorage.setItem("nabiad_cash_date", date); });
     const trs = $$("#ct tbody tr[data-i]", body);
     const calc = () => {
       const T = Array(8).fill(0); let nChg = 0, nMv = 0;
@@ -2080,7 +2081,7 @@ function sysAlerts() {
   const o = [], t = today(), h = new Date().getHours();
   if (S.me.role !== "boss") {
     if (!isFri(t) && h >= (CFG.CLOSING_REMIND_HOUR ?? 17) && (!S.lastBal || S.lastBal < t)) o.push({ id: "closing-" + t, k: "rd", ic: "bank", t: "আজকের দৈনিক ক্লোজিং এখনো সেভ হয়নি", go: "#/closing", notify: true });
-    if (!isFri(t) && h >= (CFG.CASH_REMIND_HOUR ?? 19) && S.lastCash !== t && !S.cashOff) o.push({ id: "cash-" + t, k: "rd", ic: "wallet", t: bi("আজকের ক্যাশ এন্ট্রি এখনো সেভ হয়নি", "Today's cash entry is not saved yet"), go: "#/cash", notify: true });
+    if (!isFri(t) && h >= (CFG.CASH_REMIND_HOUR ?? 19) && S.lastCash !== t && S.lastBook !== t && !S.cashOff) o.push({ id: "cash-" + t, k: "rd", ic: "wallet", t: bi("আজকের ক্যাশ খাতা এখনো সেভ হয়নি", "Today's Cash Book is not saved yet"), go: "#/cash", notify: true });
     if (S.lastBal) { const g = workGap(S.lastBal, t); if (g > 0) o.push({ k: "am", ic: "bank", t: LANG === "en" ? `${g} working day${g > 1 ? "s" : ""} of closing pending (last saved: ${dmy(S.lastBal)})` : `${g} কর্মদিবসের ক্লোজিং বাকি (শেষ সেভ: ${dmy(S.lastBal)})`, go: "#/closing" }); }
     const dd = Draft.localDates().filter(d => !S.lastBal || d > S.lastBal); if (dd.length) o.push({ k: "vi", ic: "edit", t: `ড্রাফট আছে, ফাইনাল সেভ বাকি: ${dd.map(dmy).join(", ")}`, go: "#/closing" });
     if (!DEMO && Outbox.count()) o.push({ k: "am", ic: "clock", t: `${Outbox.count()}টি অফলাইন এন্ট্রি সিঙ্ক বাকি`, go: "" });
@@ -2167,13 +2168,18 @@ Object.assign(SbAPI, {
   async cashSave(row) { const { error } = await sb.from("cash_records").upsert({ ...row, entered_by: S.me.name, updated_at: new Date().toISOString() }); if (error) throw error; },
   async cashRange(from, to) { const { data, error } = await sb.from("cash_records").select("*").gte("date", from).lte("date", to).order("date").limit(3000); if (error) throw error; return data; },
   async lastCashDate() { const { data, error } = await sb.from("cash_records").select("date").eq("status", "final").order("date", { ascending: false }).limit(1); if (error) throw error; return data?.[0]?.date || null; },
+  async cbOn(d) { const { data, error } = await sb.from("cashbook_days").select("*").eq("date", d).maybeSingle(); if (error) throw error; return data; },
+  async cbPrev(d) { const { data, error } = await sb.from("cashbook_days").select("*").lt("date", d).eq("status", "final").order("date", { ascending: false }).limit(1); if (error) throw error; return data?.[0] || null; },
+  async cbSave(row) { const { error } = await sb.from("cashbook_days").upsert({ ...row, entered_by: S.me.name, updated_at: new Date().toISOString() }); if (error) throw error; },
+  async cbRange(from, to) { const { data, error } = await sb.from("cashbook_days").select("*").gte("date", from).lte("date", to).order("date").limit(3000); if (error) throw error; return data; },
+  async lastBookDate() { const { data, error } = await sb.from("cashbook_days").select("date").eq("status", "final").order("date", { ascending: false }).limit(1); if (error) throw error; return data?.[0]?.date || null; },
   async backups() { const { data, error } = await sb.from("backups").select("id,at,kind,size_rows").order("at", { ascending: false }).limit(60); if (error) throw error; return data; },
   async backupData(id) { const { data, error } = await sb.from("backups").select("data").eq("id", id).single(); if (error) throw error; return data.data; },
   async backupNow() { const { data, error } = await sb.rpc("make_backup", { k: "manual" }); if (error) throw error; return data; },
   async setMyName(n) { const { error } = await sb.rpc("set_my_name", { n }); if (error) throw error; },
   async changePassword(p) { const { error } = await sb.auth.updateUser({ password: p }); if (error) throw error; },
   async signOutOthers() { const { error } = await sb.auth.signOut({ scope: "others" }); if (error) throw error; },
-  async dumpAll() { const T = ["accounts", "cheques", "cheque_status", "balances", "books", "reminders", "cash_records", "balance_drafts", "dist_parties", "dist_collections", "inv_items", "inv_orders", "inv_demand", "rm_products", "rm_daily", "rm_ledger", "inv_locks", "dist_opening", "dist_sales_reg"], o = {}; for (const t of T) { try { o[t] = await fetchAll(t, t === "accounts" ? "code" : t === "balances" ? "date" : t === "balance_drafts" || t === "cash_records" ? "date" : t === "dist_parties" ? "name" : t === "inv_demand" || t === "inv_locks" ? "month" : t === "rm_products" ? "code" : t === "rm_daily" ? "date" : "id"); } catch (e) { o[t] = { error: e.message }; } } return o; }
+  async dumpAll() { const T = ["accounts", "cheques", "cheque_status", "balances", "books", "reminders", "cash_records", "balance_drafts", "dist_parties", "dist_collections", "inv_items", "inv_orders", "inv_demand", "rm_products", "rm_daily", "rm_ledger", "inv_locks", "dist_opening", "dist_sales_reg", "cashbook_days"], o = {}; for (const t of T) { try { o[t] = await fetchAll(t, t === "accounts" ? "code" : t === "balances" ? "date" : t === "balance_drafts" || t === "cash_records" || t === "cashbook_days" ? "date" : t === "dist_parties" ? "name" : t === "inv_demand" || t === "inv_locks" ? "month" : t === "rm_products" ? "code" : t === "rm_daily" ? "date" : "id"); } catch (e) { o[t] = { error: e.message }; } } return o; }
 });
 Object.assign(DemoAPI, {
   async balancesRange(from, to) { const h = await this.hist(), out = []; for (const [d, m] of h) if (d >= from && d <= to) for (const c in m) out.push({ date: d, code: c, total: Number(m[c].total) || 0, block: Number(m[c].block) || 0 }); return out.sort((a, b) => a.date.localeCompare(b.date)); },
@@ -2182,6 +2188,11 @@ Object.assign(DemoAPI, {
   async cashSave(row) { const c = demoStore.cash ||= {}; if (c[row.date]) this.aud("cash_records", "update", row.date, c[row.date], row); c[row.date] = { ...row, entered_by: S.me.name, updated_at: new Date().toISOString() }; this.save(); },
   async cashRange(from, to) { const c = demoStore.cash ||= {}; return Object.values(c).filter(r => r.date >= from && r.date <= to).sort((a, b) => a.date.localeCompare(b.date)); },
   async lastCashDate() { const c = demoStore.cash ||= {}; return Object.keys(c).filter(k => c[k].status === "final").sort().pop() || null; },
+  async cbOn(d) { return (demoStore.cb ||= {})[d] || null; },
+  async cbPrev(d) { const c = demoStore.cb ||= {}; const k = Object.keys(c).filter(x => x < d && c[x].status === "final").sort().pop(); return k ? c[k] : null; },
+  async cbSave(row) { const c = demoStore.cb ||= {}; if (c[row.date]) this.aud("cashbook_days", "update", row.date, c[row.date], row); c[row.date] = { ...row, entered_by: S.me.name, updated_at: new Date().toISOString() }; this.save(); },
+  async cbRange(from, to) { const c = demoStore.cb ||= {}; return Object.values(c).filter(r => r.date >= from && r.date <= to).sort((a, b) => a.date.localeCompare(b.date)); },
+  async lastBookDate() { const c = demoStore.cb ||= {}; return Object.keys(c).filter(k => c[k].status === "final").sort().pop() || null; },
   async backups() { return (demoStore.backups ||= []).map(({ data, ...b }) => b); },
   async backupData(id) { return (demoStore.backups || []).find(b => b.id === id)?.data; },
   async backupNow() { const b = { id: Date.now(), at: new Date().toISOString(), kind: "manual", size_rows: demoStore.cheques.length, data: { cheques: demoStore.cheques, cash: demoStore.cash } }; (demoStore.backups ||= []).unshift(b); this.save(); return b.id; },
@@ -2262,11 +2273,11 @@ async function vDash(v) {
   const mon = S.cheques.filter(c => c.date.startsWith(ym) && isLive(c)), due = dueList(), sys = sysAlerts();
   const upcoming = (S.reminders || []).filter(r => !r.done).sort((a, b) => remDue(a) - remDue(b)).slice(0, 5);
   const acts = boss ? [["crep", "img", "ব্যালেন্স স্ন্যাপশট", "qa1"], ["cashsum", "pulse", "ক্যাশ সামারি", "qa2"], ["reports", "chart", "ব্যাংক রিপোর্ট", "qa3"], ["dsum", "trend", "কালেকশন সামারি", "qa4"]]
-    : [["entry", "plus", "চেক পোস্টিং", "qa1"], ["closing", "bank", "ব্যাংক ক্লোজিং", "qa2"], ["cash", "wallet", "ক্যাশ এন্ট্রি", "qa3"], ["dcol", "coins", "কালেকশন এন্ট্রি", "qa4"]];
-  const bankDone = S.lastBal === t, cashDone = S.lastCash === t, workday = !isFri(t);
+    : [["entry", "plus", "চেক পোস্টিং", "qa1"], ["closing", "bank", "ব্যাংক ক্লোজিং", "qa2"], ["cash", "book", "ক্যাশ খাতা", "qa3"], ["dcol", "coins", "কালেকশন এন্ট্রি", "qa4"]];
+  const bankDone = S.lastBal === t, cashDone = S.lastCash === t || S.lastBook === t, workday = !isFri(t);
   const st = (ok, l, go, sub) => `<a class="stchip ${ok ? "ok" : "no"}" href="${go}"><i>${ok ? "✓" : "!"}</i><span><b>${l}</b><small>${sub}</small></span></a>`;
   /* today's progress */
-  const tasks = [...(boss ? [] : [[bankDone || !workday, "ব্যাংক ক্লোজিং"], [cashDone || !workday, "ক্যাশ এন্ট্রি"]]), [!due.length, "রিমাইন্ডার"], [!old.length, "পুরনো Pending"]];
+  const tasks = [...(boss ? [] : [[bankDone || !workday, "ব্যাংক ক্লোজিং"], [cashDone || !workday, "ক্যাশ খাতা"]]), [!due.length, "রিমাইন্ডার"], [!old.length, "পুরনো Pending"]];
   const tdone = tasks.filter(x => x[0]).length, tpct = Math.round(tdone / tasks.length * 100), left = tasks.filter(x => !x[0]).map(x => x[1]);
   const ring = `<svg class="pring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" class="rb" fill="none" style="fill:none"/><circle cx="22" cy="22" r="18" class="rf" fill="none" style="fill:none" stroke-dasharray="${(tpct * 1.131).toFixed(1)} 113.1" transform="rotate(-90 22 22)"/><text x="22" y="26" text-anchor="middle">${tpct}%</text></svg>`;
   /* cheque pipeline (this month) */
@@ -2285,7 +2296,7 @@ async function vDash(v) {
   v.innerHTML = `<div class="hero dash-hero"><div class="hh"><h1>${greet()}, ${esc(S.me.name)} 👋</h1><p>${new Date().toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${workday ? "" : " · শুক্রবার (সাপ্তাহিক বন্ধ)"}</p>
         <div class="dprog">${ring}<div><b>${tdone === tasks.length ? "আজকের সব কাজ সম্পন্ন 🎉" : `আজকের কাজ ${tdone}/${tasks.length} সম্পন্ন`}</b><small>${tdone === tasks.length ? "দারুণ! সব কিছু আপ-টু-ডেট আছে" : `<span>বাকি:</span> ` + left.map(x => `<span>${x}</span>`).join(" · ")}</small><small id="d-streak"></small></div></div></div>
        <div class="qacts">${acts.map(([k, ic, l, c]) => `<a class="qa ${c}" href="#/${k}"><span class="qi">${ico(ic)}</span><span>${l}</span></a>`).join("")}</div></div>
-     <div class="ststrip">${boss ? "" : st(bankDone, "ব্যাংক ক্লোজিং", "#/closing", bankDone ? "আজ সেভ হয়েছে" : S.lastBal ? "<span>শেষ:</span> " + dmy(S.lastBal) : "এখনো নেই")}${boss ? "" : st(cashDone, "ক্যাশ এন্ট্রি", "#/cash", cashDone ? "আজ সেভ হয়েছে" : S.lastCash ? "<span>শেষ:</span> " + dmy(S.lastCash) : "এখনো নেই")}
+     <div class="ststrip">${boss ? "" : st(bankDone, "ব্যাংক ক্লোজিং", "#/closing", bankDone ? "আজ সেভ হয়েছে" : S.lastBal ? "<span>শেষ:</span> " + dmy(S.lastBal) : "এখনো নেই")}${boss ? "" : st(cashDone, "ক্যাশ খাতা", "#/cash", cashDone ? "আজ সেভ হয়েছে" : (S.lastBook || S.lastCash) ? "<span>শেষ:</span> " + dmy([S.lastBook, S.lastCash].filter(Boolean).sort().pop()) : "এখনো নেই")}
        ${st(!due.length, "রিমাইন্ডার", "#/rem", due.length ? `${due.length}টি সময় হয়েছে` : `${upcoming.length}টি আসছে`)}${st(!old.length, "Pending চেক", "#/status", `${pend.length}টি · পুরনো ${old.length}`)}${admin ? `<span id="d-bk" class="stchip"><i>…</i><span><b>Backup</b><small>দেখা হচ্ছে…</small></span></span>` : ""}</div>
      <div class="grid g4" id="d-kpi">
        <a class="kpi card k-vi" href="#/crep"><div class="l">ব্যাংক ব্যালেন্স<span class="ki">${ico("bank")}</span></div><div class="v num" id="d-bt">—</div><div class="s" id="d-bs">লোড হচ্ছে…</div><div id="d-sp1" class="kspw"></div></a>
@@ -2455,7 +2466,7 @@ const cashAccSum = (src, k) => { const m = {}; (src?.items?.[k]?.accs || []).for
 
 async function vCash(v) {
   const t = today(); let date = sessionStorage.getItem("nabiad_cash_date") || (S.lastCash && S.lastCash < t ? stepDay(S.lastCash, 1) : t); sessionStorage.removeItem("nabiad_cash_date"); if (date > t) date = t;
-  v.innerHTML = head("ক্যাশ এন্ট্রি", `<a class="btn" href="#/cashsum">${ico("chart")} সামারি</a>`, "tc") + `<div class="card tbar navcard">${dateNav("cs", date)}<div id="cs-msg" style="margin-top:10px"></div></div><div id="cs-body"><div class="card empty">লোড হচ্ছে…</div></div>`;
+  v.innerHTML = head(ROUTES[CUR].t, `<a class="btn" href="#/cash">${ico("book")} ${bi("ক্যাশ খাতা", "Cash Book")}</a><a class="btn" href="#/cashsum">${ico("chart")} ${bi("সামারি", "Summary")}</a>`, "tc") + `<div class="card tbar navcard">${dateNav("cs", date)}<div id="cs-msg" style="margin-top:10px"></div></div><div id="cs-body"><div class="card empty">লোড হচ্ছে…</div></div>`;
   const body = $("#cs-body", v); let autoT = null;
   async function draw() {
     date = $("#cs-d", v).value; if (!date) return; body.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
@@ -2463,11 +2474,14 @@ async function vCash(v) {
     try { [ex, prev] = await Promise.all([API.cashOn(date), API.cashPrev(date)]); } catch (e) {
       body.innerHTML = `<div class="alert rd">${/relation|does not exist|schema cache|not find/i.test(e.message || "") ? "ক্যাশ টেবিল নেই — Supabase-এ schema_v3.sql চালাতে হবে" : isNetErr(e) ? "ইন্টারনেট নেই — ক্যাশ রেকর্ডের জন্য অনলাইন থাকতে হবে (এই ডিভাইসে লেখা ড্রাফট জমা থাকবে)" : esc(e.message)}</div>`; if (!isNetErr(e)) return;
     }
+    let bk = null, bPrev = null; try { [bk, bPrev] = await Promise.all([API.cbOn(date), API.cbPrev(date)]); } catch { }
     try { const bm = await balancesOn(date); const am = accMap(); let tot = 0, n = 0; Object.entries(bm).forEach(([c, r]) => { if (am[c] && r.total != null) { tot += r.total; n++; } }); if (n) bankRef = tot; } catch { }
     const final = ex?.status === "final", admin = S.me.role === "admin", locked = (final && !admin) || S.me.role === "boss";
     let local = null; try { local = JSON.parse(localStorage.getItem(CASH_DRAFT(date)) || "null"); } catch { }
     let src = ex; let fromLocal = false;
     if (!final && local && (!ex || new Date(local.updated_at) > new Date(ex.updated_at))) { src = local; fromLocal = true; }
+    const bkG = bk?.lines && ((bk.lines.r || []).length || (bk.lines.p || []).length) ? cbGroup(bk) : null;
+    if (!src && bkG && !final) src = { items: bkG.items, opening_cash: +bk.opening_cash || 0, opening_bank: 0, cash_in_hand: bk.cash_in_hand, remarks: null, entered_by: "ক্যাশ খাতা", updated_at: bk.updated_at, status: "draft", fromBook: true };
     /* Opening = previous final record's closing (auto). Stored values are used only for a finalised day or the very first record. */
     const pOc = prev ? +prev.cash_in_hand || 0 : 0, pOb = prev ? (+prev.closing || 0) - (+prev.cash_in_hand || 0) : 0, useStored = final || !prev;
     const oc = useStored ? (src ? +src.opening_cash || 0 : 0) : pOc, ob = useStored ? (src ? +src.opening_bank || 0 : 0) : pOb;
@@ -2476,21 +2490,24 @@ async function vCash(v) {
     const items = src?.items || {};
     const msgs = [];
     if (final) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 এই তারিখের ক্যাশ রেকর্ড ফাইনাল সেভ হয়েছে।" : "⚠ ফাইনাল সেভ করা আছে — Admin হিসেবে বদলাতে পারবেন।"} <span class="mut sm">${esc(ex.entered_by || "")}</span></div>`);
-    else if (src) msgs.push(`<div class="alert vi">📝 <span>ড্রাফট লোড হয়েছে${fromLocal ? " (এই ডিভাইস)" : ""} — ${esc(src.entered_by || S.me.name)} · ${new Date(src.updated_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>${!locked ? `<button class="btn sm" id="cs-dd" style="margin-left:auto">ড্রাফট বাদ দিন</button>` : ""}</div>`);
+    else if (src && !src.fromBook) msgs.push(`<div class="alert vi">📝 <span>ড্রাফট লোড হয়েছে${fromLocal ? " (এই ডিভাইস)" : ""} — ${esc(src.entered_by || S.me.name)} · ${new Date(src.updated_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>${!locked ? `<button class="btn sm" id="cs-dd" style="margin-left:auto">ড্রাফট বাদ দিন</button>` : ""}</div>`);
+    if (src?.fromBook) msgs.push(`<div class="alert vi">📒 <span>${bi(`ক্যাশ খাতা (${dmy(date)}) থেকে অটো গ্রুপ করে ভরা হয়েছে — নিচের চেক দেখে সেভ করুন`, `Filled from the Cash Book (${dmy(date)}), grouped automatically — review the checks below, then save`)}</span></div>`);
+    else if (bkG && !locked && !final) msgs.push(`<div class="alert vi">📒 <span>${bi("এই তারিখে ক্যাশ খাতার এন্ট্রি আছে", "A Cash Book entry exists for this date")}</span><button class="btn sm" id="cs-bfill" style="margin-left:auto">${bi("খাতা থেকে ভরুন", "Fill from Cash Book")}</button></div>`);
     if (prev && !final) msgs.push(`<div class="mut sm">🔗 ${bi("Opening নিজে এসেছে", "Opening is automatic")}: <b>${dmy(prev.date)}</b> ${bi("-এর Closing থেকে", "closing")}${workGap(prev.date, date) ? ` · <b class="am">${bi(`মাঝে ${workGap(prev.date, date)} কর্মদিবসের রেকর্ড নেই`, `${workGap(prev.date, date)} working day(s) without a record in between`)}</b>` : ""}</div>`);
     if (final && prev && (Math.abs(oc - pOc) > 0.5 || Math.abs(ob - pOb) > 0.5)) msgs.push(`<div class="alert am">⚠ ${bi(`এই রেকর্ডের Opening আগের ফাইনাল দিনের (${dmy(prev.date)}) Closing-এর সাথে মেলে না — আগের দিন পরে বদলানো হয়েছে কি না দেখুন।`, `This record's Opening does not match the previous final day's (${dmy(prev.date)}) closing — check whether that day was edited later.`)}</div>`);
     if (!prev && !final) msgs.push(`<div class="mut sm">${admin0 ? bi("এটা প্রথম রেকর্ড — শুরুর Opening (Cash in Hand + Total Bank) একবারই লিখুন (Tally থেকে)। এরপর প্রতিদিন নিজে আসবে।", "This is the first record — enter the starting Opening (Cash in Hand + Total Bank) once (from Tally). After that it carries over automatically.") : bi("শুরুর Opening এখনো বসানো হয়নি — Admin কে বসাতে বলুন।", "The starting Opening has not been set yet — ask the Admin to set it.")}</div>`);
-    if (pendDraft) msgs.push(`<div class="alert am">⚠ <b>${dmy(pendDraft.date)}</b> ${bi("-এর ক্যাশ রেকর্ড এখনো ড্রাফট — ফাইনাল সেভ না করলে সেই দিনের Closing এখানে Opening-এ আসবে না।", "cash record is still a draft — until it is finalised its closing will not carry into this Opening.")} <a class="btn sm" href="#/cash" id="cs-pd" style="margin-left:auto">${bi("খুলুন", "Open")}</a></div>`);
+    if (pendDraft) msgs.push(`<div class="alert am">⚠ <b>${dmy(pendDraft.date)}</b> ${bi("-এর ক্যাশ রেকর্ড এখনো ড্রাফট — ফাইনাল সেভ না করলে সেই দিনের Closing এখানে Opening-এ আসবে না।", "cash record is still a draft — until it is finalised its closing will not carry into this Opening.")} <a class="btn sm" href="#/cashchk" id="cs-pd" style="margin-left:auto">${bi("খুলুন", "Open")}</a></div>`);
     if (!locked) msgs.push(`<div class="mut xs">💡 একই খাতে কয়েকটা অঙ্ক থাকলে + দিয়ে লিখুন, যেমন 5000+12000</div>`);
     $("#cs-msg", v).innerHTML = msgs.join("");
     $("#cs-dd", v) && ($("#cs-dd", v).onclick = async () => { if (!ask("এই তারিখের ড্রাফট মুছবেন?")) return; localStorage.removeItem(CASH_DRAFT(date)); if (ex && !final) { try { await API.cashSave({ date, opening_cash: oc, opening_bank: ob, items: {}, total_receipt: 0, total_payment: 0, closing: oc + ob, cash_in_hand: null, remarks: null, status: "draft" }); } catch { } } draw(); });
+    const bfb = $("#cs-bfill", v); if (bfb) bfb.onclick = () => { if (!ask(bi("ফর্মের বর্তমান ঘরগুলো ক্যাশ খাতার হিসাব দিয়ে বদলাবেন?", "Replace the current form values with the Cash Book figures?"))) return; const T = cashTotals(bkG.items); try { localStorage.setItem(CASH_DRAFT(date), JSON.stringify({ date, opening_cash: oc, opening_bank: ob, items: bkG.items, total_receipt: T.r, total_payment: T.p, closing: oc + ob + T.r - T.p, cash_in_hand: bk.cash_in_hand, remarks: null, status: "draft", entered_by: S.me.name, updated_at: new Date().toISOString() })); } catch { } draw(); };
     const dis = locked ? "disabled" : "";
     const row = (k, l) => { const it = items[k] || {}; return `<div class="crow cr2" data-k="${k}"><label>${esc(l)}</label><div class="cv"><input class="cell camt" value="${esc(it.x ?? (it.a ? fmtIn(it.a) : ""))}" inputmode="decimal" placeholder="0" ${dis}><span class="cval num"></span></div></div>`; };
     const bankLine = a => `<div class="cbl" data-c="${esc(a.c || "")}"><div class="cbac"><input class="in cba" autocomplete="off" placeholder="${bi("A/C বাছুন (কোড বা নাম)", "Select A/C (code or name)")}" ${dis}></div><input class="cell cbamt" value="${esc(a.x ?? (a.a ? fmtIn(a.a) : ""))}" inputmode="decimal" placeholder="0" ${dis}>${locked ? "" : `<button type="button" class="cbx" title="${bi("মুছুন", "Remove")}">×</button>`}</div>`;
     const bankRow = (k, l) => { const it = items[k] || {}, accs = Array.isArray(it.accs) && it.accs.length ? it.accs : it.a ? [{ c: "", a: it.a, x: it.x }] : [{}]; return `<div class="crow cbk" data-k="${k}"><div class="cbh"><label>${esc(l)} <span class="mut xs">${bi("A/C ভিত্তিক", "by A/C")}</span><span class="cbn">${bi("ট্রান্সফার — মোট/Closing-এ ধরা হয় না", "transfer — not in Total/Closing")}</span></label><b class="num cbt">0</b></div><div class="cbls">${accs.map(bankLine).join("")}</div>${locked ? "" : `<div class="cbact"><button type="button" class="btn sm cbadd">+ ${bi("আরেকটা A/C", "Add A/C")}</button></div>`}${k === "bank_in" ? `<div class="cbm" id="cs-chm"></div>` : ""}</div>`; };
     const BANKK = ["bank_in", "bank_out"];
     const side = (t, title, cls) => `<div class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num" id="cs-T${t[0]}">0</b></div>${CASH[t].map(g => `${g.g ? `<div class="cgrp"><span>${g.g}</span><b class="num" data-g="${g.g}">0</b></div>` : ""}<div class="${g.g ? "cin" : ""}">${g.items.map(([k, l]) => BANKK.includes(k) ? bankRow(k, l) : row(k, l)).join("")}</div>`).join("")}</div>`;
-    body.innerHTML = `<div class="card csec c-open"><div class="csh"><h3>Opening Balance <span class="mut sm">(${bi("পেটি ক্যাশ + Total Bank", "Petty cash + Total Bank")})</span></h3>${prev && !locked && admin0 ? `<button type="button" class="btn sm" id="cs-ounlock" style="margin-left:auto;margin-right:10px">✎ ${bi("বদলান", "Edit")}</button>` : ""}<b class="num" id="cs-OT">0</b></div>
+    body.innerHTML = `<div class="card cbchk" id="cs-chk"></div><div class="card csec c-open"><div class="csh"><h3>Opening Balance <span class="mut sm">(${bi("পেটি ক্যাশ + Total Bank", "Petty cash + Total Bank")})</span></h3>${prev && !locked && admin0 ? `<button type="button" class="btn sm" id="cs-ounlock" style="margin-left:auto;margin-right:10px">✎ ${bi("বদলান", "Edit")}</button>` : ""}<b class="num" id="cs-OT">0</b></div>
        <div class="crow"><label>Cash in Hand <span class="mut xs">(${bi("পেটি ক্যাশ", "petty cash")})</span></label><input class="cell" id="cs-oc" value="${fmtIn(oc)}" inputmode="decimal" ${oLocked ? "disabled" : ""}></div><div class="crow"><label>Total Bank</label><input class="cell" id="cs-ob" value="${fmtIn(ob)}" inputmode="decimal" ${oLocked ? "disabled" : ""}></div></div>
       <div class="grid g2" style="margin-top:14px">${side("receipt", "Total Receipt", "c-rec")}${side("payment", "Total Payment", "c-pay")}</div>
       <div class="card csec c-close" style="margin-top:14px"><div class="csh"><h3>Closing Balance</h3><b class="num big" id="cs-CL">0</b></div>
@@ -2543,6 +2560,7 @@ async function vCash(v) {
       $("#cs-CL", body).textContent = "৳ " + money0(r.closing); $("#cs-x1", body).textContent = money0(r.opening_cash + r.opening_bank); $("#cs-x2", body).textContent = money0(r.total_receipt); $("#cs-x3", body).textContent = money0(r.total_payment); $("#cs-x4", body).textContent = money0(r.closing);
       const cb = $("#cs-cb", body); cb.textContent = r.cash_in_hand == null ? "—" : money0(r.closing - r.cash_in_hand); cb.className = "num " + (r.cash_in_hand != null && r.closing - r.cash_in_hand < 0 ? "rd b" : "");
       renderChm(r.items);
+      { const el = $("#cs-chk", body), L = cbChecks(r, bk, bPrev); if (el) { el.className = "card cbchk " + (L.some(x => x.lv === "err") ? "err" : L.some(x => x.lv === "warn") ? "warn" : "ok"); el.innerHTML = cbChecksHtml(L); } }
       return r;
     };
     const autosave = () => { if (locked) return; clearTimeout(autoT); autoT = setTimeout(() => { const { row } = collect(); try { localStorage.setItem(CASH_DRAFT(date), JSON.stringify({ ...row, status: "draft", entered_by: S.me.name, updated_at: new Date().toISOString() })); } catch { } const a = $("#cs-auto", body); if (a) a.textContent = "✓ এই ডিভাইসে অটো-সেভ " + new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); }, 700); };
