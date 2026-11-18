@@ -125,7 +125,7 @@ Object.assign(DemoAPI, {
   async invOrderSave(o) {
     const s = await this.ivStore(), old = o.id ? s.orders.find(x => x.id === o.id) : null;
     this.ivGuard([o.date, old?.date]);
-    if (old && S.me.role === "staff" && !["pending", "today"].includes(old.status)) throw new Error("policy");
+    if (old && S.me.role === "staff" && old.status === "cancel") throw new Error("policy");
     const row = ivCalc({ ch: o.ch, date: o.date, party: o.party || null, party_id: o.party_id || null, location: o.location || null, asm: o.asm || null, transport: o.transport || null, vehicle: o.vehicle || null, rent: o.rent === "" || o.rent == null ? null : +o.rent, lines: JSON.parse(JSON.stringify(o.lines)), free: o.free || null, remarks: o.remarks || null, status: o.status, delivery_date: o.delivery_date || null });
     const key = r => `${r.ch === "nir" ? "Niramoy" : "Order"} ${r.date} · ${r.party || r.transport || ""} · ${r.value} (${r.status})`;
     if (old) { this.aud("inv_orders", "update", key(row), { ...old }, { ...old, ...row }); Object.assign(old, row, { updated_at: new Date().toISOString() }); this.save(); return { ...old }; }
@@ -133,7 +133,7 @@ Object.assign(DemoAPI, {
   },
   async invOrderStatus(ids, status, dd) {
     const s = await this.ivStore(), out = [];
-    for (const id of ids) { const o = s.orders.find(x => x.id === id); if (!o) continue; this.ivGuard([o.date]); if (S.me.role === "staff" && !["pending", "today"].includes(o.status)) continue; const before = { ...o }; o.status = status; o.delivery_date = status === "ok" ? (dd || today()) : null; ivCalc(o); this.aud("inv_orders", "update", `Order ${o.date} · ${o.party || ""} (${status})`, before, { ...o }); out.push({ ...o }); }
+    for (const id of ids) { const o = s.orders.find(x => x.id === id); if (!o) continue; this.ivGuard([o.date]); if (S.me.role === "staff" && o.status === "cancel") continue; const before = { ...o }; o.status = status; o.delivery_date = status === "ok" ? (dd || today()) : null; ivCalc(o); this.aud("inv_orders", "update", `Order ${o.date} · ${o.party || ""} (${status})`, before, { ...o }); out.push({ ...o }); }
     this.save(); return out;
   },
   async invLinkParty(name, loc, pid) { const s = await this.ivStore(); this.ivGuard([], false); const out = []; s.orders.forEach(o => { if (o.ch === "dist" && o.party === name && !o.party_id && (o.location || null) === (loc || null) && !s.locks.some(l => l.month === ivMon(o.date))) { o.party_id = pid; out.push({ ...o }); } }); this.save(); return out; },
@@ -222,7 +222,7 @@ const ivEmpty = t => `<div class="empty iv-empty">${t}</div>`;
 /* order / trip form (both channels) */
 function ivOrderModal(ch, o, done) {
   const C = ivCan(), isNew = !o.id, cur = o.id ? { ...JSON.parse(JSON.stringify(o)), party: ivPname(o) } : { ch, date: today(), status: ch === "nir" ? "ok" : "pending", lines: {}, party: ch === "nir" ? "Niramoy Traders" : "", location: ch === "nir" ? "Naogaon" : "" };
-  const staffLock = !isNew && S.me.role === "staff" && !["pending", "today"].includes(o.status);
+  const staffLock = !isNew && S.me.role === "staff" && o.status === "cancel";
   const ro = !C.edit || staffLock || ivLocked(cur.date), used = Object.keys(cur.lines);
   const items = ivItemsFor(ch, used), rateOf = it => ch === "nir" ? it.rate_nir : it.rate_dist;
   const past = INV.orders.filter(x => x.ch === ch);
@@ -233,9 +233,10 @@ function ivOrderModal(ch, o, done) {
     : fld("date", bi("অর্ডারের তারিখ", "Order date"), cur.date, "date") + fld("party", bi("পার্টি / দোকান", "Party / shop"), cur.party, "text", `list="io-dl-pa"`) + fld("location", bi("এলাকা", "Location"), cur.location, "text", `list="io-dl-lo"`) + fld("asm", "ASM / RSM", cur.asm, "text", `list="io-dl-asm"`) + fld("transport", bi("ট্রান্সপোর্ট", "Transport"), cur.transport, "text", `list="io-dl-tr"`);
   const stSel = `<div><label class="f">${bi("অবস্থা", "Status")}</label><select class="in" id="io-status" ${ro ? "disabled" : ""}>${Object.keys(IV_ST).map(k => `<option value="${k}" ${k === cur.status ? "selected" : ""}>${bi(IV_ST[k][0], IV_ST[k][1])}</option>`).join("")}</select></div><div id="io-ddw"><label class="f">${bi("ডেলিভারির তারিখ", "Delivery date")}</label><input class="in" id="io-dd" type="date" value="${cur.delivery_date || ""}" ${ro ? "disabled" : ""}></div>`;
   modal(`<h2>${ico(ch === "nir" ? "ivtruck" : "ivcart")} ${isNew ? bi(ch === "nir" ? "নতুন ট্রিপ — নিরাময়" : "নতুন অর্ডার — ডিস্ট্রিবিউশন", ch === "nir" ? "New trip — Niramoy" : "New order — Distribution") : bi(ch === "nir" ? "ট্রিপ" : "অর্ডার", ch === "nir" ? "Trip" : "Order") + " · " + dmy(cur.date)}</h2>
-    ${ivLockNote(cur.date)}${staffLock ? `<div class="alert am">${bi("Delivered / Cancel হওয়া অর্ডার শুধু admin বদলাতে পারেন", "Only an admin can change a delivered or cancelled order")}</div>` : ""}
+    ${ivLockNote(cur.date)}${staffLock ? `<div class="alert am">${bi("Cancel হওয়া অর্ডার শুধু admin বদলাতে পারেন", "Only an admin can change a cancelled order")}</div>` : ""}
     <div class="iv-fg">${head2}${stSel}</div>
     <div class="iv-lh"><b>${bi("পণ্য ও পরিমাণ", "Items & quantity")}</b><input class="in sm" id="io-q" placeholder="${bi("আইটেম খুঁজুন…", "Find item…")}"><label class="iv-chk"><input type="checkbox" id="io-only" ${F2.only ? "checked" : ""}> ${bi("শুধু পরিমাণ দেওয়া", "Only filled")}</label></div>
+    ${!isNew && !ro ? `<div class="mut sm iv-eh">${bi("নতুন আইটেম যোগ: উপরে নাম খুঁজুন। আইটেম বাদ: পরিমাণ ০ বা খালি করুন। পরিমাণ বদল: ঘরে নতুন সংখ্যা দিন।", "Add an item: search its name above. Remove an item: clear its quantity or set 0. Change quantity: type the new number.")}</div>` : ""}
     <div class="iv-lines" id="io-lines"></div>
     <div class="iv-ltot" id="io-tot"></div>
     <div class="iv-fg two">${fld("free", bi("ফ্রি / অফার", "Free / offer"), cur.free)}${fld("remarks", bi("মন্তব্য", "Remarks"), cur.remarks)}</div>
@@ -247,7 +248,7 @@ function ivOrderModal(ch, o, done) {
     const lineVal = id => cur.lines[id] || { q: 0, r: rateOf(INV.byId[id]) ?? 0 };
     const tot = () => { let q = 0, val = 0; Object.values(cur.lines).forEach(l => { q += +l.q || 0; val += (+l.q || 0) * (+l.r || 0); }); $("#io-tot", root).innerHTML = `<span>${bi("মোট পরিমাণ", "Total qty")} <b class="num">${ivQ(q)}</b></span><span>${bi("মোট মূল্য", "Total value")} <b class="num">৳ ${money(Math.round(val * 100) / 100)}</b></span>`; };
     const lines = () => {
-      const q = norm(F2.q), vis = items.filter(it => (!q || norm(it.name).includes(q)) && (!F2.only || +cur.lines[it.id]?.q));
+      const q = norm(F2.q), vis = items.filter(it => (!q || norm(it.name).includes(q)) && (q || !F2.only || +cur.lines[it.id]?.q));
       $("#io-lines", root).innerHTML = vis.length ? vis.map(it => { const l = lineVal(String(it.id)); return `<div class="iv-ln ${+l.q ? "has" : ""}" data-id="${it.id}"><span class="nm">${esc(it.name)}${it.active === false ? ` <i class="tag">${bi("নিষ্ক্রিয়", "inactive")}</i>` : ""}<small class="mut">${esc(it.unit || "ctn")}</small></span><input class="in num q" type="number" min="0" step="any" inputmode="decimal" value="${+l.q || ""}" placeholder="0" ${ro ? "disabled" : ""} aria-label="${esc(it.name)} qty"><input class="in num r" type="number" min="0" step="any" inputmode="decimal" value="${l.r ?? ""}" ${ro || !C.admin ? "disabled" : ""} title="${bi("রেট", "Rate")}" aria-label="${esc(it.name)} rate"><b class="num v">${+l.q ? money0(l.q * l.r) : ""}</b></div>`; }).join("") : `<div class="mut c" style="padding:14px">${bi("কোনো আইটেম নেই", "No items")}</div>`;
       $$(".iv-ln", root).forEach(row => { const id = row.dataset.id, qi = $(".q", row), ri = $(".r", row);
         const upd = () => { const qv = num(qi.value), rv = num(ri.value); if (qv > 0) cur.lines[id] = { q: qv, r: rv }; else delete cur.lines[id]; row.classList.toggle("has", qv > 0); $(".v", row).textContent = qv > 0 ? money0(qv * rv) : ""; tot(); };
@@ -362,7 +363,7 @@ async function ivOrdersPage(v, ch) {
   const dd = o => o.status === "ok" ? (o.delivery_date ? dmy(o.delivery_date) : "—") : o.status === "cancel" ? "—" : `<span class="iv-age ${ivDays(o.date, today()) > 7 ? "late" : ""}">${ivDays(o.date, today())} ${bi("দিন", "days")}</span>`;
   const itemsTxt = o => Object.entries(o.lines).map(([k, l]) => `${esc(ivItemName(k))} <b class="num">${ivQ(l.q)}</b>`).join(" · ");
   function table(list) {
-    const can = C.edit, chk = o => can && (C.admin || ["pending", "today"].includes(o.status)) && !ivLocked(o.date);
+    const can = C.edit, chk = o => can && (C.admin || o.status !== "cancel") && !ivLocked(o.date);
     const tq = ivSum(list.filter(o => o.status !== "cancel"), o => o.total_qty), tv = ivSum(list.filter(o => o.status !== "cancel"), o => o.value);
     return `<div class="tw cards"><table class="iv-ot"><thead><tr>${can && !nir ? `<th class="noprint c"><input type="checkbox" id="${K}-all" aria-label="all"></th>` : ""}<th>${bi("তারিখ", "Date")}</th>${nir ? `<th>${bi("ট্রান্সপোর্ট", "Transport")}</th><th>${bi("গাড়ি", "Vehicle")}</th><th class="r">${bi("ভাড়া", "Rent")}</th>` : `<th>${bi("পার্টি", "Party")}</th><th>ASM</th>`}<th>${bi("আইটেম", "Items")}</th><th class="r">${bi("পরিমাণ", "Qty")}</th><th class="r">${bi("মূল্য ৳", "Value ৳")}</th><th>${bi("অবস্থা", "Status")}</th><th>${bi("ডেলিভারি", "Delivery")}</th><th class="noprint"></th></tr></thead><tbody>${list.map(o => `<tr class="${o.status === "cancel" ? "dim" : ""}">${can && !nir ? `<td class="noprint c">${chk(o) ? `<input type="checkbox" data-sel="${o.id}" ${F.sel.has(o.id) ? "checked" : ""}>` : ""}</td>` : ""}<td class="nw">${dmy(o.date)}${ivLocked(o.date) ? ` <span title="Locked">${ico("ivlock").replace("<svg", '<svg width="12" height="12"')}</span>` : ""}</td>${nir ? `<td><b>${esc(o.transport || "—")}</b></td><td class="nw">${esc(o.vehicle || "—")}</td><td class="r num">${o.rent ? money0(o.rent) : "—"}</td>` : `<td><b>${esc(ivPname(o))}</b>${o.party_id ? "" : ` <i class="iv-nl" title="${bi("কালেকশনের পার্টির সাথে মেলানো নেই", "Not linked to a collection party")}">!</i>`}${o.location || o.transport ? `<div class="mut xs">${esc([o.location, o.transport].filter(Boolean).join(" · "))}</div>` : ""}</td><td class="nw">${esc(o.asm || "—")}</td>`}<td class="iv-its">${itemsTxt(o)}${o.free ? `<div class="mut xs">${bi("ফ্রি", "Free")}: ${esc(o.free)}</div>` : ""}${o.remarks ? `<div class="mut xs">${esc(o.remarks)}</div>` : ""}</td><td class="r num b">${ivQ(o.total_qty)}</td><td class="r num">${money0(o.value)}</td><td>${ivSt(o.status)}</td><td class="nw">${dd(o)}</td><td class="r noprint"><button class="btn sm" data-ed="${o.id}" title="${bi("খুলুন", "Open")}">${ico(chk(o) || C.admin ? "edit" : "list")}</button></td></tr>`).join("")}</tbody>
       <tfoot><tr class="tot">${can && !nir ? "<td class='noprint'></td>" : ""}<td colspan="${nir ? 3 : 2}">${bi("মোট (Cancel বাদে)", "Total (excl. cancelled)")}</td>${nir ? `<td class="r num">${money0(ivSum(list.filter(o => o.status !== "cancel"), o => o.rent))}</td>` : ""}<td></td><td class="r num">${ivQ(tq)}</td><td class="r num">${money0(tv)}</td><td colspan="3"></td></tr></tfoot></table></div>`;
@@ -539,7 +540,7 @@ function ivEntry(box, ch, changed) {
     const nq = norm(q), base = showOpen ? open.slice().sort((a, b) => a.date.localeCompare(b.date)) : day.slice().sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
     const vis = base.filter(o => !nq || norm([ivPname(o), o.asm, o.transport, o.vehicle, o.remarks, ...Object.keys(o.lines).map(ivItemName)].join(" ")).includes(nq));
     $b("lh").textContent = showOpen ? bi("সব খোলা অর্ডার (পুরনো আগে)", "All open orders (oldest first)") : bi(`${dmy(date)} তারিখের ${nir ? "ট্রিপ" : "অর্ডার"}`, `${nir ? "Trips" : "Orders"} on ${dmy(date)}`); $b("cnt").textContent = vis.length;
-    const canSt = o => C.edit && (C.admin || ["pending", "today"].includes(o.status)) && !ivLocked(o.date);
+    const canSt = o => C.edit && (C.admin || o.status !== "cancel") && !ivLocked(o.date);
     $b("ls").innerHTML = vis.length ? `<div class="iv-ol">${vis.map(o => `<div class="iv-or s-${o.status}">${!nir && canSt(o) ? `<input type="checkbox" data-sl="${o.id}" ${sel.has(o.id) ? "checked" : ""} aria-label="select">` : `<span></span>`}
         <div class="iv-om"><div class="iv-ot1"><b>${esc(nir ? (o.transport || "—") : ivPname(o))}</b>${!nir && !o.party_id ? ` <i class="iv-nl" title="${bi("কালেকশনের পার্টির সাথে মেলানো নেই", "Not linked to a collection party")}">!</i>` : ""}<span class="mut xs">${esc([showOpen ? dmy(o.date) : "", nir ? o.vehicle : o.asm, o.transport && !nir ? o.transport : ""].filter(Boolean).join(" · "))}</span></div>
         <div class="iv-ot2">${Object.entries(o.lines).map(([k, l]) => `<span>${esc(ivItemName(k))} <b>${ivQ(l.q)}</b></span>`).join("")}${o.remarks ? `<span class="mut">${esc(o.remarks)}</span>` : ""}</div></div>

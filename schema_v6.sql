@@ -913,3 +913,9 @@ grant execute on function public.make_backup(text) to authenticated;
 -- =====================================================================
 alter table public.inv_orders add column if not exists party_id uuid references public.dist_parties(id) on delete restrict;
 create index if not exists inv_orders_party on public.inv_orders(party_id);
+
+-- ======== v6.73 — staff may edit delivered orders too (add / remove items, change quantity); only cancelled orders stay admin-only ========
+drop policy if exists inv_orders_u on public.inv_orders;
+create policy inv_orders_u on public.inv_orders for update to authenticated
+  using (my_role() = 'admin' or (my_role() = 'staff' and status <> 'cancel'))
+  with check (my_role() in ('admin','staff'));

@@ -272,3 +272,5 @@
   .iv-gl{margin-top:12px}
 }
 @media (prefers-reduced-motion:reduce){.iv-bars span,.ksum .kc.iv-k,.iv-li{animation:none!important;transition:none!important}}
+
+.iv-eh{margin:2px 2px 8px;line-height:1.5;padding:8px 12px;border-radius:10px;background:color-mix(in srgb,var(--pri) 7%,var(--surface));border:1px dashed color-mix(in srgb,var(--pri) 30%,var(--line))}
