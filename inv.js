@@ -611,11 +611,11 @@ function ivLedger(box) {
     L.forEach(o => {
       const dd = o.delivery_date || o.date, isOk = o.status === "ok", open = !isOk;
       if (!o.party_id) { if (open || (dd > cut && dd >= OVD_FROM)) unO.push(o); return; }
-      const x = row(o.party_id);
+      const x = row(o.party_id); x.pid = o.party_id;
       if (isOk && dd > cut && dd >= OVD_FROM && dd <= td) { x.app += o.value; x.aq += o.total_qty; }
       if (open) { x.pq += o.total_qty; if (!x.old || o.date < x.old) x.old = o.date; }
     });
-    cols.forEach(c => { if (c.party_id && c.status === "approved") row(c.party_id).col += c.amount; });
+    cols.forEach(c => { if (c.party_id && c.status === "approved") { const x = row(c.party_id); x.pid = c.party_id; x.col += c.amount; } });
     data = Object.values(g).map(x => {
       const p = x.pid ? ivParty(x.pid) : null; x.name = p?.name || x.name; x.asm = p?.asm || ""; x.dl = x.reg + x.app; x.bal = x.op + x.dl - x.col; x.days = x.old ? Math.max(0, ivDays(x.old, td)) : 0;
       x.st = Math.abs(x.bal) < 1 ? "clear" : x.bal < 0 ? "adv" : x.col > 0 ? "part" : "due"; x.zero = !x.op && !x.dl && !x.col && !x.pq; return x;
@@ -624,9 +624,10 @@ function ivLedger(box) {
     draw();
   }
   const ST = { due: ["#dc2626", bi("বাকি", "Due")], part: ["#d97706", bi("আংশিক", "Partial")], clear: ["#059669", bi("পরিশোধিত", "Clear")], adv: ["#4f46e5", bi("অগ্রিম", "Advance")] };
+  const visible = () => { const q = norm(qs); return data.filter(x => (show0 || !x.zero) && (!q || norm(x.name + " " + x.asm).includes(q))).sort((a, b) => b.bal - a.bal || a.name.localeCompare(b.name)); };
   function draw() {
-    const out = $("#ov-out", box); if (!out) return; const q = norm(qs);
-    const L = data.filter(x => (show0 || !x.zero) && (!q || norm(x.name + " " + x.asm).includes(q))).sort((a, b) => b.bal - a.bal || a.name.localeCompare(b.name));
+    const out = $("#ov-out", box); if (!out) return;
+    const L = visible();
     const T = k => ivSum(L, x => x[k]), td = today();
     $("#ov-kpi", box).innerHTML = ivTile("#dc2626", "coins", bi("মোট বাকি (Balance)", "Total balance"), "৳ " + money0(T("bal")), `${L.filter(x => x.bal >= 1).length} ${bi("পার্টির বাকি আছে", "parties owe")}`) + ivTile("#64748b", "flag", bi("Opening (০১-০১-২০২৬)", "Opening (01-01-2026)"), "৳ " + money0(T("op")), bi("সব পার্টির যোগফল", "all parties")) + ivTile("#059669", "check", bi("ডেলিভারি", "Delivered"), "৳ " + money0(T("dl")), `${bi("Tally", "Tally")} ৳ ${money0(T("reg"))} + ${bi("অ্যাপ", "App")} ৳ ${money0(T("app"))}`) + ivTile("#4f46e5", "coins", bi("কালেকশন (Approved)", "Collected (approved)"), "৳ " + money0(T("col")), bi("০১-০১-২০২৬ থেকে", "since 01-01-2026")) + ivTile("#d97706", "ivcart", bi("Pending অর্ডার", "Pending orders"), ivQ(T("pq")) + " ctn", `${L.filter(x => x.pq).length} ${bi("পার্টি", "parties")}`);
     const nt = [];
@@ -642,7 +643,7 @@ function ivLedger(box) {
   }
   $("#ov-q", box).oninput = e => { qs = e.target.value; draw(); };
   $("#ov-z", box).onchange = e => { show0 = e.target.checked; draw(); };
-  $("#ov-xl", box).onclick = () => { const td = today(); exportXlsx({ "Order vs Delivery": [["Party", "ASM", "Pending (ctn)", "Pending (days)", "Opening 01-01-2026", "Tally sales to " + (cut || "-"), "App deliveries after", "Delivered", "Collected (approved)", "Payment status", "Balance"], ...[...data].filter(x => show0 || !x.zero).sort((a, b) => b.bal - a.bal).map(x => [x.name, x.asm, x.pq || 0, x.pq ? x.days : 0, x.op, x.reg, x.app, x.dl, x.col, ({ due: "Due", part: "Partial", clear: "Clear", adv: "Advance" })[x.st], x.bal])] }, `Order_vs_Delivery_${td}.xlsx`); };
+  $("#ov-xl", box).onclick = () => { const td = today(); exportXlsx({ "Order vs Delivery": [["Party", "ASM", "Pending (ctn)", "Pending (days)", "Opening 01-01-2026", "Tally sales to " + (cut || "-"), "App deliveries after", "Delivered", "Collected (approved)", "Payment status", "Balance"], ...visible().map(x => [x.name, x.asm, x.pq || 0, x.pq ? x.days : 0, x.op, x.reg, x.app, x.dl, x.col, ({ due: "Due", part: "Partial", clear: "Clear", adv: "Advance" })[x.st], x.bal])] }, `Order_vs_Delivery_${td}.xlsx`); };
   load();
   return { draw: load };
 }
