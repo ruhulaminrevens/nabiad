@@ -665,6 +665,17 @@ function shell() {
         <span class="pill" style="align-self:center">${esc(S.me.role)}${DEMO ? " · demo" : ""}</span></header>
       <main class="main"><div id="view"></div></main></div></div>
     <nav class="mnav">${TABS.map(([k, sec, lab]) => `<a href="#/${k}" data-tab="${k}" data-sec="${sec}"><span class="mi">${ico(ROUTES[k].ic)}</span><span class="ml">${lab}</span>${tabBadge(sec, bd)}</a>`).join("")}<a href="#" id="more" data-sec="more"><span class="mi">${ico("more")}</span><span class="ml">আরও</span>${tabBadge("more", bd)}</a></nav>`;
+  // Magic UI Magic Card, adapted for the static app: share one pointer listener per view.
+  if (matchMedia("(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)").matches) {
+    $("#view").addEventListener("pointermove", event => {
+      if (event.pointerType !== "mouse") return;
+      const card = event.target.closest(".magic-card");
+      if (!card) return;
+      const { left, top } = card.getBoundingClientRect();
+      card.style.setProperty("--magic-x", `${event.clientX - left}px`);
+      card.style.setProperty("--magic-y", `${event.clientY - top}px`);
+    });
+  }
   const lo = async () => { await API.logout(); try { localStorage.removeItem(CACHE_KEY); } catch { } location.hash = ""; location.reload(); };
   $("#logout").onclick = lo;
   $("#sbtog").onclick = () => sideMin(document.documentElement.dataset.side !== "min");
@@ -2295,16 +2306,16 @@ async function vDash(v) {
   const att = [
     ...due.slice(0, 3).map(r => `<a class="att rd" href="#/rem"><span class="ai">⏰</span><span><b>${esc(r.title)}</b><small>${relTime(remDue(r))}</small></span><u>দেখুন</u></a>`),
     ...sys.map(a => `<a class="att ${a.k}" ${a.go ? `href="${a.go}"` : ""}><span class="ai">${ico(a.ic)}</span><span><b>${esc(a.t)}</b></span>${a.go ? "<u>খুলুন →</u>" : ""}</a>`)];
-  v.innerHTML = `<div class="hero dash-hero"><div class="hh"><h1>${greet()}, ${esc(S.me.name)} 👋</h1><p>${new Date().toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${workday ? "" : " · শুক্রবার (সাপ্তাহিক বন্ধ)"}</p>
+  v.innerHTML = `<div class="hero dash-hero magic-dot-pattern"><div class="hh"><h1>${greet()}, ${esc(S.me.name)} 👋</h1><p>${new Date().toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${workday ? "" : " · শুক্রবার (সাপ্তাহিক বন্ধ)"}</p>
         <div class="dprog">${ring}<div><b>${tdone === tasks.length ? "আজকের সব কাজ সম্পন্ন 🎉" : `আজকের কাজ ${tdone}/${tasks.length} সম্পন্ন`}</b><small>${tdone === tasks.length ? "দারুণ! সব কিছু আপ-টু-ডেট আছে" : `<span>বাকি:</span> ` + left.map(x => `<span>${x}</span>`).join(" · ")}</small><small id="d-streak"></small></div></div></div>
-       <div class="qacts">${acts.map(([k, ic, l, c]) => `<a class="qa ${c}" href="#/${k}"><span class="qi">${ico(ic)}</span><span>${l}</span></a>`).join("")}</div></div>
+       <div class="qacts">${acts.map(([k, ic, l, c]) => `<a class="qa magic-card ${c}" href="#/${k}"><span class="qi">${ico(ic)}</span><span>${l}</span></a>`).join("")}</div></div>
      <div class="ststrip">${boss ? "" : st(bankDone, "ব্যাংক ক্লোজিং", "#/closing", bankDone ? "আজ সেভ হয়েছে" : S.lastBal ? "<span>শেষ:</span> " + dmy(S.lastBal) : "এখনো নেই")}${boss ? "" : st(cashDone, "ক্যাশ খাতা", "#/cash", cashDone ? "আজ সেভ হয়েছে" : (S.lastBook || S.lastCash) ? "<span>শেষ:</span> " + dmy([S.lastBook, S.lastCash].filter(Boolean).sort().pop()) : "এখনো নেই")}
        ${st(!due.length, "রিমাইন্ডার", "#/rem", due.length ? `${due.length}টি সময় হয়েছে` : `${upcoming.length}টি আসছে`)}${st(!old.length, "Pending চেক", "#/status", `${pend.length}টি · পুরনো ${old.length}`)}${admin ? `<span id="d-bk" class="stchip"><i>…</i><span><b>Backup</b><small>দেখা হচ্ছে…</small></span></span>` : ""}</div>
      <div class="grid g4" id="d-kpi">
-       <a class="kpi card k-vi" href="#/crep"><div class="l">ব্যাংক ব্যালেন্স<span class="ki">${ico("bank")}</span></div><div class="v num" id="d-bt">—</div><div class="s" id="d-bs">লোড হচ্ছে…</div><div id="d-sp1" class="kspw"></div></a>
-       <a class="kpi card k-gr" href="#/reports"><div class="l">ব্যবহারযোগ্য (Usable)<span class="ki">${ico("coins")}</span></div><div class="v num" id="d-bu">—</div><div class="s" id="d-bb"></div><div id="d-sp2" class="kspw"></div></a>
-       <a class="kpi card k-cy" href="#/cashsum"><div class="l">ক্যাশ ক্লোজিং<span class="ki">${ico("wallet")}</span></div><div class="v num" id="d-ct">—</div><div class="s" id="d-cs">লোড হচ্ছে…</div><div id="d-sp3" class="kspw"></div></a>
-       <a class="kpi card k-am" href="#/cheques"><div class="l">চেক · এই মাস<span class="ki">${ico("list")}</span></div><div class="v num">${mon.length}</div><div class="s num">৳ ${money0(sumAmt(mon))} · <span>আজ</span> ${todayC.length} · Pending ${pend.length}</div><div class="kbar"><i style="width:${clearedPct}%"></i></div><div class="s" style="margin-top:3px">${clearedPct}% Clear</div></a>
+       <a class="kpi card magic-card k-vi" href="#/crep"><div class="l">ব্যাংক ব্যালেন্স<span class="ki">${ico("bank")}</span></div><div class="v num" id="d-bt">—</div><div class="s" id="d-bs">লোড হচ্ছে…</div><div id="d-sp1" class="kspw"></div></a>
+       <a class="kpi card magic-card k-gr" href="#/reports"><div class="l">ব্যবহারযোগ্য (Usable)<span class="ki">${ico("coins")}</span></div><div class="v num" id="d-bu">—</div><div class="s" id="d-bb"></div><div id="d-sp2" class="kspw"></div></a>
+       <a class="kpi card magic-card k-cy" href="#/cashsum"><div class="l">ক্যাশ ক্লোজিং<span class="ki">${ico("wallet")}</span></div><div class="v num" id="d-ct">—</div><div class="s" id="d-cs">লোড হচ্ছে…</div><div id="d-sp3" class="kspw"></div></a>
+       <a class="kpi card magic-card k-am" href="#/cheques"><div class="l">চেক · এই মাস<span class="ki">${ico("list")}</span></div><div class="v num">${mon.length}</div><div class="s num">৳ ${money0(sumAmt(mon))} · <span>আজ</span> ${todayC.length} · Pending ${pend.length}</div><div class="kbar"><i style="width:${clearedPct}%"></i></div><div class="s" style="margin-top:3px">${clearedPct}% Clear</div></a>
      </div>
      <div class="grid g2 dgap">
        <div class="card"><div class="ch" style="padding:0 0 8px"><h3>ব্যাংক ব্যালেন্স ট্রেন্ড</h3><div class="sp" style="flex:1"></div><div class="seg mini-seg" id="d-rng">${[[7, bi("৭দি", "7d")], [15, bi("১৫দি", "15d")], [30, bi("৩০দি", "30d")]].map(([n, l]) => `<span class="chip ${n === 30 ? "on" : ""}" data-n="${n}">${l}</span>`).join("")}</div></div>
