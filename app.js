@@ -31,10 +31,32 @@ const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const purposeKey = p => { const s = String(p || "").toLowerCase(); return s.startsWith("cash") ? "cash" : s.startsWith("own") ? "own" : (s.startsWith("cancel") || s.startsWith("blank")) ? "cancel" : s.startsWith("supplier") ? "supplier" : "other"; };
 function toast(msg, kind = "ok") { const t = document.createElement("div"); t.className = "toast " + kind; t.innerHTML = `<i>${kind === "err" ? "!" : "✓"}</i><span></span>`; t.lastChild.textContent = tr(String(msg)).replace(/^✔\s*/, ""); $("#toasts").appendChild(t); setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 260); }, kind === "err" ? 6000 : 2800); }
 const ask = m => confirm(tr(m));
+function overlayKeys(panel, close) {
+  panel.addEventListener("keydown", e => {
+    if (e.defaultPrevented) return;
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); return; }
+    if (e.key !== "Tab") return;
+    const controls = $$('a[href],button,input,select,textarea,summary,[tabindex]', panel)
+      .filter(el => el.tabIndex >= 0 && !el.matches(":disabled") && el.getClientRects().length);
+    const first = controls[0], last = controls.at(-1);
+    if (!first || (e.shiftKey ? e.target === first || e.target === panel : e.target === last)) {
+      e.preventDefault(); (e.shiftKey ? last || panel : first || panel).focus();
+    }
+  });
+}
 function modal(html, onMount) {
-  const root = $("#modal-root"); root.innerHTML = `<div class="mback"><div class="modal">${html}</div></div>`;
-  const close = () => root.innerHTML = "";
+  const root = $("#modal-root"), opener = document.activeElement;
+  root.innerHTML = `<div class="mback"><div class="modal" role="dialog" aria-modal="true" tabindex="-1">${html}</div></div>`;
+  const panel = $(".modal", root), title = $("h2", panel);
+  if (title) { title.id ||= "modal-title"; panel.setAttribute("aria-labelledby", title.id); }
+  const close = () => {
+    if (!panel.isConnected) return;
+    root.replaceChildren();
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
+  };
+  overlayKeys(panel, close);
   $(".mback", root).addEventListener("mousedown", e => { if (e.target.classList.contains("mback")) close(); });
+  panel.focus({ preventScroll: true });
   onMount && onMount(root, close); return close;
 }
 function loadScript(src) { return new Promise((res, rej) => { if (document.querySelector(`script[data-s="${src}"]`)) return res(); const s = document.createElement("script"); s.src = src; s.dataset.s = src; s.onload = res; s.onerror = () => rej(new Error("Load failed: " + src)); document.head.appendChild(s); }); }
@@ -573,20 +595,45 @@ const activeAccounts = () => S.accounts.filter(a => a.status === "Active");
 const sumAmt = a => a.reduce((s, c) => s + c.amount, 0);
 
 /* ---------- searchable combobox ---------- */
+let suggestionId = 0;
 function suggest(input, getItems, onPick, opts = {}) {
   const wrap = input.parentElement; wrap.classList.add("suggest");
   const list = document.createElement("div"); list.className = "sg-list hide"; wrap.appendChild(list);
+  list.id = "suggestions-" + ++suggestionId;
+  list.setAttribute("role", "listbox");
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-autocomplete", "list");
+  input.setAttribute("aria-controls", list.id);
   let items = [], idx = 0, picked = null, moved = false;
+  const show = visible => {
+    list.classList.toggle("hide", !visible);
+    input.setAttribute("aria-expanded", String(visible));
+    if (!visible) input.removeAttribute("aria-activedescendant");
+  };
+  const highlight = scroll => {
+    const options = $$("[data-i]", list);
+    options.forEach((option, i) => {
+      option.classList.toggle("on", i === idx);
+      option.setAttribute("aria-selected", String(i === idx));
+    });
+    const option = options[idx];
+    if (option) {
+      input.setAttribute("aria-activedescendant", option.id);
+      if (scroll) option.scrollIntoView({ block: "nearest" });
+    } else input.removeAttribute("aria-activedescendant");
+  };
+  show(false);
   const fmt = it => opts.free ? it.value : `${it.value} (${it.label})`;
   const render = () => {
     const q = norm(input.value);
     const rank = it => { if (it.last) return 9; const v = norm(it.value); if (!q) return 0; if (v === q) return 0; if (v.startsWith(q)) return 1; if (v.includes(q)) return 2; return 3; };
     items = getItems().filter(it => !q || it.last || [it.value, it.label, it.sub].some(f => norm(f).includes(q)))
       .map(it => ({ it, r: rank(it) })).sort((a, b) => a.r - b.r).slice(0, opts.max || 40).map(x => x.it);
-    idx = 0; moved = false; list.innerHTML = items.map((it, i) => `<div data-i="${i}" class="${i === 0 ? "on" : ""}">${it.html || `<span><b>${esc(it.value)}</b> ${esc(it.label)}</span>`}<small>${esc(it.sub || "")}</small></div>`).join("") || `<div class="mut">কিছু পাওয়া যায়নি</div>`;
-    list.classList.toggle("hide", !items.length && !input.value);
+    idx = 0; moved = false; list.innerHTML = items.map((it, i) => `<div data-i="${i}" id="${list.id}-${i}" role="option">${it.html || `<span><b>${esc(it.value)}</b> ${esc(it.label)}</span>`}<small>${esc(it.sub || "")}</small></div>`).join("") || `<div class="mut" role="option" aria-disabled="true">${bi("কিছু পাওয়া যায়নি", "No matches")}</div>`;
+    show(!!(items.length || input.value));
+    highlight(false);
   };
-  const pick = it => { picked = it; input.value = fmt(it); list.classList.add("hide"); onPick && onPick(it); };
+  const pick = it => { picked = it; input.value = fmt(it); show(false); onPick && onPick(it); };
   input.addEventListener("input", () => { picked = null; onPick && onPick(null); render(); });
   input.addEventListener("focus", () => { input.select(); render(); });
   input.addEventListener("keydown", e => {
@@ -598,11 +645,13 @@ function suggest(input, getItems, onPick, opts = {}) {
       if (!picked && cand && !list.classList.contains("hide")) { pick(cand); if (e.key === "Enter") { e.preventDefault(); input.dispatchEvent(new CustomEvent("picked")); } }
       else if (picked && e.key === "Enter") { e.preventDefault(); input.dispatchEvent(new CustomEvent("picked")); }
       return;
-    } else if (e.key === "Escape") { list.classList.add("hide"); return; } else return;
-    $$("div", list).forEach((d, i) => d.classList.toggle("on", i === idx)); $$("div", list)[idx]?.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Escape" && !list.classList.contains("hide")) {
+      e.preventDefault(); e.stopPropagation(); show(false); return;
+    } else return;
+    highlight(true);
   });
   list.addEventListener("mousedown", e => { const d = e.target.closest("[data-i]"); if (d) { e.preventDefault(); pick(items[+d.dataset.i]); input.dispatchEvent(new CustomEvent("picked")); } });
-  let bt = 0; input.addEventListener("blur", () => { clearTimeout(bt); bt = setTimeout(() => list.classList.add("hide"), 120); });
+  let bt = 0; input.addEventListener("blur", () => { clearTimeout(bt); bt = setTimeout(() => show(false), 120); });
   input.addEventListener("focus", () => clearTimeout(bt));
   return { get: () => picked, set: it => { if (it) pick(it); else { picked = null; input.value = ""; } }, setSilent: it => { picked = it; input.value = it ? fmt(it) : ""; } };
 }
@@ -664,7 +713,7 @@ function shell() {
         <button class="iconbtn bell" id="bell" title="রিমাইন্ডার ও সতর্কতা">${ico("bell")}<span class="bb"></span></button>${DEMO ? "" : `<button class="sync" id="sync"></button>`}${langToggle()}<button class="iconbtn th-ic" id="theme" title="থিম">${ico(getTheme() === "dark" ? "sun" : "moon")}</button>
         <span class="pill" style="align-self:center">${esc(S.me.role)}${DEMO ? " · demo" : ""}</span></header>
       <main class="main"><div id="view"></div></main></div></div>
-    <nav class="mnav">${TABS.map(([k, sec, lab]) => `<a href="#/${k}" data-tab="${k}" data-sec="${sec}"><span class="mi">${ico(ROUTES[k].ic)}</span><span class="ml">${lab}</span>${tabBadge(sec, bd)}</a>`).join("")}<a href="#" id="more" data-sec="more"><span class="mi">${ico("more")}</span><span class="ml">আরও</span>${tabBadge("more", bd)}</a></nav>`;
+    <nav class="mnav">${TABS.map(([k, sec, lab]) => `<a href="#/${k}" data-tab="${k}" data-sec="${sec}"><span class="mi">${ico(ROUTES[k].ic)}</span><span class="ml">${lab}</span>${tabBadge(sec, bd)}</a>`).join("")}<button type="button" id="more" data-sec="more" aria-haspopup="dialog" aria-expanded="false"><span class="mi">${ico("more")}</span><span class="ml">আরও</span>${tabBadge("more", bd)}</button></nav>`;
   // Magic UI Magic Card, adapted for the static app: share one pointer listener per view.
   if (matchMedia("(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)").matches) {
     $("#view").addEventListener("pointermove", event => {
@@ -690,7 +739,14 @@ function shell() {
 }
 const tabBadge = (sec, bd) => { const n = sec === "main" ? bd.status : sec === "more" ? (bd.books || 0) + (bd.rem || 0) : 0; return n ? `<span class="badge">${n}</span>` : ""; };
 const secOf = k => { const x = ROUTES[k]?.sec; return !x || x === "top" ? "more" : x; };
-function setTabActive(k) { $$(".mnav [data-sec]").forEach(a => a.classList.toggle("on", a.dataset.sec === secOf(k))); }
+function setTabActive(k) {
+  $$(".mnav [data-sec]").forEach(tab => {
+    const active = tab.dataset.sec === secOf(k);
+    tab.classList.toggle("on", active);
+    if (active && tab.matches("a")) tab.setAttribute("aria-current", "true");
+    else tab.removeAttribute("aria-current");
+  });
+}
 /* open the group that holds route k (or only the named group); everything else folds away */
 /* v6.58: minimized sidebar shows one icon per group; clicking it opens a small flyout with that group's pages */
 function sideFlyClose() { const f = $("#sidefly"); if (f) { f._off && f._off(); f.remove(); } }
@@ -846,7 +902,7 @@ async function setStatus(c, status, date, remarks) {
 }
 async function vEntry(v) {
   const st = { purpose: null, photo: null };
-  v.innerHTML = head("চেক পোস্টিং", `<button class="btn" id="e-imp">${ico("dl")} ${bi("Excel ইম্পোর্ট", "Excel import")}</button>`, "tc") + `
+  v.innerHTML = head("চেক পোস্টিং", `<button class="btn" id="e-imp">${ico("dl")} <span>${bi("Excel ইম্পোর্ট", "Excel import")}</span></button>`, "tc") + `
   <div class="split">
    <div class="card efc">
     <div class="fgrid ef">
@@ -1407,18 +1463,18 @@ function parseBookCover(text) {
 function bookModal(b, after) {
   b = b || { code: "", series: "", first: "", last: "", track: "", status: "Active", note: "" };
   const am = accMap();
-  modal(`<h2>${b.id ? bi("বই এডিট", "Edit cheque book") : bi("নতুন চেক বই", "New cheque book")}</h2><div class="grid" style="gap:10px">
-   <div><label class="f">A/C Code <span class="mut">(${bi("টাইপ করুন: ibbl, 905, nabiad…", "type: ibbl, 905, nabiad…")})</span></label><div><input class="in big" id="b-c" autocomplete="off" placeholder="IBBL-905"></div><div class="hint" id="b-ach"></div></div>
+  modal(`<h2>${b.id ? bi("বই এডিট", "Edit cheque book") : bi("নতুন চেক বই", "New cheque book")}</h2><div class="modal-body grid book-fields">
+   <div><label class="f" for="b-c">A/C Code <span class="mut">(${bi("টাইপ করুন: ibbl, 905, nabiad…", "type: ibbl, 905, nabiad…")})</span></label><div><input class="in big" id="b-c" autocomplete="off" placeholder="IBBL-905"></div><div class="hint" id="b-ach"></div></div>
    <div class="noprint"><label class="btn sm" for="b-ph">📷 ${bi("বইয়ের কভার স্ক্যান করে ভরুন", "Scan book cover to auto-fill")}</label><input type="file" id="b-ph" accept="image/*" hidden><div class="mut xs" id="b-ocro" style="margin-top:4px"></div></div>
-   <div class="row"><div><label class="f">${bi("সিরিজ (CD/SB…)", "Series (CD/SB…)")}</label><input class="in" id="b-s" value="${esc(b.series || "")}" autocomplete="off" style="text-transform:uppercase"></div><div><label class="f">Status</label><select class="in" id="b-st">${["Active", "Finished", "Lost"].map(s => `<option ${s === b.status ? "selected" : ""}>${s}</option>`).join("")}</select></div></div>
-   <div class="row"><div><label class="f">${bi("প্রথম পাতা", "First leaf")}</label><input class="in" id="b-f" value="${b.first ?? ""}" inputmode="numeric" autocomplete="off"></div><div><label class="f">${bi("শেষ পাতা", "Last leaf")}</label><input class="in" id="b-l" value="${b.last ?? ""}" inputmode="numeric" autocomplete="off"></div></div>
-   <div class="chips" id="b-q"><span class="mut xs" style="align-self:center">${bi("পাতার সংখ্যা:", "Leaves:")}</span>${[10, 25, 50, 100].map(n => `<span class="chip" data-n="${n}">${n}</span>`).join("")}</div>
-   <div><label class="f">${bi("ট্র্যাক শুরু — পাতা নং (ঐচ্ছিক)", "Track from — leaf no. (optional)")}</label><div class="row" style="gap:8px"><input class="in" id="b-t" value="${b.track ?? ""}" inputmode="numeric" autocomplete="off" placeholder="${bi("ফাঁকা = প্রথম পাতা থেকে", "empty = from first leaf")}"><button type="button" class="btn sm fix" id="b-t1">${bi("= প্রথম পাতা", "= first leaf")}</button></div>
+   <div class="row"><div><label class="f" for="b-s">${bi("সিরিজ (CD/SB…)", "Series (CD/SB…)")}</label><input class="in" id="b-s" value="${esc(b.series || "")}" autocomplete="off" style="text-transform:uppercase"></div><div><label class="f" for="b-st">Status</label><select class="in" id="b-st">${["Active", "Finished", "Lost"].map(s => `<option ${s === b.status ? "selected" : ""}>${s}</option>`).join("")}</select></div></div>
+   <div class="row"><div><label class="f" for="b-f">${bi("প্রথম পাতা", "First leaf")}</label><input class="in" id="b-f" value="${b.first ?? ""}" inputmode="numeric" autocomplete="off"></div><div><label class="f" for="b-l">${bi("শেষ পাতা", "Last leaf")}</label><input class="in" id="b-l" value="${b.last ?? ""}" inputmode="numeric" autocomplete="off"></div></div>
+   <div class="chips" id="b-q"><span class="mut xs" style="align-self:center">${bi("পাতার সংখ্যা:", "Leaves:")}</span>${[10, 25, 50, 100].map(n => `<button type="button" class="chip" data-n="${n}" aria-pressed="false">${n}</button>`).join("")}</div>
+   <div><label class="f" for="b-t">${bi("ট্র্যাক শুরু — পাতা নং (ঐচ্ছিক)", "Track from — leaf no. (optional)")}</label><div class="row" style="gap:8px"><input class="in" id="b-t" value="${b.track ?? ""}" inputmode="numeric" autocomplete="off" placeholder="${bi("ফাঁকা = প্রথম পাতা থেকে", "empty = from first leaf")}"><button type="button" class="btn sm fix" id="b-t1">${bi("= প্রথম পাতা", "= first leaf")}</button></div>
     <div class="mut xs" style="margin-top:4px">${bi("সিস্টেম চালুর আগে যে পাতাগুলো এন্ট্রি হয়নি সেগুলো মিসিং ধরা এড়াতে এখানে পাতার নম্বর (তারিখ নয়) দিন। ফাঁকা রাখলে প্রথম পাতা থেকেই গোনা হবে।", "To avoid flagging leaves used before go-live as missing, enter a leaf number here (not a date). Leave empty to count from the first leaf.")}</div></div>
    <div id="b-ex" class="mut xs"></div>
    <div id="b-info" class="hint" style="min-height:18px"></div>
-   <div><label class="f">${bi("নোট", "Note")}</label><input class="in" id="b-n" value="${esc(b.note || "")}"></div>
-   <div class="row"><button class="btn pri" id="b-ok">${bi("সেভ", "Save")}</button>${b.id ? `<button class="btn bad" id="b-dl">${bi("মুছুন", "Delete")}</button>` : ""}<button class="btn" id="b-x">${bi("বাতিল", "Cancel")}</button></div></div>`, (root, close) => {
+   <div><label class="f" for="b-n">${bi("নোট", "Note")}</label><input class="in" id="b-n" value="${esc(b.note || "")}"></div>
+   </div><div class="modal-actions"><button class="btn pri" id="b-ok">${bi("সেভ", "Save")}</button>${b.id ? `<button class="btn bad" id="b-dl">${bi("মুছুন", "Delete")}</button>` : ""}<button class="btn" id="b-x">${bi("বাতিল", "Cancel")}</button></div>`, (root, close) => {
     const g = id => $("#" + id, root), digits = x => String(x ?? "").trim().replace(/[,\s]/g, "");
     const item = a => ({ value: a.code, label: a.holder || "", sub: [a.bank, a.acno].filter(Boolean).join(" · ") });
     const acc = suggest(g("b-c"), () => S.accounts.map(item), it => { hint(); if (it && !b.id) autoNext(it.value); check(); });
@@ -1441,7 +1497,11 @@ function bookModal(b, after) {
       if (clash) return out(2, bi(`এই অ্যাকাউন্টের আরেকটি বইয়ের সাথে মিলে যাচ্ছে: ${clash.series || ""} ${clash.first}–${clash.last ?? "?"}`, `Overlaps another book of this account: ${clash.series || ""} ${clash.first}–${clash.last ?? "?"}`));
       const n = l !== null ? l - f + 1 : null, used = S.cheques.filter(c => c.code === code && c.no >= f && (l === null || c.no <= l)).length;
       const warn = l !== null && (n > 500 || (fs.length !== ls.length)) ? bi(" · ⚠ সংখ্যা অস্বাভাবিক — মিলিয়ে নিন", " · ⚠ unusual range — please verify") : "";
-      $$("#b-q .chip", root).forEach(c => c.classList.toggle("on", n === +c.dataset.n));
+      $$("#b-q .chip", root).forEach(c => {
+        const active = n === +c.dataset.n;
+        c.classList.toggle("on", active);
+        c.setAttribute("aria-pressed", String(active));
+      });
       return out(warn ? 1 : 0, `✔ ${ser ? ser + " " : ""}${f}${l !== null ? "–" + l : ""}${n !== null ? ` · ${n} ${bi("পাতা", "leaves")}` : ""}${used ? ` · ${used} ${bi("টি চেক এই সীমায় আগেই এন্ট্রি আছে", "cheque(s) already posted in this range")}` : ""}${warn}`);
     }
     if (b.code && am[b.code]) acc.setSilent(item(am[b.code])); hint();
@@ -1942,20 +2002,29 @@ function openMore(keys, mob, bd, lo) {
   groups.sort((a, b) => (a.s === "more" ? 0 : 1) - (b.s === "more" ? 0 : 1));
   const MORE_ORDER = ["dash", "accounts", "books", "register", "dparty", "rem", "settings", "audit", "admin"]; const mg = groups.find(g => g.s === "more"); if (mg) mg.ks.sort((a, b) => (MORE_ORDER.indexOf(a) + 1 || 99) - (MORE_ORDER.indexOf(b) + 1 || 99));
   const el = document.createElement("div"); el.className = "sheet sheet2";
-  el.innerHTML = `<div class="box"><div class="sh-hd"><div class="grab"></div><b>সব পাতা</b><button class="iconbtn sh-x" data-x="close" title="বন্ধ">✕</button></div><div class="sh-body">
+  el.innerHTML = `<div class="box" role="dialog" aria-modal="true" aria-labelledby="drawer-title" tabindex="-1"><div class="sh-hd"><div class="grab"></div><b id="drawer-title">সব পাতা</b><button class="iconbtn sh-x" data-x="close" title="বন্ধ">✕</button></div><div class="sh-body">
     ${groups.map(g => `<div class="sh-sec">${g.s === "more" ? "আরও" : SECS[g.s] || "মেনু"}</div><div class="sh-grid">${g.ks.map(k => `<a href="#/${k}" class="${k === cur ? "on" : ""}"><span class="ti">${ico(ROUTES[k].ic)}${bd[k] ? `<span class="badge">${bd[k]}</span>` : ""}</span><span class="tl">${k === "dash" ? "হোম" : ROUTES[k].t}</span></a>`).join("")}</div>`).join("")}
     <div class="sh-foot"><button data-x="th">${ico(dark ? "sun" : "moon")}<span>${dark ? "লাইট থিম" : "ডার্ক থিম"}</span></button><button data-x="lg">${ico("copyt")}<span>${LANG === "bn" ? "English" : "বাংলা"}</span></button><button data-x="ins">${ico("dl")}<span>${LANG === "en" ? "Install app" : "অ্যাপ ইনস্টল"}</span></button><button data-x="lo" class="lo">${ico("out")}<span>লগআউট</span></button></div>
     <div class="mut xs c" style="margin-top:8px">${esc(S.me.name)} · ${esc(S.me.role)}</div></div></div>`;
   document.body.appendChild(el); document.body.classList.add("noscroll");
+  const trigger = $("#more"), panel = $(".box", el);
+  trigger.setAttribute("aria-expanded", "true");
+  $(".sh-x", el).focus({ preventScroll: true });
   history.pushState({ more: 1 }, "");
   let closed = false;
   const close = viaPop => {
-    if (closed) return; closed = true; moreClose = null; window.removeEventListener("popstate", onPop); document.removeEventListener("keydown", onKey);
-    el.classList.add("out"); document.body.classList.remove("noscroll"); setTimeout(() => el.remove(), 200);
+    if (closed) return; closed = true; moreClose = null; window.removeEventListener("popstate", onPop);
+    el.inert = true;
+    el.classList.add("out"); document.body.classList.remove("noscroll");
+    trigger.setAttribute("aria-expanded", "false");
+    if (trigger.isConnected) trigger.focus({ preventScroll: true });
+    setTimeout(() => el.remove(), matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200);
     if (!viaPop && history.state?.more) history.back();
   };
-  const onPop = () => close(true), onKey = e => { if (e.key === "Escape") close(); };
-  window.addEventListener("popstate", onPop); document.addEventListener("keydown", onKey); moreClose = () => close();
+  const onPop = () => close(true);
+  window.addEventListener("popstate", onPop);
+  overlayKeys(panel, () => close());
+  moreClose = () => close();
   el.addEventListener("click", ev => {
     if (ev.target === el) return close();
     const a = ev.target.closest("a[href^='#/']");
@@ -3184,18 +3253,18 @@ function dcDecide(ids, st, after) {
 function dpartyModal(p, after) {
   const isNew = !p.id, admin = S.me.role === "admin";
   const asmOpts = [...new Set([...DASM.filter(a => a.active).map(a => a.name), p.asm].filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  modal(`<h2>${isNew ? "নতুন পার্টি" : "পার্টি এডিট"}</h2><div class="fgrid">
-   <div class="s4"><label class="f">পার্টির নাম * <span class="mut">(নাম-এলাকা, যেমন: Alam Store-Nawabagonj, Dinajpur)</span></label><input class="in" id="dp-n" autocomplete="off" value="${esc(p.name || "")}"></div>
-   <div class="s2"><label class="f">ASM / Salesman</label><select class="in" id="dp-a"><option value="">— বাছুন —</option>${asmOpts.map(a => `<option ${a === p.asm ? "selected" : ""}>${esc(a)}</option>`).join("")}<option value="__new">＋ নতুন ASM যোগ করুন…</option></select><input class="in hide" id="dp-an" autocomplete="off" placeholder="নতুন ASM-এর নাম" style="margin-top:6px"></div>
-   <div class="s2"><label class="f">Contact Person</label><input class="in" id="dp-cp" autocomplete="off" value="${esc(p.contact_person || "")}"></div>
-   <div class="s1"><label class="f">Contact No.</label><input class="in" id="dp-p" inputmode="tel" autocomplete="off" value="${esc(p.phone || "")}"></div>
-   <div class="s3"><label class="f">Full Address</label><input class="in" id="dp-ad" autocomplete="off" value="${esc(p.address || "")}"></div>
-   <div class="s2"><label class="f">জেলা <span class="mut">(নাম থেকে নিজে বসে)</span></label><input class="in" id="dp-d" list="dp-dl-d" autocomplete="off" value="${esc(p.district || "")}"></div>
-   <div class="s2"><label class="f">বিভাগ <span class="mut">${bi("(জেলা থেকে নিজে বসে)", "(filled in from the district)")}</span></label><input class="in" id="dp-v" readonly tabindex="-1" value="${esc(p.district ? BD_DIV[p.district] || "" : "")}"></div>
+  modal(`<h2>${isNew ? "নতুন পার্টি" : "পার্টি এডিট"}</h2><div class="modal-body"><div class="fgrid">
+   <div class="s4"><label class="f" for="dp-n">পার্টির নাম * <span class="mut">(নাম-এলাকা, যেমন: Alam Store-Nawabagonj, Dinajpur)</span></label><input class="in" id="dp-n" autocomplete="off" value="${esc(p.name || "")}"></div>
+   <div class="s2"><label class="f" for="dp-a">ASM / Salesman</label><select class="in" id="dp-a"><option value="">— বাছুন —</option>${asmOpts.map(a => `<option ${a === p.asm ? "selected" : ""}>${esc(a)}</option>`).join("")}<option value="__new">＋ নতুন ASM যোগ করুন…</option></select><input class="in hide" id="dp-an" autocomplete="off" placeholder="নতুন ASM-এর নাম" style="margin-top:6px"></div>
+   <div class="s2"><label class="f" for="dp-cp">Contact Person</label><input class="in" id="dp-cp" autocomplete="off" value="${esc(p.contact_person || "")}"></div>
+   <div class="s1"><label class="f" for="dp-p">Contact No.</label><input class="in" id="dp-p" inputmode="tel" autocomplete="off" value="${esc(p.phone || "")}"></div>
+   <div class="s3"><label class="f" for="dp-ad">Full Address</label><input class="in" id="dp-ad" autocomplete="off" value="${esc(p.address || "")}"></div>
+   <div class="s2"><label class="f" for="dp-d">জেলা <span class="mut">(নাম থেকে নিজে বসে)</span></label><input class="in" id="dp-d" list="dp-dl-d" autocomplete="off" value="${esc(p.district || "")}"></div>
+   <div class="s2"><label class="f" for="dp-v">বিভাগ <span class="mut">${bi("(জেলা থেকে নিজে বসে)", "(filled in from the district)")}</span></label><input class="in" id="dp-v" readonly tabindex="-1" value="${esc(p.district ? BD_DIV[p.district] || "" : "")}"></div>
    ${isNew ? "" : `<div class="s4"><label class="keep"><input type="checkbox" id="dp-act" ${p.active !== false ? "checked" : ""}> সক্রিয় পার্টি <span class="mut">(বন্ধ করলে নতুন এন্ট্রির সাজেশনে আসবে না; আগের রেকর্ড যেমন আছে থাকবে)</span></label></div>`}
-  </div>${datalist("dp-dl-d", BD_DIST)}<div class="hint rd" id="dp-err"></div>
-  <div class="row" style="margin-top:14px"><button class="btn pri" id="dp-ok">${ico("save")} সেভ</button><button class="btn" id="dp-x">বন্ধ</button>${!isNew && admin ? `<button class="btn dg" id="dp-del" style="margin-left:auto">${ico("trash")} মুছুন</button>` : ""}</div>`, (root, close) => {
-    const err = m => $("#dp-err", root).textContent = m || ""; $("#dp-n", root).focus();
+  </div>${datalist("dp-dl-d", BD_DIST)}</div>
+  <div class="modal-actions"><div class="hint rd" id="dp-err" role="status"></div><button class="btn pri" id="dp-ok">${ico("save")} সেভ</button><button class="btn" id="dp-x">বন্ধ</button>${!isNew && admin ? `<button class="btn dg" id="dp-del">${ico("trash")} মুছুন</button>` : ""}</div>`, (root, close) => {
+    const err = m => $("#dp-err", root).textContent = m || ""; if (matchMedia("(pointer: fine)").matches) $("#dp-n", root).focus();
     $("#dp-x", root).onclick = close;
     const dI = $("#dp-d", root), vI = $("#dp-v", root), aS = $("#dp-a", root), aN = $("#dp-an", root);
     const syncV = () => { const d = BD_DIST.find(x => x.toLowerCase() === dI.value.trim().toLowerCase()); if (d) dI.value = d; vI.value = BD_DIV[dI.value] || ""; };

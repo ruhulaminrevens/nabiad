@@ -46,17 +46,6 @@
 .cbr .sg-list{min-width:min(340px,calc(100vw - 40px));max-height:300px}
 .cbr .sg-list div small:empty{display:none}
 .cbr .sg-list .sgn em{white-space:normal}
-.top.ph.tc .acts .btn svg{flex:none}
-@media (max-width:900px){
-  .top.ph.tc{flex-wrap:wrap}
-  .top.ph.tc .ph-l{flex:1 1 150px;min-width:0}
-  .top.ph.tc .acts{display:flex;flex-direction:row;flex-wrap:nowrap;gap:6px;width:auto;flex:0 0 auto}
-  .top.ph.tc .acts .btn{width:auto;height:40px;padding:0 12px;font-size:13px;gap:6px}
-}
-@media (max-width:560px){
-  .top.ph.tc .acts .btn{width:42px;padding:0;justify-content:center}
-  .top.ph.tc .acts .btn .lb{display:none}
-}
 .cblg-new{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) auto;gap:8px}
 .cblg-h{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 64px;gap:6px;margin-top:14px;font-size:11.5px;font-weight:700;color:var(--mut);padding:0 0 4px;border-bottom:1px solid var(--line2)}
 .cblg-r{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 64px;gap:6px;align-items:center;padding:4px 0;border-bottom:1px dashed var(--line2)}
@@ -96,3 +85,16 @@
 .cb-reg-block{padding:8px 18px}
 .cb-reg-block h3{margin:0}
 @media print{.cb-register.rep{overflow:visible}.cb-reg-table thead{display:table-header-group}.cb-reg-block{break-inside:avoid}}
+
+.csec.c-open .csh { flex-wrap: wrap; justify-content: space-between; }
+.cbopening-controls { display: flex; flex: 0 1 260px; gap: 8px; align-items: center; min-width: 0; }
+.cbopening-controls .btn { flex: none; }
+.cbopening-controls .cbopen { flex: 1 1 0; min-width: 0; max-width: none; }
+@media (max-width: 550px) {
+  .csec.c-open .csh { align-items: start; flex-direction: column; gap: 8px; }
+  .cbopening-controls { flex: none; width: 100%; }
+  .cbopening-controls .cbopen, .cbopening-controls .btn { height: 44px; }
+  .cbr { grid-template-columns: 22px minmax(0,1fr) minmax(72px,28%) 32px; }
+  .cbr .cell, .cbr select.in { font-size: 16px; }
+  .cbr .cbx2 { min-width: 32px; min-height: 36px; padding: 0; }
+}
