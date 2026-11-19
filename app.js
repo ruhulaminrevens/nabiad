@@ -2482,7 +2482,7 @@ async function vCash(v) {
     let local = null; try { local = JSON.parse(localStorage.getItem(CASH_DRAFT(date)) || "null"); } catch { }
     let src = ex; let fromLocal = false;
     if (!final && local && (!ex || new Date(local.updated_at) > new Date(ex.updated_at))) { src = local; fromLocal = true; }
-    const bkG = bk?.lines && ((bk.lines.r || []).length || (bk.lines.p || []).length) ? cbGroup(bk) : null;
+    const bkG = bk?.lines && ["r", "p"].some(t => (bk.lines[t] || []).some(line => +line.a)) ? cbGroup(bk) : null;
     if (!src && bkG && !final) src = { items: bkG.items, opening_cash: +bk.opening_cash || 0, opening_bank: 0, cash_in_hand: bk.cash_in_hand, remarks: null, entered_by: "ক্যাশ খাতা", updated_at: bk.updated_at, status: "draft", fromBook: true };
     /* Opening = previous final record's closing (auto). Stored values are used only for a finalised day or the very first record. */
     const pOc = prev ? +prev.cash_in_hand || 0 : 0, pOb = prev ? (+prev.closing || 0) - (+prev.cash_in_hand || 0) : 0, useStored = final || !prev;
@@ -3776,4 +3776,5 @@ async function boot() {
   } catch (e) { console.error(e); $("#app").innerHTML = `<div class="login"><div class="card"><div class="alert rd">${bi("শুরু করা যায়নি: ", "Could not start: ")}${esc(e.message || e)}</div><p class="mut sm">${bi("config.js এ Supabase URL ও key ঠিক আছে কি না এবং schema.sql চালানো হয়েছে কি না দেখুন।", "Check that the Supabase URL and key in config.js are correct and that schema.sql has been run.")}</p></div></div>`; }
 }
 window.addEventListener("hashchange", route);
-boot();
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
+else boot();
