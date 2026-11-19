@@ -1604,3 +1604,56 @@ html[data-theme="dark"] .lk.blank{color:#fca5a5}html[data-theme="dark"] .lk.lost
   .fx-sw.fx-end{flex:1 1 100%;margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
   .fx-sw.fx-end:has(input:checked){background:var(--pri-soft);border-color:color-mix(in srgb,var(--pri) 50%,var(--line))}
 }
+
+/* Magic UI patterns adapted to Nabiad's CSS and DOM.
+   https://magicui.design/docs/components/dot-pattern
+   https://magicui.design/docs/components/magic-card */
+.dash-hero.magic-dot-pattern::before {
+  inset:0;
+  width:auto;
+  height:auto;
+  border-radius:0;
+  background:radial-gradient(circle at 2px 2px,rgba(255,255,255,.34) 1px,transparent 1.35px) 0 0/16px 16px;
+  mask-image:linear-gradient(100deg,transparent 5%,#000 88%);
+}
+.dash-hero.magic-dot-pattern::after {content:none}
+@media (min-width:1181px) {
+  .dash-hero .qacts {display:grid;grid-template-columns:repeat(2,minmax(160px,1fr))}
+}
+
+.magic-card {
+  position:relative;
+  isolation:isolate;
+  --magic-x:86%;
+  --magic-y:0%;
+  --magic-tint:var(--kc,var(--pri));
+}
+.magic-card::after {
+  content:"";
+  position:absolute;
+  z-index:0;
+  inset:0;
+  width:auto;
+  height:auto;
+  border-radius:inherit;
+  pointer-events:none;
+  background:radial-gradient(150px circle at var(--magic-x) var(--magic-y),color-mix(in srgb,var(--magic-tint) 16%,transparent),transparent);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--magic-tint) 24%,transparent);
+  opacity:.58;
+}
+.magic-card > * {position:relative;z-index:1}
+.qa.magic-card,.kpi.magic-card {--magic-tint:#fff}
+#d-kpi .kpi.magic-card::before {content:none}
+#d-kpi .kpi.magic-card::after {inset:0;width:auto;height:auto;border-radius:inherit}
+a.magic-card:focus-visible {outline:2px solid var(--pri);outline-offset:3px}
+.dash-hero a.magic-card:focus-visible {outline-color:#fff}
+@media (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference) {
+  .magic-card::after {transition:opacity .18s ease}
+  .magic-card:hover::after {opacity:1}
+}
+@media (prefers-reduced-motion:reduce) {
+  .dash-hero.magic-dot-pattern,.magic-card,.magic-card:hover {animation:none!important;transition:none!important;transform:none!important}
+}
+@media print {
+  .magic-card::after,.dash-hero.magic-dot-pattern::before {display:none}
+}
