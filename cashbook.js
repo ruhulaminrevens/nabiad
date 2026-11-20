@@ -83,13 +83,13 @@ Object.assign(DemoAPI, {
   async cbLedgerGroupSave(id, patch) {
     const row = this._cbl().find(entry => entry.id === id);
     if (!row) throw new Error("Ledger unavailable");
-    Object.assign(row,patch); this.save(); return {...row};
+    Object.assign(row, patch, { updated_at: new Date().toISOString() }); this.save(); return {...row};
   },
   async cbLedgerSave(r) {
     const L = this._cbl(), dup = L.find(x => x.id !== r.id && x.name.toLowerCase() === String(r.name).toLowerCase()); if (dup) throw new Error('duplicate key value violates unique constraint "cashbook_ledgers_name_u"');
-    const row = { name: r.name, kind: r.kind || "both", cat_r: r.cat_r || null, cat_p: r.cat_p || null, bank_code: r.bank_code || null, active: r.active !== false };
+    const row = { name: r.name, kind: r.kind || "both", cat_r: r.cat_r || null, cat_p: r.cat_p || null, bank_code: r.bank_code || null, active: r.active !== false, updated_at: new Date().toISOString() };
     if (r.id) { const i = L.findIndex(x => x.id === r.id); L[i] = { ...L[i], ...row }; this.save(); return { ...L[i] }; }
-    const n = { id: Math.max(0, ...L.map(x => x.id)) + 1, ...row }; L.push(n); this.save(); return { ...n };
+    const n = { id: Math.max(0, ...L.map(x => x.id)) + 1, ...row, created_at: row.updated_at }; L.push(n); this.save(); return { ...n };
   },
   async cbLedgerDel(id) { const L = this._cbl(), i = L.findIndex(x => x.id === id); if (i >= 0) L.splice(i, 1); this.save(); }
 });
