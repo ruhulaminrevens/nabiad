@@ -1885,3 +1885,19 @@ body:has(#modal-root .mback) { overflow: hidden; }
   .cq-tools .cq-status-fields { grid-template-columns: minmax(0, 1fr); }
   .cq-edit-row > div { min-width: 0; }
 }
+
+/* Bank statement verification */
+.stmt-inputs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.stmt-inputs .in { min-width:0; width:100%; }
+.stmt-inputs input[type=file] { padding:8px; }
+.stmt-controls { display:flex; flex-wrap:wrap; gap:8px; margin-block:10px; }
+.stmt-controls [hidden], #stmt-message:empty { display:none; }
+.stmt-row { display:grid; grid-template-columns:20px minmax(0,1fr) auto; gap:8px; align-items:center; padding:10px 2px; border-bottom:1px solid var(--line); }
+.stmt-row small { overflow-wrap:anywhere; }
+.stmt-row .tag { white-space:normal; max-width:135px; }
+.stmt-badge { white-space:nowrap; }
+@media (max-width:480px) {
+  .stmt-inputs { grid-template-columns:minmax(0,1fr); }
+  .stmt-row { grid-template-columns:20px minmax(0,1fr); }
+  .stmt-row .tag { grid-column:2; justify-self:start; max-width:100%; }
+}
