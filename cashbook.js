@@ -1,5 +1,5 @@
 /* NABIAD — CASH BOOK / ক্যাশ খাতা (v6.76)
-   Daily paper-book style entry: Cash in Hand (opening) → Received lines → Payment lines → counted cash in hand.
+   Daily paper-book style entry: Cash in Hand (opening) → Receipt lines → Payment lines → counted cash in hand.
    Every line = a name + an amount; its category (Cosmetics / Food / Bank A/C / Suppliers …) is guessed from the name
    (remembered from earlier days) and can be changed. The Cash Checker (old Cash Entry page) groups these lines into
    its categories and compares everything. Loaded after app.js; uses its helpers (head, dateNav, evalAmt, CASH, bi …). */
@@ -112,7 +112,7 @@ function cbChecks(row, bk, prevBk) {
   const g = cbGroup(bk), T = cbTot(bk);
   if (bk.status !== "final") add("warn", bi("ক্যাশ খাতা এখনো ড্রাফট — ফাইনাল সেভ হয়নি", "Cash Book is still a draft — not finalised"));
   if (bk.cash_in_hand == null) add("warn", bi("ক্যাশ খাতায় হাতে ক্যাশ (গুনে) লেখা নেই", "Counted cash in hand is missing in the Cash Book"));
-  else if (Math.abs(bk.cash_in_hand - T.exp) > 0.5) add("err", bi(`খাতার নিজের হিসাব মেলে না — Opening ${m(bk.opening_cash)} + Received ${m(T.R)} − Payment ${m(T.P)} = ${m(T.exp)}, লেখা ${m(bk.cash_in_hand)} → পার্থক্য ${cbSigned(bk.cash_in_hand - T.exp)}`, `The Cash Book itself does not tally — Opening ${m(bk.opening_cash)} + Received ${m(T.R)} − Payment ${m(T.P)} = ${m(T.exp)}, entered ${m(bk.cash_in_hand)} → difference ${cbSigned(bk.cash_in_hand - T.exp)}`));
+  else if (Math.abs(bk.cash_in_hand - T.exp) > 0.5) add("err", bi(`খাতার নিজের হিসাব মেলে না — Opening ${m(bk.opening_cash)} + Receipt ${m(T.R)} − Payment ${m(T.P)} = ${m(T.exp)}, লেখা ${m(bk.cash_in_hand)} → পার্থক্য ${cbSigned(bk.cash_in_hand - T.exp)}`, `The Cash Book itself does not tally — Opening ${m(bk.opening_cash)} + Receipt ${m(T.R)} − Payment ${m(T.P)} = ${m(T.exp)}, entered ${m(bk.cash_in_hand)} → difference ${cbSigned(bk.cash_in_hand - T.exp)}`));
   if (prevBk) { const pc = prevBk.cash_in_hand == null ? cbTot(prevBk).exp : +prevBk.cash_in_hand; if (Math.abs((+bk.opening_cash || 0) - pc) > 0.5) add("err", bi(`খাতার Opening ${m(bk.opening_cash)} ≠ আগের দিনের (${dmy(prevBk.date)}) হাতে ক্যাশ ${m(pc)} (পার্থক্য ${cbSigned(bk.opening_cash - pc)})`, `Book opening ${m(bk.opening_cash)} ≠ previous day's (${dmy(prevBk.date)}) cash in hand ${m(pc)} (difference ${cbSigned(bk.opening_cash - pc)})`)); }
   if (Math.abs(row.opening_cash - (+bk.opening_cash || 0)) > 0.5) add("warn", bi(`Opening Cash: ফর্ম ${m(row.opening_cash)} ≠ খাতা ${m(bk.opening_cash)}`, `Opening cash: form ${m(row.opening_cash)} ≠ book ${m(bk.opening_cash)}`));
   if (g.warn.un) add("warn", bi(`${g.warn.un}টি লাইনের খাত বাছা হয়নি — Others ধরা হয়েছে (ক্যাশ খাতায় গিয়ে ঠিক করুন)`, `${g.warn.un} line(s) have no category — counted under Others (fix in the Cash Book)`));
@@ -164,7 +164,7 @@ function cbRegisterTotals(book) {
   const counted = book.cash_in_hand == null ? null : Number(book.cash_in_hand);
   return [
     [bi("শুরুর নগদ", "Opening cash"), Number(book.opening_cash) || 0],
-    [bi("মোট প্রাপ্তি", "Total received"), R],
+    [bi("মোট প্রাপ্তি", "Total receipts"), R],
     [bi("মোট পরিশোধ", "Total payment"), P],
     [bi("হাতে থাকার কথা", "Expected cash"), exp],
     [bi("গুনে পাওয়া নগদ", "Counted cash"), counted],
@@ -173,6 +173,7 @@ function cbRegisterTotals(book) {
 }
 const cbRegisterTitle = () => bi("দৈনিক ক্যাশ রেজিস্টার", "Daily Cash Register");
 const cbVoucherLabel = t => t === "r" ? bi("মানি রিসিট নং", "Money Receipt No.") : bi("ক্যাশ ভাউচার নং", "Cash Voucher No.");
+const cbSideLabel = t => t === "r" ? bi("প্রাপ্তি", "Receipt") : bi("পরিশোধ", "Payment");
 const cbNarrationLabel = () => bi("নোট / Tally Narration", "Note / Tally Narration");
 function cbRegisterSheet(book) {
   const lines = book.lines || {}, ref = lines.register;
@@ -182,7 +183,7 @@ function cbRegisterSheet(book) {
   const records = Array.from({ length: Math.max(lines.r?.length || 0, lines.p?.length || 0) }, (_, i) => row(lines.r?.[i], lines.p?.[i], i)).join("");
   return `<div class="rep cb-register">${dcHead(cbRegisterTitle(), book.date, book.date)}
     <table class="rep-t cb-reg-table"><colgroup><col style="width:5%"><col style="width:32%"><col style="width:15.5%"><col style="width:32%"><col style="width:15.5%"></colgroup>
-    <thead><tr><th>#</th><th>${bi("প্রাপ্তি", "Received")}</th><th class="r">৳</th><th>${bi("পরিশোধ", "Payment")}</th><th class="r">৳</th></tr></thead>
+    <thead><tr><th>#</th><th>${bi("প্রাপ্তি", "Receipt")}</th><th class="r">৳</th><th>${bi("পরিশোধ", "Payment")}</th><th class="r">৳</th></tr></thead>
     <tbody>${records || `<tr><td colspan="5">${bi("কোনো লেনদেন নেই", "No transactions")}</td></tr>`}</tbody></table>
     <section class="cb-reg-block"><h3>${bi("নগদ হিসাব", "Cash reconciliation")}</h3>${totals(cbRegisterTotals(book))}</section>
     <section class="cb-reg-block"><h3>${bi("অন্যান্য সারাংশ", "Reference totals")}</h3>${totals(cbRegisterReferences(ref))}
@@ -197,7 +198,7 @@ async function cbRegisterExcel(book) {
   const rows = Array.from({ length: Math.max(lines.r?.length || 0, lines.p?.length || 0) }, (_, i) => [i + 1, ...entry(lines.r?.[i]), ...entry(lines.p?.[i])]);
   const ws = XLSX.utils.aoa_to_sheet([
     [cbRegisterTitle(), book.date, bi("ফাইনাল", "Final"), cbRegisterDate(book.updated_at), book.entered_by || ""],
-    ["#", bi("প্রাপ্তি", "Received"), "৳", cbVoucherLabel("r"), cbNarrationLabel(), bi("পরিশোধ", "Payment"), "৳", cbVoucherLabel("p"), cbNarrationLabel()],
+    ["#", bi("প্রাপ্তি", "Receipt"), "৳", cbVoucherLabel("r"), cbNarrationLabel(), bi("পরিশোধ", "Payment"), "৳", cbVoucherLabel("p"), cbNarrationLabel()],
     ...rows, [], ...cbRegisterTotals(book), [], ...cbRegisterReferences(ref),
     [bi("সারাংশ নেওয়া হয়েছে", "Summary captured"), cbRegisterDate(ref?.at)],
     [bi("মন্তব্য", "Remarks"), book.remarks || ""]
@@ -326,17 +327,19 @@ async function vCashBook(v) {
     const dis = locked ? "disabled" : "", lines = src?.lines || { r: [], p: [] };
     const acOpts = `<option value="">${bi("A/C বাছুন", "Select A/C")}</option>` + (S.accounts || []).map(a => `<option value="${esc(a.code)}">${esc(a.code)} · ${esc(a.holder || "")}</option>`).join("");
     const catOpts = t => `<option value="">${bi("? খাত বাছুন", "? choose category")}</option>` + CB_CAT[t].map(k => `<option value="${k}">${esc(cbCatName(k))}</option>`).join("");
-    const rowHtml = (t, i, l = {}) => `<div class="cbr" data-t="${t}" data-auto="${l.k ? "0" : "1"}"><span class="cbi">${i + 1}</span><div class="cbnm"><input class="cell cbname" autocomplete="off" placeholder="${t === "r" ? bi("কার কাছ থেকে / কী", "From whom / what") : bi("কাকে / কী খরচ", "To whom / what for")}" value="${esc(l.n || "")}" ${dis}></div><div class="cbav"><input class="cell cbamt2" inputmode="decimal" placeholder="0" value="${esc(l.x ?? (l.a ? fmtIn(l.a) : ""))}" ${dis}><span class="cbval num"></span></div><select class="in cbcat" ${dis}>${catOpts(t).replace(`value="${l.k || "-"}"`, `value="${l.k}" selected`)}</select>${locked ? "" : `<button type="button" class="cbx2" title="${bi("মুছুন", "Remove")}">×</button>`}<select class="in cbac" ${dis} ${CB_BANK.includes(l.k) ? "" : "hidden"}>${acOpts.replace(`value="${l.c || "-"}"`, `value="${l.c}" selected`)}</select>
-      <details class="cb-line-details" ${l.ref || l.note ? "open" : ""}><summary>${cbVoucherLabel(t)} · ${cbNarrationLabel()}</summary>
-        <label><span>${cbVoucherLabel(t)}</span><input class="in cbref" value="${esc(l.ref || "")}" ${dis}></label>
+    const rowHtml = (t, i, l = {}) => `<div class="cbr" data-t="${t}" data-auto="${l.k ? "0" : "1"}"><span class="cbi">${i + 1}</span><div class="cbnm"><input class="cell cbname" autocomplete="off" placeholder="${t === "r" ? bi("কার কাছ থেকে / কী", "From whom / what") : bi("কাকে / কী খরচ", "To whom / what for")}" value="${esc(l.n || "")}" ${dis}></div><div class="cbav"><input class="cell cbamt2" inputmode="decimal" placeholder="0" value="${esc(l.x ?? (l.a ? fmtIn(l.a) : ""))}" ${dis}><span class="cbval num"></span></div><select class="in cbcat" ${dis}>${catOpts(t).replace(`value="${l.k || "-"}"`, `value="${l.k}" selected`)}</select><input class="cell cbref" autocomplete="off"
+      aria-label="${cbVoucherLabel(t)} (${bi("ঐচ্ছিক", "optional")})"
+      placeholder="${t === "r" ? bi("রিসিট নং", "Receipt no.") : bi("ভাউচার নং", "Voucher no.")}"
+      value="${esc(l.ref || "")}" ${dis}>${locked ? "" : `<button type="button" class="cbx2" title="${bi("মুছুন", "Remove")}">×</button>`}<select class="in cbac" ${dis} ${CB_BANK.includes(l.k) ? "" : "hidden"}>${acOpts.replace(`value="${l.c || "-"}"`, `value="${l.c}" selected`)}</select>
+      <details class="cb-line-details" ${l.note ? "open" : ""}><summary>${cbNarrationLabel()}</summary>
         <label><span>${cbNarrationLabel()}</span><textarea class="in cbnote" rows="2" ${dis}>${esc(l.note || "")}</textarea></label>
       </details></div>`;
-    const side = (t, title, cls) => { const ls = lines[t] || [], n = Math.max(8, ls.length + 3); return `<div class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num" id="cb-T${t}">0</b></div><div class="cbh"><span>#</span><span>${bi("বিবরণ", "Particulars")}</span><span>${bi("টাকা", "Amount")}</span><span>${bi("খাত", "Category")}</span></div><div class="cbrows" data-t="${t}">${Array.from({ length: n }, (_, i) => rowHtml(t, i, ls[i])).join("")}</div>${locked ? "" : `<button type="button" class="btn sm cbadd" data-t="${t}">+ ${bi("লাইন", "Line")}</button>`}</div>`; };
+    const side = (t, title, cls) => { const ls = lines[t] || [], n = Math.max(8, ls.length + 3); return `<div class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num" id="cb-T${t}">0</b></div><div class="cbh"><span>#</span><span>${bi("বিবরণ", "Particulars")}</span><span>${bi("টাকা", "Amount")}</span><span>${bi("খাত", "Category")}</span><span>${cbVoucherLabel(t)} <span class="cb-ref-opt">(${bi("ঐচ্ছিক", "optional")})</span></span></div><div class="cbrows" data-t="${t}">${Array.from({ length: n }, (_, i) => rowHtml(t, i, ls[i])).join("")}</div>${locked ? "" : `<button type="button" class="btn sm cbadd" data-t="${t}">+ ${bi("লাইন", "Line")}</button>`}</div>`; };
     body.innerHTML = `<div class="card csec c-open"><div class="csh"><h3 id="cb-opening-label">${bi("শুরুর নগদ", "Opening cash")}</h3><div class="cbopening-controls">${po != null && !locked && admin ? `<button type="button" class="btn sm" id="cb-ounlock">✎ ${bi("বদলান", "Edit")}</button>` : ""}<input class="cell cbopen" id="cb-oc" aria-labelledby="cb-opening-label" value="${fmtIn(oc)}" inputmode="decimal" ${oLocked ? "disabled" : ""}></div></div></div>
-      <div class="grid g2 cbgrid" style="margin-top:14px">${side("r", "Received", "c-rec")}${side("p", "Payment", "c-pay")}</div>
+      <div class="grid g2 cbgrid" style="margin-top:14px">${side("r", cbSideLabel("r"), "c-rec")}${side("p", cbSideLabel("p"), "c-pay")}</div>
       <div class="card csec" style="margin-top:14px"><div class="csh"><h3>${bi("খাত অনুযায়ী যোগফল (অটো গ্রুপ)", "Totals by category (auto-grouped)")}</h3></div><div id="cb-sum"></div></div>
       <div class="card csec c-close" style="margin-top:14px"><div class="csh"><h3>${bi("হিসাব মেলানো", "Balance")}</h3></div>
-       <div class="cbox"><div><span>Opening</span><b class="num" id="cb-x1"></b></div><div class="gr"><span>+ Received</span><b class="num" id="cb-x2"></b></div><div class="rd"><span>− Payment</span><b class="num" id="cb-x3"></b></div><div class="eq"><span>= ${bi("হাতে থাকার কথা", "Expected in hand")}</span><b class="num" id="cb-x4"></b></div></div>
+       <div class="cbox"><div><span>Opening</span><b class="num" id="cb-x1"></b></div><div class="gr"><span>+ ${cbSideLabel("r")}</span><b class="num" id="cb-x2"></b></div><div class="rd"><span>− ${cbSideLabel("p")}</span><b class="num" id="cb-x3"></b></div><div class="eq"><span>= ${bi("হাতে থাকার কথা", "Expected in hand")}</span><b class="num" id="cb-x4"></b></div></div>
        <div class="crow hl"><label>${bi("হাতে ক্যাশ", "Cash in hand")} <span class="mut xs">(${bi("গুনে লিখুন", "count and enter")})</span></label><input class="cell" id="cb-ch" value="${src?.cash_in_hand == null ? "" : fmtIn(src.cash_in_hand)}" inputmode="decimal" placeholder="${bi("হাতে নগদ", "cash in hand")}" ${dis}></div>
        <div class="crow"><label>${bi("পার্থক্য", "Difference")}</label><b class="num" id="cb-df">—</b></div>
        <div class="crow"><label>${bi("মন্তব্য", "Remarks")}</label><input class="cell t" id="cb-rm" value="${esc(src?.remarks || "")}" ${dis}></div></div>
@@ -372,7 +375,7 @@ async function vCashBook(v) {
         r.classList.toggle("err", nan); $(".cbi", r).textContent = i + 1; $(".cbamt2", r).classList.toggle("chg", !!a && !nan);
         $(".cbval", r).textContent = /[+-]/.test(x.replace(/^[-+]/, "")) && !nan ? "= " + money0(a) : "";
         $(".cbcat", r).classList.toggle("unk", !!a && !cat); $(".cbac", r).hidden = !CB_BANK.includes(cat); $(".cbac", r).classList.toggle("unk", CB_BANK.includes(cat) && !!a && !ac);
-        if (nan) { bad ||= (t === "r" ? "Received" : "Payment") + " #" + (i + 1); return; }
+        if (nan) { bad ||= cbSideLabel(t) + " #" + (i + 1); return; }
         if (!a) {
           if (ref || note) noAmount++;
           if (!draft || !(n || ref || note)) return;
@@ -389,7 +392,7 @@ async function vCashBook(v) {
       const df = $("#cb-df", body); if (r.cash_in_hand == null) { df.textContent = "—"; df.className = "num"; } else { const d = r.cash_in_hand - exp; df.textContent = Math.abs(d) < 0.5 ? "✔ " + bi("মিলেছে", "matches") : cbSigned(d); df.className = "num b " + (Math.abs(d) < 0.5 ? "gr" : "rd"); }
       const g = cbGroup({ lines: r.lines }), sum = $("#cb-sum", body), chip = (k, a) => `<div class="cbs ${CB_BANK.includes(k) ? "memo" : ""}"><span>${esc(cbCatName(k))}</span><b class="num">${money0(a)}</b></div>`;
       const mk = t => CB_CAT[t].filter(k => g.items[k]?.a).map(k => chip(k, g.items[k].a)).join("") || `<span class="mut sm">—</span>`;
-      sum.innerHTML = `<div class="cbsg"><div><h4 class="gr">Received</h4>${mk("r")}</div><div><h4 class="rd">Payment</h4>${mk("p")}</div></div>` +
+      sum.innerHTML = `<div class="cbsg"><div><h4 class="gr">${cbSideLabel("r")}</h4>${mk("r")}</div><div><h4 class="rd">${cbSideLabel("p")}</h4>${mk("p")}</div></div>` +
         (g.warn.un ? `<div class="alert am" style="margin-top:10px">⚠ ${bi(`${g.warn.un}টি লাইনের খাত বাছা হয়নি — লাল ঘরগুলো ঠিক করুন (না করলে Others ধরা হবে)`, `${g.warn.un} line(s) have no category — fix the red boxes (otherwise they count as Others)`)}</div>` : "") +
         (g.warn.noAc ? `<div class="alert rd" style="margin-top:10px">${bi(`${g.warn.noAc}টি Bank লাইনে A/C বাছুন`, `Select an A/C on ${g.warn.noAc} Bank line(s)`)}</div>` : "");
       return r;
@@ -426,7 +429,7 @@ async function vCashBook(v) {
       nm.addEventListener("picked", () => $(".cbamt2", r).focus());
     };
     const addRow = t => { const box = $(`.cbrows[data-t="${t}"]`, body); box.insertAdjacentHTML("beforeend", rowHtml(t, box.children.length, {})); bindRow(box.lastElementChild); return box.lastElementChild; };
-    const ensureSpare = t => { const rs = $$(`.cbr[data-t="${t}"]`, body), l = rs[rs.length - 1]; if (l && ($(".cbname", l).value.trim() || $(".cbamt2", l).value.trim())) addRow(t); };
+    const ensureSpare = t => { const rs = $$(`.cbr[data-t="${t}"]`, body), l = rs[rs.length - 1]; if (l && [".cbname", ".cbamt2", ".cbref", ".cbnote"].some(sel => $(sel, l).value.trim())) addRow(t); };
     body.oninput = e => {
       const r = e.target.closest(".cbr"); if (r) { if (e.target.classList.contains("cbname")) guessRow(r); ensureSpare(r.dataset.t); }
       calc(); autosave();
@@ -451,6 +454,7 @@ async function vCashBook(v) {
       }
       if (r && e.target.classList.contains("cbamt2")) { e.preventDefault(); const n = rowNeeds(r); if (n) n.focus(); else goNext(r); return; }
       if (r && (e.target.classList.contains("cbcat") || e.target.classList.contains("cbac"))) { e.preventDefault(); const n = rowNeeds(r); if (n && n !== e.target) n.focus(); else goNext(r); return; }
+      if (r && e.target.classList.contains("cbref")) { e.preventDefault(); const next = rowNeeds(r); if (next) next.focus(); else goNext(r); return; }
       if (e.target.id === "cb-oc") { e.preventDefault(); $(".cbname", body).focus(); } else if (e.target.id === "cb-ch") { e.preventDefault(); $("#cb-save", body)?.focus(); }
     };
     body.onclick = e => {
@@ -473,9 +477,9 @@ async function vCashBook(v) {
         if (noAc) { err.textContent = bi(`${noAc}টি Bank লাইনে A/C বাছুন`, `Select an A/C on ${noAc} Bank line(s)`); return; }
         if (row.cash_in_hand == null) { err.textContent = bi("হাতে ক্যাশ লিখুন (গুনে)", "Enter the counted cash in hand"); $("#cb-ch", body).focus(); return; }
         const exp = row.opening_cash + row.total_receipt - row.total_payment, d = row.cash_in_hand - exp;
-        if (Math.abs(d) > 0.5 && !ask(bi(`হিসাব মেলেনি!\nOpening ${money0(row.opening_cash)} + Received ${money0(row.total_receipt)} − Payment ${money0(row.total_payment)} = ${money0(exp)}\nহাতে ক্যাশ লেখা ${money0(row.cash_in_hand)} → পার্থক্য ${cbSigned(d)}\n\nতবুও ফাইনাল সেভ করবেন?`, `Does not tally!\nOpening ${money0(row.opening_cash)} + Received ${money0(row.total_receipt)} − Payment ${money0(row.total_payment)} = ${money0(exp)}\nCash in hand entered ${money0(row.cash_in_hand)} → difference ${cbSigned(d)}\n\nSave as final anyway?`))) return;
+        if (Math.abs(d) > 0.5 && !ask(bi(`হিসাব মেলেনি!\nOpening ${money0(row.opening_cash)} + Receipt ${money0(row.total_receipt)} − Payment ${money0(row.total_payment)} = ${money0(exp)}\nহাতে ক্যাশ লেখা ${money0(row.cash_in_hand)} → পার্থক্য ${cbSigned(d)}\n\nতবুও ফাইনাল সেভ করবেন?`, `Does not tally!\nOpening ${money0(row.opening_cash)} + Receipt ${money0(row.total_receipt)} − Payment ${money0(row.total_payment)} = ${money0(exp)}\nCash in hand entered ${money0(row.cash_in_hand)} → difference ${cbSigned(d)}\n\nSave as final anyway?`))) return;
         if (noCat && !ask(bi(`${noCat}টি লাইনের খাত বাছা হয়নি — Cash Checker-এ Others ধরা হবে। তবুও সেভ করবেন?`, `${noCat} line(s) have no category — the Cash Checker will count them as Others. Save anyway?`))) return;
-        if (!ask(bi(`${dmy(date)} — ক্যাশ খাতা ফাইনাল সেভ\nReceived ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nহাতে ক্যাশ ৳ ${money0(row.cash_in_hand)}${S.me.role !== "admin" ? "\n\nসেভের পর আর বদলানো যাবে না (শুধু Admin পারবে)।" : ""}`, `${dmy(date)} — Cash Book final save\nReceived ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nCash in hand ৳ ${money0(row.cash_in_hand)}${S.me.role !== "admin" ? "\n\nAfter saving it cannot be changed (only an Admin can)." : ""}`))) return;
+        if (!ask(bi(`${dmy(date)} — ক্যাশ খাতা ফাইনাল সেভ\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nহাতে ক্যাশ ৳ ${money0(row.cash_in_hand)}${S.me.role !== "admin" ? "\n\nসেভের পর আর বদলানো যাবে না (শুধু Admin পারবে)।" : ""}`, `${dmy(date)} — Cash Book final save\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nCash in hand ৳ ${money0(row.cash_in_hand)}${S.me.role !== "admin" ? "\n\nAfter saving it cannot be changed (only an Admin can)." : ""}`))) return;
       }
       const buttons = $$("#cb-save, #cb-draft", body);
       flushDraft();
@@ -510,7 +514,7 @@ function cbLedgerModal(after) {
   modal(`<h2>📒 ${bi("লেজার তালিকা", "Ledger list")}</h2>
    <div id="lg-err"></div>
    <div class="cblg-new"><input class="in" id="lg-n" placeholder="${bi("নতুন লেজারের নাম", "New ledger name")}" autocomplete="off"><select class="in" id="lg-r">${cbLgOpts("r")}</select><select class="in" id="lg-p">${cbLgOpts("p")}</select><button class="btn pri" id="lg-add">${ico("plus")} ${bi("যোগ", "Add")}</button></div>
-   <div class="cblg-h"><span>${bi("লেজার", "Ledger")}</span><span>Received ${bi("খাত", "category")}</span><span>Payment ${bi("খাত", "category")}</span><span>${bi("Bank A/C", "Bank A/C")}</span><span></span></div>
+   <div class="cblg-h"><span>${bi("লেজার", "Ledger")}</span><span>Receipt ${bi("খাত", "category")}</span><span>Payment ${bi("খাত", "category")}</span><span>${bi("Bank A/C", "Bank A/C")}</span><span></span></div>
    <input class="in" id="lg-q" type="search" placeholder="${bi("খুঁজুন…", "Search…")}" autocomplete="off" style="margin:8px 0">
    <div class="mut sm" id="lg-c"></div><div class="cblg" id="lg-l"></div>`, async (root, close) => {
     $(".modal", root).classList.add("wide"); const g = id => $("#" + id, root);
