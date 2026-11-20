@@ -1020,7 +1020,7 @@ async function vEntry(v) {
      <div class="s4 cp-purpose"><div class="cp-section-head"><span class="f" id="e-purpose-label">${bi("খাত", "Purpose")}</span><div class="cp-purpose-tools">
        <button class="btn sm" type="button" id="e-padd">${ico("plus")} ${bi("নতুন খাত যোগ করুন", "New purpose")}</button>
        ${S.me.role === "admin" ? `<button class="btn sm" type="button" id="e-pmg">${ico("edit")} ${bi("খাত সম্পাদনা", "Edit purposes")}</button>` : ""}
-     </div></div><p class="cp-purpose-help mut xs">${bi("নিচে একটি খাত বাছুন। নতুন খাত তালিকায় যোগ করতে + চাপুন।", "Select a purpose below. Use + to add a new one to the list.")}${S.me.role === "admin" ? " " + bi("খাত সম্পাদনা থেকে নাম বদলান বা তালিকা থেকে সরান।", "Edit purposes to rename or remove items.") : ""}</p><div class="chips" id="e-purp" role="group" aria-labelledby="e-purpose-label"></div></div>
+     </div></div><div class="chips" id="e-purp" role="group" aria-labelledby="e-purpose-label"></div></div>
      <div class="s4" id="x-cash" style="display:none"><label class="f">${bi("কে তুলেছে *", "Withdrawn by *")}</label><input type="hidden" id="e-taker"><div class="chips takers" id="e-takers">${TAKERS.map(t => `<button class="chip" type="button" data-t="${esc(t)}" aria-pressed="false">${esc(t)}</button>`).join("")}</div></div>
      <div class="s4" id="x-own" style="display:none"><label class="f" for="e-toac">কোন A/C তে জমা * <span class="mut">(${bi("শুধু রেকর্ড", "record only")})</span></label><div><input class="in" id="e-toac" autocomplete="off" placeholder="${bi("যে অ্যাকাউন্টে টাকা গেছে — কোড বা নাম টাইপ করুন", "Receiving account — type code or name")}"></div></div>
      <div class="s4 cbm" id="e-cashlink" style="display:none"></div>
