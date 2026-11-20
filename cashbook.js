@@ -1,7 +1,7 @@
 /* NABIAD — CASH BOOK / ক্যাশ খাতা (v6.76)
    Daily paper-book style entry: Cash in Hand (opening) → Receipt lines → Payment lines → counted cash in hand.
    Every line = a name + an amount; its category (Cosmetics / Food / Bank A/C / Suppliers …) is guessed from the name
-   (remembered from earlier days) and can be changed. The Cash Checker (old Cash Entry page) groups these lines into
+   (from the ledger mapping or earlier entries). The Cash Checker (old Cash Entry page) groups these lines into
    its categories and compares everything. Loaded after app.js; uses its helpers (head, dateNav, evalAmt, CASH, bi …). */
 "use strict";
 
@@ -86,9 +86,13 @@ function cbBank(name) {
 }
 function cbGuess(name, t) {
   const n = cbNorm(name); if (!n) return null;
-  const L = CBL?.[t]?.get(n); if (L) return L;
-  const M = CBLED?.byNorm.get(n), mk = M && cbLedCat(M, t);
-  if (mk && CB_CAT[t].includes(mk)) return { k: mk, ...(CB_BANK.includes(mk) ? { c: M.bank_code || cbBank(name) || undefined } : {}) };
+  const L = CBL?.[t]?.get(n);
+  const M = CBLED?.byNorm.get(n), mk = M?.active !== false && M && cbLedCat(M,t);
+  if (mk && CB_CAT[t].includes(mk)) {
+    const c = CB_BANK.includes(mk) ? M.bank_code || (L?.k === mk ? L.c : null) || cbBank(name) : null;
+    return c ? {k:mk,c} : {k:mk};
+  }
+  if (L && CB_CAT[t].includes(L.k)) return L;
   const b = cbBank(name); if (b) return { k: t === "r" ? "bank_in" : "bank_out", c: b };
   for (const [re, k] of CB_KW[t]) if (re.test(name)) return { k };
   return null;
@@ -336,15 +340,24 @@ async function vCashBook(v) {
     $("#cb-dd", v) && ($("#cb-dd", v).onclick = async () => { if (!ask(bi("এই তারিখের ড্রাফট মুছবেন?", "Discard this date's draft?"))) return; clearTimeout(autoT); pendingDraft = null; localStorage.removeItem(CB_DRAFT(date)); if (ex && !final) { try { await API.cbSave({ date, opening_cash: oc, lines: { r: [], p: [] }, total_receipt: 0, total_payment: 0, cash_in_hand: null, remarks: null, status: "draft" }); } catch { } } draw(); });
     const dis = locked ? "disabled" : "", lines = src?.lines || { r: [], p: [] };
     const acOpts = `<option value="">${bi("A/C বাছুন", "Select A/C")}</option>` + (S.accounts || []).map(a => `<option value="${esc(a.code)}">${esc(a.code)} · ${esc(a.holder || "")}</option>`).join("");
-    const catOpts = t => `<option value="">${bi("? খাত বাছুন", "? choose category")}</option>` + CB_CAT[t].map(k => `<option value="${k}">${esc(cbCatName(k))}</option>`).join("");
-    const rowHtml = (t, i, l = {}) => `<div class="cbr" data-t="${t}" data-auto="${l.k ? "0" : "1"}"><span class="cbi">${i + 1}</span><div class="cbnm"><input class="cell cbname" autocomplete="off" placeholder="${t === "r" ? bi("কার কাছ থেকে / কী", "From whom / what") : bi("কাকে / কী খরচ", "To whom / what for")}" value="${esc(l.n || "")}" ${dis}></div><div class="cbav"><input class="cell cbamt2" inputmode="decimal" placeholder="0" value="${esc(l.x ?? (l.a ? fmtIn(l.a) : ""))}" ${dis}><span class="cbval num"></span></div><select class="in cbcat" ${dis}>${catOpts(t).replace(`value="${cashCategory(l.k) || "-"}"`, `value="${cashCategory(l.k)}" selected`)}</select><input class="cell cbref" autocomplete="off"
-      aria-label="${cbVoucherLabel(t)} (${bi("ঐচ্ছিক", "optional")})"
-      placeholder="${t === "r" ? bi("রিসিট নং", "Receipt no.") : bi("ভাউচার নং", "Voucher no.")}"
-      value="${esc(l.ref || "")}" ${dis}>${locked ? "" : `<button type="button" class="cbx2" title="${bi("মুছুন", "Remove")}">×</button>`}<select class="in cbac" ${dis} ${CB_BANK.includes(l.k) ? "" : "hidden"}>${acOpts.replace(`value="${l.c || "-"}"`, `value="${l.c}" selected`)}</select>
-      <details class="cb-line-details" ${l.note ? "open" : ""}><summary>${cbNarrationLabel()}</summary>
-        <label><span>${cbNarrationLabel()}</span><textarea class="in cbnote" rows="2" ${dis}>${esc(l.note || "")}</textarea></label>
-      </details></div>`;
-    const side = (t, title, cls) => { const ls = lines[t] || [], n = Math.max(8, ls.length + 3); return `<div class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num" id="cb-T${t}">0</b></div><div class="cbh"><span>#</span><span>${bi("বিবরণ", "Particulars")}</span><span>${bi("টাকা", "Amount")}</span><span>${bi("খাত", "Category")}</span><span>${cbVoucherLabel(t)} <span class="cb-ref-opt">(${bi("ঐচ্ছিক", "optional")})</span></span></div><div class="cbrows" data-t="${t}">${Array.from({ length: n }, (_, i) => rowHtml(t, i, ls[i])).join("")}</div>${locked ? "" : `<button type="button" class="btn sm cbadd" data-t="${t}">+ ${bi("লাইন", "Line")}</button>`}</div>`; };
+    const rowHtml = (t, i, l = {}) => {
+      const stored = cashCategory(l.k), mapped = CB_CAT[t].includes(stored) ? {k:stored,c:l.c} : cbGuess(l.n,t);
+      const k = mapped?.k || "", c = mapped?.c || "";
+      const particulars = bi("বিবরণ","Particulars"), amount = bi("টাকা","Amount");
+      return `<div class="cbr" data-t="${t}" data-category="${esc(k)}"${CB_CAT[t].includes(stored) ? " data-stored-category" : ""}><span class="cbi">${i + 1}</span><div class="cbnm"><input class="cell cbname" autocomplete="off" aria-label="${particulars}" placeholder="${t === "r" ? bi("কার কাছ থেকে / কী", "From whom / what") : bi("কাকে / কী খরচ", "To whom / what for")}" value="${esc(l.n || "")}" ${dis}></div><div class="cbav"><input class="cell cbamt2" inputmode="decimal" aria-label="${amount}" placeholder="0" value="${esc(l.x ?? (l.a ? fmtIn(l.a) : ""))}" ${dis}><span class="cbval num"></span></div><input class="cell cbref" autocomplete="off"
+        aria-label="${cbVoucherLabel(t)} (${bi("ঐচ্ছিক", "optional")})"
+        placeholder="${t === "r" ? bi("রিসিট নং", "Receipt no.") : bi("ভাউচার নং", "Voucher no.")}"
+        value="${esc(l.ref || "")}" ${dis}>${locked ? "" : `<button type="button" class="cbx2" aria-label="${bi("লাইন মুছুন","Remove line")}">×</button>`}<select class="in cbac" aria-label="${bi("ব্যাংক A/C","Bank account")}" ${dis} ${CB_BANK.includes(k) ? "" : "hidden"}>${acOpts.replace(`value="${esc(c) || "-"}"`, `value="${esc(c)}" selected`)}</select>
+        <details class="cb-line-details" ${l.note ? "open" : ""}><summary>${cbNarrationLabel()}</summary>
+          <label><span>${cbNarrationLabel()}</span><textarea class="in cbnote" rows="2" ${dis}>${esc(l.note || "")}</textarea></label>
+        </details></div>`;
+    };
+    const side = (t, title, cls) => {
+      const saved = lines[t] || [], entries = saved.length || locked ? saved : [{}];
+      return `<div class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num" id="cb-T${t}">0</b></div>
+        <div class="cbh"><span>#</span><span>${bi("বিবরণ", "Particulars")}</span><span>${bi("টাকা", "Amount")}</span><span>${cbVoucherLabel(t)} <span class="cb-ref-opt">(${bi("ঐচ্ছিক", "optional")})</span></span></div>
+        <div class="cbrows" data-t="${t}">${entries.map((entry,i) => rowHtml(t,i,entry)).join("")}</div>${locked ? "" : `<button type="button" class="btn sm cbadd" data-t="${t}">+ ${bi("লাইন", "Line")}</button>`}</div>`;
+    };
     body.innerHTML = `<div class="card csec c-open"><div class="csh"><h3 id="cb-opening-label">${bi("শুরুর নগদ", "Opening cash")}</h3><div class="cbopening-controls">${po != null && !locked && admin ? `<button type="button" class="btn sm" id="cb-ounlock">✎ ${bi("বদলান", "Edit")}</button>` : ""}<input class="cell cbopen" id="cb-oc" aria-labelledby="cb-opening-label" value="${fmtIn(oc)}" inputmode="decimal" ${oLocked ? "disabled" : ""}></div></div></div>
       <div class="grid g2 cbgrid" style="margin-top:14px">${side("r", cbSideLabel("r"), "c-rec")}${side("p", cbSideLabel("p"), "c-pay")}</div>
       <div class="card csec" style="margin-top:14px"><div class="csh"><h3>${bi("খাত অনুযায়ী যোগফল (অটো গ্রুপ)", "Totals by category (auto-grouped)")}</h3></div><div id="cb-sum"></div></div>
@@ -371,23 +384,25 @@ async function vCashBook(v) {
       refs.textContent = bi("সারাংশ আনা হচ্ছে…", "Loading reference totals…");
       cbRegisterSummary(date).then(summary => showRefs(summary), () => showRefs(null, true));
     }
-    const guessRow = r => {
-      if (r.dataset.auto === "0") return; const t = r.dataset.t, g = cbGuess($(".cbname", r).value, t), cat = $(".cbcat", r), ac = $(".cbac", r);
-      if (g) { cat.value = g.k; if (g.c) ac.value = g.c; else if (CB_BANK.includes(g.k) && !ac.value) ac.value = ""; } else cat.value = "";
-      ac.hidden = !CB_BANK.includes(cat.value);
+    const guessRow = (r, keepAccount = false) => {
+      const mapped = cbGuess($(".cbname",r).value,r.dataset.t), ac = $(".cbac",r);
+      const previous = keepAccount && r.dataset.category === mapped?.k ? ac.value : "";
+      r.dataset.category = mapped?.k || "";
+      ac.value = mapped?.c || previous;
+      ac.hidden = !CB_BANK.includes(r.dataset.category);
     };
     const collect = (draft = false) => {
       const out = { r: [], p: [] }; let bad = null, noName = 0, noCat = 0, noAc = 0, noAmount = 0;
       ["r", "p"].forEach(t => $$(`.cbr[data-t="${t}"]`, body).forEach((r, i) => {
-        const n = $(".cbname", r).value.trim(), x = $(".cbamt2", r).value.trim(), a = evalAmt(x), nan = isNaN(a), cat = $(".cbcat", r).value, ac = $(".cbac", r).value;
+        const n = $(".cbname", r).value.trim(), x = $(".cbamt2", r).value.trim(), a = evalAmt(x), nan = isNaN(a), cat = r.dataset.category, ac = $(".cbac", r).value;
         const ref = $(".cbref", r).value.trim(), note = $(".cbnote", r).value.trim();
         r.classList.toggle("cb-occupied", !!(n || x || ref || note));
         r.classList.toggle("err", nan); $(".cbi", r).textContent = i + 1; $(".cbamt2", r).classList.toggle("chg", !!a && !nan);
         $(".cbval", r).textContent = /[+-]/.test(x.replace(/^[-+]/, "")) && !nan ? "= " + money0(a) : "";
-        $(".cbcat", r).classList.toggle("unk", !!a && !cat); $(".cbac", r).hidden = !CB_BANK.includes(cat); $(".cbac", r).classList.toggle("unk", CB_BANK.includes(cat) && !!a && !ac);
+        $(".cbac", r).hidden = !CB_BANK.includes(cat); $(".cbac", r).classList.toggle("unk", CB_BANK.includes(cat) && !!a && !ac);
         if (nan) { bad ||= cbSideLabel(t) + " #" + (i + 1); return; }
         if (!a) {
-          if (ref || note) noAmount++;
+          if (n || ref || note) noAmount++;
           if (!draft || !(n || ref || note)) return;
         } else { if (!n) noName++; if (!cat) noCat++; if (CB_BANK.includes(cat) && !ac) noAc++; }
         out[t].push({ n, a, ...(ref ? { ref } : {}), ...(note ? { note } : {}), ...(/[+-]/.test(x.replace(/^[-+]/, "")) ? { x } : {}), ...(cat ? { k: cat } : {}), ...(CB_BANK.includes(cat) && ac ? { c: ac } : {}) });
@@ -403,7 +418,7 @@ async function vCashBook(v) {
       const g = cbGroup({ lines: r.lines }), sum = $("#cb-sum", body), chip = (k, a) => `<div class="cbs ${CB_BANK.includes(k) ? "memo" : ""}"><span>${esc(cbCatName(k))}</span><b class="num">${money0(a)}</b></div>`;
       const mk = t => CB_CAT[t].filter(k => g.items[k]?.a).map(k => chip(k, g.items[k].a)).join("") || `<span class="mut sm">—</span>`;
       sum.innerHTML = `<div class="cbsg"><div><h4 class="gr">${cbSideLabel("r")}</h4>${mk("r")}</div><div><h4 class="rd">${cbSideLabel("p")}</h4>${mk("p")}</div></div>` +
-        (g.warn.un ? `<div class="alert am" style="margin-top:10px">⚠ ${bi(`${g.warn.un}টি লাইনের খাত বাছা হয়নি — লাল ঘরগুলো ঠিক করুন (না করলে Others ধরা হবে)`, `${g.warn.un} line(s) have no category — fix the red boxes (otherwise they count as Others)`)}</div>` : "") +
+        (g.warn.un ? `<div class="alert am" style="margin-top:10px">⚠ ${bi(`${g.warn.un}টি লাইনের খাত মেলেনি। Cash Checker-এ Others ধরা হবে।`, `${g.warn.un} line(s) have no matching group. Cash Checker will count them as Others.`)}</div>` : "") +
         (g.warn.noAc ? `<div class="alert rd" style="margin-top:10px">${bi(`${g.warn.noAc}টি Bank লাইনে A/C বাছুন`, `Select an A/C on ${g.warn.noAc} Bank line(s)`)}</div>` : "");
       return r;
     };
@@ -425,7 +440,7 @@ async function vCashBook(v) {
       autoT = setTimeout(flushDraft, 700);
     };
     const addLedger = async (r, name) => {
-      const t = r.dataset.t, k = $(".cbcat", r).value, c = $(".cbac", r).value;
+      const t = r.dataset.t, k = r.dataset.category, c = $(".cbac", r).value;
       try { const row = await API.cbLedgerSave({ name, kind: t, ...(t === "r" ? { cat_r: k } : { cat_p: k }), bank_code: CB_BANK.includes(k) ? c : "" }); CBLED.list.push(row); CBLED.byNorm.set(cbNorm(name), row); toast(bi("✔ লেজার তালিকায় যোগ হয়েছে: ", "✔ Added to the ledger list: ") + name); }
       catch (e) { toast(/duplicate|unique/i.test(e.message || "") ? bi("এই নামে লেজার আগেই আছে", "A ledger with this name already exists") : /relation|does not exist|schema cache/i.test(e.message || "") ? bi("লেজার টেবিল নেই — schema_v6.sql-এর v6.77 অংশ চালাতে হবে", "Ledger table is missing — run the v6.77 part of schema_v6.sql") : e.message || String(e), "err"); }
     };
@@ -433,38 +448,69 @@ async function vCashBook(v) {
       if (locked) return; const t = r.dataset.t, nm = $(".cbname", r);
       suggest(nm, () => {
         const arr = cbLedItems(t), q = nm.value.trim();
-        if (q && CBLED && !CBLED.err && !arr.some(x => cbNorm(x.value) === cbNorm(q))) arr.push({ value: q, label: "", sub: "", last: true, add: true, html: `<span class="sgn"><b>＋ ${esc(q)}</b><em>${bi("লেজার তালিকায় নতুন যোগ করুন", "Add to the ledger list as new")}</em></span>` });
+        if (q && moduleCan("cash","entry") && CBLED && !CBLED.err && !arr.some(x => cbNorm(x.value) === cbNorm(q))) arr.push({ value: q, label: "", sub: "", last: true, add: true, html: `<span class="sgn"><b>＋ ${esc(q)}</b><em>${bi("লেজার তালিকায় নতুন যোগ করুন", "Add to the ledger list as new")}</em></span>` });
         return arr;
-      }, it => { if (!it) return; if (it.add) { addLedger(r, it.value); return; } r.dataset.auto = "1"; guessRow(r); ensureSpare(t); calc(); autosave(); }, { free: true, max: 30 });
+      }, it => {
+        if (!it) return;
+        delete r.dataset.storedCategory;
+        guessRow(r); calc(); autosave();
+        if (it.add) addLedger(r,it.value);
+      }, { free: true, max: 30 });
       nm.addEventListener("picked", () => $(".cbamt2", r).focus());
     };
-    const addRow = t => { const box = $(`.cbrows[data-t="${t}"]`, body); box.insertAdjacentHTML("beforeend", rowHtml(t, box.children.length, {})); bindRow(box.lastElementChild); return box.lastElementChild; };
-    const ensureSpare = t => { const rs = $$(`.cbr[data-t="${t}"]`, body), l = rs[rs.length - 1]; if (l && [".cbname", ".cbamt2", ".cbref", ".cbnote"].some(sel => $(sel, l).value.trim())) addRow(t); };
+    const addRow = t => {
+      const box = $(`.cbrows[data-t="${t}"]`,body);
+      box.insertAdjacentHTML("beforeend",rowHtml(t,box.children.length));
+      bindRow(box.lastElementChild);
+      return box.lastElementChild;
+    };
     body.oninput = e => {
-      const r = e.target.closest(".cbr"); if (r) { if (e.target.classList.contains("cbname")) guessRow(r); ensureSpare(r.dataset.t); }
+      if (e.target.classList.contains("cbname")) {
+        const row = e.target.closest(".cbr");
+        delete row.dataset.storedCategory;
+        guessRow(row);
+      }
       calc(); autosave();
     };
     body.onchange = e => {
-      const r = e.target.closest(".cbr"); if (!r) return;
-      if (e.target.classList.contains("cbcat") || e.target.classList.contains("cbac")) { r.dataset.auto = "0"; const n = cbNorm($(".cbname", r).value), k = $(".cbcat", r).value; if (n && k && CBL) CBL[r.dataset.t].set(n, { k, ...(CB_BANK.includes(k) && $(".cbac", r).value ? { c: $(".cbac", r).value } : {}) }); }
+      if (!e.target.classList.contains("cbac")) return;
+      const r = e.target.closest(".cbr"), name = cbNorm($(".cbname",r).value), k = r.dataset.category;
+      if (name && k && CBL) CBL[r.dataset.t].set(name,{k,c:e.target.value});
       calc(); autosave();
     };
-    $$("input.cell", body).forEach(i => { i.addEventListener("focus", () => i.select()); });
+    body.onfocusin = e => { if (e.target.matches("input.cell") && !e.target.matches(".cbname")) e.target.select(); };
     focusout = e => { const i = e.target; if (i.classList?.contains("cbamt2") || i.id === "cb-oc" || i.id === "cb-ch") { if (/[+-]/.test(i.value.replace(/^[-+]/, ""))) return; if (i.value.trim() !== "" && !isNaN(evalAmt(i.value))) i.value = fmtIn(evalAmt(i.value)); calc(); } };
     body.addEventListener("focusout", focusout);
-    /* Enter flow: ledger → amount → (category / A/C only if still missing) → next line; Enter on a blank ledger line = next section */
-    const rowNeeds = r => { const a = evalAmt($(".cbamt2", r).value); if (!a || isNaN(a)) return null; const k = $(".cbcat", r).value; if (!k) return $(".cbcat", r); if (CB_BANK.includes(k) && !$(".cbac", r).value) return $(".cbac", r); return null; };
-    const goNext = r => { let nx = r.nextElementSibling; if (!nx) { ensureSpare(r.dataset.t); addRow(r.dataset.t); nx = r.nextElementSibling; } nx && $(".cbname", nx).focus(); };
+    const goNext = r => {
+      const next = r.nextElementSibling || addRow(r.dataset.t);
+      $(".cbname",next).focus();
+    };
     body.onkeydown = e => {
-      if (e.key !== "Enter") return; const r = e.target.closest?.(".cbr");
+      if (e.key !== "Enter" || e.defaultPrevented || e.isComposing || e.repeat) return;
+      const r = e.target.closest?.(".cbr");
       if (r && e.target.classList.contains("cbname")) {
         e.preventDefault();
-        if (!e.target.value.trim() && !$(".cbamt2", r).value.trim()) { if (r.dataset.t === "r") { const p = $$('.cbr[data-t="p"] .cbname', body).find(i => !i.value) || $('.cbr[data-t="p"] .cbname', body); p && p.focus(); } else $("#cb-ch", body)?.focus(); return; }
-        $(".cbamt2", r).focus(); return;
+        if (e.target.value.trim()) $(".cbamt2",r).focus();
+        return;
       }
-      if (r && e.target.classList.contains("cbamt2")) { e.preventDefault(); const n = rowNeeds(r); if (n) n.focus(); else goNext(r); return; }
-      if (r && (e.target.classList.contains("cbcat") || e.target.classList.contains("cbac"))) { e.preventDefault(); const n = rowNeeds(r); if (n && n !== e.target) n.focus(); else goNext(r); return; }
-      if (r && e.target.classList.contains("cbref")) { e.preventDefault(); const next = rowNeeds(r); if (next) next.focus(); else goNext(r); return; }
+      if (r && e.target.classList.contains("cbamt2")) {
+        e.preventDefault();
+        if (!$(".cbname",r).value.trim()) $(".cbname",r).focus();
+        else if (evalAmt(e.target.value)) $(".cbref",r).focus();
+        return;
+      }
+      if (r && e.target.classList.contains("cbref")) {
+        e.preventDefault();
+        if (!$(".cbname",r).value.trim()) return $(".cbname",r).focus();
+        if (!evalAmt($(".cbamt2",r).value)) return $(".cbamt2",r).focus();
+        const account = $(".cbac",r);
+        if (!account.hidden && !account.value) account.focus();
+        else goNext(r);
+        return;
+      }
+      if (r && e.target.classList.contains("cbac") && e.target.value) {
+        e.preventDefault(); goNext(r); return;
+      }
       if (e.target.id === "cb-oc") { e.preventDefault(); $(".cbname", body).focus(); } else if (e.target.id === "cb-ch") { e.preventDefault(); $("#cb-save", body)?.focus(); }
     };
     body.onclick = e => {
@@ -475,20 +521,25 @@ async function vCashBook(v) {
     const ou = $("#cb-ounlock", body); if (ou) ou.onclick = () => { if (!ask(bi("Opening আগের দিনের হাতে ক্যাশ থেকে নিজে আসে। তবুও হাতে বদলাবেন?", "Opening carries over automatically from the previous day's cash. Edit it manually anyway?"))) return; $("#cb-oc", body).disabled = false; ou.remove(); $("#cb-oc", body).focus(); };
     const pdb = $("#cb-pd", v); if (pdb) pdb.onclick = () => { $("#cb-d", v).value = pend.date; draw(); };
     $$(".cbr", body).forEach(bindRow); calc(); if (locked) return;
-    const ledBtn = $("#cb-led", v); if (ledBtn) ledBtn.onclick = () => cbLedgerModal(() => draw());
+    const ledBtn = $("#cb-led", v);
+    if (ledBtn) ledBtn.onclick = () => cbLedgerModal(() => {
+      if (id !== drawId || !body.isConnected) return;
+      $$(".cbr:not([data-stored-category])",body).forEach(row => guessRow(row,true));
+      calc(); autosave();
+    });
     if (matchMedia("(pointer:fine)").matches) { const f = $$('.cbr[data-t="r"] .cbname', body).find(i => !i.value) || $(".cbname", body); f && f.focus(); }
     const save = async status => {
       if (saving || id !== drawId || $("#cb-d", v).value !== date) return;
       const { row, bad, noName, noCat, noAc, noAmount } = collect(status === "draft"), err = $("#cb-err", body); err.className = "hint rd"; err.textContent = "";
       if (bad) { err.textContent = bi(`ভুল অঙ্ক: ${bad} — শুধু সংখ্যা আর + / − লিখুন`, `Invalid amount: ${bad} — only numbers and + / −`); return; }
       if (status === "final") {
-        if (noAmount) { err.textContent = bi("রিসিট, ভাউচার বা নোট দেওয়া লাইনের টাকা লিখুন।", "Enter an amount for each line with a receipt, voucher or note."); return; }
+        if (noAmount) { err.textContent = bi("বিবরণ, রিসিট, ভাউচার বা নোট দেওয়া লাইনের টাকা লিখুন।", "Enter an amount for each line with particulars, a reference or a note."); return; }
         if (noName) { err.textContent = bi(`${noName}টি লাইনে বিবরণ (নাম) নেই`, `${noName} line(s) have no particulars`); return; }
         if (noAc) { err.textContent = bi(`${noAc}টি Bank লাইনে A/C বাছুন`, `Select an A/C on ${noAc} Bank line(s)`); return; }
         if (row.cash_in_hand == null) { err.textContent = bi("হাতে ক্যাশ লিখুন (গুনে)", "Enter the counted cash in hand"); $("#cb-ch", body).focus(); return; }
         const exp = row.opening_cash + row.total_receipt - row.total_payment, d = row.cash_in_hand - exp;
         if (Math.abs(d) > 0.5 && !ask(bi(`হিসাব মেলেনি!\nOpening ${money0(row.opening_cash)} + Receipt ${money0(row.total_receipt)} − Payment ${money0(row.total_payment)} = ${money0(exp)}\nহাতে ক্যাশ লেখা ${money0(row.cash_in_hand)} → পার্থক্য ${cbSigned(d)}\n\nতবুও ফাইনাল সেভ করবেন?`, `Does not tally!\nOpening ${money0(row.opening_cash)} + Receipt ${money0(row.total_receipt)} − Payment ${money0(row.total_payment)} = ${money0(exp)}\nCash in hand entered ${money0(row.cash_in_hand)} → difference ${cbSigned(d)}\n\nSave as final anyway?`))) return;
-        if (noCat && !ask(bi(`${noCat}টি লাইনের খাত বাছা হয়নি — Cash Checker-এ Others ধরা হবে। তবুও সেভ করবেন?`, `${noCat} line(s) have no category — the Cash Checker will count them as Others. Save anyway?`))) return;
+        if (noCat && !ask(bi(`${noCat}টি লাইনের খাত মেলেনি — Cash Checker-এ Others ধরা হবে। তবুও সেভ করবেন?`, `${noCat} line(s) have no category — the Cash Checker will count them as Others. Save anyway?`))) return;
         if (!ask(bi(`${dmy(date)} — ক্যাশ খাতা ফাইনাল সেভ\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nহাতে ক্যাশ ৳ ${money0(row.cash_in_hand)}${!moduleCan("cash", "edit", false) ? "\n\nফাইনাল সেভের পর সম্পাদনার অনুমতি লাগবে।" : ""}`, `${dmy(date)} — Cash Book final save\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nCash in hand ৳ ${money0(row.cash_in_hand)}${!moduleCan("cash", "edit", false) ? "\n\nEditing after final save requires Edit access." : ""}`))) return;
       }
       const buttons = $$("#cb-save, #cb-draft", body);
