@@ -1007,7 +1007,11 @@ async function setStatus(c, status, date, remarks) {
 }
 async function vEntry(v) {
   const st = { purpose: null, photo: null };
-  let activityMode = "today", activityLimit = 12;
+  const activityPageSize = 12;
+  let activityMode = "today", activityStatus = "", activityLimit = activityPageSize;
+  const dateLabel = bi("চেকের তারিখ", "Cheque date");
+  const postedLabel = bi("পোস্ট করা হয়েছে", "Posted");
+  const activitySearchLabel = bi("এই তালিকায় চেক খুঁজুন", "Search this activity");
   v.innerHTML = head("চেক পোস্টিং", `<a class="btn" href="#/books">${ico("book")} ${bi("চেক বই", "Cheque Book")}</a><a class="btn" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a><a class="btn" href="#/cheques">${ico("list")} ${bi("রেজিস্টার", "Register")}</a>`, "tc cp-header") + `
   <div class="split cq-posting">
    <section class="card efc" aria-labelledby="e-title">
@@ -1040,10 +1044,21 @@ async function vEntry(v) {
    </section>
    <section class="card flush cp-activity" aria-labelledby="e-activity-title">
      <div class="ch"><h3 id="e-activity-title">${bi("চেক এন্ট্রি", "Cheque activity")}</h3></div>
-     <div class="cp-activity-controls"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false">${bi("চেকের তারিখে", "By cheque date")}</button></div>
-     <div class="cp-activity-stats"><div><span>${bi("এন্ট্রি", "Entries")}</span><strong id="e-cnt" class="num">0</strong></div><div><span>${bi("কার্যকর মোট", "Live amount")}</span><strong id="e-total" class="num">৳ 0</strong></div></div></div>
+     <div class="cp-activity-controls">
+       <div class="cp-period"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true" aria-controls="e-list">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false" aria-controls="e-list">${bi("চেকের তারিখে", "By cheque date")}</button></div>
+       <time id="e-period" class="mut sm num"></time><input class="in" type="date" id="e-activity-date" aria-label="${dateLabel}" hidden></div>
+       <dl class="cp-activity-stats">
+         <div><dt>${bi("এন্ট্রি", "Entries")}</dt><dd id="e-cnt" class="num"></dd></div>
+         <div><dt>${bi("কার্যকর মোট", "Live amount")}</dt><dd id="e-total" class="num"></dd></div>
+         <div><dt>${bi("অপেক্ষমাণ অঙ্ক", "Pending amount")}</dt><dd id="e-pending-total" class="num"></dd></div>
+       </dl>
+       <div id="e-review-tools">
+         <label class="cp-search"><span aria-hidden="true">${ico("search")}</span><input class="in" type="search" id="e-find" aria-label="${activitySearchLabel}" placeholder="${bi("চেক নং, A/C, ব্যাংক বা অঙ্ক", "Cheque no, A/C, bank or amount")}" autocomplete="off"></label>
+         <div class="chips cp-status-chips" id="e-activity-filters" role="group" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}"></div>
+       </div>
+     </div>
      <div id="e-list"></div>
-     <button type="button" class="btn sm cp-more" id="e-more" hidden>${bi("আরও দেখুন", "Show more")}</button>
+     <div class="cp-activity-footer"><span class="mut sm" id="e-visible" role="status"></span><button type="button" class="btn sm cp-more" id="e-more" aria-controls="e-list" hidden>${bi("আরও দেখুন", "Show more")}</button></div>
    </section>
   </div>`;
   const posting = $(".cq-posting", v);
@@ -1108,28 +1123,78 @@ async function vEntry(v) {
   $e("e-amt").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (st.purpose) save(); else choosePurpose(); } });
   $$("#e-taker,#e-rem", v).forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); save(); } }));
   $e("e-toac").addEventListener("picked", () => $e("e-rem").focus());
-  $e("e-date").addEventListener("change", () => { clearTimeout(clT); clT = setTimeout(cashLink, 100); if (activityMode === "date") resetActivity("date"); });
+  $e("e-date").addEventListener("change", () => { clearTimeout(clT); clT = setTimeout(cashLink, 100); });
   function clearAll(full) {
     $e("e-err").textContent = "";
     $e("e-attach").open = false;
     if (full || !$("#keep", v).checked) { ac.set(null); st.purpose = null; setTaker(""); $e("e-achint").textContent = ""; $e("e-nohint").textContent = ""; }
     toac.set(null); $e("e-no").value = ac.get() ? nextNo(ac.get().value) : ""; $e("e-amt").value = ""; $e("e-rem").value = ""; clearPhoto(); applyPurpose();
   }
+  let renderedActivity = "", renderedFilters = "";
   function list() {
     if (!posting.isConnected) return;
-    const t = today(), date = $e("e-date").value;
-    const arr = S.cheques.filter(c => activityMode === "date" ? c.date === date : (c.at ? iso(new Date(c.at)) : c.date) === t).sort((a, b) => (b.at || "").localeCompare(a.at || ""));
-    $e("e-cnt").textContent = arr.length;
-    $e("e-total").textContent = "৳ " + money(sumAmt(arr.filter(isLive)));
-    $e("e-more").hidden = arr.length <= activityLimit;
-    $e("e-list").innerHTML = arr.length ? `<div class="tw cards"><table><thead><tr><th>A/C · চেক</th><th class="r">টাকা</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${arr.slice(0, activityLimit).map(c => `<tr><td><div class="c1"><button type="button" class="cq-link" data-recent="${esc(c.id)}">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc(c.purpose.split(" (")[0])}${c.party ? " · " + esc(c.party) : ""}</div></div></td><td class="r num">${money(c.amount)}</td><td>${stTag(c.status)}${pendTag(c)}</td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">${activityMode === "date" ? bi("এই চেকের তারিখে কোনো এন্ট্রি নেই", "No entries for the selected cheque date") : bi("আজ এখনো কোনো চেক পোস্ট হয়নি", "No cheques posted today")}</div>`;
+    const t = today(), byDate = activityMode === "date", date = $e("e-activity-date").value;
+    const counts = new Map(), matches = chequeMatcher($e("e-find").value, accMap());
+    const records = [];
+    let liveTotal = 0, pendingTotal = 0;
+    for (const c of S.cheques) {
+      if (byDate && c.date !== date) continue;
+      const at = Date.parse(c.at);
+      const posted = Number.isFinite(at) ? iso(new Date(at)) : "";
+      if (!byDate && posted !== t) continue;
+      if (isLive(c)) liveTotal += c.amount;
+      if (c.status === "Pending") pendingTotal += c.amount;
+      counts.set(c.status, (counts.get(c.status) || 0) + 1);
+      records.push({c, at, posted});
+    }
+    const filtered = records.filter(({c}) => (!activityStatus || c.status === activityStatus) && matches(c));
+    filtered.sort((a, b) => (b.at || 0) - (a.at || 0) || b.c.no - a.c.no);
+    const visible = filtered.slice(0, activityLimit);
+    $e("e-period").dateTime = t;
+    $e("e-period").textContent = dmy(t);
+    $e("e-cnt").textContent = records.length;
+    $e("e-total").textContent = "৳ " + money(liveTotal);
+    $e("e-pending-total").textContent = "৳ " + money(pendingTotal);
+    const toolsVisible = records.length > 0 || !!activityStatus || $e("e-find").value !== "";
+    $e("e-review-tools").hidden = !toolsVisible;
+    const filters = [["", records.length], ...STATUSES.filter(status => counts.has(status) || status === activityStatus).map(status => [status, counts.get(status) || 0])];
+    const filtersHtml = filters.map(([status, count]) => `<button class="chip${status === activityStatus ? " on" : ""}" type="button" data-activity-status="${status}" aria-pressed="${status === activityStatus}" aria-controls="e-list">${status ? esc(status) : bi("সব", "All")} <span class="cp-count num">${count}</span></button>`).join("");
+    if (filtersHtml !== renderedFilters) {
+      const previous = $e("e-activity-filters").contains(document.activeElement) ? document.activeElement.dataset.activityStatus : null;
+      $e("e-activity-filters").innerHTML = renderedFilters = filtersHtml;
+      if (previous != null) $$("[data-activity-status]", posting).find(btn => btn.dataset.activityStatus === previous)?.focus();
+    }
+    $e("e-more").hidden = visible.length >= filtered.length;
+    const countText = records.length ? bi(`${filtered.length}টির মধ্যে ${visible.length}টি দেখানো হয়েছে`, `Showing ${visible.length} of ${filtered.length} matches`) : "";
+    if ($e("e-visible").textContent !== countText) $e("e-visible").textContent = countText;
+    const html = visible.length ? `<div class="tw cards cp-activity-table"><table><thead><tr><th scope="col">A/C · ${bi("চেক", "Cheque")}</th><th scope="col" class="r">${bi("অঙ্ক", "Amount")}</th><th scope="col">${bi("স্ট্যাটাস", "Status")}</th><th scope="col">${bi("তারিখ ও অপারেটর", "Date & operator")}</th></tr></thead><tbody>
+      ${visible.map(({c, posted}) => `<tr><td data-l=""><button type="button" class="cq-link" data-recent="${esc(c.id)}">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc([c.purpose?.split(" (")[0], c.party].filter(Boolean).join(" · "))}</div></td>
+        <td class="r num"><strong>৳ ${money(c.amount)}</strong></td>
+        <td><div class="stc">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}</div></td>
+        <td><div class="cp-row-date mut sm"><span>${byDate ? postedLabel : dateLabel} ${dmy(byDate ? posted : c.date) || "—"}</span><span>${esc(c.by || "—")}</span></div></td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty cp-empty"><strong>${records.length ? bi("ফিল্টারে কোনো চেক মেলেনি", "No cheques match these filters") : byDate ? bi("এই তারিখে কোনো চেক নেই", "No cheques for this date") : bi("আজ কোনো চেক পোস্ট হয়নি", "No cheques posted today")}</strong>${records.length ? `<button class="btn sm" type="button" id="e-reset-activity">${bi("ফিল্টার মুছুন", "Clear filters")}</button>` : ""}</div>`;
+    if (html !== renderedActivity) {
+      const listEl = $e("e-list"), focused = listEl.contains(document.activeElement) ? document.activeElement : null;
+      listEl.innerHTML = renderedActivity = html;
+      if (focused?.dataset.recent) {
+        ($$("[data-recent]", listEl).find(btn => btn.dataset.recent === focused.dataset.recent) || $e("e-find")).focus({preventScroll: true});
+      }
+    }
   }
   function choosePurpose() {
     $e("e-err").textContent = bi("খাত বাছুন", "Choose a purpose.");
     $e("e-purp").querySelector("button")?.focus();
   }
   function resetActivity(mode) {
-    activityMode = mode; activityLimit = 12;
+    activityMode = mode;
+    $e("e-period").hidden = mode === "date";
+    const activityDate = $e("e-activity-date");
+    activityDate.hidden = mode !== "date";
+    if (mode === "date" && !activityDate.value) {
+      const postingDate = $e("e-date").value;
+      activityDate.value = validChequeDate(postingDate) ? postingDate : today();
+    }
+    resetActivityFilters();
     for (const [id, key] of [["e-today", "today"], ["e-bydate", "date"]]) {
       const btn = $e(id);
       btn.classList.toggle("on", mode === key);
@@ -1137,11 +1202,36 @@ async function vEntry(v) {
     }
     list();
   }
+  function resetActivityFilters() {
+    activityStatus = "";
+    activityLimit = activityPageSize;
+    $e("e-find").value = "";
+  }
   $e("e-today").onclick = () => resetActivity("today");
   $e("e-bydate").onclick = () => resetActivity("date");
-  $e("e-more").onclick = () => { activityLimit += 12; list(); };
+  $e("e-activity-date").onchange = () => {
+    if (!validChequeDate($e("e-activity-date").value)) $e("e-activity-date").value = today();
+    resetActivity("date");
+  };
+  $e("e-find").oninput = () => { activityLimit = activityPageSize; list(); };
+  $e("e-activity-filters").onclick = event => {
+    const btn = event.target.closest("[data-activity-status]");
+    if (!btn) return;
+    activityStatus = btn.dataset.activityStatus;
+    activityLimit = activityPageSize;
+    list();
+  };
+  $e("e-more").onclick = () => {
+    const previous = activityLimit;
+    activityLimit += activityPageSize;
+    list();
+    $$("[data-recent]", $e("e-list"))[previous]?.focus();
+  };
   $e("e-list").onclick = event => {
-    const row = S.cheques.find(c => c.id === event.target.closest("[data-recent]")?.dataset.recent);
+    const btn = event.target.closest("button");
+    if (!btn) return;
+    if (btn.id === "e-reset-activity") { resetActivityFilters(); list(); $e("e-find").focus(); return; }
+    const row = S.cheques.find(c => c.id === btn.dataset.recent);
     if (row) chequeModal(row, list);
   };
   let busy = false;
@@ -1245,59 +1335,83 @@ async function vStatus(v) {
     ["review", bi("ফেরত / স্থগিত", "Bounced / stopped"), c => c.status === "Bounced" || c.status === "Stopped"],
     ["all", bi("সব চেক", "All cheques"), () => true]
   ];
+  const alertDays = CFG.PENDING_ALERT_DAYS ?? 3;
   v.innerHTML = head("চেক স্ট্যাটাস আপডেট", `<a class="btn" href="#/cheques">${ico("list")} ${bi("চেক তালিকা", "Register")}</a>`) + `
-    <div class="card tbar cq-tools">
-      <div class="cq-status-fields">
+    <section class="card cq-tools cq-workspace" aria-label="${bi("চেক স্ট্যাটাস তালিকা", "Cheque status queue")}">
+      <div class="cq-filters" role="group" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}">${filters.map(([id, label]) => `<button type="button" class="btn" data-cq-filter="${id}" aria-pressed="false" aria-controls="s-list"><span>${label}</span><strong class="num"></strong><small class="num"></small></button>`).join("")}</div>
+      <div class="cq-queue-controls">
         <div><label class="f" for="s-q">${bi("চেক খুঁজুন", "Search cheques")}</label><input class="in" id="s-q" type="search" autocomplete="off" placeholder="${bi("চেক নং, A/C, ব্যাংক, মন্তব্য", "Cheque no, A/C, bank, remarks")}"></div>
-        <div><label class="f" for="s-d">${bi("স্ট্যাটাসের তারিখ", "Status date")}</label><input class="in" type="date" id="s-d" value="${today()}" max="${today()}" required></div>
+        <div><label class="f" for="s-sort">${bi("সাজানোর ক্রম", "Sort by")}</label><select class="in" id="s-sort"><option value="">${bi("তালিকার ডিফল্ট ক্রম", "Queue default")}</option><option value="old">${bi("পুরনো চেক আগে", "Oldest cheque first")}</option><option value="new">${bi("নতুন চেক আগে", "Newest cheque first")}</option><option value="amount">${bi("বেশি অঙ্ক আগে", "Highest amount first")}</option></select></div>
       </div>
-      <div class="cq-filters" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}">${filters.map(([id, label]) => `<button type="button" class="btn" data-cq-filter="${id}" aria-pressed="false"><span>${label}</span><strong class="num"></strong></button>`).join("")}</div>
+    </section>
+    <div class="cq-queue-head">
+      <div><h2 class="cq-queue-title" id="s-title"></h2><p id="s-info" class="cq-info mut sm" role="status"></p></div>
+      <div class="cq-action-date"><label class="f" for="s-d">${bi("আপডেটের তারিখ", "Update date")}</label><input class="in" type="date" id="s-d" value="${today()}" max="${today()}" required></div>
     </div>
-    <p id="s-info" class="cq-info mut sm" aria-live="polite"></p><div id="s-list" class="cq-list"></div>
+    <div id="s-list" class="cq-list" role="region" aria-labelledby="s-title"></div>
     <div class="cq-pager" id="s-pager" hidden><button class="btn" type="button" id="s-prev">‹ ${bi("আগের", "Previous")}</button><span class="mut sm" id="s-page"></span><button class="btn" type="button" id="s-next">${bi("পরের", "Next")} ›</button></div>`;
   const q = $("#s-q", v), date = $("#s-d", v), list = $("#s-list", v), info = $("#s-info", v);
   const pager = $("#s-pager", v), prev = $("#s-prev", v), next = $("#s-next", v);
+  const sort = $("#s-sort", v), title = $("#s-title", v);
   const buttons = $$("[data-cq-filter]", v), pageSize = 40;
   let mode = "pending", page = 0;
   const draw = () => {
     if (!list.isConnected) return;
-    const t = today(), accounts = accMap(), base = S.cheques.filter(chequeMatcher(q.value, accounts));
-    const groups = filters.map(([id, , match], i) => {
-      const rows = base.filter(c => match(c, t));
-      buttons[i].setAttribute("aria-pressed", id === mode);
-      $("strong", buttons[i]).textContent = rows.length;
-      return rows;
+    const t = today(), accounts = accMap(), matches = chequeMatcher(q.value, accounts), queue = [];
+    const current = filters.find(([id]) => id === mode);
+    const totals = filters.map(() => ({count: 0, amount: 0}));
+    for (const c of S.cheques) {
+      if (!matches(c)) continue;
+      for (const [i, [id, , match]] of filters.entries()) {
+        if (!match(c, t)) continue;
+        totals[i].count++;
+        totals[i].amount += c.amount;
+        if (id === mode) queue.push(c);
+      }
+    }
+    buttons.forEach((btn, i) => {
+      btn.setAttribute("aria-pressed", String(btn.dataset.cqFilter === mode));
+      $("strong", btn).textContent = totals[i].count;
+      $("small", btn).textContent = "৳ " + money(totals[i].amount);
     });
-    const rows = groups[filters.findIndex(([id]) => id === mode)];
-    rows.sort((a, b) => (mode === "pending" || mode === "older") ? a.date.localeCompare(b.date) || a.no - b.no : (b.sdate || b.date).localeCompare(a.sdate || a.date) || b.no - a.no);
-    const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+    const order = sort.value;
+    queue.sort((a, b) => {
+      if (order === "amount") return b.amount - a.amount || b.date.localeCompare(a.date);
+      if (order === "old" || (!order && (mode === "pending" || mode === "older"))) return a.date.localeCompare(b.date) || a.no - b.no;
+      if (order === "new") return b.date.localeCompare(a.date) || b.no - a.no;
+      return (b.sdate || b.date).localeCompare(a.sdate || a.date) || b.no - a.no;
+    });
+    const pages = Math.max(1, Math.ceil(queue.length / pageSize));
     page = Math.min(page, pages - 1);
-    const start = page * pageSize, end = Math.min(start + pageSize, rows.length);
-    info.textContent = rows.length ? bi(`${rows.length}টির মধ্যে ${start + 1}–${end} · ৳ ${money(sumAmt(rows))}`, `${start + 1}–${end} of ${rows.length} · ৳ ${money(sumAmt(rows))}`) : bi("কোনো চেক মেলেনি", "No matching cheques");
+    const start = page * pageSize, end = Math.min(start + pageSize, queue.length);
+    title.textContent = current[1];
+    info.textContent = queue.length ? bi(`${queue.length}টির মধ্যে ${start + 1}–${end} · চেকের মোট অঙ্ক ৳ ${money(sumAmt(queue))}`, `${start + 1}–${end} of ${queue.length} · Face value ৳ ${money(sumAmt(queue))}`) : bi("০ চেক", "0 cheques");
     pager.hidden = pages <= 1;
     prev.disabled = page === 0;
     next.disabled = page + 1 >= pages;
     $("#s-page", pager).textContent = `${page + 1} / ${pages}`;
-    list.innerHTML = rows.slice(start, end).map(c => {
+    list.innerHTML = queue.length ? queue.slice(start, end).map(c => {
       const ref = `${esc(c.code)} · ${c.no}`, age = daysBetween(c.date, t);
-      return `<article class="card cq-item"><div class="cq-ref">
+      return `<article class="card cq-item" ${c.status === "Pending" && age > alertDays ? 'data-priority="older"' : c.status === "Bounced" || c.status === "Stopped" ? 'data-priority="review"' : ""}><div class="cq-ref">
         <button type="button" class="cq-link" data-cq-open="${esc(c.id)}">${ref}</button>
-        <div class="mut sm">${dmy(c.date)}${accounts[c.code]?.holder ? " · " + esc(accounts[c.code].holder) : ""}</div>
+        <div class="mut sm">${esc([accounts[c.code]?.holder, accounts[c.code]?.bank].filter(Boolean).join(" · "))}</div>
+        <div class="mut sm">${bi("চেকের তারিখ", "Cheque date")} ${dmy(c.date)}</div>
         <div class="cq-purpose sm">${esc(c.purpose.split(" (")[0])}${c.party || c.remarks ? " · " + esc(c.party || c.remarks) : ""}</div>
         </div><div class="cq-value"><strong class="num">৳ ${money(c.amount)}</strong>
-        <div class="cq-state">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}${c.status === "Pending" && age > (CFG.PENDING_ALERT_DAYS ?? 3) ? `<span class="am sm">${bi(`${age} দিন`, `${age} days`)}</span>` : ""}${c.sdate ? `<span class="mut sm">${dmy(c.sdate)}</span>` : ""}</div></div>
+        <div class="cq-state">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}${c.status === "Pending" && age > alertDays ? `<span class="cq-aged">${bi(`${age} দিন অপেক্ষমাণ`, `Pending ${age} days`)}</span>` : ""}${c.sdate ? `<span class="mut sm">${bi("স্ট্যাটাসের তারিখ", "Status date")} ${dmy(c.sdate)}</span>` : ""}</div></div>
         <div class="cq-actions">${c.status === "Pending" ? `<button class="btn ok" type="button" data-cq-clear="${esc(c.id)}">${bi("ক্লিয়ার করুন", "Mark cleared")}</button>` : ""}<button class="btn" type="button" data-cq-status="${esc(c.id)}">${bi("স্ট্যাটাস বদলান", "Update status")}</button></div></article>`;
-    }).join("");
+    }).join("") : `<div class="card empty cp-empty"><strong>${q.value.trim() ? bi("সার্চে কোনো চেক মেলেনি", "No cheques match your search") : bi("এই তালিকায় কোনো চেক নেই", "No cheques in this queue")}</strong>${q.value.trim() ? `<button type="button" class="btn sm" id="s-reset-q">${bi("সার্চ মুছুন", "Clear search")}</button>` : ""}</div>`;
   };
   const resetPage = () => { page = 0; draw(); };
   buttons.forEach(btn => btn.onclick = () => { mode = btn.dataset.cqFilter; resetPage(); });
-  q.oninput = resetPage;
+  q.oninput = sort.onchange = resetPage;
   const changePage = delta => { page += delta; draw(); info.scrollIntoView({ block: "nearest" }); };
   prev.onclick = () => changePage(-1);
   next.onclick = () => changePage(1);
   list.onclick = e => {
     const btn = e.target.closest("button");
     if (!btn) return;
+    if (btn.id === "s-reset-q") { q.value = ""; resetPage(); q.focus(); return; }
     const c = S.cheques.find(row => row.id === (btn.dataset.cqOpen || btn.dataset.cqStatus || btn.dataset.cqClear));
     if (!c) return;
     if (btn.dataset.cqOpen) { chequeModal(c, draw); return; }
