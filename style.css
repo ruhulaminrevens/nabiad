@@ -2068,6 +2068,8 @@ body:has(#modal-root .mback) { overflow: hidden; }
 .cp-activity-table td { overflow-wrap: anywhere; }
 .cp-activity-table .num strong { font-weight: 700; }
 .cp-row-date { display: grid; gap: 2px; }
+.cp-row-actions { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+.cp-row-actions .btn { min-height: 32px; padding-inline: 7px; }
 .cp-activity-footer { padding: 8px 14px; }
 .cp-activity-footer:has(#e-visible:empty):has(#e-more[hidden]) { display: none; }
 .cp-activity-footer .cp-more { margin: 0; }

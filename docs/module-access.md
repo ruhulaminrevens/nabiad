@@ -14,7 +14,7 @@ In **Admin Panel → Users → Module access**, select **Custom module access**,
 | Collection | Add pending collections | Edit pending collections and act on eligible statuses |
 | Inventory | Add orders, demand and RM daily stock | Edit existing orders, demand and RM daily stock |
 
-Existing record-state rules continue to apply, including Inventory month locks and Collection status transitions. Custom cheque Edit grants access to existing cheques beyond the role-default own-entry window. Admin-only destructive actions, master configuration and user management continue to use their existing rules. Read access follows the user’s role.
+Existing record-state rules continue to apply, including Inventory month locks and Collection status transitions. Staff cheque entry edits require ownership and the Admin-approved posting window, including with custom Cheque Edit. Apply `schema_cheque_edit_window.sql` after the module access schema to enforce this in the database. Admin-only destructive actions, master configuration and user management continue to use their existing rules. Read access follows the user’s role.
 
 Register a future module in the UI capability list, the SQL configuration validator and the relevant table/API bindings. Add an allow/deny test for its write operations before enabling it for users.
 
