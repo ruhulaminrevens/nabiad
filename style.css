@@ -2151,3 +2151,23 @@ body:has(#modal-root .mback) { overflow: hidden; }
 @media (max-width: 440px) {
   .ad-list .acc .bd { grid-template-columns: 1fr; }
 }
+
+/* Cash Register */
+.rg-tools { display: grid; gap: 10px; }
+.rg-tools [hidden], .rg-pager[hidden] { display: none; }
+#rg-file-info:empty, #rg-file-error:empty { display: none; }
+.rg-filters { display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rg-filters:has(#rg-purpose[hidden]) { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.rg-filters .in { min-width: 0; }
+.rg-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-block: 10px; }
+.rg-summary:empty { display: none; }
+.rg-summary .card { display: grid; gap: 4px; padding: 10px 12px; min-width: 0; overflow-wrap: anywhere; }
+.rg-summary strong { font-size: clamp(.9rem, 1.6vw, 1.25rem); }
+#rg-notice .alert { margin-bottom: 8px; }
+#rg-out { scroll-margin-top: 80px; }
+.rg-table td { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .rg-filters, .rg-filters:has(#rg-purpose[hidden]) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rg-filters > :first-child { grid-column: 1 / -1; }
+  .rg-summary .card { padding-inline: 6px; }
+}

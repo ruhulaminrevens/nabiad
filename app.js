@@ -3248,17 +3248,26 @@ async function vReports(v) {
 
 /* =================== v6: CASH — daily record =================== */
 const CASH = {
-  receipt: [{ g: "Chawkbazar", items: [["cz_cos", "Cosmetics Parties"], ["cz_food", "Food Parties"], ["cz_cash", "Cash/Counter Sales"], ["cz_oth", "Others"]] }, { g: "", items: [["cz_chem", "Chemicals"], ["niramoy", "Niramoy"], ["dist", "Distribution"], ["suspense", "Suspense"], ["bank_in", "Bank"]] }],
+  receipt: [{ g: "Chawkbazar", items: [["cz_cos", "Cosmetics Parties"], ["cz_food", "Food Parties"], ["cz_oth", "Others"]] }, { g: "", items: [["cz_chem", "Chemicals"], ["niramoy", "Niramoy"], ["dist", "Distribution"], ["suspense", "Suspense"], ["bank_in", "Bank"]] }],
   payment: [{ g: "", items: [["bank_out", "Bank"], ["lc", "LC/CC/OD"], ["loans", "Loans/Bills/Etc."], ["supp", "Suppliers"], ["p_oth", "Others"]] }]
 };
+const cashCategory = k => k === "cz_cash" ? "cz_oth" : k;
+// Fold legacy daily totals on read without changing archived records.
+function cashItems(items = {}) {
+  if (!items?.cz_cash) return items || {};
+  const { cz_cash: counter, cz_oth: others, ...rest } = items;
+  const a = Math.round((+counter.a || 0) * 100) + Math.round((+others?.a || 0) * 100);
+  const notes = [...new Set([counter.n, others?.n].filter(Boolean))];
+  return { ...rest, cz_oth: { a: a / 100, ...(notes.length ? { n: notes.join(", ") } : {}) } };
+}
 const CASH_KEYS = t => CASH[t].flatMap(g => g.items.map(i => i[0]));
 /* Bank lines (Receipt › Bank = cash withdrawn, Payment › Bank = cash deposited) are transfers between cash and bank: kept per A/C for Bank Closing / Cheque Posting, but NOT part of Total Receipt / Total Payment / Closing */
 const CASH_MEMO = ["bank_in", "bank_out"];
 const CASH_SUM_KEYS = t => CASH_KEYS(t).filter(k => !CASH_MEMO.includes(k));
-const cashLabel = k => { for (const t of ["receipt", "payment"]) for (const g of CASH[t]) for (const [kk, l] of g.items) if (kk === k) return (g.g ? g.g + " · " : "") + l; return k; };
-const cashType = k => CASH_KEYS("receipt").includes(k) ? "receipt" : "payment";
+const cashLabel = k => { for (const t of ["receipt", "payment"]) for (const g of CASH[t]) for (const [kk, l] of g.items) if (kk === cashCategory(k)) return (g.g ? g.g + " · " : "") + l; return k; };
+const cashType = k => CASH_KEYS("receipt").includes(cashCategory(k)) ? "receipt" : "payment";
 function evalAmt(s) { s = String(s ?? "").replace(/[,৳\s]/g, ""); if (!s) return 0; if (!/^[-+]?\d*\.?\d+([+-]\d*\.?\d+)*$/.test(s)) return NaN; return s.match(/[+-]?\d*\.?\d+/g).reduce((a, b) => a + parseFloat(b), 0); }
-function cashTotals(items) { const sum = t => CASH_SUM_KEYS(t).reduce((s, k) => s + (+items?.[k]?.a || 0), 0); return { r: sum("receipt"), p: sum("payment") }; }
+function cashTotals(items) { items = cashItems(items); const sum = t => CASH_SUM_KEYS(t).reduce((s, k) => s + (+items?.[k]?.a || 0), 0); return { r: sum("receipt"), p: sum("payment") }; }
 const CASH_DRAFT = d => "nabiad_cash_draft_" + d;
 /* the Cash Entry record that counts for a date: final > newer local draft > saved draft */
 async function cashEff(date) {
@@ -3292,7 +3301,7 @@ async function vCash(v) {
     const oc = useStored ? (src ? +src.opening_cash || 0 : 0) : pOc, ob = useStored ? (src ? +src.opening_bank || 0 : 0) : pOb;
     const admin0 = S.me.role === "admin", oLocked = locked || (prev ? true : !admin0);
     let pendDraft = null; try { if (!final) pendDraft = (await API.cashRange(addDays(date, -60), addDays(date, -1))).filter(r => r.status !== "final" && (!prev || r.date > prev.date)).pop() || null; } catch { }
-    const items = src?.items || {};
+    const items = cashItems(src?.items);
     const msgs = [];
     if (final) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 এই তারিখের ক্যাশ রেকর্ড ফাইনাল সেভ হয়েছে।" : "⚠ ফাইনাল সেভ করা আছে — Admin হিসেবে বদলাতে পারবেন।"} <span class="mut sm">${esc(ex.entered_by || "")}</span></div>`);
     else if (src && !src.fromBook) msgs.push(`<div class="alert vi">📝 <span>ড্রাফট লোড হয়েছে${fromLocal ? " (এই ডিভাইস)" : ""} — ${esc(src.entered_by || S.me.name)} · ${new Date(src.updated_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>${!locked ? `<button class="btn sm" id="cs-dd" style="margin-left:auto">ড্রাফট বাদ দিন</button>` : ""}</div>`);
@@ -3451,7 +3460,7 @@ async function vCashRep(v) {
   let cur = null;
   async function draw() {
     const [f, t] = cashPeriod(F), out = $("#cr-out", v); out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
-    let rows; try { rows = (await API.cashRange(f, t)).filter(r => r.status === "final"); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(cashErr(e))}</div>`; return; }
+    let rows; try { rows = (await API.cashRange(f, t)).filter(r => r.status === "final").map(r => ({ ...r, items: cashItems(r.items) })); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(cashErr(e))}</div>`; return; }
     if (!rows.length) { out.innerHTML = `<div class="card empty">এই সময়ে কোনো ফাইনাল ক্যাশ রেকর্ড নেই</div>`; cur = null; return; }
     const cat = k => rows.reduce((s, r) => s + (+r.items?.[k]?.a || 0), 0), days = k => rows.filter(r => +r.items?.[k]?.a).length;
     const R = rows.reduce((s, r) => s + +r.total_receipt, 0), P = rows.reduce((s, r) => s + +r.total_payment, 0);
@@ -3470,36 +3479,174 @@ async function vCashRep(v) {
   await draw(); return unb;
 }
 
-/* =================== v6: Cash Register (every line of every day) =================== */
-async function vRegister(v) {
-  const F = { ...pbInit("month"), q: "", type: "", k: "" };
-  v.innerHTML = head("ক্যাশ রেজিস্টার", `<button class="btn" id="rg-x">${ico("dl")} Excel</button>`) + `<div class="card tbar noprint">${pbBar("rg", F)}<div class="row" style="margin-top:10px"><div style="flex:2 1 220px"><label class="f">খুঁজুন (নোট, খাত, অঙ্ক)</label><input class="in" id="rg-q" type="search" autocomplete="off"></div><div><label class="f">ধরন</label><select class="in" id="rg-t"><option value="">সব</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div><div><label class="f">খাত</label><select class="in" id="rg-k"><option value="">সব</option>${[...CASH_KEYS("receipt"), ...CASH_KEYS("payment")].map(k => `<option value="${k}">${esc(cashLabel(k))}</option>`).join("")}</select></div></div></div><div id="rg-sum" class="mut sm" style="margin-bottom:8px"></div><div class="card flush" id="rg-out"></div>`;
-  let lines = [], shown = [], diffs = [];
-  async function load() {
-    const [f, t] = cashPeriod(F); $("#rg-out", v).innerHTML = `<div class="empty">লোড হচ্ছে…</div>`;
-    try {
-      const [rows, allBooks] = await Promise.all([API.cashRange(f, t), API.cbRange(f, t).catch(() => [])]), cm = new Map(rows.map(r => [r.date, r]));
-      /* a Cash Book day is listed line by line only when it has lines and is not a draft sitting on top of a final Cash Checker record; otherwise the Checker rows are shown */
-      const books = allBooks.filter(b => ["r", "p"].some(tt => (b.lines?.[tt] || []).some(l => +l.a)) && !(cm.get(b.date)?.status === "final" && b.status !== "final")), bd = new Map(books.map(b => [b.date, b]));
-      diffs = [];
-      books.forEach(b => { const c = cm.get(b.date); if (!c || c.status !== "final" || b.status !== "final") return; const sum = tt => (b.lines?.[tt] || []).filter(l => !["bank_in", "bank_out"].includes(l.k)).reduce((q, l) => q + (+l.a || 0), 0), cs = tt => CASH_SUM_KEYS(tt).reduce((q, k) => q + (+c.items?.[k]?.a || 0), 0); if (Math.abs(sum("r") - cs("receipt")) > 0.5 || Math.abs(sum("p") - cs("payment")) > 0.5) diffs.push(b.date); });
-      const fromChk = rows.filter(r => !bd.has(r.date)).flatMap(r => Object.entries(r.items || {}).filter(([, it]) => it.a).map(([k, it]) => ({ date: r.date, k, type: cashType(k), a: +it.a, led: "", n: it.n || "", x: it.x || "", st: r.status, by: r.entered_by })));
-      /* a day that has a Cash Book is listed line by line with the real ledger name; older days (no book) keep their category rows */
-      const fromBook = books.flatMap(b => ["r", "p"].flatMap(tt => (b.lines?.[tt] || []).filter(l => +l.a).map(l => { const k = l.k && CASH_KEYS(tt === "r" ? "receipt" : "payment").includes(l.k) ? l.k : tt === "r" ? "cz_oth" : "p_oth"; return { date: b.date, k, type: tt === "r" ? "receipt" : "payment", a: +l.a, led: l.n || "", n: l.c ? "A/C " + l.c : "", x: l.x || "", st: b.status === "final" ? "final" : "draft", by: b.entered_by, book: 1 }; })));
-      lines = [...fromChk, ...fromBook].sort((a, b) => b.date.localeCompare(a.date));
+/* =================== Cash Register and local Tally preview =================== */
+async function cashTallyRows(file) {
+  if (file.size > 32 * 1024 * 1024) throw new Error(bi("ফাইলের সর্বোচ্চ আকার ৩২ MB।", "Choose a file up to 32 MB."));
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const encoding = bytes[0] === 255 && bytes[1] === 254 ? "utf-16le" : bytes[0] === 254 && bytes[1] === 255 ? "utf-16be" : "utf-8";
+  let records;
+  try { records = JSON.parse(new TextDecoder(encoding, {fatal: true}).decode(bytes))?.lvbody?.dspvchdetail; } catch { }
+  if (!Array.isArray(records) || !records.length) throw new Error(bi("Tally Cash Book JSON-এ voucher পাওয়া যায়নি।", "No voucher rows found in the Tally Cash Book JSON."));
+  const months = "jan feb mar apr may jun jul aug sep oct nov dec".split(" ");
+  return records.map((row, i) => {
+    const type = row?.dspvchtype === "Rcpt" ? "receipt" : row?.dspvchtype === "Pymt" ? "payment" : "";
+    const parts = /^(\d{1,2})-([a-z]{3})-(\d{2}|\d{4})$/i.exec(String(row?.dspvchdate ?? "").trim());
+    const month = parts ? months.indexOf(parts[2].toLowerCase()) + 1 : 0;
+    const date = month ? `${parts[3].length === 2 ? "20" + parts[3] : parts[3]}-${pad(month)}-${pad(Number(parts[1]))}` : "";
+    const amount = type === "receipt" ? -row?.dspvchdramt : row?.dspvchcramt;
+    const raw = type === "receipt" ? row?.dspvchdramt : row?.dspvchcramt;
+    const led = typeof row?.dspvchledaccount === "string" ? row.dspvchledaccount.trim() : "";
+    if (!type || !validChequeDate(date) || typeof raw !== "number" || !Number.isSafeInteger(Math.round(amount * 100)) || amount < 0 || !led) {
+      throw new Error(bi(`${i + 1} নম্বর voucher লাইনে অসমর্থিত তথ্য আছে।`, `Unsupported data in voucher row ${i + 1}.`));
     }
-    catch (e) { $("#rg-out", v).innerHTML = `<div class="alert rd" style="margin:12px">${esc(cashErr(e))}</div>`; return; }
-    draw();
+    // An expanded voucher still has one top-level total. Its child entries are not separate cash movements.
+    const ref = row.dspvchnumber?.dspvchnumber?.dspexplvchnumber;
+    return {date, type, a: amount, led, ref: typeof ref === "string" ? ref.trim() : "", source: "tally"};
+  });
+}
+async function vRegister(v) {
+  const F = { ...pbInit("month"), q: "", type: "", k: "" }, tallyPeriod = pbInit("month");
+  const categoryTotal = bi("খাতের মোট", "Category total");
+  const sources = { checker: bi("ক্যাশ চেকার", "Cash Checker"), book: bi("ক্যাশ খাতা", "Cash Book"), tally: "Tally" };
+  const all = bi("সব", "All");
+  v.innerHTML = head("ক্যাশ রেজিস্টার", `<button type="button" class="btn" id="rg-open">${ico("book")} ${bi("Tally JSON খুলুন", "Open Tally JSON")}</button><button type="button" class="btn" id="rg-x">${ico("dl")} Excel</button>`) +
+    `<div class="card tbar rg-tools noprint">
+       <input type="file" id="rg-file" accept=".json,application/json" hidden>
+       <div class="rg-source chips" id="rg-source" role="group" aria-label="${bi("রেকর্ডের উৎস", "Record source")}" hidden>
+         <button type="button" class="chip on" data-rg-source="app" aria-pressed="true">${bi("অ্যাপ রেকর্ড", "App records")}</button>
+         <button type="button" class="chip" data-rg-source="tally" aria-pressed="false">${bi("Tally প্রিভিউ", "Tally preview")}</button>
+       </div>
+       <div id="rg-file-info" class="mut sm" role="status"></div>
+       <div id="rg-file-error" class="rd sm" role="alert"></div>
+       <div id="rg-period">${pbBar("rg", F)}</div>
+       <div class="rg-filters">
+         <div><label class="f" for="rg-q">${bi("লেজার, voucher, নোট বা অঙ্ক", "Ledger, voucher, note or amount")}</label><input class="in" id="rg-q" type="search" autocomplete="off"></div>
+         <div><label class="f" for="rg-t">${bi("ধরন", "Type")}</label><select class="in" id="rg-t"><option value="">${all}</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div>
+         <div id="rg-purpose"><label class="f" for="rg-k">${bi("খাত", "Purpose")}</label><select class="in" id="rg-k"><option value="">${all}</option>${[...CASH_KEYS("receipt"), ...CASH_KEYS("payment")].map(k => `<option value="${k}">${esc(cashLabel(k))}</option>`).join("")}</select></div>
+       </div>
+     </div>
+     <div id="rg-sum" class="rg-summary" role="status"></div>
+     <div id="rg-notice"></div>
+     <div class="card flush" id="rg-out"></div>
+     <div class="cq-pager rg-pager" id="rg-pager" hidden><button type="button" class="btn" id="rg-prev">${bi("আগের", "Previous")}</button><span class="mut sm" id="rg-page"></span><button type="button" class="btn" id="rg-next">${bi("পরের", "Next")}</button></div>`;
+  const g = id => $("#" + id, v), out = g("rg-out"), file = g("rg-file"), excel = g("rg-x");
+  let source = "app", page = 0, version = 0, ready = false, lines = [], shown = [], tally = [];
+  const pageSize = 75, currentPeriod = () => source === "app" ? F : tallyPeriod;
+  function showNotice(message) {
+    g("rg-notice").innerHTML = message ? `<div class="alert am">${esc(message)}</div>` : "";
   }
+  async function load() {
+    const versionAtStart = ++version, [f, t] = cashPeriod(currentPeriod());
+    const current = () => out.isConnected && versionAtStart === version;
+    page = 0; ready = false; shown = []; excel.disabled = true;
+    g("rg-sum").textContent = ""; g("rg-pager").hidden = true; showNotice("");
+    if (source === "tally") {
+      lines = tally.filter(r => r.date >= f && r.date <= t);
+    } else {
+      out.innerHTML = `<div class="empty">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
+      try {
+        const [rows, allBooks] = await Promise.all([API.cashRange(f, t).then(rows => rows.map(r => ({ ...r, items: cashItems(r.items) }))), API.cbRange(f, t).catch(() => null)]);
+        if (!current()) return;
+        const checkerDays = new Map(rows.map(r => [r.date, r]));
+        const books = (allBooks || []).filter(b => ["r", "p"].some(tt => (b.lines?.[tt] || []).some(l => +l.a)) && !(checkerDays.get(b.date)?.status === "final" && b.status !== "final"));
+        const bookDays = new Set(books.map(b => b.date));
+        const diffs = books.filter(b => {
+          const c = checkerDays.get(b.date);
+          if (c?.status !== "final" || b.status !== "final") return false;
+          return [["r", "receipt"], ["p", "payment"]].some(([side, type]) => {
+            const bookTotal = (b.lines?.[side] || []).filter(l => !CASH_MEMO.includes(l.k)).reduce((sum, l) => sum + (+l.a || 0), 0);
+            const checkerTotal = CASH_SUM_KEYS(type).reduce((sum, k) => sum + (+c.items?.[k]?.a || 0), 0);
+            return Math.abs(bookTotal - checkerTotal) > 0.5;
+          });
+        });
+        if (allBooks === null) showNotice(bi("Cash Book লোড হয়নি। আপাতত Cash Checker-এর খাতভিত্তিক মোট দেখানো হচ্ছে।", "Cash Book could not load. Showing Cash Checker category totals."));
+        else if (diffs.length) showNotice(bi("Cash Book ও Cash Checker-এর মোটে অমিল · ", "Cash Book and Cash Checker totals differ · ") + diffs.map(b => dmy(b.date)).join(", "));
+        const fromChecker = rows.filter(r => !bookDays.has(r.date)).flatMap(r => Object.entries(r.items || {}).filter(([, it]) => +it?.a).map(([k, it]) => ({
+          date: r.date, k, type: cashType(k), a: +it.a, led: "", n: it.n, x: it.x,
+          accounts: Array.isArray(it.accs) ? [...new Set(it.accs.filter(z => z?.c && +z.a).map(z => z.c))].join(", ") : "",
+          st: r.status, by: r.entered_by, source: "checker"
+        })));
+        const fromBook = books.flatMap(b => [["r", "receipt"], ["p", "payment"]].flatMap(([side, type]) => (b.lines?.[side] || []).filter(l => +l.a).map(l => ({
+          date: b.date, k: CASH_KEYS(type).includes(cashCategory(l.k)) ? cashCategory(l.k) : side === "r" ? "cz_oth" : "p_oth",
+          type, a: +l.a, led: l.n, ref: l.ref, n: l.note, x: l.x, accounts: l.c, st: b.status, by: b.entered_by, source: "book"
+        }))));
+        lines = [...fromChecker, ...fromBook];
+      } catch (e) {
+        if (current()) out.innerHTML = `<div class="alert rd">${esc(cashErr(e))}</div>`;
+        return;
+      }
+    }
+    lines.sort((a, b) => b.date.localeCompare(a.date));
+    ready = true; draw();
+  }
+  const resetPage = () => { page = 0; draw(); };
   function draw() {
-    const q = norm(F.q); shown = lines.filter(l => (!F.type || l.type === F.type) && (!F.k || l.k === F.k) && (!q || norm(l.led + cashLabel(l.k) + l.n + l.a + l.x).includes(q)));
-    const R = shown.filter(l => l.type === "receipt").reduce((s, l) => s + l.a, 0), P = shown.filter(l => l.type === "payment").reduce((s, l) => s + l.a, 0);
-    $("#rg-sum", v).innerHTML = `<b>${shown.length}</b>টি লাইন · <span class="gr">Receipt ৳ ${money0(R)}</span> · <span class="rd">Payment ৳ ${money0(P)}</span>${diffs.length ? ` <span class="am">⚠ ${bi("খাতা ও চেকার ফাইনাল, কিন্তু যোগফল মেলে না: ", "Book and Checker are both final but differ: ")}${diffs.map(dmy).join(", ")}</span>` : ""}`;
-    $("#rg-out", v).innerHTML = shown.length ? `<div class="tw cards"><table><thead><tr><th>তারিখ</th><th>ধরন</th><th>${bi("লেজার", "Ledger")}</th><th>খাত</th><th class="r">টাকা</th><th>নোট</th><th>অবস্থা</th></tr></thead><tbody>${shown.slice(0, 1500).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td><td>${l.led ? `<b>${esc(l.led)}</b>` : `<span class="mut">—</span>`}</td><td>${esc(cashLabel(l.k))}</td><td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money0(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td><td class="sm">${esc(l.n)}</td><td class="mut sm">${l.book ? bi("খাতা", "Book") + " · " : ""}${l.st === "final" ? "ফাইনাল" : "ড্রাফট"} · ${esc(l.by || "")}</td></tr>`).join("")}</tbody></table></div>${shown.length > 1500 ? `<div class="mut sm" style="padding:8px">${bi("প্রথম ১৫০০ লাইন দেখানো হচ্ছে — সময় ছোট করুন", "First 1500 lines shown — narrow the period")}</div>` : ""}` : `<div class="empty">কিছু পাওয়া যায়নি</div>`;
+    if (!ready || !out.isConnected) return;
+    const q = chequeSearchKey(F.q), isTally = source === "tally";
+    shown = lines.filter(l => (!F.type || l.type === F.type) && (isTally || !F.k || F.k === l.k) &&
+      (!q || chequeSearchKey([l.led, l.k && cashLabel(l.k), l.n, l.accounts, l.ref, l.a, l.x].join(" ")).includes(q)));
+    const sums = {receipt: 0, payment: 0};
+    for (const l of shown) sums[l.type] += Math.round(l.a * 100);
+    g("rg-sum").innerHTML = [[bi("লাইন", "Lines"), shown.length, ""], ["Receipt", "৳ " + money(sums.receipt / 100), "gr"], ["Payment", "৳ " + money(sums.payment / 100), "rd"]]
+      .map(([label, value, cls]) => `<div class="card"><span class="mut sm">${label}</span><strong class="${cls}">${value}</strong></div>`).join("");
+    const pages = Math.max(1, Math.ceil(shown.length / pageSize));
+    page = Math.min(page, pages - 1);
+    const first = page * pageSize;
+    g("rg-pager").hidden = pages === 1; g("rg-page").textContent = `${page + 1} / ${pages}`;
+    g("rg-prev").disabled = page === 0; g("rg-next").disabled = page + 1 === pages;
+    excel.disabled = !shown.length;
+    const ledger = bi("লেজার", "Ledger"), detail = bi("ভাউচার / নোট", "Voucher / note"), recordSource = bi("উৎস", "Source");
+    out.innerHTML = shown.length ? `<div class="tw cards"><table class="rg-table"><thead><tr><th>তারিখ</th><th>ধরন</th><th>${ledger}</th>${isTally ? "" : "<th>খাত</th>"}<th class="r">টাকা</th><th>${detail}</th><th>${recordSource}</th></tr></thead><tbody>
+      ${shown.slice(first, first + pageSize).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td>
+      <td>${l.led ? `<b>${esc(l.led)}</b>` : `<span class="mut">${l.source === "checker" ? categoryTotal : bi("নাম দেওয়া হয়নি", "Unnamed entry")}</span>`}</td>
+      ${isTally ? "" : `<td>${esc(cashLabel(l.k))}</td>`}<td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td>
+      <td class="sm">${[l.ref, l.accounts && "A/C " + l.accounts, l.n].filter(Boolean).map(x => `<div>${esc(x)}</div>`).join("") || "—"}</td>
+      <td class="mut sm">${sources[l.source]}${l.st ? ` · ${l.st === "final" ? bi("ফাইনাল", "Final") : bi("ড্রাফট", "Draft")}` : ""}${l.by ? " · " + esc(l.by) : ""}</td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty">${bi("এই ফিল্টারে কোনো লাইন নেই", "No lines match these filters")}</div>`;
   }
-  pbBind(v, "rg", F, load); $("#rg-q", v).oninput = e => { F.q = e.target.value; draw(); }; $("#rg-t", v).onchange = e => { F.type = e.target.value; draw(); }; $("#rg-k", v).onchange = e => { F.k = e.target.value; draw(); };
-  $("#rg-x", v).onclick = () => shown.length ? exportXlsx({ Register: [["Date", "Type", "Ledger", "Category", "Amount", "Expression", "Note", "Status", "By"], ...shown.map(l => [dmy(l.date), l.type, l.led || "", cashLabel(l.k), l.a, l.x, l.n, l.st, l.by || ""])] }, `Cash_Register_${today()}.xlsx`) : toast("ডাটা নেই", "err");
-  await load();
+  function setSource(next) {
+    source = next;
+    g("rg-period").innerHTML = pbBar("rg", currentPeriod());
+    g("rg-purpose").hidden = source === "tally";
+    for (const btn of $$("[data-rg-source]", v)) {
+      const active = btn.dataset.rgSource === source;
+      btn.classList.toggle("on", active); btn.setAttribute("aria-pressed", active);
+    }
+    pbBind(v, "rg", currentPeriod(), load); return load();
+  }
+  g("rg-open").onclick = () => file.click();
+  file.onchange = async () => {
+    const chosen = file.files[0], open = g("rg-open");
+    file.value = "";
+    if (!chosen || open.disabled) return;
+    open.disabled = true; g("rg-file-error").textContent = "";
+    try {
+      const records = await cashTallyRows(chosen);
+      if (!out.isConnected) return;
+      tally = records;
+      tallyPeriod.d = records.reduce((last, row) => row.date > last ? row.date : last, "");
+      tallyPeriod.m = "month";
+      tallyPeriod.f = records.reduce((first, row) => row.date < first ? row.date : first, tallyPeriod.d);
+      tallyPeriod.t = tallyPeriod.d;
+      g("rg-source").hidden = false;
+      g("rg-file-info").textContent = `${chosen.name} · ${bi("শুধু এই পেজে প্রিভিউ", "Read-only preview on this page")} · ${records.length.toLocaleString("en-IN")} ${bi("লাইন", "lines")}`;
+      await setSource("tally");
+    } catch (e) { if (out.isConnected) g("rg-file-error").textContent = e.message || String(e); }
+    finally { open.disabled = false; }
+  };
+  for (const btn of $$("[data-rg-source]", v)) btn.onclick = () => { if (source !== btn.dataset.rgSource) setSource(btn.dataset.rgSource); };
+  g("rg-q").oninput = e => { F.q = e.target.value; resetPage(); };
+  g("rg-t").onchange = e => { F.type = e.target.value; resetPage(); };
+  g("rg-k").onchange = e => { F.k = e.target.value; resetPage(); };
+  const changePage = delta => { page += delta; draw(); out.scrollIntoView({block: "start"}); };
+  g("rg-prev").onclick = () => changePage(-1); g("rg-next").onclick = () => changePage(1);
+  excel.onclick = () => {
+    const [from, to] = cashPeriod(currentPeriod());
+    if (shown.length) exportXlsx({ Register: [["Date", "Type", "Ledger", "Category", "Amount", "Expression", "Note", "Status", "By", "Voucher", "A/C", "Source"],
+      ...shown.map(l => [dmy(l.date), l.type, l.led || "", l.k ? cashLabel(l.k) : "", l.a, l.x || "", l.n || "", l.st || "", l.by || "", l.ref || "", l.accounts || "", sources[l.source]])] },
+      `Cash_Register_${source}_${from}_to_${to}.xlsx`);
+  };
+  await setSource("app");
 }
 
 /* =================== v6: reminders (photo + pick days + cheque link) =================== */
