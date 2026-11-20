@@ -109,3 +109,9 @@
   .cblg-r.cblg-map { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .cblg-map .nm { grid-column: 1 / -1; }
 }
+
+.cblg-filters { margin: 8px 0; }
+.cblg-filters-map { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 8px; }
+@media (max-width: 430px) {
+  .cblg-filters-map { grid-template-columns: minmax(0, 1fr); }
+}
