@@ -1980,3 +1980,19 @@ body:has(#modal-root .mback) { overflow: hidden; }
   .cp-purpose-tools .btn { min-height: 34px; white-space: normal; }
   .cq-posting .fgrid.ef .in.big { padding-inline: 7px; }
 }
+
+/* Cheque Posting shortcuts and purpose actions */
+.cp-header .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.cp-header .acts .btn { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .top.ph.cp-header .acts { flex: 1 0 100%; width: 100%; display: grid; grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr)); }
+  .top.ph.cp-header .acts .btn { width: 100%; height: 44px; padding-inline: 6px; gap: 5px; min-width: 0; font-size: .8rem; }
+  .cp-header .acts .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .cp-purpose .cp-section-head { align-items: flex-start; }
+  .cp-purpose-tools { gap: 6px; }
+  .cp-purpose-tools .btn { min-height: 40px; }
+}
+
+.cp-purpose-tools #e-padd { color: var(--pri); background: color-mix(in srgb, var(--pri) 12%, var(--surface)); border-color: color-mix(in srgb, var(--pri) 32%, var(--line)); }
+.cp-purpose-tools #e-pmg { color: var(--am); background: color-mix(in srgb, var(--am) 12%, var(--surface)); border-color: color-mix(in srgb, var(--am) 32%, var(--line)); }
+.cp-purpose-tools .btn:hover { filter: brightness(.96); }

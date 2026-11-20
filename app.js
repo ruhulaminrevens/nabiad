@@ -1008,7 +1008,7 @@ async function setStatus(c, status, date, remarks) {
 async function vEntry(v) {
   const st = { purpose: null, photo: null };
   let activityMode = "today", activityLimit = 12;
-  v.innerHTML = head("চেক পোস্টিং", `<button class="btn" id="e-imp">${ico("dl")} <span>${bi("Excel ইম্পোর্ট", "Excel import")}</span></button><a class="btn" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a>`, "tc") + `
+  v.innerHTML = head("চেক পোস্টিং", `<a class="btn" href="#/books">${ico("book")} ${bi("চেক বই", "Cheque Book")}</a><a class="btn" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a><a class="btn" href="#/cheques">${ico("list")} ${bi("রেজিস্টার", "Register")}</a>`, "tc cp-header") + `
   <div class="split cq-posting">
    <section class="card efc" aria-labelledby="e-title">
     <h2 class="cp-title" id="e-title">${bi("নতুন চেক এন্ট্রি", "New cheque entry")}</h2>
@@ -1018,8 +1018,8 @@ async function vEntry(v) {
      <div class="s2"><label class="f" for="e-no">চেক নং</label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off" aria-describedby="e-nohint"><div class="hint cp-hint" id="e-nohint"></div></div>
      <div class="s2"><label class="f" for="e-amt">টাকা</label><input class="in big num" id="e-amt" inputmode="decimal" autocomplete="off" aria-describedby="e-amthint"><div class="hint num cp-hint" id="e-amthint"></div></div>
      <div class="s4 cp-purpose"><div class="cp-section-head"><span class="f" id="e-purpose-label">${bi("খাত", "Purpose")}</span><div class="cp-purpose-tools">
-       <button class="btn sm" type="button" id="e-padd">${ico("plus")} ${bi("নতুন খাত", "Add purpose")}</button>
-       ${S.me.role === "admin" ? `<button class="btn sm" type="button" id="e-pmg">${bi("খাত পরিচালনা", "Manage purposes")}</button>` : ""}
+       <button class="btn sm" type="button" id="e-padd">${ico("plus")} ${bi("নতুন খাত যোগ করুন", "New purpose")}</button>
+       ${S.me.role === "admin" ? `<button class="btn sm" type="button" id="e-pmg">${ico("edit")} ${bi("খাত সম্পাদনা", "Edit purposes")}</button>` : ""}
      </div></div><div class="chips" id="e-purp" role="group" aria-labelledby="e-purpose-label"></div></div>
      <div class="s4" id="x-cash" style="display:none"><label class="f">${bi("কে তুলেছে *", "Withdrawn by *")}</label><input type="hidden" id="e-taker"><div class="chips takers" id="e-takers">${TAKERS.map(t => `<button class="chip" type="button" data-t="${esc(t)}" aria-pressed="false">${esc(t)}</button>`).join("")}</div></div>
      <div class="s4" id="x-own" style="display:none"><label class="f" for="e-toac">কোন A/C তে জমা * <span class="mut">(${bi("শুধু রেকর্ড", "record only")})</span></label><div><input class="in" id="e-toac" autocomplete="off" placeholder="${bi("যে অ্যাকাউন্টে টাকা গেছে — কোড বা নাম টাইপ করুন", "Receiving account — type code or name")}"></div></div>
@@ -1039,14 +1039,14 @@ async function vEntry(v) {
     </div>
    </section>
    <section class="card flush cp-activity" aria-labelledby="e-activity-title">
-     <div class="ch"><h3 id="e-activity-title">${bi("চেক এন্ট্রি", "Cheque activity")}</h3><a class="btn sm" href="#/cheques">${bi("চেক রেজিস্টার", "Register")}</a></div>
+     <div class="ch"><h3 id="e-activity-title">${bi("চেক এন্ট্রি", "Cheque activity")}</h3></div>
      <div class="cp-activity-controls"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false">${bi("চেকের তারিখে", "By cheque date")}</button></div>
      <div class="cp-activity-stats"><div><span>${bi("এন্ট্রি", "Entries")}</span><strong id="e-cnt" class="num">0</strong></div><div><span>${bi("কার্যকর মোট", "Live amount")}</span><strong id="e-total" class="num">৳ 0</strong></div></div></div>
      <div id="e-list"></div>
      <button type="button" class="btn sm cp-more" id="e-more" hidden>${bi("আরও দেখুন", "Show more")}</button>
    </section>
   </div>`;
-  const posting = $(".cq-posting", v), importButton = $("#e-imp", v);
+  const posting = $(".cq-posting", v);
   const $e = id => $("#" + id, posting);
   const ac = suggest($e("e-ac"), () => acItems(), it => {
     const a = it && accMap()[it.value]; $e("e-achint").innerHTML = a ? `${esc(a.bank)} ${a.branch ? "· " + esc(a.branch) : ""} ${a.acno ? "· " + esc(a.acno) : ""}` : "";
@@ -1079,7 +1079,6 @@ async function vEntry(v) {
     const k = purpKey(); $e("x-cash").style.display = k === "cash" ? "" : "none"; $e("x-own").style.display = k === "own" ? "" : "none"; sum();
   }
   drawPurp(); loadPurposes().then(drawPurp);
-  importButton.onclick = () => chequeImportModal(list);
   /* Cheque Posting (Cash Withdrawal) ↔ Cash Checker "Total Bank" link */
   async function cashLink() {
     const el = $e("e-cashlink"), tok = ++clTok; if (!el) return;
