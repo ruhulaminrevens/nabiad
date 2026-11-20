@@ -1265,9 +1265,6 @@ html[data-theme="dark"] .lk.blank{color:#fca5a5}html[data-theme="dark"] .lk.lost
 }
 
 /* v6.55 — Cheque purposes modal footer: Close (left) + Done (right) on one row */
-.row.pm-foot{flex-wrap:nowrap;gap:10px;align-items:stretch}
-.row.pm-foot>.btn{flex:1 1 0;min-width:0;justify-content:center}
-.row.pm-foot>#pm-x{flex:1.6 1 0}
 
 /* v6.57 — Cheque detail: Close in the header (top-right); status-entry delete is a small icon, cheque delete is the labelled button */
 .modal h2:has(#c-x){flex-wrap:nowrap}
@@ -1711,17 +1708,46 @@ body:has(#modal-root .mback) { overflow: hidden; }
 .modal-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 16px 22px; }
 .modal-body.book-fields { gap: 10px; }
 .modal-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   flex: none;
-  padding: 12px 22px max(12px, env(safe-area-inset-bottom));
+  padding: 10px 22px max(10px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--line);
   background: var(--surface);
 }
-.modal-actions .btn { min-height: 42px; height: auto; padding-block: 8px; }
-.modal-actions .hint { flex-basis: 100%; margin: 0; }
-.modal-actions .hint:empty { display: none; }
+.modal-actions > .btn, .entry-actions > .btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  height: auto;
+  margin: 0;
+  padding: 8px 10px;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.modal-actions > :nth-last-child(1 of .btn:not(.hide):not([hidden])):nth-child(odd of .btn:not(.hide):not([hidden])),
+.modal-actions > :is(.hint, [role="status"]) { grid-column: 1 / -1; }
+.modal-actions > .sp, .modal-actions > :is(.hint, [role="status"]):empty { display: none; }
+.modal-actions .hint { margin: 0; }
+.entry-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+  align-items: stretch;
+}
+.entry-actions > .hint { grid-column: 1 / -1; }
+.entry-error:empty { display: none; }
+#c-x {
+  margin-left: auto;
+  background: rgba(0,0,0,.22);
+  box-shadow: none;
+  color: #fff;
+}
+#c-x:hover { background: rgba(0,0,0,.38); }
+.modal h2:has(#c-x) { flex-wrap: wrap; }
 #b-q button { font-family: inherit; }
 .sheet2 .box { max-height: min(82vh, 88dvh); }
 .sheet2.out { pointer-events: none; }
@@ -1748,7 +1774,8 @@ body:has(#modal-root .mback) { overflow: hidden; }
   .top.ph.tc .acts .btn:has(.lb) { min-width: 44px; }
   .mback .modal { max-height: 90dvh; }
   .modal-body, .modal-actions { padding-inline: 16px; }
-  .modal-actions .btn { flex: 1 1 auto; min-height: 44px; }
+  .modal-body { scroll-padding-block: 12px; }
+  .main { scroll-margin-bottom: calc(86px + env(safe-area-inset-bottom)); }
   .mnav :is(a,button) { min-height: 48px; }
 }
 @media (max-width: 560px) {
@@ -1766,4 +1793,19 @@ body:has(#modal-root .mback) { overflow: hidden; }
   .mback, .mback .modal, .sheet2, .sheet2 .box { animation: none; transition: none; }
   .sheet2.out, .sheet2.out .box, .mnav .mi { transition: none; }
   .btn:active, .btn.pri:hover, .mnav :is(a,button):active .mi { transform: none; }
+}
+
+
+@media (max-width: 900px) {
+  .iv-ent > .entry-actions, .cbar.entry-actions, .fbar:has(> .entry-actions) {
+    position: sticky;
+    bottom: calc(74px + env(safe-area-inset-bottom));
+    z-index: 12;
+    padding-block: 8px;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+  }
+}
+@media print {
+  .modal-actions, .entry-actions { display: none !important; }
 }

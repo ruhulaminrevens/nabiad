@@ -250,7 +250,7 @@ async function cbRegisterVisual(el, format) {
 }
 function cbRegisterModal(book) {
   const name = "Nabiad_Cash_Register_" + book.date, sheet = cbRegisterSheet(book);
-  modal(`<h2>${cbRegisterTitle()}</h2><div class="cb-register-actions">
+  modal(`<h2>${cbRegisterTitle()}</h2><div class="modal-actions cb-register-actions">
     ${["xlsx", "pdf", "png"].map((f, i) => `<button type="button" class="btn" data-register-format="${f}">${["Excel", "PDF", "Image"][i]}</button>`).join("")}
     <button type="button" class="btn" data-register-print>${bi("প্রিন্ট", "Print")}</button>
     <button type="button" class="btn" data-register-share hidden>${bi("ফাইল শেয়ার", "Share file")}</button>
@@ -321,7 +321,6 @@ async function vCashBook(v) {
     if (po != null && !final) msgs.push(`<div class="mut sm">🔗 ${bi("Opening নিজে এসেছে", "Opening is automatic")}: <b>${dmy(pdate)}</b> ${psrc === "book" ? bi("-এর ক্যাশ খাতার হাতে ক্যাশ থেকে", "cash in hand of the Cash Book") : bi("-এর ক্যাশ চেকার রেকর্ড থেকে", "cash in hand of the Cash Checker record")}${workGap(pdate, date) ? ` · <b class="am">${bi(`মাঝে ${workGap(pdate, date)} কর্মদিবসের রেকর্ড নেই`, `${workGap(pdate, date)} working day(s) without a record in between`)}</b>` : ""}</div>`);
     if (po == null && !final) msgs.push(`<div class="mut sm">${admin ? bi("এটা প্রথম রেকর্ড — শুরুর Cash in Hand একবারই লিখুন। এরপর প্রতিদিন নিজে আসবে।", "This is the first record — enter the starting Cash in Hand once. After that it carries over automatically.") : bi("শুরুর Opening এখনো বসানো হয়নি — Admin কে বসাতে বলুন।", "The starting Opening has not been set yet — ask the Admin to set it.")}</div>`);
     if (pend) msgs.push(`<div class="alert am">⚠ <b>${dmy(pend.date)}</b> ${bi("-এর ক্যাশ খাতা এখনো ড্রাফট — ফাইনাল না করলে তার হাতে ক্যাশ এখানে Opening-এ আসবে না।", "Cash Book is still a draft — until it is finalised its cash will not carry into this Opening.")} <button class="btn sm" id="cb-pd" style="margin-left:auto">${bi("খুলুন", "Open")}</button></div>`);
-    if (!locked) msgs.push(`<div class="mut xs">💡 ${bi("লেজার বাছলে খাত নিজে বসবে। Enter = পরের ঘর · খালি লাইনে Enter = পরের অংশ। একই লাইনে কয়েকটা অঙ্ক হলে + দিয়ে লিখুন, যেমন 5000+12000।", "Pick a ledger and its category fills in by itself. Enter = next box · Enter on an empty line = next section. Several amounts on one line: use +, e.g. 5000+12000.")}</div>`);
     $("#cb-msg", v).innerHTML = msgs.join("");
     $("#cb-dd", v) && ($("#cb-dd", v).onclick = async () => { if (!ask(bi("এই তারিখের ড্রাফট মুছবেন?", "Discard this date's draft?"))) return; clearTimeout(autoT); pendingDraft = null; localStorage.removeItem(CB_DRAFT(date)); if (ex && !final) { try { await API.cbSave({ date, opening_cash: oc, lines: { r: [], p: [] }, total_receipt: 0, total_payment: 0, cash_in_hand: null, remarks: null, status: "draft" }); } catch { } } draw(); });
     const dis = locked ? "disabled" : "", lines = src?.lines || { r: [], p: [] };
@@ -344,7 +343,7 @@ async function vCashBook(v) {
       <div class="card csec cb-references"><div class="csh"><h3>${bi("দৈনিক রেজিস্টার", "Daily register")}</h3>
         ${final ? `<button type="button" id="cb-register" class="btn sm">${ico("book")} ${bi("দেখুন / Export", "View / Export")}</button>` : ""}</div>
         <div id="cb-refs" role="status"></div></div>
-      ${locked ? "" : `<div class="cbar"><button class="btn lg fix" id="cb-draft">${ico("edit")} ${bi("ড্রাফট সেভ", "Save draft")}</button><button class="btn pri lg fix" id="cb-save">${ico("save")} <span class="bl">${bi("ফাইনাল সেভ", "Final save")}<small>${dmy(date)}</small></span></button><div class="hint" id="cb-err"></div><div class="sp"></div><span class="mut sm" id="cb-auto"></span></div>`}`;
+      ${locked ? "" : `<div class="cbar entry-actions"><button class="btn lg fix" id="cb-draft">${ico("edit")} ${bi("ড্রাফট সেভ", "Save draft")}</button><button class="btn pri lg fix" id="cb-save">${ico("save")} <span class="bl">${bi("ফাইনাল সেভ", "Final save")}<small>${dmy(date)}</small></span></button><div class="hint" id="cb-err"></div><div class="sp"></div><span class="mut sm" id="cb-auto"></span></div>`}`;
     const refs = $("#cb-refs", body);
     const showRefs = (snapshot, error = false) => {
       refs.innerHTML = cbRegisterReferences(snapshot).map(([label, value]) => `<div class="cb-reg-total"><span>${esc(label)}</span><b>${cbRegisterMoney(value)}</b></div>`).join("")
@@ -509,7 +508,6 @@ async function vCashBook(v) {
 function cbLedgerModal(after) {
   const admin = S.me.role === "admin";
   modal(`<h2>📒 ${bi("লেজার তালিকা", "Ledger list")}</h2>
-   <div class="mut sm" style="margin-bottom:10px">${bi("এখান থেকেই Cash Book-এর ড্রপডাউন আসে। প্রতিটি লেজারের ডিফল্ট খাত বসানো থাকলে লেজার বাছার সাথে সাথে খাত নিজে বসে।", "These feed the Cash Book dropdown. Set a default category per ledger and it fills in the moment the ledger is picked.")}</div>
    <div id="lg-err"></div>
    <div class="cblg-new"><input class="in" id="lg-n" placeholder="${bi("নতুন লেজারের নাম", "New ledger name")}" autocomplete="off"><select class="in" id="lg-r">${cbLgOpts("r")}</select><select class="in" id="lg-p">${cbLgOpts("p")}</select><button class="btn pri" id="lg-add">${ico("plus")} ${bi("যোগ", "Add")}</button></div>
    <div class="cblg-h"><span>${bi("লেজার", "Ledger")}</span><span>Received ${bi("খাত", "category")}</span><span>Payment ${bi("খাত", "category")}</span><span>${bi("Bank A/C", "Bank A/C")}</span><span></span></div>

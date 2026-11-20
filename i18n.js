@@ -121,8 +121,8 @@ const I18N = {
   "ইন্টারনেট নেই — ড্রাফট শুধু এই ডিভাইসে জমা আছে": "No internet — draft kept on this device only", "সার্ভারে ড্রাফট সেভ হয়নি (এই ডিভাইসে জমা আছে):": "Draft not saved on server (kept on this device):",
   "— ফাইনাল সেভ": "— final save", "মোট ক্লোজিং ৳": "Total closing ৳", "টি অ্যাকাউন্ট আপডেট,": " accounts updated,", "টি আগের মতো।": " unchanged.",
   "সেভের পর আর বদলানো যাবে না (শুধু Admin পারবে)।": "Cannot be changed after saving (Admin only).", "✔ ব্যালেন্স ফাইনাল সেভ হয়েছে": "✔ Balance final-saved",
-  "ক্লোজিং সেভ হয়েছে।": "closing saved.", "রিপোর্ট দেখুন ও Boss-কে পাঠান": "View report & send to Boss",
-  "শেয়ার": "Share", "Boss-কে ইমেইল": "Email Boss", "খোঁজার সাথে কিছু মেলেনি": "Nothing matches the search", "শেয়ার করা যায়নি:": "Could not share:",
+  "ক্লোজিং সেভ হয়েছে।": "closing saved.", "রিপোর্ট দেখুন": "View report",
+  "শেয়ার": "Share", "খোঁজার সাথে কিছু মেলেনি": "Nothing matches the search", "শেয়ার করা যায়নি:": "Could not share:",
   // reminders
   "রিমাইন্ডার": "Reminders", "রিমাইন্ডার ও সতর্কতা": "Reminders & alerts", "নতুন রিমাইন্ডার": "New reminder", "⏰ নতুন রিমাইন্ডার": "⏰ New reminder", "রিমাইন্ডার এডিট": "Edit reminder",
   "কী মনে করাবে *": "Remind me to *", "যেমন: PBL-483 চেক পাস হয়েছে কি না দেখুন": "e.g. Check whether PBL-483 cheque has cleared", "বিস্তারিত": "Details",
