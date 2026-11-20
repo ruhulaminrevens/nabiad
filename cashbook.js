@@ -14,7 +14,7 @@ const cbCatName = k => k === "bank_in" ? bi("Bank — উত্তোলন", "B
 const cbNorm = s => String(s || "").toLowerCase().replace(/[\s.,\-_()\/]+/g, "");
 const CB_DRAFT = d => "nabiad_cb_draft_" + d;
 const CB_KW = {
-  r: [[/niramoy|নিরাময়/i, "niramoy"], [/nabiad\s*dist|নাবিয়াদ\s*ডিস্ট|ডিস্ট্রিবিউশন|distribution|\bdist\b/i, "dist"], [/food|ফুড/i, "cz_food"], [/chem|কেমিক/i, "cz_chem"], [/cash\s*sale|counter|কাউন্টার|ক্যাশ\s*সেল/i, "cz_cash"], [/suspense|সাসপেন্স/i, "suspense"]],
+  r: [[/niramoy|নিরাময়/i, "niramoy"], [/nabiad\s*dist|নাবিয়াদ\s*ডিস্ট|ডিস্ট্রিবিউশন|distribution|\bdist\b/i, "dist"], [/food|ফুড/i, "cz_food"], [/chem|কেমিক/i, "cz_chem"], [/cash\s*sale|counter|কাউন্টার|ক্যাশ\s*সেল/i, "cz_oth"], [/suspense|সাসপেন্স/i, "suspense"]],
   p: [[/\bl\/?c\b|\bcc\b|\bod\b|এলসি/i, "lc"], [/loan|bill|লোন|বিল/i, "loans"], [/supplier|সাপ্লায়ার|সাপ্লাইয়ার/i, "supp"]]
 };
 let CBL = null;   /* what earlier days taught us: name → category (+ bank A/C) */
@@ -23,7 +23,7 @@ async function cbLearn(force) {
   const L = { r: new Map(), p: new Map(), nm: { r: new Map(), p: new Map() }, t: Date.now() };
   try {
     const rows = await API.cbRange(addDays(today(), -240), today());
-    rows.forEach(d => ["r", "p"].forEach(t => (d.lines?.[t] || []).forEach(l => { const n = cbNorm(l.n); if (!n) return; if (l.k) L[t].set(n, { k: l.k, ...(l.c ? { c: l.c } : {}) }); L.nm[t].set(n, { n: l.n, c: (L.nm[t].get(n)?.c || 0) + 1 }); })));
+    rows.forEach(d => ["r", "p"].forEach(t => (d.lines?.[t] || []).forEach(l => { const n = cbNorm(l.n); if (!n) return; if (l.k) L[t].set(n, { k: cashCategory(l.k), ...(l.c ? { c: l.c } : {}) }); L.nm[t].set(n, { n: l.n, c: (L.nm[t].get(n)?.c || 0) + 1 }); })));
   } catch { }
   return CBL = L;
 }
@@ -56,7 +56,7 @@ async function cbLedLoad(force) {
   L.list.forEach(m => L.byNorm.set(cbNorm(m.name), m));
   return CBLED = L;
 }
-const cbLedCat = (m, t) => t === "r" ? m.cat_r : m.cat_p;
+const cbLedCat = (m, t) => cashCategory(t === "r" ? m.cat_r : m.cat_p);
 /* dropdown items for one side: this side's ledgers first, then the rest, then names typed on earlier days that are not in the list */
 function cbLedItems(t) {
   const used = CBL?.nm?.[t], seen = new Set(), out = [], other = t === "r" ? "p" : "r";
@@ -88,7 +88,7 @@ function cbGroup(bk) {
   const items = {}, warn = { un: 0, noAc: 0 };
   [["r", "cz_oth"], ["p", "p_oth"]].forEach(([t, dflt]) => (bk?.lines?.[t] || []).forEach(l => {
     const a = +l.a || 0; if (!a) return;
-    let k = l.k; if (!k || !CB_CAT[t].includes(k)) { k = dflt; warn.un++; }
+    let k = cashCategory(l.k); if (!k || !CB_CAT[t].includes(k)) { k = dflt; warn.un++; }
     const it = items[k] ||= { a: 0, _n: [] }; it.a += a; if (l.n) it._n.push(l.n);
     if (CB_BANK.includes(k)) { if (!l.c) warn.noAc++; const accs = it.accs ||= []; const z = accs.find(q => q.c === (l.c || "")); z ? z.a += a : accs.push({ c: l.c || "", a }); }
   }));
@@ -100,7 +100,7 @@ const cbSigned = n => (n > 0 ? "+" : n < 0 ? "−" : "") + money0(Math.abs(n));
 
 /* ---------- Cash Checker: problems & differences ---------- */
 function cbChecks(row, bk, prevBk) {
-  const L = [], add = (lv, t) => L.push({ lv, t }), R = row.items || {}, m = money0;
+  const L = [], add = (lv, t) => L.push({ lv, t }), R = cashItems(row.items), m = money0;
   const sumAll = t => CASH_KEYS(t).reduce((s, k) => s + (+R[k]?.a || 0), 0), allR = sumAll("receipt"), allP = sumAll("payment");
   if (row.cash_in_hand != null) {
     const exp = row.opening_cash + allR - allP, d = row.cash_in_hand - exp;
@@ -327,7 +327,7 @@ async function vCashBook(v) {
     const dis = locked ? "disabled" : "", lines = src?.lines || { r: [], p: [] };
     const acOpts = `<option value="">${bi("A/C বাছুন", "Select A/C")}</option>` + (S.accounts || []).map(a => `<option value="${esc(a.code)}">${esc(a.code)} · ${esc(a.holder || "")}</option>`).join("");
     const catOpts = t => `<option value="">${bi("? খাত বাছুন", "? choose category")}</option>` + CB_CAT[t].map(k => `<option value="${k}">${esc(cbCatName(k))}</option>`).join("");
-    const rowHtml = (t, i, l = {}) => `<div class="cbr" data-t="${t}" data-auto="${l.k ? "0" : "1"}"><span class="cbi">${i + 1}</span><div class="cbnm"><input class="cell cbname" autocomplete="off" placeholder="${t === "r" ? bi("কার কাছ থেকে / কী", "From whom / what") : bi("কাকে / কী খরচ", "To whom / what for")}" value="${esc(l.n || "")}" ${dis}></div><div class="cbav"><input class="cell cbamt2" inputmode="decimal" placeholder="0" value="${esc(l.x ?? (l.a ? fmtIn(l.a) : ""))}" ${dis}><span class="cbval num"></span></div><select class="in cbcat" ${dis}>${catOpts(t).replace(`value="${l.k || "-"}"`, `value="${l.k}" selected`)}</select><input class="cell cbref" autocomplete="off"
+    const rowHtml = (t, i, l = {}) => `<div class="cbr" data-t="${t}" data-auto="${l.k ? "0" : "1"}"><span class="cbi">${i + 1}</span><div class="cbnm"><input class="cell cbname" autocomplete="off" placeholder="${t === "r" ? bi("কার কাছ থেকে / কী", "From whom / what") : bi("কাকে / কী খরচ", "To whom / what for")}" value="${esc(l.n || "")}" ${dis}></div><div class="cbav"><input class="cell cbamt2" inputmode="decimal" placeholder="0" value="${esc(l.x ?? (l.a ? fmtIn(l.a) : ""))}" ${dis}><span class="cbval num"></span></div><select class="in cbcat" ${dis}>${catOpts(t).replace(`value="${cashCategory(l.k) || "-"}"`, `value="${cashCategory(l.k)}" selected`)}</select><input class="cell cbref" autocomplete="off"
       aria-label="${cbVoucherLabel(t)} (${bi("ঐচ্ছিক", "optional")})"
       placeholder="${t === "r" ? bi("রিসিট নং", "Receipt no.") : bi("ভাউচার নং", "Voucher no.")}"
       value="${esc(l.ref || "")}" ${dis}>${locked ? "" : `<button type="button" class="cbx2" title="${bi("মুছুন", "Remove")}">×</button>`}<select class="in cbac" ${dis} ${CB_BANK.includes(l.k) ? "" : "hidden"}>${acOpts.replace(`value="${l.c || "-"}"`, `value="${l.c}" selected`)}</select>
@@ -524,7 +524,7 @@ function cbLedgerModal(after) {
     const draw = () => {
       const q = norm(g("lg-q").value), L = CBLED.list.filter(m => !q || norm(m.name).includes(q)), shown = L.slice(0, 150);
       g("lg-c").textContent = bi(`${CBLED.list.length}টি লেজার · দেখানো হচ্ছে ${shown.length}`, `${CBLED.list.length} ledgers · showing ${shown.length}`);
-      g("lg-l").innerHTML = shown.map(m => `<div class="cblg-r ${m.active === false ? "off" : ""}" data-id="${m.id}"><span class="nm" title="${esc(m.name)}"><input class="cell ln" value="${esc(m.name)}"></span><select class="in lr">${cbLgOpts("r", m.cat_r)}</select><select class="in lp">${cbLgOpts("p", m.cat_p)}</select><select class="in la">${acOpts(m.bank_code)}</select><span class="act"><label class="chk" title="${bi("চালু", "Active")}"><input type="checkbox" class="lo" ${m.active === false ? "" : "checked"}></label>${admin ? `<button type="button" class="cbx2 ld" title="${bi("মুছুন", "Delete")}">×</button>` : ""}</span></div>`).join("") || `<div class="empty">—</div>`;
+      g("lg-l").innerHTML = shown.map(m => `<div class="cblg-r ${m.active === false ? "off" : ""}" data-id="${m.id}"><span class="nm" title="${esc(m.name)}"><input class="cell ln" value="${esc(m.name)}"></span><select class="in lr">${cbLgOpts("r", cbLedCat(m, "r"))}</select><select class="in lp">${cbLgOpts("p", cbLedCat(m, "p"))}</select><select class="in la">${acOpts(m.bank_code)}</select><span class="act"><label class="chk" title="${bi("চালু", "Active")}"><input type="checkbox" class="lo" ${m.active === false ? "" : "checked"}></label>${admin ? `<button type="button" class="cbx2 ld" title="${bi("মুছুন", "Delete")}">×</button>` : ""}</span></div>`).join("") || `<div class="empty">—</div>`;
     };
     const save = async (el, patch) => {
       const m = CBLED.list.find(x => x.id === +el.closest(".cblg-r").dataset.id); if (!m) return;
