@@ -588,17 +588,63 @@ const lkName = k => bi(LK[k].bn, LK[k].en);
 const lkTag = k => `<span class="lk ${k}">${LK[k].ic} ${lkName(k)}</span>`;
 const openMarks = () => S.marks.filter(m => !m.resolved);
 const markOf = (code, no) => S.marks.find(m => m.code === code && m.no === no);
-const leafLabel = (code, no) => { const b = S.books.find(x => x.code === code && no >= x.first && (x.last == null || no <= x.last)); return (b && b.series ? b.series + " " : "") + no; };
-function bookStats(b) {
-  const start = b.track ?? b.first, end = b.last ?? Infinity;
-  const used = new Set(), nos = [];
-  S.cheques.forEach(c => { if (c.code === b.code && c.no >= start && c.no <= end) { used.add(c.no); nos.push(c.no); } });
-  const mk = new Map(S.marks.filter(m => m.code === b.code && m.no >= start && m.no <= end && !used.has(m.no)).map(m => [m.no, m]));
-  const maxUsed = nos.length ? Math.max(...nos) : null;
-  const missing = []; if (maxUsed !== null && maxUsed - start < 5000) for (let n = start; n <= maxUsed; n++) if (!used.has(n) && !mk.has(n)) missing.push(n);
-  return { start, end, used: used.size, maxUsed, missing, marks: [...mk.values()].sort((x, y) => x.no - y.no), remaining: b.last != null ? b.last - (maxUsed ?? start - 1) : null };
+function bookForLeaf(code, no) {
+  let latest = null;
+  for (const b of S.books) {
+    if (b.code === code && no >= b.first && (!latest || b.first > latest.first)) latest = b;
+  }
+  return latest && (latest.last == null || no <= latest.last) ? latest : null;
 }
-const allMissing = () => S.books.filter(b => b.status === "Active").map(b => ({ b, st: bookStats(b) })).filter(x => x.st.missing.length);
+const leafLabel = (code, no) => { const b = bookForLeaf(code, no); return (b?.series ? b.series + " " : "") + no; };
+function bookLedger() {
+  const accounts = new Map();
+  const forCode = code => {
+    if (!accounts.has(code)) accounts.set(code, { posted: [], marks: [], starts: [] });
+    return accounts.get(code);
+  };
+  S.cheques.forEach(c => forCode(c.code).posted.push(c.no));
+  S.marks.forEach(m => forCode(m.code).marks.push(m));
+  S.books.forEach(b => forCode(b.code).starts.push(b.first));
+  return accounts;
+}
+function bookStats(b, ledger = bookLedger()) {
+  const account = ledger.get(b.code) || { posted: [], marks: [], starts: [] };
+  const start = Math.max(b.first, b.track ?? b.first);
+  // Open-ended legacy books stop before the next recorded range on the same account.
+  const end = b.last ?? account.starts.reduce((limit, n) => n > b.first ? Math.min(limit, n - 1) : limit, Infinity);
+  const within = n => Number.isSafeInteger(n) && n >= start && n <= end;
+  const used = new Set(account.posted.filter(within));
+  const marks = account.marks.filter(m => within(m.no) && !used.has(m.no)).sort((x, y) => x.no - y.no);
+  const maxUsed = [...used].reduce((max, n) => max === null ? n : Math.max(max, n), null);
+  const occupied = new Set([...used, ...marks.filter(m => maxUsed !== null && m.no <= maxUsed).map(m => m.no)]);
+  const gaps = [];
+  let next = start;
+  for (const n of [...occupied].sort((x, y) => x - y)) {
+    if (n > next) gaps.push([next, n - 1]);
+    next = n + 1;
+  }
+  const missingCount = gaps.reduce((sum, [from, to]) => sum + to - from + 1, 0);
+  const latest = maxUsed ?? start - 1;
+  const reserved = marks.filter(m => m.no > latest && m.kind !== "unused").length;
+  const remaining = b.last == null ? null : Math.max(0, b.last - latest - reserved);
+  return { start, end, hasMarks: account.marks.some(m => m.no >= b.first && m.no <= end), used: used.size, maxUsed, gaps, missingCount, marks, remaining, capacity: b.last == null ? null : Math.max(0, b.last - start + 1) };
+}
+function gapPage(gaps, offset, limit) {
+  const leaves = [];
+  for (const [first, last] of gaps) {
+    const size = last - first + 1;
+    if (offset >= size) { offset -= size; continue; }
+    const count = Math.min(limit - leaves.length, size - offset);
+    for (let i = 0; i < count; i++) leaves.push(first + offset + i);
+    if (leaves.length >= limit) break;
+    offset = 0;
+  }
+  return leaves;
+}
+const allMissing = () => {
+  const ledger = bookLedger();
+  return S.books.filter(b => b.status === "Active").map(b => ({ b, st: bookStats(b, ledger) })).filter(x => x.st.missingCount);
+};
 function lastCheque(code) {
   let last = null;
   for (const cheque of S.cheques) {
@@ -706,7 +752,7 @@ const allowed = () => Object.keys(ROUTES).filter(k => ROUTES[k].roles.includes(r
 let cleanup = null;
 const getTheme = () => document.documentElement.dataset.theme || "light";
 function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("nabiad_theme", t); } catch { } $$(".th-ic").forEach(e => e.innerHTML = ico(t === "dark" ? "sun" : "moon")); }
-function badges() { return { status: pendingOld().length, books: allMissing().reduce((a, x) => a + x.st.missing.length, 0) + openMarks().length, rem: typeof dueList === "function" ? dueList().length : 0 }; }
+function badges() { return { status: pendingOld().length, books: allMissing().reduce((a, x) => a + x.st.missingCount, 0) + openMarks().length, rem: typeof dueList === "function" ? dueList().length : 0 }; }
 function sideMin(on, save = true) { sideFlyClose(); document.documentElement.dataset.side = on ? "min" : ""; if (save) try { localStorage.setItem("nabiad_side", on ? "min" : "full"); } catch { } const b = $("#sbtog"); if (b) { const t = LANG === "en" ? (on ? "Expand sidebar" : "Minimize sidebar") : (on ? "সাইডবার বড় করুন" : "সাইডবার ছোট করুন"); b.title = t; b.setAttribute("aria-label", t); b.setAttribute("aria-expanded", on ? "false" : "true"); } }
 function shell() {
   const keys = allowed(), bd = badges();
@@ -1678,7 +1724,7 @@ function bookModal(b, after) {
    <div id="b-info" class="hint" style="min-height:18px"></div>
    <div><label class="f" for="b-n">${bi("নোট", "Note")}</label><input class="in" id="b-n" value="${esc(b.note || "")}"></div>
    </div><div class="modal-actions"><button class="btn pri" id="b-ok">${bi("সেভ", "Save")}</button>${b.id ? `<button class="btn bad" id="b-dl">${bi("মুছুন", "Delete")}</button>` : ""}<button class="btn" id="b-x">${bi("বাতিল", "Cancel")}</button></div>`, (root, close) => {
-    const g = id => $("#" + id, root), digits = x => String(x ?? "").trim().replace(/[,\s]/g, "");
+    const g = id => $("#" + id, root), digits = x => chequeDigits(x).replace(/[,\s]/g, "");
     const item = a => ({ value: a.code, label: a.holder || "", sub: [a.bank, a.acno].filter(Boolean).join(" · ") });
     const acc = suggest(g("b-c"), () => S.accounts.map(item), it => { hint(); if (it && !b.id) autoNext(it.value); check(); });
     const codeNow = () => { const p = acc.get(); if (p) return p.value; const t = g("b-c").value.trim().toUpperCase().split(/[\s(]/)[0]; return am[t] ? t : ""; };
@@ -1692,7 +1738,7 @@ function bookModal(b, after) {
       const out = (err, msg) => { g("b-info").className = "hint " + (err === 2 ? "rd" : err === 1 ? "am" : "gr"); g("b-info").textContent = msg; g("b-ok").disabled = err === 2; return { err }; };
       if (!code) return out(2, bi("A/C Code বাছুন", "Pick an A/C code"));
       if (!fs) return out(2, bi("প্রথম পাতা দিন", "Enter the first leaf"));
-      if (!/^\d+$/.test(fs) || (ls && !/^\d+$/.test(ls))) return out(2, bi("পাতার নম্বর শুধু সংখ্যা হবে", "Leaf numbers must be digits only"));
+      if (!chequeNumber(fs) || (ls && !chequeNumber(ls))) return out(2, bi("সঠিক পাতার নম্বর দিন", "Enter a valid leaf number"));
       const f = +fs, l = ls ? +ls : null;
       if (l !== null && l < f) return out(2, bi("শেষ পাতা প্রথম পাতার চেয়ে ছোট হতে পারে না", "Last leaf cannot be before the first leaf"));
       if (ts) { if (!/^\d+$/.test(ts)) return out(2, bi("ট্র্যাক শুরুতে পাতার নম্বর দিন — তারিখ নয়", "Track-from needs a leaf number — not a date")); if (+ts < f || (l !== null && +ts > l)) return out(2, bi(`ট্র্যাক শুরু ${f}–${l ?? "?"}-এর মধ্যে হতে হবে`, `Track-from must be between ${f} and ${l ?? "?"}`)); }
@@ -1728,82 +1774,209 @@ function bookModal(b, after) {
 let BK_TAB = "books";
 const markErr = e => { const m = String(e && e.message || e); return /leaf_in_use/.test(m) ? bi("এই পাতার চেক ইতিমধ্যে এন্ট্রি আছে — মার্ক করা যাবে না", "This leaf already has a cheque entry — it cannot be marked") : /duplicate|23505|unique/i.test(m) ? bi("এই পাতা আগেই মার্ক করা আছে", "This leaf is already marked") : /admin_only|row-level|permission/i.test(m) ? bi("এই কাজের অনুমতি নেই", "Not allowed") : m; };
 async function vBooks(v) {
-  const admin = S.me.role === "admin", canMark = admin || S.me.role === "staff";
+  const admin = S.me.role === "admin";
+  const filters = { mode: "all", query: "", sort: "priority", page: 0 };
   const draw = () => {
-    const om = openMarks().length, un = allMissing().reduce((a, x) => a + x.st.missing.length, 0);
+    if (CUR !== "books") return;
+    const canMark = !S.marksOff && (admin || S.me.role === "staff");
+    const ledger = bookLedger(), accounts = accMap();
+    const rows = S.books.map(b => ({ b, st: bookStats(b, ledger), account: accounts[b.code] }));
+    const active = rows.filter(({ b }) => b.status === "Active");
+    const open = openMarks().length;
+    const groups = [
+      ["all", bi("সব বই", "All books"), rows.length],
+      ["active", bi("সক্রিয়", "Active"), active.length],
+      ["low", bi("পাতা কম", "Low stock"), active.filter(lowBook).length],
+      ["missing", bi("হিসাবহীন পাতা", "Missing leaves"), active.reduce((n, r) => n + r.st.missingCount, 0)],
+      ["open", bi("ফলো-আপ বাকি", "Open follow-ups"), open]
+    ];
+    const current = BK_TAB === "books" ? filters.mode : LF_F.st === "open" ? "open" : "";
     v.innerHTML = head(bi("চেক বই ও মিসিং পাতা", "Cheque Books & Missing Leaves"), (canMark ? `<button class="btn ${admin ? "" : "pri"}" id="bk-mk">${ico("flag")} ${bi("পাতা মার্ক করুন", "Mark leaves")}</button>` : "") + (admin ? `<button class="btn pri" id="bk-add">${ico("plus")} ${bi("নতুন বই", "New book")}</button>` : "")) +
-      `<div class="pbm bk-tabs"><span class="chip ${BK_TAB === "books" ? "on" : ""}" data-t="books">${bi("চেক বই", "Books")}</span><span class="chip ${BK_TAB === "leaves" ? "on" : ""}" data-t="leaves">${bi("পাতার রেজিস্টার", "Leaf register")}${om ? ` <b class="bk-n">${om}</b>` : ""}</span></div><div id="bk-body"></div>`;
-    $$(".bk-tabs .chip", v).forEach(c => c.onclick = () => { BK_TAB = c.dataset.t; draw(); });
-    $("#bk-add", v) && ($("#bk-add", v).onclick = () => bookModal(null, draw));
-    $("#bk-mk", v) && ($("#bk-mk", v).onclick = () => leafMarkModal(null, draw));
-    BK_TAB === "leaves" ? leafRegister($("#bk-body", v), draw) : booksTab($("#bk-body", v), draw, { admin, canMark, om, un });
+      `<div class="bk-overview" aria-label="${bi("চেক বইয়ের সারাংশ", "Cheque book overview")}">${groups.map(([id, label, n]) => `<button type="button" class="bk-stat" data-bk-mode="${id}" aria-pressed="${id === current}" ${S.marksOff && ["low", "missing", "open"].includes(id) ? "disabled" : ""}><span>${label}</span><strong class="num">${["open", "missing", "low"].includes(id) && S.marksOff ? "—" : money0(n)}</strong></button>`).join("")}</div>
+      <div class="pbm bk-tabs"><button type="button" class="chip ${BK_TAB === "books" ? "on" : ""}" data-t="books" aria-pressed="${BK_TAB === "books"}">${bi("চেক বই", "Books")}</button><button type="button" class="chip ${BK_TAB === "leaves" ? "on" : ""}" data-t="leaves" aria-pressed="${BK_TAB === "leaves"}">${bi("পাতার রেজিস্টার", "Leaf register")}</button></div><div id="bk-body"></div>`;
+    const show = (tab, focus) => { BK_TAB = tab; draw(); $(focus, v)?.focus({ preventScroll: true }); };
+    $$(".bk-tabs .chip", v).forEach(c => c.onclick = () => show(c.dataset.t, `.bk-tabs [data-t="${c.dataset.t}"]`));
+    $$("[data-bk-mode]", v).forEach(btn => btn.onclick = () => {
+      const mode = btn.dataset.bkMode;
+      if (mode === "open") {
+        Object.assign(LF_F, { code: "", book: null, kind: "", st: "open", q: "" });
+        LF_PF.m = "all";
+      } else {
+        Object.assign(filters, { mode, page: 0, query: "" });
+      }
+      show(mode === "open" ? "leaves" : "books", `[data-bk-mode="${mode}"]`);
+    });
+    if ($("#bk-add", v)) $("#bk-add", v).onclick = () => bookModal(null, draw);
+    if ($("#bk-mk", v)) $("#bk-mk", v).onclick = () => leafMarkModal(null, draw);
+    if (BK_TAB === "leaves") leafRegister($("#bk-body", v), draw);
+    else booksTab($("#bk-body", v), rows, filters, { admin, canMark, draw, show });
   };
   draw();
 }
-function booksTab(host, draw, { admin, canMark, om, un }) {
-  const am = accMap(), rows = S.books.map(b => ({ b, st: bookStats(b) }));
-  host.innerHTML = (un ? `<div class="alert rd" style="margin-bottom:10px">📚 <span>${bi(`মোট <b>${un}</b>টি পাতার কোনো হিসাব নেই — নিচের তালিকায় "মার্ক করুন" চাপুন (মুড়ি ফাঁকা, হারানো, বাতিল ইত্যাদি)।`, `<b>${un}</b> leaf(s) are unaccounted for — tap "Mark" in the list below (blank stub, lost, cancelled, …).`)}</span></div>` : `<div class="alert gr" style="margin-bottom:10px">✔ ${bi("হিসাবহীন কোনো মিসিং পাতা নেই", "No unaccounted missing leaves")}</div>`) +
-    (om ? `<div class="alert am" style="margin-bottom:14px;cursor:pointer" id="bk-om">✂️ <span>${bi(`<b>${om}</b>টি পাতা (মুড়ি ফাঁকা/হারানো/অন্য) এখনো খুঁজে নিষ্পত্তি হয়নি — পাতার রেজিস্টার দেখুন →`, `<b>${om}</b> marked leaf(s) (blank stub / lost / other) are still open — see the Leaf register →`)}</span></div>` : "") +
-    `<div class="card flush">${rows.length ? `<div class="tw cards"><table><thead><tr><th>A/C</th><th>${bi("সিরিজ", "Series")}</th><th class="r">${bi("প্রথম–শেষ", "First–Last")}</th><th class="r">${bi("ট্র্যাক", "Track")}</th><th class="r">${bi("ব্যবহৃত", "Used")}</th><th class="r">${bi("সর্বশেষ", "Latest")}</th><th class="r">${bi("বাকি", "Left")}</th><th>${bi("মিসিং পাতা", "Missing leaves")}</th><th>Status</th>${admin ? "<th></th>" : ""}</tr></thead><tbody>${rows.map(({ b, st }) => {
-      const cnt = {}; st.marks.forEach(m => cnt[m.kind] = (cnt[m.kind] || 0) + 1);
-      return `<tr><td data-l="A/C"><b>${esc(b.code)}</b><div class="mut sm">${esc((am[b.code] || {}).holder || "")}</div></td><td data-l="${bi("সিরিজ", "Series")}">${esc(b.series || "")}</td><td class="r num" data-l="${bi("প্রথম–শেষ", "First–Last")}">${b.first}–${b.last ?? "?"}</td><td class="r num" data-l="${bi("ট্র্যাক", "Track")}">${b.track ?? "—"}</td><td class="r num" data-l="${bi("ব্যবহৃত", "Used")}">${st.used}</td><td class="r num" data-l="${bi("সর্বশেষ", "Latest")}">${st.maxUsed ?? "—"}</td><td class="r num" data-l="${bi("বাকি", "Left")}">${st.remaining ?? "—"}</td>
-       <td data-l="${bi("মিসিং পাতা", "Missing leaves")}">${st.missing.length ? `<span class="rd b">${bi(st.missing.length + "টি:", st.missing.length + ":")}</span> <span class="sm">${st.missing.slice(0, 30).join(", ")}${st.missing.length > 30 ? "…" : ""}</span>${canMark && b.status === "Active" ? ` <button class="btn sm" data-mk="${b.id}">${bi("মার্ক করুন", "Mark")}</button>` : ""}` : `<span class="mut">—</span>`}${st.marks.length ? `<div class="bk-mc">${LK_ORD.filter(k => cnt[k]).map(k => `<span class="lk ${k}" data-lf="${esc(b.code)}">${LK[k].ic} ${lkName(k)} ${cnt[k]}</span>`).join("")}</div>` : ""}</td><td data-l="Status">${esc(b.status)}</td>${admin ? `<td data-l=""><button class="btn sm" data-e="${b.id}">✎</button></td>` : ""}</tr>`;
-    }).join("")}</tbody></table></div>` : `<div class="empty">${bi("এখনো কোনো চেক বই যোগ করা হয়নি", "No cheque books added yet")}${admin ? bi(' — "+ নতুন বই" চাপুন', ' — tap "+ New book"') : ""}</div>`}</div>`;
-  $("#bk-om", host) && ($("#bk-om", host).onclick = () => { BK_TAB = "leaves"; draw(); });
-  $$("[data-e]", host).forEach(b => b.onclick = () => bookModal(S.books.find(x => x.id === b.dataset.e), draw));
-  $$("[data-mk]", host).forEach(b => b.onclick = () => leafMarkModal(S.books.find(x => x.id === b.dataset.mk), draw));
-  $$("[data-lf]", host).forEach(b => b.onclick = () => { LF_F.code = b.dataset.lf; BK_TAB = "leaves"; draw(); });
+const lowBook = ({ b, st }) => b.status === "Active" && st.remaining !== null && st.remaining <= 10;
+const bookRisk = row => row.b.status !== "Active" ? 4 : row.st.missingCount ? 0 : lowBook(row) ? 1 : row.st.remaining === null ? 2 : 3;
+function booksTab(host, rows, F, { admin, canMark, draw, show }) {
+  const size = 24;
+  host.innerHTML = `${S.marksOff ? `<div class="alert am">${bi("পাতার রেজিস্টার লোড হয়নি। বাকি ও হিসাবহীন পাতার সংখ্যা যাচাই করা যায়নি।", "The leaf register could not load. Remaining and missing counts are unavailable.")}</div>` : ""}<div class="card bk-search"><div><label class="f" for="bk-search">${bi("চেক বই খুঁজুন", "Search cheque books")}</label><input class="in" id="bk-search" type="search" value="${esc(F.query)}" placeholder="${bi("A/C, ব্যাংক, সিরিজ বা পাতা নং", "A/C, bank, series or leaf number")}"></div>
+    <div><label class="f" for="bk-sort">${bi("সাজান", "Sort by")}</label><select class="in" id="bk-sort"><option value="priority">${bi("অগ্রাধিকার", "Priority")}</option><option value="account">A/C</option><option value="remaining">${bi("কম পাতা আগে", "Fewest leaves left")}</option></select></div></div>
+    <p class="mut sm bk-count" id="bk-count" aria-live="polite"></p><div class="bk-cards" id="bk-cards"></div>
+    <div class="cq-pager" id="bk-pages" hidden><button class="btn" id="bk-prev" type="button">‹ ${bi("আগের", "Previous")}</button><span class="mut sm" id="bk-page"></span><button class="btn" id="bk-next" type="button">${bi("পরের", "Next")} ›</button></div>`;
+  const q = $("#bk-search", host), sort = $("#bk-sort", host), list = $("#bk-cards", host), count = $("#bk-count", host);
+  const pager = $("#bk-pages", host), prev = $("#bk-prev", host), next = $("#bk-next", host);
+  const byAccount = (a, b) => a.b.code.localeCompare(b.b.code) || b.b.first - a.b.first;
+  const byPriority = (a, b) => bookRisk(a) - bookRisk(b) || b.st.missingCount - a.st.missingCount || byAccount(a, b);
+  const byRemaining = (a, b) => Number(b.b.status === "Active") - Number(a.b.status === "Active") || (a.st.remaining ?? Infinity) - (b.st.remaining ?? Infinity) || byAccount(a, b);
+  const meta = (l, val) => `<div><dt>${l}</dt><dd>${val}</dd></div>`;
+  const filtered = () => {
+    const key = chequeSearchKey(F.query), tokens = chequeDigits(F.query).split(/\s+/).map(chequeSearchKey).filter(Boolean), serial = chequeNumber(F.query);
+    return rows.filter(r => {
+      const { b, st, account } = r;
+      if (F.mode === "active" && b.status !== "Active" || F.mode === "low" && !lowBook(r) ||
+          F.mode === "missing" && (b.status !== "Active" || !st.missingCount)) return false;
+      if (!key || (serial >= b.first && serial <= st.end)) return true;
+      const hay = chequeSearchKey([b.code, b.series, b.first, b.last, b.status, account?.holder, account?.bank].join(" "));
+      return tokens.every(term => { const n = chequeNumber(term); return hay.includes(term) || (n >= b.first && n <= st.end); });
+    }).sort(F.sort === "account" ? byAccount : F.sort === "remaining" ? byRemaining : byPriority);
+  };
+  const paint = () => {
+    const visible = filtered(), pages = Math.max(1, Math.ceil(visible.length / size));
+    F.page = Math.min(F.page, pages - 1);
+    const start = F.page * size, end = Math.min(start + size, visible.length);
+    count.textContent = visible.length ? bi(`${visible.length}টির মধ্যে ${start + 1}–${end}টি বই`, `${start + 1}–${end} of ${visible.length} books`) : "";
+    pager.hidden = pages <= 1;
+    prev.disabled = !F.page; next.disabled = F.page >= pages - 1;
+    $("#bk-page", pager).textContent = `${F.page + 1} / ${pages}`;
+    list.innerHTML = visible.length ? visible.slice(start, end).map(row => {
+      const { b, st, account } = row, id = esc(b.id), active = b.status === "Active";
+      const marks = st.hasMarks;
+      const missingPreview = st.gaps.slice(0, 4).map(([a, z]) => a === z ? a : `${a}–${z}`).join(", ");
+      const left = active && !S.marksOff ? st.remaining : null;
+      return `<article class="card bk-card ${S.marksOff ? "" : active && st.missingCount ? "has-gap" : lowBook(row) ? "has-low" : ""}">
+        <div class="bk-card-head"><div><h3>${esc(b.code)}${b.series ? ` <span class="mut">· ${esc(b.series)}</span>` : ""}</h3><div class="mut sm">${esc([account?.holder, account?.bank].filter(Boolean).join(" · "))}</div></div>
+        <span class="tag ${active ? "ok" : ""}">${esc(b.status)}</span></div>
+        <div class="bk-range"><span class="num">${b.first}–${b.last ?? "?"}</span>${!S.marksOff && lowBook(row) ? `<span class="tag bk-low">${bi("পাতা কম", "Low stock")}</span>` : ""}</div>
+        <dl class="bk-metrics">${meta(bi("ব্যবহৃত", "Posted"), money0(st.used))}${meta(bi("বাকি", "Left"), left === null ? "—" : money0(left))}${meta(bi("হিসাবহীন", "Missing"), S.marksOff ? "—" : money0(st.missingCount))}</dl>
+        ${active && left !== null && st.capacity > 0 ? `<progress class="bk-meter" aria-label="${bi("বাকি পাতা", "Leaves left")}" value="${left}" max="${st.capacity}"></progress>` : ""}
+        ${!S.marksOff && st.missingCount ? `<div class="bk-gap sm"><b>${bi("হিসাবহীন পাতা", "Missing leaves")}</b><span class="num">${missingPreview}${st.gaps.length > 4 ? "…" : ""}</span></div>` : ""}
+        <details class="bk-details"><summary>${bi("বইয়ের তথ্য", "Book details")}</summary>
+          <dl>${meta(bi("ট্র্যাক শুরু", "Tracking from"), st.start)}${meta(bi("সর্বশেষ পোস্ট", "Latest posted"), st.maxUsed ?? "—")}${meta(bi("ট্র্যাক করা মার্ক", "Marks in tracking range"), st.marks.length)}</dl>
+          ${b.note ? `<p class="sm">${esc(b.note)}</p>` : ""}
+          ${active && b.last == null ? `<p class="mut sm">${bi("শেষ পাতা সেট করলে বাকি পাতার সংখ্যা দেখা যাবে।", "Set the last leaf to display the remaining count.")}</p>` : ""}
+        </details>
+        ${(admin || marks || (canMark && active && st.missingCount)) ? `<div class="bk-actions">
+          ${canMark && active && st.missingCount ? `<button class="btn sm" type="button" data-mk="${id}">${ico("flag")} ${bi("পাতা মার্ক করুন", "Mark missing")}</button>` : ""}
+          ${marks ? `<button class="btn sm" type="button" data-lf="${id}">${bi("পাতার রেজিস্টার", "Leaf register")}</button>` : ""}
+          ${admin ? `<button class="btn sm" type="button" data-e="${id}">${bi("এডিট", "Edit book")}</button>` : ""}</div>` : ""}
+      </article>`;
+    }).join("") : `<div class="card empty">${rows.length ? bi("এই ফিল্টারে কোনো বই নেই", "No books match this filter") : bi("এখনো কোনো চেক বই যোগ করা হয়নি", "No cheque books added")}</div>`;
+  };
+  q.oninput = () => { F.query = q.value; F.page = 0; paint(); };
+  sort.value = F.sort;
+  sort.onchange = () => { F.sort = sort.value; F.page = 0; paint(); };
+  const turn = n => { F.page += n; paint(); count.scrollIntoView({ block: "nearest" }); };
+  prev.onclick = () => turn(-1); next.onclick = () => turn(1);
+  list.onclick = e => {
+    const btn = e.target.closest("button");
+    const row = rows.find(r => r.b.id === (btn?.dataset.e || btn?.dataset.mk || btn?.dataset.lf));
+    if (!row) return;
+    if (btn.dataset.e) bookModal(row.b, draw);
+    if (btn.dataset.mk) leafMarkModal(row.b, draw);
+    if (btn.dataset.lf) {
+      Object.assign(LF_F, { code: row.b.code, book: { first: row.b.first, end: row.st.end }, kind: "", st: "all", q: "" });
+      LF_PF.m = "all";
+      show("leaves", '.bk-tabs [data-t="leaves"]');
+    }
+  };
+  paint();
 }
 
 /* mark leaves: one or many leaves of a book → blank stub / lost / cancelled / unused / other, optional stub photo */
-function parseLeafList(txt, b) {
-  const out = new Set(), bad = []; String(txt || "").split(/[,\s;]+/).filter(Boolean).forEach(t => {
+function parseLeafList(txt) {
+  const out = new Set(), bad = []; chequeDigits(txt).split(/[,\s;]+/).filter(Boolean).forEach(t => {
     const m = t.match(/^(\d+)(?:[-–](\d+))?$/); if (!m) return bad.push(t);
-    const a = +m[1], z = m[2] ? +m[2] : a; if (z < a || z - a > 400) return bad.push(t);
+    const a = +m[1], z = m[2] ? +m[2] : a; if (!Number.isSafeInteger(a) || !Number.isSafeInteger(z) || a < 1 || z < a || z - a > 400) return bad.push(t);
     for (let n = a; n <= z; n++) out.add(n);
   }); return { nos: [...out], bad };
 }
 function leafMarkModal(book0, after) {
   const books = S.books.filter(b => b.status === "Active"); if (!books.length) return toast(bi("আগে একটি চেক বই যোগ করুন (Admin)", "Add a cheque book first (Admin)"), "err");
   const am = accMap(), st = { photo: null }, sel = new Set(); let kind = "blank";
-  const cur = () => S.books.find(b => b.id === $("#lm-b", document).value);
   modal(`<h2>✂️ ${bi("পাতা মার্ক করুন", "Mark leaves")}</h2>
-   <div class="mut sm" style="margin:-4px 0 10px">${bi("যে পাতার চেক এন্ট্রি নেই (মুড়ি ফাঁকা, হারানো, বাতিল…) তার কারণ রেকর্ড করুন — পরে খুঁজে বের করা যাবে এবং রিপোর্ট/Excel-এ আলাদা দেখা যাবে।", "Record why a leaf has no cheque entry (blank stub, lost, cancelled …). It is then traceable and listed separately in reports and Excel.")}</div>
-   <label class="f">${bi("চেক বই", "Cheque book")}</label><select class="in" id="lm-b">${books.map(b => `<option value="${b.id}" ${book0 && book0.id === b.id ? "selected" : ""}>${esc(b.code)} · ${esc(b.series || "")} ${b.first}–${b.last ?? "?"} · ${esc((am[b.code] || {}).holder || "")}</option>`).join("")}</select>
+   <label class="f" for="lm-b">${bi("চেক বই", "Cheque book")}</label><select class="in" id="lm-b">${books.map(b => `<option value="${b.id}" ${book0 && book0.id === b.id ? "selected" : ""}>${esc(b.code)} · ${esc(b.series || "")} ${b.first}–${b.last ?? "?"} · ${esc((am[b.code] || {}).holder || "")}</option>`).join("")}</select>
    <div id="lm-info" class="mut sm" style="margin:6px 0 10px"></div>
-   <label class="f">${bi("পাতা বাছুন (ট্যাপ করুন)", "Pick leaves (tap)")}</label><div class="row" style="gap:6px;margin-bottom:6px"><button class="btn sm" style="flex:none" id="lm-all">${bi("সব মিসিং", "All missing")}</button><button class="btn sm" style="flex:none" id="lm-none">${bi("কিছু না", "None")}</button></div>
-   <div class="lm-chips" id="lm-ch"></div>
-   <label class="f" style="margin-top:10px">${bi("অন্য পাতা (নম্বর বা রেঞ্জ, যেমন 1223, 1230-1235)", "Other leaves (numbers or ranges, e.g. 1223, 1230-1235)")}</label><input class="in" id="lm-x" inputmode="numeric" autocomplete="off" placeholder="5291222, 5291230-5291235">
+   <label class="f">${bi("পাতা বাছুন (ট্যাপ করুন)", "Pick leaves (tap)")}</label><div class="row" style="gap:6px;margin-bottom:6px"><button class="btn sm" style="flex:none" id="lm-all">${bi("এই পাতার নম্বরগুলো বাছুন", "Select this page")}</button><button class="btn sm" style="flex:none" id="lm-none">${bi("কিছু না", "None")}</button></div>
+   <div class="lm-chips" id="lm-ch"></div><div class="cq-pager" id="lm-pager" hidden><button type="button" class="btn sm" id="lm-prev" aria-label="${bi("আগের পাতা", "Previous page")}">‹</button><span id="lm-page" class="mut sm"></span><button type="button" class="btn sm" id="lm-next" aria-label="${bi("পরের পাতা", "Next page")}">›</button></div>
+   <label class="f" for="lm-x" style="margin-top:10px">${bi("অন্য পাতা (নম্বর বা রেঞ্জ, যেমন 1223, 1230-1235)", "Other leaves (numbers or ranges, e.g. 1223, 1230-1235)")}</label><input class="in" id="lm-x" inputmode="numeric" autocomplete="off" placeholder="5291222, 5291230-5291235">
    <div id="lm-sum" class="b" style="margin:8px 0"></div>
-   <label class="f">${bi("কারণ", "Reason")}</label><div class="rsn" id="lm-k">${LK_ORD.map(k => `<button type="button" class="rc ${k === kind ? "on" : ""}" data-k="${k}"><b>${LK[k].ic} ${lkName(k)}</b><span>${bi(LK[k].d[0], LK[k].d[1])}</span></button>`).join("")}</div>
-   <label class="f" style="margin-top:10px">${bi("মন্তব্য (ঐচ্ছিক)", "Note (optional)")}</label><input class="in" id="lm-n" placeholder="${bi("যেমন: মুড়ি ফাঁকা, কে নিয়েছে জানা নেই", "e.g. stub is blank, nobody knows who took it")}">
+   <label class="f">${bi("কারণ", "Reason")}</label><div class="rsn" id="lm-k">${LK_ORD.map(k => `<button type="button" class="rc ${k === kind ? "on" : ""}" data-k="${k}"><b>${LK[k].ic} ${lkName(k)}</b></button>`).join("")}</div>
+   <label class="f" for="lm-n" style="margin-top:10px">${bi("মন্তব্য (ঐচ্ছিক)", "Note (optional)")}</label><input class="in" id="lm-n" placeholder="${bi("যেমন: মুড়ি ফাঁকা, কে নিয়েছে জানা নেই", "e.g. stub is blank, nobody knows who took it")}">
    <label class="f" style="margin-top:10px">${bi("মুড়ির ছবি (ঐচ্ছিক — সব পাতার জন্য একটি)", "Stub photo (optional — one photo for all selected leaves)")}</label>
    <div class="photo-in"><label class="btn" for="lm-pc">${ico("cam")} ${bi("ছবি তুলুন", "Camera")}</label><label class="btn" for="lm-pg">${ico("img")} ${bi("গ্যালারি", "Gallery")}</label><input type="file" id="lm-pc" accept="image/*" capture="environment" hidden><input type="file" id="lm-pg" accept="image/*" hidden><img id="lm-img" class="hide"><button class="btn sm ghost hide" id="lm-px">✕</button></div>
    <div class="modal-actions"><button class="btn pri" id="lm-ok">${ico("save")} ${bi("সেভ", "Save")}</button><button class="btn" id="lm-c">${bi("বাতিল", "Cancel")}</button></div>`, (root, close) => {
-    const bk = () => S.books.find(b => b.id === $("#lm-b", root).value), manual = () => parseLeafList($("#lm-x", root).value, bk());
-    const all = () => { const b = bk(), s = bookStats(b); return new Set([...sel, ...manual().nos].filter(n => n >= b.first && (b.last == null || n <= b.last))); };
-    const sum = () => { const n = all().size, m = manual(); $("#lm-sum", root).innerHTML = (n ? `✔ ${bi(n + "টি পাতা নির্বাচিত", n + " leaf(s) selected")}` : `<span class="mut">${bi("কোনো পাতা নির্বাচিত নয়", "No leaf selected")}</span>`) + (m.bad.length ? ` <span class="rd">· ${bi("ভুল ফরম্যাট: ", "Bad format: ")}${esc(m.bad.join(", "))}</span>` : ""); };
-    const chips = () => { const b = bk(), s = bookStats(b); sel.forEach(n => { if (!s.missing.includes(n)) sel.delete(n); });
-      $("#lm-info", root).innerHTML = `${esc((am[b.code] || {}).bank || "")} · ${bi("ব্যবহৃত", "used")} ${s.used} · ${bi("মিসিং", "missing")} <b class="${s.missing.length ? "rd" : ""}">${s.missing.length}</b>${s.marks.length ? ` · ${bi("মার্ক করা", "marked")} ${s.marks.length}` : ""}`;
-      $("#lm-ch", root).innerHTML = s.missing.length ? s.missing.slice(0, 300).map(n => `<span class="chip ${sel.has(n) ? "on" : ""}" data-n="${n}">${n}</span>`).join("") + (s.missing.length > 300 ? `<span class="mut sm">+${s.missing.length - 300}</span>` : "") : `<span class="mut sm">${bi("হিসাবহীন মিসিং পাতা নেই — নিচে নম্বর লিখে মার্ক করতে পারেন", "No unaccounted missing leaves — you can still type numbers below")}</span>`;
-      $$("#lm-ch .chip", root).forEach(c => c.onclick = () => { const n = +c.dataset.n; sel.has(n) ? sel.delete(n) : sel.add(n); c.classList.toggle("on"); sum(); }); sum(); };
-    $("#lm-b", root).onchange = () => { sel.clear(); chips(); }; $("#lm-x", root).oninput = sum; chips();
-    $("#lm-all", root).onclick = () => { bookStats(bk()).missing.forEach(n => sel.add(n)); chips(); }; $("#lm-none", root).onclick = () => { sel.clear(); chips(); };
+    const bk = () => S.books.find(b => b.id === $("#lm-b", root).value), manual = () => parseLeafList($("#lm-x", root).value);
+    const get = id => $("#lm-" + id, root), size = 36, limit = 400;
+    let page = 0, stats = bookStats(bk());
+    const all = () => new Set([...sel, ...manual().nos]);
+    const selectedText = () => {
+      const n = all().size, m = manual();
+      get("sum").textContent = bi(`${n}টি পাতা নির্বাচিত`, `${n} leaves selected`) +
+        (m.bad.length ? bi(" · নম্বর বা রেঞ্জ ঠিক করুন", " · Check the number or range format") : "");
+    };
+    const visible = () => gapPage(stats.gaps, page * size, size);
+    const chips = () => {
+      const pages = Math.max(1, Math.ceil(stats.missingCount / size));
+      get("info").textContent = bi(`${stats.missingCount}টি হিসাবহীন পাতা`, `${stats.missingCount} unaccounted leaves`);
+      get("pager").hidden = pages === 1;
+      get("prev").disabled = page === 0;
+      get("next").disabled = page >= pages - 1;
+      get("page").textContent = `${page + 1} / ${pages}`;
+      get("all").disabled = !stats.missingCount;
+      get("ch").innerHTML = visible().map(n => `<button type="button" class="chip ${sel.has(n) ? "on" : ""}" aria-pressed="${sel.has(n)}" data-n="${n}">${n}</button>`).join("");
+      selectedText();
+    };
+    const add = n => {
+      if (sel.size >= limit) return toast(bi("একবারে সর্বোচ্চ ৪০০টি পাতা বাছুন।", "Select up to 400 leaves at a time."), "err");
+      sel.add(n);
+    };
+    get("ch").onclick = e => {
+      const chip = e.target.closest("button[data-n]");
+      if (!chip) return;
+      const n = Number(chip.dataset.n);
+      if (sel.has(n)) sel.delete(n); else add(n);
+      chip.classList.toggle("on", sel.has(n));
+      chip.setAttribute("aria-pressed", sel.has(n));
+      selectedText();
+    };
+    get("b").onchange = () => { sel.clear(); get("x").value = ""; page = 0; stats = bookStats(bk()); chips(); };
+    get("x").oninput = selectedText;
+    get("prev").onclick = () => { page--; chips(); };
+    get("next").onclick = () => { page++; chips(); };
+    get("all").onclick = () => {
+      const leaves = visible().filter(n => !sel.has(n));
+      if (sel.size + leaves.length > limit) return toast(bi("একবারে সর্বোচ্চ ৪০০টি পাতা বাছুন।", "Select up to 400 leaves at a time."), "err");
+      leaves.forEach(n => sel.add(n)); chips();
+    };
+    get("none").onclick = () => { sel.clear(); chips(); };
+    chips();
     $$("#lm-k .rc", root).forEach(b => b.onclick = () => { kind = b.dataset.k; $$("#lm-k .rc", root).forEach(x => x.classList.toggle("on", x === b)); });
     photoPicker(root, st, { inp: "lm-pg", cam: "lm-pc", img: "lm-img", x: "lm-px" }); $("#lm-c", root).onclick = close;
     $("#lm-ok", root).onclick = async () => {
-      const b = bk(), nos = [...all()].sort((x, y) => x - y), btn = $("#lm-ok", root);
+      const b = bk(), nos = [...all()].sort((x, y) => x - y), btn = get("ok");
+      if (btn.disabled) return;
       const m = manual(); if (m.bad.length) return toast(bi("ভুল ফরম্যাট: ", "Bad format: ") + m.bad.join(", "), "err");
-      const out = m.nos.filter(n => n < b.first || (b.last != null && n > b.last)); if (out.length) return toast(bi(`এই নম্বরগুলো এই বইয়ের বাইরে: ${out.slice(0, 6).join(", ")}`, `These numbers are outside this book: ${out.slice(0, 6).join(", ")}`), "err");
+      const bound = bookStats(b).end;
+      const out = nos.filter(n => n < b.first || n > bound); if (out.length) return toast(bi(`এই নম্বরগুলো এই বইয়ের বাইরে: ${out.slice(0, 6).join(", ")}`, `These numbers are outside this book: ${out.slice(0, 6).join(", ")}`), "err");
       if (!nos.length) return toast(bi("অন্তত একটি পাতা বাছুন", "Pick at least one leaf"), "err");
-      const used = nos.filter(n => S.cheques.some(c => c.code === b.code && c.no === n)); if (used.length) return toast(bi(`এই পাতাগুলোর চেক এন্ট্রি আছে: ${used.slice(0, 6).join(", ")}`, `These leaves already have cheque entries: ${used.slice(0, 6).join(", ")}`), "err");
+      if (nos.length > limit) return toast(bi("একবারে সর্বোচ্চ ৪০০টি পাতা বাছুন।", "Select up to 400 leaves at a time."), "err");
+      const posted = new Set(S.cheques.filter(c => c.code === b.code).map(c => c.no));
+      const used = nos.filter(n => posted.has(n)); if (used.length) return toast(bi(`এই পাতাগুলোর চেক এন্ট্রি আছে: ${used.slice(0, 6).join(", ")}`, `These leaves already have cheque entries: ${used.slice(0, 6).join(", ")}`), "err");
       const dup = nos.filter(n => markOf(b.code, n)); if (dup.length) return toast(bi(`আগেই মার্ক করা আছে: ${dup.slice(0, 6).join(", ")}`, `Already marked: ${dup.slice(0, 6).join(", ")}`), "err");
       if (nos.length > 20 && !ask(bi(`${nos.length}টি পাতা "${LK[kind].bn}" হিসেবে মার্ক করবেন?`, `Mark ${nos.length} leaves as "${LK[kind].en}"?`))) return;
       btn.disabled = true;
       try {
         let ph = null; if (st.photo) { if (!navigator.onLine && !DEMO) throw new Error(bi("ছবি সেভ করতে ইন্টারনেট লাগবে", "Internet is needed to save the photo")); ph = `leaf/${norm(b.code)}_${nos[0]}_${Date.now().toString(36)}.jpg`; await API.uploadPhoto(ph, st.photo); }
         await API.addMarks(nos.map(no => ({ code: b.code, no, kind, note: $("#lm-n", root).value.trim(), photo: ph })));
-        await reload(); close(); BK_TAB = "leaves"; after && after(); toast(bi(`✔ ${nos.length}টি পাতা মার্ক হয়েছে (${LK[kind].bn})`, `✔ ${nos.length} leaf(s) marked (${LK[kind].en})`));
+        await reload(); close(); Object.assign(LF_F, { code: b.code, book: { first: b.first, end: bookStats(b).end }, kind: "", st: "all", q: "" }); LF_PF.m = "all"; BK_TAB = "leaves"; after?.(); toast(bi(`✔ ${nos.length}টি পাতা মার্ক হয়েছে (${LK[kind].bn})`, `✔ ${nos.length} leaf(s) marked (${LK[kind].en})`));
       } catch (e) { toast(markErr(e), "err"); btn.disabled = false; }
     };
   });
@@ -1823,41 +1996,62 @@ function leafPhotoModal(m) {
     API.photoUrl(m.photo).then(u => $("#lp-i", root).innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="stub" style="width:100%;border-radius:12px;border:1px solid var(--line)"></a>`).catch(e => $("#lp-i", root).textContent = bi("ছবি লোড হয়নি: ", "Photo failed to load: ") + (e.message || e));
   });
 }
-const LF_F = { code: "", kind: "", st: "all", q: "" }, LF_PF = pbInit("all"), LF_PBO = { all: true };
+const LF_F = { code: "", book: null, kind: "", st: "all", q: "" }, LF_PF = pbInit("all"), LF_PBO = { all: true };
 function leafRegister(host, redraw) {
   const admin = S.me.role === "admin", am = accMap(), F = LF_F, PF = LF_PF;
-  const codes = [...new Set(S.marks.map(m => m.code))].sort();
+  const codes = [...new Set([...S.marks.map(m => m.code), F.code].filter(Boolean))].sort();
+  let page = 0;
+  const size = 40;
   host.innerHTML = `<div class="card tbar noprint">${pbBar("lf", PF, LF_PBO)}<div class="grid g3" style="margin-top:10px;gap:10px">
-     <div><label class="f">A/C</label><select class="in" id="lf-c"><option value="">${bi("সব", "All")}</option>${codes.map(c => `<option ${c === F.code ? "selected" : ""} value="${esc(c)}">${esc(c)} · ${esc((am[c] || {}).holder || "")}</option>`).join("")}</select></div>
-     <div><label class="f">${bi("কারণ", "Reason")}</label><select class="in" id="lf-k"><option value="">${bi("সব", "All")}</option>${LK_ORD.map(k => `<option value="${k}" ${k === F.kind ? "selected" : ""}>${lkName(k)}</option>`).join("")}</select></div>
-     <div><label class="f">${bi("অবস্থা", "State")}</label><select class="in" id="lf-s"><option value="all" ${F.st === "all" ? "selected" : ""}>${bi("সব", "All")}</option><option value="open" ${F.st === "open" ? "selected" : ""}>${bi("খোলা (খুঁজতে হবে)", "Open (to trace)")}</option><option value="done" ${F.st === "done" ? "selected" : ""}>${bi("নিষ্পত্তি", "Closed")}</option></select></div></div>
-     <div style="margin-top:10px"><input class="in" id="lf-q" placeholder="${bi("পাতার নম্বর / মন্তব্য খুঁজুন", "Search leaf no. / note")}" value="${esc(F.q)}"></div></div>
+     <div><label class="f" for="lf-c">A/C</label><select class="in" id="lf-c"><option value="">${bi("সব", "All")}</option>${codes.map(c => `<option ${c === F.code ? "selected" : ""} value="${esc(c)}">${esc(c)} · ${esc((am[c] || {}).holder || "")}</option>`).join("")}</select></div>
+     <div><label class="f" for="lf-k">${bi("কারণ", "Reason")}</label><select class="in" id="lf-k"><option value="">${bi("সব", "All")}</option>${LK_ORD.map(k => `<option value="${k}" ${k === F.kind ? "selected" : ""}>${lkName(k)}</option>`).join("")}</select></div>
+     <div><label class="f" for="lf-s">${bi("অবস্থা", "State")}</label><select class="in" id="lf-s"><option value="all" ${F.st === "all" ? "selected" : ""}>${bi("সব", "All")}</option><option value="open" ${F.st === "open" ? "selected" : ""}>${bi("খোলা (খুঁজতে হবে)", "Open (to trace)")}</option><option value="done" ${F.st === "done" ? "selected" : ""}>${bi("নিষ্পত্তি", "Closed")}</option></select></div></div>
+     <div style="margin-top:10px"><input type="search" class="in" id="lf-q" aria-label="${bi("পাতা খুঁজুন", "Search leaves")}" placeholder="${bi("পাতার নম্বর / মন্তব্য খুঁজুন", "Search leaf no. / note")}" value="${esc(F.q)}"></div></div>
+   <div id="lf-scope" class="bk-scope" ${F.book ? "" : "hidden"}><span>${F.book ? bi("বইয়ের সীমা", "Book range") + " · " + F.book.first + "–" + (Number.isFinite(F.book.end) ? F.book.end : "?") : ""}</span><button class="btn sm" type="button" id="lf-unscope">${bi("সব বই দেখুন", "All books")}</button></div>
    <div class="ksum" id="lf-sum"></div><div class="tb-act noprint"><button class="btn" id="lf-x">${ico("dl")} Excel</button><button class="btn" id="lf-p">${ico("print")} ${bi("প্রিন্ট", "Print")}</button></div>
-   <div class="card flush" id="lf-list"></div>`;
-  const filt = () => { const [a, b] = pbRange(PF), q = F.q.trim().toLowerCase(); return S.marks.filter(m => (!F.code || m.code === F.code) && (!F.kind || m.kind === F.kind) && (F.st === "all" || (F.st === "open") === !m.resolved) && (PF.m === "all" || (m.at && m.at.slice(0, 10) >= a && m.at.slice(0, 10) <= b)) && (!q || String(m.no).includes(q) || (m.note || "").toLowerCase().includes(q) || m.code.toLowerCase().includes(q))).sort((x, y) => (x.at < y.at ? 1 : -1)); };
+   <p class="mut sm bk-count" id="lf-count" aria-live="polite"></p><div class="bk-cards" id="lf-list"></div>
+   <div class="cq-pager" id="lf-pager" hidden><button class="btn" type="button" id="lf-prev">‹ ${bi("আগের", "Previous")}</button><span class="mut sm" id="lf-page"></span><button class="btn" type="button" id="lf-next">${bi("পরের", "Next")} ›</button></div>`;
+  const filt = () => { const [a, b] = pbRange(PF), q = chequeDigits(F.q).toLowerCase(); return S.marks.filter(m => (!F.code || m.code === F.code) && (!F.book || (m.no >= F.book.first && m.no <= F.book.end)) && (!F.kind || m.kind === F.kind) && (F.st === "all" || (F.st === "open") === !m.resolved) && (PF.m === "all" || (m.at && m.at.slice(0, 10) >= a && m.at.slice(0, 10) <= b)) && (!q || String(m.no).includes(q) || (m.note || "").toLowerCase().includes(q) || m.code.toLowerCase().includes(q))).sort((x, y) => (y.at || "").localeCompare(x.at || "") || x.no - y.no); };
   const draw = () => {
     const arr = filt(), kc = (l, n, cls = "") => `<div class="kc ${cls}"><span>${l}</span><div class="kv"><b>${n}</b></div></div>`, c = k => arr.filter(m => m.kind === k).length;
     $("#lf-sum", host).innerHTML = kc(bi("খোলা (খুঁজতে হবে)", "Open (to trace)"), arr.filter(m => !m.resolved).length, "main") + kc(bi("মোট মার্ক", "Total marked"), arr.length) + LK_ORD.filter(k => c(k)).map(k => kc(`${LK[k].ic} ${lkName(k)}`, c(k))).join("") + kc(bi("নিষ্পত্তি", "Closed"), arr.filter(m => m.resolved).length, "st-cleared");
-    $("#lf-list", host).innerHTML = arr.length ? `<div class="tw cards"><table><thead><tr><th>${bi("মার্কের তারিখ", "Marked on")}</th><th>A/C</th><th>${bi("পাতা নং", "Leaf no.")}</th><th>${bi("কারণ", "Reason")}</th><th>${bi("অবস্থা", "State")}</th><th>${bi("মন্তব্য / নিষ্পত্তি", "Note / settlement")}</th><th>${bi("ছবি", "Photo")}</th><th>${bi("মার্ক করেছেন", "By")}</th>${admin ? "<th></th>" : ""}</tr></thead><tbody>${arr.map(m => `<tr><td data-l="${bi("মার্কের তারিখ", "Marked on")}">${m.at ? dmy(m.at.slice(0, 10)) : "—"}</td><td data-l="A/C"><b>${esc(m.code)}</b><div class="mut sm">${esc((am[m.code] || {}).holder || "")}</div></td><td class="num b" data-l="${bi("পাতা নং", "Leaf no.")}">${esc(leafLabel(m.code, m.no))}</td><td data-l="${bi("কারণ", "Reason")}">${lkTag(m.kind)}</td>
-      <td data-l="${bi("অবস্থা", "State")}">${m.resolved ? `<span class="tag ok">✓ ${bi("নিষ্পত্তি", "Closed")}</span>` : `<span class="tag" style="background:var(--rd-soft,rgba(239,68,68,.12));color:var(--rd,#dc2626)">${bi("খোলা", "Open")}</span>`}</td>
-      <td data-l="${bi("মন্তব্য", "Note")}"><span class="nt">${m.note ? esc(m.note) : ""}${m.resolved && (m.rnote || m.rby) ? `<div class="mut sm">✓ ${esc(m.rnote || "")} ${m.rby ? `· ${esc(m.rby)}` : ""} ${m.rat ? `· ${dmy(m.rat.slice(0, 10))}` : ""}</div>` : ""}</span></td>
-      <td data-l="${bi("ছবি", "Photo")}">${m.photo ? `<button class="btn sm ghost" data-ph="${m.id}" title="${bi("মুড়ির ছবি", "Stub photo")}">${ico("img")}</button>` : `<span class="mut">—</span>`}</td><td class="mut sm" data-l="${bi("মার্ক করেছেন", "By")}">${esc(m.by || "")}</td>
-      ${admin ? `<td class="r" data-l="" style="white-space:nowrap">${m.resolved ? `<button class="btn sm" data-ro="${m.id}">${bi("আবার খুলুন", "Reopen")}</button>` : `<button class="btn ok sm" data-rs="${m.id}">✓ ${bi("নিষ্পত্তি", "Close")}</button>`} <button class="btn bad sm" data-dl="${m.id}">${ico("trash")}</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : `<div class="empty">${S.marksOff ? bi("পাতার রেজিস্টার চালু নয় (ডাটাবেস আপডেট দরকার)", "Leaf register is not enabled (database update needed)") : S.marks.length ? bi("এই ফিল্টারে কিছু নেই", "Nothing matches this filter") : bi("এখনো কোনো পাতা মার্ক করা হয়নি — মুড়ি ফাঁকা/হারানো পাতা পেলে উপরে “পাতা মার্ক করুন” চাপুন", "No leaves marked yet — when you find a blank-stub or lost leaf, tap “Mark leaves” above")}</div>`;
+    const pages = Math.max(1, Math.ceil(arr.length / size));
+    page = Math.min(page, pages - 1);
+    const start = page * size, end = Math.min(start + size, arr.length);
+    $("#lf-count", host).textContent = arr.length ? bi(`${arr.length}টির মধ্যে ${start + 1}–${end}টি পাতা`, `${start + 1}–${end} of ${arr.length} leaves`) : "";
+    $("#lf-pager", host).hidden = pages <= 1;
+    $("#lf-prev", host).disabled = !page;
+    $("#lf-next", host).disabled = page >= pages - 1;
+    $("#lf-page", host).textContent = `${page + 1} / ${pages}`;
+    $("#lf-list", host).innerHTML = arr.length ? arr.slice(start, end).map(m => `<article class="card bk-card">
+      <div class="bk-card-head"><div><h3>${esc(leafLabel(m.code, m.no))}</h3><div class="mut sm">${esc([m.code, am[m.code]?.holder].filter(Boolean).join(" · "))}</div></div><span class="tag ${m.resolved ? "ok" : "bk-low"}">${m.resolved ? bi("নিষ্পত্তি", "Closed") : bi("খোলা", "Open")}</span></div>
+      <div class="bk-range">${lkTag(m.kind)}<span class="mut sm">${m.at ? dmy(m.at.slice(0, 10)) : "—"}${m.by ? " · " + esc(m.by) : ""}</span></div>
+      ${m.note ? `<p class="bk-note sm">${esc(m.note)}</p>` : ""}
+      ${m.resolved && (m.rnote || m.rby) ? `<p class="bk-note mut sm">✓ ${esc([m.rnote, m.rby, m.rat && dmy(m.rat.slice(0, 10))].filter(Boolean).join(" · "))}</p>` : ""}
+      ${admin || m.photo ? `<div class="bk-actions">
+        ${m.photo ? `<button class="btn sm" type="button" data-ph="${esc(m.id)}">${ico("img")} ${bi("মুড়ির ছবি", "Stub photo")}</button>` : ""}
+        ${admin ? `${m.resolved ? `<button class="btn sm" type="button" data-ro="${esc(m.id)}">${bi("আবার খুলুন", "Reopen")}</button>` : `<button class="btn ok sm" type="button" data-rs="${esc(m.id)}">${bi("নিষ্পত্তি", "Close follow-up")}</button>`}<button class="btn bad sm" type="button" data-dl="${esc(m.id)}">${bi("মার্ক মুছুন", "Delete mark")}</button>` : ""}
+      </div>` : ""}
+    </article>`).join("") : `<div class="card empty">${S.marksOff ? bi("পাতার রেজিস্টার লোড হয়নি", "The leaf register could not load") : S.marks.length ? bi("এই ফিল্টারে কিছু নেই", "Nothing matches this filter") : bi("এখনো কোনো পাতা মার্ক করা হয়নি", "No leaves marked yet")}</div>`;
     const by = id => S.marks.find(m => m.id === id);
     $$("[data-ph]", host).forEach(b => b.onclick = () => leafPhotoModal(by(b.dataset.ph)));
     $$("[data-rs]", host).forEach(b => b.onclick = () => leafResolveModal(by(b.dataset.rs), redraw));
     $$("[data-ro]", host).forEach(b => b.onclick = async () => { try { await API.reopenMark(b.dataset.ro); await reload(); redraw(); } catch (e) { toast(markErr(e), "err"); } });
     $$("[data-dl]", host).forEach(b => b.onclick = async () => { const m = by(b.dataset.dl); if (!ask(bi(`${m.code} · ${leafLabel(m.code, m.no)}-এর মার্ক মুছবেন? (চেক পাতা মুছে যাবে না, শুধু এই রেকর্ড)`, `Delete the mark for ${m.code} · ${leafLabel(m.code, m.no)}? (only this record is removed)`))) return; try { await API.deleteMark(m.id); await reload(); redraw(); toast(bi("মুছে ফেলা হয়েছে", "Deleted")); } catch (e) { toast(markErr(e), "err"); } });
   };
-  pbBind(host, "lf", PF, draw, LF_PBO);
-  [["lf-c", "code"], ["lf-k", "kind"], ["lf-s", "st"], ["lf-q", "q"]].forEach(([id, k]) => $("#" + id, host).addEventListener(id === "lf-q" ? "input" : "change", e => { F[k] = e.target.value; draw(); }));
+  const turn = delta => { page += delta; draw(); $("#lf-count", host).scrollIntoView({ block: "nearest" }); };
+  $("#lf-prev", host).onclick = () => turn(-1);
+  $("#lf-next", host).onclick = () => turn(1);
+  $("#lf-unscope", host).onclick = () => { F.book = null; F.code = ""; redraw(); };
+  pbBind(host, "lf", PF, () => { page = 0; draw(); }, LF_PBO);
+  [["lf-c", "code"], ["lf-k", "kind"], ["lf-s", "st"], ["lf-q", "q"]].forEach(([id, k]) => $("#" + id, host).addEventListener(id === "lf-q" ? "input" : "change", e => { F[k] = e.target.value; page = 0; if (k === "code" && F.book) { F.book = null; $("#lf-scope", host).hidden = true; } draw(); }));
   $("#lf-x", host).onclick = () => exportLeavesXlsx(filt(), `Leaf_Register_${PF.m === "all" ? today() : pbRange(PF).join("_to_")}.xlsx`, $("#lf-x", host));
   $("#lf-p", host).onclick = () => {
     const arr = filt().sort((x, y) => x.code.localeCompare(y.code) || x.no - y.no); if (!arr.length) return toast(bi("ডাটা নেই", "No data"), "err");
-    const [pa, pb] = pbRange(PF), f = PF.m === "all" ? arr.map(m => m.at.slice(0, 10)).sort()[0] : pa, t = PF.m === "all" ? today() : pb, c = k => arr.filter(m => m.kind === k).length;
+    const [pa, pb] = pbRange(PF), f = PF.m === "all" ? (arr.map(m => m.at?.slice(0, 10)).filter(Boolean).sort()[0] || today()) : pa, t = PF.m === "all" ? today() : pb, c = k => arr.filter(m => m.kind === k).length;
     printSheet(repSheet("lf-sheet", "Leaf Register · Missing / Blank-stub Cheque Leaves", f, t,
       repKpi([["Open (to trace)", arr.filter(m => !m.resolved).length, "k2"], ["Blank stub", c("blank"), ""], ["Lost / stolen", c("lost"), ""], ["Cancelled / Unused / Other", `${c("cancelled")} / ${c("unused")} / ${c("other")}`, ""]]),
-      repOne(repBox(`Leaves (${arr.length})`, ["~A/C", "~Holder", "~Leaf no.", "~Reason", "~State", "~Note / settlement", "~Marked"], arr.map(m => `<tr><td><b>${esc(m.code)}</b></td><td>${esc((am[m.code] || {}).holder || "")}</td><td class="b">${esc(leafLabel(m.code, m.no))}</td><td>${esc(LK[m.kind].en)}</td><td>${m.resolved ? "Closed" : "<b>OPEN</b>"}</td><td>${esc(m.note || "")}${m.resolved && (m.rnote || m.rby) ? `<div class="mut" style="font-size:10px">${esc([m.rnote, m.rby && "by " + m.rby].filter(Boolean).join(" · "))}</div>` : ""}</td><td class="cd">${dmy(m.at.slice(0, 10))}<div class="mut" style="font-size:10px">${esc(m.by || "")}</div></td></tr>`).join(""))), ""), "Leaf_Register");
+      repOne(repBox(`Leaves (${arr.length})`, ["~A/C", "~Holder", "~Leaf no.", "~Reason", "~State", "~Note / settlement", "~Marked"], arr.map(m => `<tr><td><b>${esc(m.code)}</b></td><td>${esc((am[m.code] || {}).holder || "")}</td><td class="b">${esc(leafLabel(m.code, m.no))}</td><td>${esc(LK[m.kind].en)}</td><td>${m.resolved ? "Closed" : "<b>OPEN</b>"}</td><td>${esc(m.note || "")}${m.resolved && (m.rnote || m.rby) ? `<div class="mut" style="font-size:10px">${esc([m.rnote, m.rby && "by " + m.rby].filter(Boolean).join(" · "))}</div>` : ""}</td><td class="cd">${m.at ? dmy(m.at.slice(0, 10)) : "—"}<div class="mut" style="font-size:10px">${esc(m.by || "")}</div></td></tr>`).join(""))), ""), "Leaf_Register");
   };
   draw();
 }
@@ -1869,7 +2063,7 @@ async function exportLeavesXlsx(rows, filename, btn) {
     const head = ["Marked on", "A/C Code", "Holder", "Bank", "Series", "Leaf No", "Reason", "State", "Note", "Marked by", "Settled by", "Settled on", "Settlement note", "Stub photo"], widths = [12, 12, 26, 22, 9, 12, 20, 9, 30, 16, 16, 12, 30, 34];
     ws.columns = head.map((h, i) => ({ header: h, key: "c" + i, width: widths[i] }));
     const hr = ws.getRow(1); hr.height = 22; hr.eachCell(c => { c.font = { bold: true, color: { argb: "FFFFFFFF" } }; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4F46E5" } }; c.alignment = { vertical: "middle" }; });
-    const bkOf = m => S.books.find(x => x.code === m.code && m.no >= x.first && (x.last == null || m.no <= x.last));
+    const bkOf = m => bookForLeaf(m.code, m.no);
     rows.forEach(m => { const a = am[m.code] || {}, b = bkOf(m), r = ws.addRow([m.at ? dmy(m.at.slice(0, 10)) : "", m.code, a.holder || "", a.bank || "", b && b.series || "", m.no, LK[m.kind].en, m.resolved ? "Closed" : "OPEN", m.note || "", m.by || "", m.rby || "", m.rat ? dmy(m.rat.slice(0, 10)) : "", m.rnote || ""]); r.alignment = { vertical: "middle", wrapText: true }; if (!m.resolved) r.getCell(8).font = { bold: true, color: { argb: "FFDC2626" } }; });
     const withPh = rows.map((m, i) => [m, i]).filter(([m]) => m.photo); let done = 0, cache = {};
     const work = async ([m, i]) => { try { const t = await (cache[m.photo] ||= photoThumb(m.photo)), w = 230, h = Math.round(t.h * w / t.w), id = (t.id ??= wb.addImage({ base64: t.b64, extension: "jpeg" })); ws.getRow(i + 2).height = Math.max(20, h * 0.75 + 4); ws.addImage(id, { tl: { col: head.length - 1, row: i + 1 + 0.04 }, ext: { width: w, height: h } }); } catch { ws.getCell(i + 2, head.length).value = bi("(ছবি আনা যায়নি)", "(photo unavailable)"); } prog(`⏳ ${++done}/${withPh.length}`); };
