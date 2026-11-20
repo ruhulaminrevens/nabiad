@@ -2558,43 +2558,87 @@ function bookImportModal(after) {
     };
   });
 }
-async function vAccounts(v) {
-  const admin = S.me.role === "admin", sel = new Set(); const F = { q: "", b: "", h: "", st: "Active", miss: "" };
-  const banks = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort(), holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort();
+async function vAccounts(v, F = { q: "", b: "", h: "", st: "Active", miss: "", view: "grid" }, sel = new Set()) {
+  const admin = S.me.role === "admin";
+  const compare = new Intl.Collator(LANG === "bn" ? "bn-BD" : "en", { sensitivity: "base", numeric: true }).compare;
+  const bankName = a => String(a.bank || "").trim();
+  const views = [["grid", "grid", bi("গ্রিড", "Grid")], ["list", "list", bi("তালিকা", "List")]];
+  const selected = (value, active) => value === active ? " selected" : "";
+  const banks = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort(compare), holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort(compare);
+  if (!banks.includes(F.b)) F.b = "";
+  if (!holders.includes(F.h)) F.h = "";
   v.innerHTML = head("অ্যাকাউন্ট খুঁজুন", admin ? `<button class="btn" id="ad-imp">${ico("cam")} ছবি ইমপোর্ট</button><button class="btn pri" id="ad-add">${ico("plus")} নতুন অ্যাকাউন্ট</button>` : "") + `<div class="card tbar noprint">
     ${searchBox("ad-q", "কোড, নাম, ব্যাংক, শাখা, A/C বা Routing নং — যেমন: 483, pubali")}
-    <div class="aufl" style="margin-top:8px"><select class="in" id="ad-b"><option value="">সব ব্যাংক</option>${banks.map(b => `<option>${esc(b)}</option>`).join("")}</select><select class="in" id="ad-h"><option value="">সব হোল্ডার</option>${holders.map(b => `<option>${esc(b)}</option>`).join("")}</select><select class="in" id="ad-s"><option value="Active">Active</option><option value="">সব</option><option value="Closed">Closed</option></select></div>
+    <div class="ad-filters">
+      <select class="in" id="ad-b" aria-label="${bi("ব্যাংক", "Bank")}"><option value="">সব ব্যাংক</option>${banks.map(b => `<option${selected(b, F.b)}>${esc(b)}</option>`).join("")}</select>
+      <select class="in" id="ad-h" aria-label="${bi("অ্যাকাউন্ট হোল্ডার", "Account holder")}"><option value="">সব হোল্ডার</option>${holders.map(h => `<option${selected(h, F.h)}>${esc(h)}</option>`).join("")}</select>
+      <select class="in" id="ad-s" aria-label="${bi("অ্যাকাউন্টের অবস্থা", "Account status")}"><option value="Active"${selected("Active", F.st)}>Active</option><option value=""${selected("", F.st)}>সব</option><option value="Closed"${selected("Closed", F.st)}>Closed</option></select>
+      <div class="ad-view" role="group" aria-label="${bi("অ্যাকাউন্ট দেখার ধরন", "Account view")}">${views.map(([key, icon, label]) => `<button type="button" class="btn" data-ad-view="${key}" aria-controls="ad-out" aria-pressed="${F.view === key}"><span aria-hidden="true">${ico(icon)}</span>${label}</button>`).join("")}</div>
+    </div>
     <div class="mchips" id="ad-m"></div></div>
-   <div class="mut sm" id="ad-n" style="margin-bottom:8px"></div><div class="acc-grid" id="ad-out"></div><div id="ad-selbar" class="selbar hide"></div>`;
+   <div class="ad-results"><span class="mut sm" id="ad-n" role="status"></span><button type="button" class="lnkb" id="ad-all">${bi("দেখানো সব নির্বাচন", "Select all shown")}</button></div>
+   <div id="ad-out"></div><div id="ad-selbar" class="selbar hide"></div>`;
+  const out = $("#ad-out", v), query = $("#ad-q", v), selectAll = $("#ad-all", v);
+  query.value = F.q;
+  query.setAttribute("aria-label", bi("অ্যাকাউন্ট খুঁজুন", "Search accounts"));
+  const refresh = () => { if (out.isConnected) vAccounts(v, F, sel); };
   const base = () => S.accounts.filter(a => (!F.b || a.bank === F.b) && (!F.h || a.holder === F.h) && (!F.st || a.status === F.st));
   const mf = { mfs: a => isMFS(a), inc: a => !isMFS(a) && accMissing(a).length > 0, ok: a => !isMFS(a) && !accMissing(a).length, acno: a => accMissing(a).some(m => m.k === "acno"), routing: a => accMissing(a).some(m => m.k === "routing"), branch: a => accMissing(a).some(m => m.k === "branch"), type: a => accMissing(a).some(m => m.k === "type"), nophoto: a => !isMFS(a) && !a.book_photo };
   const selbar = () => { const el = $("#ad-selbar", v); if (!sel.size) return el.classList.add("hide"); el.classList.remove("hide"); el.innerHTML = `<b>${sel.size}</b> <span>টি নির্বাচিত</span><button class="btn sm pri" id="sb-sh">${ico("share")} শেয়ার</button><button class="btn sm" id="sb-cp">${ico("copy")} কপি</button><button class="btn sm ghost" id="sb-x">✕</button>`;
     const list = () => S.accounts.filter(a => sel.has(a.code)); $("#sb-sh", el).onclick = () => shareAccounts(list()); $("#sb-cp", el).onclick = () => copyText(accText(list()), "✔ নির্বাচিত অ্যাকাউন্টের তথ্য কপি হয়েছে"); $("#sb-x", el).onclick = () => { sel.clear(); draw(); }; };
   const draw = () => {
-    const q = norm(F.q), b0 = base(), cnt = k => b0.filter(mf[k]).length;
+    const q = chequeSearchKey(F.q), b0 = base(), cnt = k => b0.filter(mf[k]).length;
     $("#ad-m", v).innerHTML = [["", "সব", b0.length], ["inc", "⚠ তথ্য অসম্পূর্ণ", cnt("inc")], ["ok", "✓ সম্পূর্ণ", cnt("ok")], ["acno", "A/C নং নেই", cnt("acno")], ["routing", "Routing নেই", cnt("routing")], ["branch", "শাখা নেই", cnt("branch")], ["type", "ধরন নেই", cnt("type")], ["nophoto", "📷 ছবি নেই", cnt("nophoto")], ["mfs", "📱 মোবাইল ব্যাংকিং", cnt("mfs")]].filter(([k, , n]) => !k || n || F.miss === k).map(([k, l, n]) => `<span class="chip ${F.miss === k ? "on" : ""} ${k && k !== "ok" ? "warn" : ""}" data-mf="${k}"><span>${l}</span> <b>${n}</b></span>`).join("");
     $$("#ad-m [data-mf]", v).forEach(c => c.onclick = () => { F.miss = c.dataset.mf; draw(); });
-    const arr = b0.filter(a => (!F.miss || mf[F.miss](a)) && (!q || norm([a.code, a.holder, a.bank, a.branch, a.acno, a.type, a.routing, a.swift].join(" ")).includes(q))).sort((x, y) => (x.sort || 0) - (y.sort || 0));
-    $("#ad-n", v).innerHTML = `<b>${arr.length}</b>টি অ্যাকাউন্ট${arr.length ? ` · <a href="#" id="ad-all">সব নির্বাচন</a>` : ""}`;
-    $("#ad-out", v).innerHTML = arr.map(a => { const n = S.cheques.filter(c => c.code === a.code).length, br = brandOf(a), miss = accMissing(a), pct = accPct(a); return `<div class="card acc ${sel.has(a.code) ? "picked" : ""}" style="--b1:${br.c1};--b2:${br.c2}"><div class="hd"><label class="pick" title="নির্বাচন"><input type="checkbox" data-sel="${esc(a.code)}" ${sel.has(a.code) ? "checked" : ""}><i></i></label><span class="blogo">${esc(br.s)}</span><span class="code">${esc(a.code)}</span>${a.status !== "Active" ? `<span class="tag cl">${esc(a.status)}</span>` : ""}<span style="flex:1"></span><span class="hacts">${a.book_photo ? `<button class="btn sm ghost" data-ph="${esc(a.code)}" title="Cheque ছবি">${ico("img")}</button>` : ""}<button class="btn sm ghost" data-sh="${esc(a.code)}" title="শেয়ার">${ico("share")}</button>${admin ? `<button class="btn sm ghost" data-e="${esc(a.code)}" title="এডিট">${ico("edit")}</button>` : ""}</span></div><div class="bd">
-      <div class="b">${esc(a.holder || "")}${a.type ? ` <span class="tag typ">${esc(a.type)}</span>` : ""}</div><div class="bk">${esc(a.bank || "")}${a.branch ? " · " + esc(a.branch) : ""}</div>
+    const arr = b0.filter(a => (!F.miss || mf[F.miss](a)) && (!q || chequeSearchKey([a.code, a.holder, a.bank, a.branch, a.acno, a.type, a.routing, a.swift].join(" ")).includes(q)));
+    const listView = F.view === "list", byBank = new Map(), chequeCounts = new Map();
+    if (listView) {
+      for (const account of arr) {
+        const name = bankName(account);
+        const key = name.toLowerCase();
+        if (!byBank.has(key)) byBank.set(key, { name, accounts: [] });
+        byBank.get(key).accounts.push(account);
+      }
+    } else arr.sort((a, b) => (a.sort || 0) - (b.sort || 0));
+    for (const c of S.cheques) chequeCounts.set(c.code, (chequeCounts.get(c.code) || 0) + 1);
+    $("#ad-n", v).textContent = listView && arr.length
+      ? bi(`${arr.length}টি অ্যাকাউন্ট · ${byBank.size}টি গ্রুপ · নাম অনুযায়ী A–Z`, `${arr.length} accounts · ${byBank.size} groups · Bank name A–Z`)
+      : bi(`${arr.length}টি অ্যাকাউন্ট`, `${arr.length} accounts`);
+    selectAll.hidden = !arr.length;
+    const renderAccount = a => {
+      const n = chequeCounts.get(a.code) || 0, br = brandOf(a), miss = accMissing(a), pct = accPct(a);
+      return `<div class="card acc ${sel.has(a.code) ? "picked" : ""}" style="--b1:${br.c1};--b2:${br.c2}"><div class="hd"><label class="pick" title="নির্বাচন"><input type="checkbox" aria-label="${bi("নির্বাচন", "Select")} ${esc(a.code)}" data-sel="${esc(a.code)}" ${sel.has(a.code) ? "checked" : ""}><i></i></label><span class="blogo">${esc(br.s)}</span><span class="code">${esc(a.code)}</span>${a.status !== "Active" ? `<span class="tag cl">${esc(a.status)}</span>` : ""}<span style="flex:1"></span><span class="hacts">${a.book_photo ? `<button class="btn sm ghost" data-ph="${esc(a.code)}" title="Cheque ছবি">${ico("img")}</button>` : ""}<button class="btn sm ghost" data-sh="${esc(a.code)}" title="শেয়ার">${ico("share")}</button>${admin ? `<button class="btn sm ghost" data-e="${esc(a.code)}" title="এডিট">${ico("edit")}</button>` : ""}</span></div><div class="bd">
+      <div class="ad-id"><div class="b">${esc(a.holder || "")}${a.type ? ` <span class="tag typ">${esc(a.type)}</span>` : ""}</div><div class="bk">${esc(a.bank || "")}${a.branch ? " · " + esc(a.branch) : ""}</div></div><div class="ad-details">
       ${a.acno ? `<div class="no"><span>${esc(fmtAcno(a.acno))}</span><button class="btn sm ghost" data-cp="${esc(a.acno)}" title="কপি">${ico("copy")} কপি</button></div>` : isMFS(a) ? `<div class="nomiss" style="color:var(--mut,#8b93a7)">📱 মোবাইল ব্যাংকিং (শাখা/Routing/SWIFT প্রযোজ্য নয়)</div>` : `<div class="nomiss">A/C নং দেওয়া নেই</div>`}
       ${a.routing || a.swift ? `<div class="rt">${a.routing ? `<span>Routing <b>${esc(a.routing)}</b> <button class="lnkb" data-cp="${esc(a.routing)}">কপি</button></span>` : ""}${a.swift ? `<span>SWIFT <b>${esc(a.swift)}</b></span>` : ""}</div>` : ""}
-      ${miss.length ? `<div class="cmpl"><div class="bar"><i style="width:${pct}%"></i></div><div class="cmpl-t"><span class="am xs">${pct}% · <span>বাকি:</span> ${miss.map(m => `<span>${m.l}</span>`).join(", ")}</span>${admin ? `<button class="lnkb" data-e="${esc(a.code)}">পূরণ করুন</button>` : ""}</div></div>` : ""}
-      <div class="mut sm">${n ? `${n}টি চেক · <a href="#/cheques" data-go="${esc(a.code)}">দেখুন</a>` : "এখনো চেক নেই"}${a.daily ? " · দৈনিক ক্লোজিং" : ""}${a.note ? ` · <span title="${esc(a.note)}">📝 ${esc(a.note.slice(0, 30))}</span>` : ""}</div></div></div>`; }).join("") || `<div class="card empty" style="grid-column:1/-1">কিছু পাওয়া যায়নি</div>`;
+      </div><div class="ad-meta">${miss.length ? `<div class="cmpl"><div class="bar"><i style="width:${pct}%"></i></div><div class="cmpl-t"><span class="am xs">${pct}% · <span>বাকি:</span> ${miss.map(m => `<span>${m.l}</span>`).join(", ")}</span>${admin ? `<button class="lnkb" data-e="${esc(a.code)}">পূরণ করুন</button>` : ""}</div></div>` : ""}
+      <div class="mut sm">${n ? `${n}টি চেক · <a href="#/cheques" data-go="${esc(a.code)}">দেখুন</a>` : "এখনো চেক নেই"}${a.daily ? " · দৈনিক ক্লোজিং" : ""}${a.note ? ` · <span title="${esc(a.note)}">📝 ${esc(a.note.slice(0, 30))}</span>` : ""}</div></div></div></div></div>`;
+    };
+    const groups = [...byBank.values()].sort((a, b) => Number(!a.name) - Number(!b.name) || compare(a.name, b.name));
+    out.className = listView ? "ad-list" : "acc-grid ad-grid";
+    out.innerHTML = !arr.length ? `<div class="card empty ad-empty">${bi("ফিল্টারে কোনো অ্যাকাউন্ট মেলেনি", "No accounts match these filters")}</div>` :
+      listView ? groups.map(({name, accounts}) => `<section class="ad-bank"><h2>${esc(name || bi("ব্যাংকের নাম নেই", "Bank name missing"))} <span class="tag num" aria-label="${bi(`${accounts.length}টি অ্যাকাউন্ট`, `${accounts.length} accounts`)}">${accounts.length}</span></h2>${accounts.sort((a, b) => compare(a.code, b.code)).map(renderAccount).join("")}</section>`).join("") :
+      arr.map(renderAccount).join("");
     $$("[data-cp]", v).forEach(x => x.onclick = () => copyText(x.dataset.cp, "✔ কপি হয়েছে"));
-    $$("[data-e]", v).forEach(x => x.onclick = () => accountModal(S.accounts.find(a => a.code === x.dataset.e), () => vAccounts(v)));
+    $$("[data-e]", v).forEach(x => x.onclick = () => accountModal(S.accounts.find(a => a.code === x.dataset.e), refresh));
     $$("[data-ph]", v).forEach(x => x.onclick = () => viewBookPhoto(S.accounts.find(a => a.code === x.dataset.ph)));
     $$("[data-sh]", v).forEach(x => x.onclick = () => shareAccounts([S.accounts.find(a => a.code === x.dataset.sh)]));
     $$("[data-go]", v).forEach(x => x.onclick = () => sessionStorage.setItem("nabiad_chq_ac", x.dataset.go));
     $$("[data-sel]", v).forEach(x => x.onchange = () => { x.checked ? sel.add(x.dataset.sel) : sel.delete(x.dataset.sel); x.closest(".acc").classList.toggle("picked", x.checked); selbar(); });
-    $("#ad-all", v) && ($("#ad-all", v).onclick = e => { e.preventDefault(); arr.forEach(a => sel.add(a.code)); draw(); });
+    selectAll.onclick = () => { arr.forEach(a => sel.add(a.code)); draw(); };
     selbar();
   };
-  $("#ad-q", v).oninput = e => { F.q = e.target.value; draw(); }; $("#ad-b", v).onchange = e => { F.b = e.target.value; draw(); }; $("#ad-h", v).onchange = e => { F.h = e.target.value; draw(); }; $("#ad-s", v).onchange = e => { F.st = e.target.value; draw(); };
-  $("#ad-imp", v) && ($("#ad-imp", v).onclick = () => bookImportModal(() => vAccounts(v)));
-  $("#ad-add", v) && ($("#ad-add", v).onclick = () => accountModal(null, () => vAccounts(v)));
-  draw(); setTimeout(() => $("#ad-q", v)?.focus(), 50);
+  const viewButtons = $$("[data-ad-view]", v);
+  viewButtons.forEach(btn => btn.onclick = () => {
+    if (btn.dataset.adView === F.view) return;
+    F.view = btn.dataset.adView;
+    viewButtons.forEach(item => item.setAttribute("aria-pressed", String(item.dataset.adView === F.view)));
+    draw();
+  });
+  query.oninput = e => { F.q = e.target.value; draw(); }; $("#ad-b", v).onchange = e => { F.b = e.target.value; draw(); }; $("#ad-h", v).onchange = e => { F.h = e.target.value; draw(); }; $("#ad-s", v).onchange = e => { F.st = e.target.value; draw(); };
+  $("#ad-imp", v) && ($("#ad-imp", v).onclick = () => bookImportModal(refresh));
+  $("#ad-add", v) && ($("#ad-add", v).onclick = () => accountModal(null, refresh));
+  draw();
 }
 async function vAdmin(v) {
   let tab = sessionStorage.getItem("nabiad_admin_tab") || "acc";
