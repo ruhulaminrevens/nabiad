@@ -29,7 +29,7 @@ const daysBetween = (a, b) => Math.round((new Date(b + "T00:00:00") - new Date(a
 const num = v => { const n = parseFloat(String(v ?? "").replace(/,/g, "")); return isNaN(n) ? 0 : n; };
 const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const purposeKey = p => { const s = String(p || "").toLowerCase(); return s.startsWith("cash") ? "cash" : s.startsWith("own") ? "own" : (s.startsWith("cancel") || s.startsWith("blank")) ? "cancel" : s.startsWith("supplier") ? "supplier" : "other"; };
-function toast(msg, kind = "ok") { const t = document.createElement("div"); t.className = "toast " + kind; t.innerHTML = `<i>${kind === "err" ? "!" : "✓"}</i><span></span>`; t.lastChild.textContent = tr(String(msg)).replace(/^✔\s*/, ""); $("#toasts").appendChild(t); setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 260); }, kind === "err" ? 6000 : 2800); }
+function toast(msg, kind = "ok") { const t = document.createElement("div"); t.className = "toast " + kind; t.innerHTML = `<i>${kind === "err" ? "!" : kind === "info" ? "i" : "✓"}</i><span></span>`; t.lastChild.textContent = tr(String(msg)).replace(/^✔\s*/, ""); $("#toasts").appendChild(t); setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 260); }, kind === "err" ? 6000 : 2800); return t; }
 const ask = m => confirm(tr(m));
 function overlayKeys(panel, close) {
   panel.addEventListener("keydown", e => {
@@ -1796,12 +1796,12 @@ async function vClosing(v) {
   if (date > t) date = t;
   const searchLabel = bi("ব্যাংক অ্যাকাউন্ট খুঁজুন", "Search bank accounts");
   const reviews = [["all", bi("সব A/C", "All accounts")], ["mv", bi("লেনদেন", "Activity")], ["diff", bi("অমিল", "Differences")], ["remarks", bi("মন্তব্য বাকি", "Remarks needed")]];
-  v.innerHTML = head("ব্যাংক ক্লোজিং", `<a class="btn" id="c-report-link" href="#/reports">${ico("chart")}<span class="lb">${bi("রিপোর্ট", "Report")}</span></a><a class="btn" id="c-summary-link" href="#/cashchk">${ico("list")}<span class="lb">${bi("সামারি", "Summary")}</span></a><span id="c-info" class="tag bc-state" role="status"></span>`) + `<div class="card tbar navcard bc-controls">${dateNav("c", date)}
+  v.innerHTML = head("ব্যাংক ক্লোজিং", `<a class="btn" id="c-report-link" href="#/reports">${ico("chart")}<span class="lb">${bi("রিপোর্ট", "Report")}</span></a><a class="btn" id="c-summary-link" href="#/cashchk">${ico("list")}<span class="lb">${bi("সামারি", "Summary")}</span></a>`) + `<div class="card tbar navcard bc-controls">${dateNav("c", date)}
     ${searchBox("c-q", bi("কোড, হোল্ডার, ব্যাংক, A/C নং…", "Code, holder, bank, A/C no…"))}
     <div class="bc-filters" role="group" aria-label="${bi("অ্যাকাউন্ট ফিল্টার", "Account filters")}" hidden>${reviews.map(([key, label]) => `<button type="button" class="btn sm" data-review="${key}" aria-pressed="${key === "all"}">${label} <span class="bc-count"></span></button>`).join("")}</div>
     <div class="bc-context" hidden><div id="c-msg" role="status" hidden></div><div id="c-linked"></div></div></div>
     <div id="c-body" class="bc-workspace"><div class="card empty">${bi("লোড হচ্ছে…", "Loading…")}</div></div>`;
-  const body = $("#c-body", v), query = $("#c-q", v), info = $("#c-info", v), msg = $("#c-msg", v);
+  const body = $("#c-body", v), query = $("#c-q", v), msg = $("#c-msg", v);
   const context = $(".bc-context", v), linked = $("#c-linked", context), filters = $(".bc-filters", v);
   const reviewButtons = $$("[data-review]", filters);
   $("#c-report-link", v).onclick = () => sessionStorage.setItem("nabiad_bank_report_date", date);
@@ -1810,9 +1810,18 @@ async function vClosing(v) {
   $("#c-d", v).setAttribute("aria-label", bi("ক্লোজিংয়ের তারিখ", "Closing date"));
   const dateControls = ["#c-p", "#c-d", "#c-n"].map(s => $(s, v));
   let autoT, pendingDraft, revision = 0, saving = false, review = "all";
-  const setDraftState = local => {
-    info.dataset.state = "draft";
-    info.textContent = local ? bi("ড্রাফট · এই ডিভাইস", "Draft · This device") : bi("ড্রাফট · সার্ভারে সেভ", "Draft · Saved online");
+  let statusToast, draftState;
+  const notifyStatus = (message, kind = "info") => {
+    statusToast?.remove();
+    statusToast = toast(message, kind);
+    statusToast.setAttribute("role", kind === "err" ? "alert" : "status");
+  };
+  const setDraftState = (state, message, kind) => {
+    if (draftState === state && !message) return;
+    draftState = state;
+    notifyStatus(message || (state === "local"
+      ? bi("ড্রাফট · এই ডিভাইস", "Draft · This device")
+      : bi("ড্রাফট · সার্ভারে সেভ", "Draft · Saved online")), kind);
   };
   function flushDraft() {
     clearTimeout(autoT);
@@ -1827,17 +1836,16 @@ async function vClosing(v) {
     if (!date) return;
     flushDraft();
     const id = ++revision, current = () => id === revision && body.isConnected;
-    delete info.dataset.state;
+    statusToast?.remove();
+    draftState = null;
     query.oninput = null;
     context.hidden = filters.hidden = true;
-    info.textContent = bi("লোড হচ্ছে…", "Loading…");
     body.innerHTML = `<div class="card empty">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
     let prev, ex;
     try { if (!navigator.onLine && !DEMO) throw new Error("offline"); [prev, ex] = await Promise.all([API.prevBalances(date), API.balancesOn(date)]); ex = { ...ex, ...pendingBal(date) }; }
     catch (e) {
       if (!current()) return;
       if (!isNetErr(e) && e.message !== "offline") {
-        info.textContent = bi("লোড হয়নি", "Unavailable");
         body.innerHTML = `<div class="card"><div class="alert rd">${bi("ব্যালেন্স লোড হয়নি।", "Could not load balances.")} ${esc(e.message || "")}</div><button class="btn" id="c-retry">${bi("আবার চেষ্টা করুন", "Retry")}</button></div>`;
         $("#c-retry", body).onclick = () => draw();
         return;
@@ -1845,7 +1853,7 @@ async function vClosing(v) {
       const pds = pendingBalDates().filter(x => x < date).sort(), pd = pds.pop();
       prev = pd && (!S.snap || pd > S.snap.date) ? { date: pd, map: pendingBal(pd) } : S.snap && S.snap.date < date ? { date: S.snap.date, map: S.snap.map } : { date: null, map: {} };
       ex = pendingBal(date);
-      if (!prev.date) { info.textContent = bi("অফলাইন", "Offline"); body.innerHTML = `<div class="alert am">ইন্টারনেট নেই এবং আগের দিনের ব্যালেন্স এই ডিভাইসে জমা নেই। একবার অনলাইনে ক্লোজিং পাতা খুললে পরে অফলাইনেও চলবে।</div>`; return; }
+      if (!prev.date) { body.innerHTML = `<div class="alert am">ইন্টারনেট নেই এবং আগের দিনের ব্যালেন্স এই ডিভাইসে জমা নেই। একবার অনলাইনে ক্লোজিং পাতা খুললে পরে অফলাইনেও চলবে।</div>`; return; }
     }
     if (!current()) return;
     const has = Object.values(ex).some(r => r.total != null);
@@ -1860,11 +1868,10 @@ async function vClosing(v) {
     (colRows || []).forEach(r => { if (r.date === date && r.status === "approved" && r.account) aCc[r.account] = (aCc[r.account] || 0) + (+r.amount || 0); });
     const gap = prev.date ? workGap(prev.date, date) : 0;
     const queued = Object.values(ex).some(r => r.pending);
-    if (draft) setDraftState(DEMO || draft.local);
-    else {
-      info.dataset.state = queued ? "queued" : has ? "final" : "open";
-      info.textContent = queued ? bi("ফাইনাল · সিঙ্ক বাকি", "Final · Pending sync") : has ? bi("ফাইনাল", "Final") : bi("সেভ হয়নি", "Not saved");
-    }
+    if (draft) setDraftState(DEMO || draft.local ? "local" : "online");
+    else if (queued) notifyStatus(bi("ফাইনাল · সিঙ্ক বাকি", "Final · Pending sync"));
+    else if (saved) notifyStatus(bi("ক্লোজিং সেভ হয়েছে", "Closing saved"), "ok");
+    else if (!has) notifyStatus(bi("সেভ হয়নি", "Not saved"));
     const msgs = [];
     if (saved) msgs.push(`<div class="alert gr bc-notice"><span>${queued ? bi("এই ডিভাইসে সেভ হয়েছে", "Saved on this device") : bi("ক্লোজিং সেভ হয়েছে", "Closing saved")}</span>${queued ? "" : `<a class="btn sm" href="#/crep" data-go="crep">${ico("img")} ${bi("ব্যালেন্স স্ন্যাপশট", "Balance Snapshot")}</a>`}</div>`);
     if (has && !queued) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 এই তারিখের ব্যালেন্স ফাইনাল সেভ হয়েছে। বদলাতে Admin কে বলুন।" : "⚠ এই তারিখ ফাইনাল সেভ আছে। সেভ করলে নতুন মান বসবে।"}</div>`);
@@ -1920,7 +1927,7 @@ async function vClosing(v) {
      <td class="r num exp"></td><td class="c-bk"><input class="cell tot" aria-label="${esc(r.code)} · ${bi("ব্যাংক ক্লোজিং", "Bank closing")}" value="${r.total == null ? "" : fmtIn(r.total)}" data-dirty="${r.total == null ? "" : "1"}" inputmode="decimal" ${locked ? "disabled" : ""}></td><td><input class="cell blk" aria-label="${esc(r.code)} · ${bi("ব্লক", "Blocked amount")}" value="${fmtIn(r.block || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
      <td class="r num usa b"></td><td class="r num dif"></td><td><input class="cell t rem" aria-label="${esc(r.code)} · ${bi("মন্তব্য", "Remarks")}" value="${esc(r.remark)}" ${locked ? "disabled" : ""}></td></tr>`; }).join("")}
     <tr class="tot"><td></td><td>মোট <span class="mut sm" id="T-n"></span></td><td class="r num" id="T0"></td><td class="r num c-dr" id="T1"></td><td class="r num c-cr" id="T2"></td><td class="r num" id="T3"></td><td class="r num c-bk t-bank" id="T4"></td><td class="r num" id="T5"></td><td class="r num t-usa" id="T6"></td><td class="r num t-diff" id="T7"></td><td></td></tr></tbody></table></div>
-    ${locked || !rows.length ? "" : `<div class="cbar entry-actions">${has ? "" : `<button type="button" class="btn lg fix" id="c-draft">${ico("edit")} <span data-save-label>${bi("ড্রাফট সেভ", "Save draft")}</span></button>`}<button type="button" class="btn pri lg fix" id="c-save">${ico("save")} <span class="bl"><span data-save-label>${bi("ফাইনাল সেভ", "Final save")}</span><small>${dmy(date)}</small></span></button><div class="hint" id="c-err" role="alert"></div><span class="mut sm" id="c-auto" role="status"></span></div>`}
+    ${locked || !rows.length ? "" : `<div class="cbar entry-actions">${has ? "" : `<button type="button" class="btn lg fix" id="c-draft">${ico("edit")} <span data-save-label>${bi("ড্রাফট সেভ", "Save draft")}</span></button>`}<button type="button" class="btn pri lg fix" id="c-save">${ico("save")} <span class="bl"><span data-save-label>${bi("ফাইনাল সেভ", "Final save")}</span><small>${dmy(date)}</small></span></button><div class="hint" id="c-err" role="alert"></div></div>`}
     </section>`;
     [...$$("[data-go]", body), ...$$("[data-go]", msg)].forEach(a => a.onclick = () => {
       const key = {crep: "nabiad_crep_date"}[a.dataset.go];
@@ -1949,7 +1956,7 @@ async function vClosing(v) {
       $("#c-empty", body).hidden = visible > 0;
       reviewButtons.forEach(btn => btn.setAttribute("aria-pressed", btn.dataset.review === review));
     };
-    const actions = $(".bc-register .cbar", body), feedback = $("#c-auto", body);
+    const actions = $(".bc-register .cbar", body);
     const validClosing = input => {
       const value = input.value.trim().replace(/,/g, "");
       return !!input.dataset.dirty && /^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value) && Number.isFinite(Number(value));
@@ -2013,9 +2020,9 @@ async function vClosing(v) {
       autoT = setTimeout(() => {
         const stored = flushDraft();
         if (!current()) return;
-        if (stored) setDraftState(true);
-        feedback.textContent = stored ? bi("ডিভাইসে ড্রাফট সেভ হয়েছে", "Draft saved on this device")
-          : bi("ডিভাইসে ড্রাফট সেভ হয়নি। Save draft চাপুন।", "Could not save on this device. Use Save draft to retry.");
+        if (stored) setDraftState("local");
+        else if (draftState !== "failed") setDraftState("failed",
+          bi("ডিভাইসে ড্রাফট সেভ হয়নি। Save draft চাপুন।", "Could not save on this device. Use Save draft to retry."), "err");
       }, 700);
     };
     $$("#ct input", body).forEach(input => input.addEventListener("input", () => {
@@ -2050,20 +2057,19 @@ async function vClosing(v) {
       pendingDraft = null;
       clearTimeout(autoT);
       const stored = Draft.saveLocal(date, draftRows);
-      if (stored) setDraftState(true);
-      feedback.textContent = "";
+      statusToast?.remove();
       setBusy(true, saveDraft);
       try {
         await API.saveDraft(date, draftRows);
         if (!current()) return;
-        setDraftState(DEMO);
-        feedback.textContent = DEMO ? bi("ডিভাইসে ড্রাফট সেভ হয়েছে", "Draft saved on this device")
-          : bi("সার্ভারে ড্রাফট সেভ হয়েছে", "Draft saved online");
+        setDraftState(DEMO ? "local" : "online", DEMO
+          ? bi("ডিভাইসে ড্রাফট সেভ হয়েছে", "Draft saved on this device")
+          : bi("সার্ভারে ড্রাফট সেভ হয়েছে", "Draft saved online"), "ok");
       } catch (e) {
         if (!current()) return;
-        feedback.textContent = stored
+        setDraftState(stored ? "local" : "failed", stored
           ? bi("অনলাইনে সেভ হয়নি। ড্রাফট এই ডিভাইসে সেভ হয়েছে।", "Online save failed. Draft saved on this device.")
-          : bi("ড্রাফট সেভ হয়নি। আবার চেষ্টা করুন।", "Draft could not be saved. Try again.");
+          : bi("ড্রাফট সেভ হয়নি। আবার চেষ্টা করুন।", "Draft could not be saved. Try again."), "err");
       } finally { setBusy(false, saveDraft); }
     };
     saveFinal.onclick = async () => {
@@ -2089,7 +2095,7 @@ async function vClosing(v) {
       const nDiff = rows.filter(r => r._chg).length;
       if (!ask(bi(`${dmy(date)} · ফাইনাল সেভ\nক্লোজিং ৳ ${money(tot)} · ব্লক ৳ ${money(blk)} · ব্যবহারযোগ্য ৳ ${money(tot - blk)}\nঅমিল: ${nDiff} / ${rows.length}${!canEdit ? "\nফাইনাল সেভের পর সম্পাদনার অনুমতি লাগবে।" : ""}`, `${dmy(date)} · Final save\nClosing ৳ ${money(tot)} · Blocked ৳ ${money(blk)} · Usable ৳ ${money(tot - blk)}\nDifferences: ${nDiff} / ${rows.length}${!canEdit ? "\nEditing after final save requires Edit access." : ""}`))) return;
       flushDraft();
-      feedback.textContent = "";
+      statusToast?.remove();
       setBusy(true, saveFinal);
       try {
         await API.saveBalances(date, rows.map(r => ({ code: r.code, total: r._tot, block: r._blk || null, remark: r._rem, od: r._od, odp: r._odp })), has && canEdit);
@@ -2108,7 +2114,7 @@ async function vClosing(v) {
   }
   bindDateNav(v, "c", () => { review = "all"; return draw(); });
   await draw();
-  return () => { ++revision; flushDraft(); };
+  return () => { ++revision; statusToast?.remove(); flushDraft(); };
 }
 
 /* ---------- closing report + account history ---------- */
