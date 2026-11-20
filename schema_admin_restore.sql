@@ -54,15 +54,14 @@ begin
   return bid;
 end $$;
 
--- The snapshot stays on the server. Preview checks primary keys without running triggers.
--- An apply creates a recovery point, then inserts missing rows in dependency order.
-create or replace function public.nabiad_restore_snapshot(
-  p_backup_id bigint, p_apply boolean default false, p_tables text[] default null
+-- Preview checks primary keys without running triggers.
+-- Apply creates a recovery point, then inserts missing rows in dependency order.
+create or replace function public.nabiad_restore_payload(
+  payload jsonb, p_backup_id bigint, p_apply boolean, p_tables text[]
 ) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
   allowed_tables text[] := public.nabiad_restore_tables();
-  payload jsonb;
   results jsonb := '[]';
   skipped jsonb;
   name text;
@@ -91,8 +90,7 @@ begin
   end if;
   if p_apply then perform pg_advisory_xact_lock(62026, 124); end if;
 
-  select data into payload from public.backups where id = p_backup_id;
-  if not found or jsonb_typeof(payload) is distinct from 'object' then
+  if jsonb_typeof(payload) is distinct from 'object' then
     raise exception 'snapshot_unavailable';
   end if;
   select coalesce(jsonb_agg(entry.key order by entry.key), '[]') into skipped
@@ -192,13 +190,53 @@ begin
 
   if p_apply and restore_point is not null then
     insert into public.audit_log(user_name,tbl,action,row_key,new)
-    values ((select profile.name from public.profiles profile where profile.id=auth.uid()), 'backups','insert',p_backup_id::text,
+    values ((select profile.name from public.profiles profile where profile.id=auth.uid()), 'backups','insert',coalesce(p_backup_id::text, 'uploaded_backup'),
       jsonb_build_object('event','snapshot_restore','restore_point',restore_point,'inserted',total_inserted,'tables',results));
   end if;
   return jsonb_build_object('tables',results,'excluded',skipped,'inserted',total_inserted,'restore_point',restore_point);
 end $$;
 
-revoke all on function public.nabiad_restore_tables(), public.nabiad_capture_snapshot(text) from public, anon, authenticated;
-revoke all on function public.nabiad_restore_snapshot(bigint,boolean,text[]), public.make_backup(text) from public, anon;
-grant execute on function public.nabiad_restore_snapshot(bigint,boolean,text[]), public.make_backup(text) to authenticated;
+create or replace function public.nabiad_restore_snapshot(
+  p_backup_id bigint, p_apply boolean default false, p_tables text[] default null
+) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare snapshot jsonb;
+begin
+  if auth.uid() is null or public.my_role() is distinct from 'admin' then
+    raise exception 'admin_only' using errcode = '42501';
+  end if;
+  select data into snapshot from public.backups where id = p_backup_id;
+  return public.nabiad_restore_payload(snapshot, p_backup_id, p_apply, p_tables);
+end $$;
+
+-- Uploaded backups use the same restore transaction and stay out of backup history.
+create or replace function public.nabiad_restore_uploaded_backup(
+  p_data jsonb, p_apply boolean default false, p_tables text[] default null
+) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is null or public.my_role() is distinct from 'admin' then
+    raise exception 'admin_only' using errcode = '42501';
+  end if;
+  if jsonb_typeof(p_data) is distinct from 'object'
+    or jsonb_typeof(p_data -> 'taken_at') is distinct from 'string'
+    or pg_column_size(p_data) > 25 * 1024 * 1024 then
+    raise exception 'invalid_backup_file';
+  end if;
+  if not exists (
+    select 1 from jsonb_each(p_data) entry
+    where entry.key = any(public.nabiad_restore_tables())
+      and case when jsonb_typeof(entry.value) = 'array' then jsonb_array_length(entry.value) > 0 else false end
+  ) then
+    raise exception 'invalid_backup_file';
+  end if;
+  return public.nabiad_restore_payload(p_data, null, p_apply, p_tables);
+end $$;
+
+revoke all on function public.nabiad_restore_tables(), public.nabiad_capture_snapshot(text),
+  public.nabiad_restore_payload(jsonb,bigint,boolean,text[]) from public, anon, authenticated;
+revoke all on function public.nabiad_restore_snapshot(bigint,boolean,text[]),
+  public.nabiad_restore_uploaded_backup(jsonb,boolean,text[]), public.make_backup(text) from public, anon;
+grant execute on function public.nabiad_restore_snapshot(bigint,boolean,text[]),
+  public.nabiad_restore_uploaded_backup(jsonb,boolean,text[]), public.make_backup(text) to authenticated;
 commit;
