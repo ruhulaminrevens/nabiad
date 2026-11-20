@@ -2940,10 +2940,13 @@ async function vAdmin(v) {
       out.innerHTML = `<div class="adm-setup"><section class="card" id="ad-status" aria-labelledby="ad-status-title">
         <div class="adm-setup-head"><h3 id="ad-status-title">🩺 ${bi("সিস্টেম অবস্থা","System status")}</h3><button type="button" class="btn sm" id="ad-recheck">${bi("আবার পরীক্ষা","Recheck status")}</button></div>
         <div id="ad-offline"></div><div class="hcl" id="ad-health"></div>
-      </section><section class="card" id="ad-history" aria-labelledby="ad-history-title"></section>
+      </section>
+      <details class="card" id="ad-imports"><summary>${bi("পুরনো ডাটা ইমপোর্ট", "Historical imports")}</summary>
+      <p class="mut sm">${bi("মূল Bank balance archive বা Tally voucher export থেকে প্রথমবার ডাটা আনতে ব্যবহার করুন।", "Use these tools to import the original bank balance archive or a raw Tally voucher export.")}</p>
+      <section id="ad-history" aria-labelledby="ad-history-title"></section></details>
       <section class="card adm-setup-links"><h3>⚡ দ্রুত লিংক</h3><div class="qlinks"><a href="#/admin?tab=backup">${ico("shield")} ${bi("ব্যাকআপ ও রিস্টোর", "Backup & Restore")}</a><a href="#/books">${ico("book")} চেক বই</a><a href="#/settings">${ico("gear")} সেটিংস</a><a href="https://supabase.com/dashboard/project/mtzxcwuojiajsanearsz" target="_blank" rel="noopener">${ico("bank")} Supabase ড্যাশবোর্ড ↗</a><a href="https://github.com/ruhulaminrevens/nabiad" target="_blank" rel="noopener">${ico("copyt")} GitHub কোড ↗</a><button type="button" class="btn" id="ad-go-users">${ico("users")} ${bi("ব্যবহারকারী ব্যবস্থাপনা","Manage users")}</button></div></section></div>`;
       if (!DEMO) {
-        $("#ad-history",out).insertAdjacentHTML("afterend", `<section class="card adm-setup-links"><h3>${bi("Tally ভাউচার ইতিহাস","Tally voucher history")}</h3>
+        $("#ad-history",out).insertAdjacentHTML("afterend", `<section class="adm-import-tally"><h3>${bi("Tally ভাউচার ইতিহাস","Tally voucher history")}</h3>
           <p class="mut sm">${bi("একবার import করলে Cash Register-এর Tally vouchers-এ সেভ করা ইতিহাস পাবেন।","Import once to view saved history under Cash Register → Tally vouchers.")}</p>
           <button type="button" class="btn" id="ad-tally-import">${ico("book")} ${bi("Tally ইতিহাস ইমপোর্ট","Import Tally history")}</button>
           <input type="file" hidden accept=".json,application/json" id="ad-tally-file"><p class="mut sm" role="status" id="ad-tally-result"></p></section>`);
@@ -3296,6 +3299,11 @@ Object.assign(SbAPI, {
   async backupData(id) { const { data, error } = await sb.from("backups").select("data").eq("id", id).single(); if (error) throw error; return data.data; },
   async restoreSnapshot(id, apply = false, tables = null) {
     const { data, error } = await sb.rpc("nabiad_restore_snapshot", {p_backup_id: id, p_apply: apply, p_tables: tables});
+    if (error) throw error;
+    return data;
+  },
+  async restoreUploadedBackup(backup, apply = false, tables = null) {
+    const { data, error } = await sb.rpc("nabiad_restore_uploaded_backup", {p_data: backup, p_apply: apply, p_tables: tables});
     if (error) throw error;
     return data;
   },
@@ -4516,13 +4524,13 @@ function backupDetails(r, data) {
     <div class="modal-actions"><button class="btn pri" type="button" id="backup-detail-close">${bi("বন্ধ","Close")}</button></div>`,
     (root, close) => $("#backup-detail-close",root).onclick = close);
 }
-function backupRestoreModal(snapshot, preview, refresh) {
+function backupRestoreModal(snapshot, preview, refresh, applyRestore = tables => API.restoreSnapshot(snapshot.id, true, tables)) {
   const exclusions = preview.excluded.map(auditTable).join(", ");
   const name = row => esc(auditTable(row.table));
   const candidate = row => !row.unavailable && row.missing > 0;
   const eligible = preview.tables.filter(candidate);
   modal(`<h2>${bi("রিস্টোর প্রিভিউ", "Restore preview")}</h2>
-    <p class="mut sm">${esc(auditStamp(snapshot.at))} · #${esc(snapshot.id)}</p>
+    <p class="mut sm">${esc(auditStamp(snapshot.at))}${snapshot.filename ? " · " + esc(snapshot.filename) : " · #" + esc(snapshot.id)}</p>
     <p>${bi("হারানো রেকর্ড যোগ হবে। বর্তমান রেকর্ড অক্ষত থাকবে। রিস্টোরের আগে বর্তমান ডাটার একটি snapshot নেওয়া হবে।",
       "Restore adds missing records and keeps existing records. A snapshot of current data is taken before applying changes.")}</p>
     <div class="tw cards"><table class="adm-restore-table"><thead><tr><th>${bi("বিভাগ", "Table")}</th><th>${bi("ব্যাকআপে", "In backup")}</th><th>${bi("অনুপস্থিত", "Missing")}</th></tr></thead><tbody>
@@ -4553,7 +4561,7 @@ function backupRestoreModal(snapshot, preview, refresh) {
       tables.forEach(box => box.disabled = true);
       panel.textContent = bi("রিস্টোর চলছে…", "Restoring…");
       try {
-        const result = await API.restoreSnapshot(snapshot.id, true, tables.filter(box => box.checked).map(box => box.value));
+        const result = await applyRestore(tables.filter(box => box.checked).map(box => box.value));
         completed = true;
         panel.textContent = bi(`${money0(result.inserted)}টি রেকর্ড রিস্টোর হয়েছে।`, `${money0(result.inserted)} records restored.`)
           + (result.restore_point ? " · " + bi("রিস্টোরের আগের snapshot", "Pre-restore snapshot") + " #" + result.restore_point : "");
@@ -4584,8 +4592,10 @@ function backupRestoreModal(snapshot, preview, refresh) {
   });
 }
 async function vBackup(out) {
-  out.innerHTML = head(bi("ব্যাকআপ ও রিস্টোর", "Backup & Restore"), `<button class="btn pri" type="button" id="bk-now">${ico("save")} ${bi("এখনই Backup","Backup now")}</button><button class="btn" type="button" id="bk-dl">${ico("dl")} ${bi("বর্তমান ডাটা (Excel)","Current data (Excel)")}</button>`) +
-    `<div id="bk-kpi"></div><div class="card flush" id="bk-archive">
+  out.innerHTML = head(bi("ব্যাকআপ ও রিস্টোর", "Backup & Restore"), `${!DEMO ? `<button class="btn" type="button" id="bk-upload">${ico("plus")} ${bi("ব্যাকআপ আপলোড ও রিস্টোর", "Upload backup & restore")}</button>` : ""}<button class="btn pri" type="button" id="bk-now">${ico("save")} ${bi("এখনই Backup","Backup now")}</button><button class="btn" type="button" id="bk-dl">${ico("dl")} ${bi("বর্তমান ডাটা (Excel)","Current data (Excel)")}</button>`) +
+    `${!DEMO ? `<input type="file" hidden id="bk-upload-file" accept=".json,application/json">
+      <p class="mut sm" id="bk-upload-status" role="status"></p>` : ""}
+      <div id="bk-kpi"></div><div class="card flush" id="bk-archive">
       <div class="ch"><h3>${bi("ব্যাকআপ তালিকা","Backup history")}</h3><span class="tag" id="bk-count" role="status"></span></div>
       <div class="as-result as-toolbar"><div class="chips" role="group" aria-label="${bi("ব্যাকআপের ধরন","Backup type")}">${[["",bi("সব","All")],["auto",bi("স্বয়ংক্রিয়","Automatic")],["manual",bi("ম্যানুয়াল","Manual")],["other",bi("অন্যান্য","Other")]].map(([key,label]) => `<button type="button" class="chip" data-bk-kind="${key}" aria-pressed="false">${label}</button>`).join("")}</div>
       <button type="button" class="btn sm" id="bk-refresh">${bi("রিফ্রেশ","Refresh")}</button></div>
@@ -4666,6 +4676,37 @@ async function vBackup(out) {
       else await exportXlsx(backupSheets(data),filename+".xlsx");
     });
   };
+  const upload = g("bk-upload"), uploadFile = g("bk-upload-file"), uploadStatus = g("bk-upload-status");
+  if (upload) {
+    upload.onclick = () => uploadFile.click();
+    uploadFile.onchange = () => {
+      const file = uploadFile.files[0];
+      uploadFile.value = "";
+      if (!file) return;
+      return runBackupAction(upload, async () => {
+        uploadStatus.textContent = bi("ব্যাকআপ ফাইল যাচাই হচ্ছে…", "Checking backup file…");
+        try {
+          if (!file.name.toLowerCase().endsWith(".json") || file.size > 25 * 1024 * 1024) {
+            throw new Error(bi("২৫ MB-এর মধ্যে NABIAD JSON ব্যাকআপ বাছুন।", "Choose a NABIAD JSON backup of 25 MB or less."));
+          }
+          let data;
+          try { data = JSON.parse((await file.text()).replace(/^\uFEFF/, "")); }
+          catch { throw new Error(bi("JSON ফাইলটি পড়া যায়নি।", "This JSON file could not be read.")); }
+          if (!data || Array.isArray(data) || typeof data.taken_at !== "string" || !Number.isFinite(Date.parse(data.taken_at))) {
+            throw new Error(bi("Backup history থেকে export করা NABIAD JSON ফাইল বাছুন।", "Choose a NABIAD JSON file exported from Backup history."));
+          }
+          const preview = await API.restoreUploadedBackup(data);
+          if (out.isConnected) backupRestoreModal({at: data.taken_at, filename: file.name}, preview, refresh,
+            tables => API.restoreUploadedBackup(data, true, tables));
+        } catch (error) {
+          uploadStatus.textContent = tallySchemaMissing(error) ? bi("আগে schema_admin_restore.sql-এর নতুন সংস্করণ প্রয়োগ করুন।", "Apply the updated schema_admin_restore.sql to enable uploads.")
+            : /invalid_backup_file/.test(error.message || "") ? bi("ব্যাকআপ ফরম্যাটটি গ্রহণযোগ্য নয়।", "This backup format is unsupported.") : error.message || String(error);
+          return;
+        }
+        uploadStatus.textContent = "";
+      });
+    };
+  }
   g("bk-refresh").onclick = refresh;
   g("bk-now").onclick = () => runBackupAction(g("bk-now"),async () => {
     await API.backupNow();
