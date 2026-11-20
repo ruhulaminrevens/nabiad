@@ -1791,11 +1791,15 @@ async function vClosing(v) {
   const t = today(); let date = S.lastBal && S.lastBal < t ? stepDay(S.lastBal, 1) : t;
   if (date > t) date = t;
   const searchLabel = bi("ব্যাংক অ্যাকাউন্ট খুঁজুন", "Search bank accounts");
+  const reviews = [["all", bi("সব A/C", "All accounts")], ["mv", bi("লেনদেন", "Activity")], ["diff", bi("অমিল", "Differences")], ["remarks", bi("মন্তব্য বাকি", "Remarks needed")]];
   v.innerHTML = head("ব্যাংক ক্লোজিং", `<a class="btn" id="c-report-link" href="#/reports">${ico("chart")}<span class="lb">${bi("রিপোর্ট", "Report")}</span></a><a class="btn" id="c-summary-link" href="#/cashchk">${ico("list")}<span class="lb">${bi("সামারি", "Summary")}</span></a><span id="c-info" class="tag bc-state" role="status"></span>`) + `<div class="card tbar navcard bc-controls">${dateNav("c", date)}
     ${searchBox("c-q", bi("কোড, হোল্ডার, ব্যাংক, A/C নং…", "Code, holder, bank, A/C no…"))}
-    <div id="c-msg" role="status" hidden></div></div>
+    <div class="bc-filters" role="group" aria-label="${bi("অ্যাকাউন্ট ফিল্টার", "Account filters")}" hidden>${reviews.map(([key, label]) => `<button type="button" class="btn sm" data-review="${key}" aria-pressed="${key === "all"}">${label} <span class="bc-count"></span></button>`).join("")}</div>
+    <div class="bc-context" hidden><div id="c-msg" role="status" hidden></div><div id="c-linked"></div></div></div>
     <div id="c-body" class="bc-workspace"><div class="card empty">${bi("লোড হচ্ছে…", "Loading…")}</div></div>`;
   const body = $("#c-body", v), query = $("#c-q", v), info = $("#c-info", v), msg = $("#c-msg", v);
+  const context = $(".bc-context", v), linked = $("#c-linked", context), filters = $(".bc-filters", v);
+  const reviewButtons = $$("[data-review]", filters);
   $("#c-report-link", v).onclick = () => sessionStorage.setItem("nabiad_bank_report_date", date);
   $("#c-summary-link", v).onclick = () => sessionStorage.setItem("nabiad_cash_date", date);
   query.setAttribute("aria-label", searchLabel);
@@ -1816,7 +1820,7 @@ async function vClosing(v) {
     const id = ++revision, current = () => id === revision && body.isConnected;
     delete info.dataset.state;
     query.oninput = null;
-    msg.hidden = true;
+    context.hidden = filters.hidden = true;
     info.textContent = bi("লোড হচ্ছে…", "Loading…");
     body.innerHTML = `<div class="card empty">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
     let prev, ex;
@@ -1883,14 +1887,14 @@ async function vClosing(v) {
     const linkBox = `<div class="clink"><div class="cl-h"><b>${bi("লিংক করা লেনদেন", "Linked transactions")}</b></div>
       <div class="cl-g"><span class="c-dr"><em>${bi("ক্যাশ চেকার", "Cash Checker")} · ${stTxt}</em> <b class="num">${amount(ce.ok || ce.src, "adr")}</b> <i>${bi("ডেবিট", "Debit")}</i></span><span class="c-cr"><em>${bi("অনুমোদিত কালেকশন", "Approved Collection")}</em> <b class="num">${amount(colRows !== null, "acc")}</b> <i>${bi("ক্রেডিট", "Credit")}</i></span><span class="c-cr"><em>${bi("ক্যাশ চেকার", "Cash Checker")}</em> <b class="num">${amount(ce.ok || ce.src, "acb")}</b> <i>${bi("ক্রেডিট", "Credit")}</i></span></div>
       ${lostDr || lostCb || lostCc ? `<div class="cl-w">${bi("দৈনিক ক্লোজিংয়ের A/C-তে লিংক হয়নি", "Unlinked to a daily-closing account")} · ${[lostDr ? `Cash Checker debit ৳ ${money(lostDr)}` : "", lostCb ? `Cash Checker credit ৳ ${money(lostCb)}` : "", lostCc ? `Collection ৳ ${money(lostCc)}` : ""].filter(Boolean).join(" · ")}</div>` : ""}</div>`;
+    linked.innerHTML = linkBox;
+    context.hidden = false;
     const tiles = [[4, bi("মোট ক্লোজিং", "Closing total")], [3, bi("হিসাব মতে", "Expected balance")], [5, bi("ব্লক / লিয়েন", "Blocked / lien")], [6, bi("ব্যবহারযোগ্য", "Usable balance")]];
-    const reviews = [["all", bi("সব A/C", "All accounts")], ["mv", bi("লেনদেন", "Activity")], ["diff", bi("অমিল", "Differences")], ["remarks", bi("মন্তব্য বাকি", "Remarks needed")]];
     const autoDr = r => r.adr ? `<span><em>${bi("ক্যাশ চেকার", "Cash Checker")}</em> <b class="num">${money(r.adr)}</b></span>` : `<span class="mut">—</span>`;
     const autoCr = r => (r.acc || r.acb) ? `${r.acc ? `<span><em>${bi("কালেকশন", "Collection")}</em> <b class="num">${money(r.acc)}</b></span>` : ""}${r.acb ? `<span><em>${bi("ক্যাশ জমা", "Cash dep.")}</em> <b class="num">${money(r.acb)}</b></span>` : ""}` : `<span class="mut">—</span>`;
     body.innerHTML = `<div class="bc-summary" aria-label="${bi("দিনের মোট", "Daily totals")}">${tiles.map(([i, label]) => `<div class="card bc-kpi" data-kpi="${i}"><span>${label}</span><strong class="num"></strong></div>`).join("")}</div>
     <section class="card bc-register" aria-label="${bi("অ্যাকাউন্ট পর্যালোচনা", "Account review")}">
-    ${linkBox}
-    <div class="bc-review"><div class="bc-filters" role="group" aria-label="${bi("অ্যাকাউন্ট ফিল্টার", "Account filters")}">${reviews.map(([key, label]) => `<button type="button" class="btn sm" data-review="${key}" aria-pressed="${key === review}">${label} <span class="bc-count"></span></button>`).join("")}</div><span class="mut sm" id="c-shown" role="status"></span></div>
+    <div class="bc-review"><span class="mut sm" id="c-shown" role="status"></span></div>
     <div id="c-empty" class="empty" hidden>${bi("এই ফিল্টারে কোনো অ্যাকাউন্ট নেই", "No accounts match these filters")}</div>
     <div class="tw cards closing bc-table"><table id="ct"><thead><tr><th>#</th><th>A/C</th><th class="r">আগের ক্লোজিং</th><th class="r c-dr">${bi("ডেবিট / উত্তোলন", "Debit / Withdraw")}</th><th class="r c-cr">${bi("ক্রেডিট / জমা", "Credit / Deposit")}</th><th class="r">হিসাব মতে</th><th class="r c-bk">ব্যাংক ক্লোজিং</th><th class="r">BLOCK</th><th class="r">USABLE</th><th class="r">Diff</th><th>মন্তব্য</th></tr></thead><tbody>
     ${rows.map((r, i) => { const b = B(r.a); return `<tr data-i="${i}" ><td class="mut">${i + 1}</td><td class="acc-c" style="--b1:${b.c1}"><b>${esc(r.code)}</b> <span class="mvdot" aria-label="${bi("লেনদেন", "Activity")}" hidden>●</span><div class="mut sm">${esc(r.holder)}</div></td><td class="r num">${money(r.prevT)}</td>
@@ -1906,7 +1910,6 @@ async function vClosing(v) {
       if (key) sessionStorage.setItem(key, date);
     });
     const trs = $$("#ct tbody tr[data-i]", body);
-    const reviewButtons = $$("[data-review]", body);
     const stats = $$("[data-kpi]", body);
     const cells = trs.map(tr => ({
       tr, r: rows[+tr.dataset.i], odI: $(".od", tr), odpI: $(".odp", tr), ti: $(".tot", tr),
@@ -1993,6 +1996,7 @@ async function vClosing(v) {
     query.oninput = () => filter();
     reviewButtons.forEach(btn => btn.onclick = () => { review = btn.dataset.review; filter(); });
     calc();
+    filters.hidden = false;
     if (locked || !rows.length) return;
     const saveDraft = $("#c-draft", body);
     if (saveDraft) saveDraft.onclick = async () => {
