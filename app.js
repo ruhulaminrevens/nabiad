@@ -2821,6 +2821,26 @@ async function vAdmin(v) {
         <div id="ad-offline"></div><div class="hcl" id="ad-health"></div>
       </section><section class="card" id="ad-history" aria-labelledby="ad-history-title"></section>
       <section class="card adm-setup-links"><h3>⚡ দ্রুত লিংক</h3><div class="qlinks"><a href="#/audit">${ico("shield")} Audit ও Backup</a><a href="#/books">${ico("book")} চেক বই</a><a href="#/settings">${ico("gear")} সেটিংস</a><a href="https://supabase.com/dashboard/project/mtzxcwuojiajsanearsz" target="_blank" rel="noopener">${ico("bank")} Supabase ড্যাশবোর্ড ↗</a><a href="https://github.com/ruhulaminrevens/nabiad" target="_blank" rel="noopener">${ico("copyt")} GitHub কোড ↗</a><button type="button" class="btn" id="ad-go-users">${ico("users")} ${bi("ব্যবহারকারী ব্যবস্থাপনা","Manage users")}</button></div></section></div>`;
+      if (!DEMO) {
+        $("#ad-history",out).insertAdjacentHTML("afterend", `<section class="card adm-setup-links"><h3>${bi("Tally ভাউচার ইতিহাস","Tally voucher history")}</h3>
+          <p class="mut sm">${bi("একবার import করলে Cash Register-এর Tally vouchers-এ সেভ করা ইতিহাস পাবেন।","Import once to view saved history under Cash Register → Tally vouchers.")}</p>
+          <button type="button" class="btn" id="ad-tally-import">${ico("book")} ${bi("Tally ইতিহাস ইমপোর্ট","Import Tally history")}</button>
+          <input type="file" hidden accept=".json,application/json" id="ad-tally-file"><p class="mut sm" role="status" id="ad-tally-result"></p></section>`);
+        const input = $("#ad-tally-file",out), button = $("#ad-tally-import",out), status = $("#ad-tally-result",out);
+        button.onclick = () => { if (navigator.onLine) input.click(); else toast(bi("ইন্টারনেট প্রয়োজন","Connect to the internet to import"),"err"); };
+        input.onchange = async () => {
+          const file = input.files[0]; input.value = ""; if (!file || button.disabled) return;
+          button.disabled = true; status.textContent = bi("ফাইল যাচাই হচ্ছে…","Checking file…");
+          try {
+            const count = await cashTallyImport(file);
+            status.textContent = count == null ? "" : bi(`${money0(count)}টি নতুন voucher যোগ হয়েছে।`,`${money0(count)} new vouchers added.`);
+          } catch (error) {
+            status.textContent = tallySchemaMissing(error) ? bi("schema_cash_tally.sql প্রয়োজন।","Apply schema_cash_tally.sql first.")
+              : /cash_tally_voucher_conflict/.test(error.message || "") ? bi("আগের voucher-এর সঙ্গে অমিল। কোনো voucher যোগ হয়নি।","An existing voucher has a different ledger or amount. Nothing was imported.")
+              : error.message || String(error);
+          } finally { button.disabled = false; }
+        };
+      }
       $("#ad-go-users",out).onclick = () => { tab = "usr"; draw(); };
       const history = $("#ad-history",out), health = $("#ad-health",out), offline = $("#ad-offline",out), recheck = $("#ad-recheck",out);
       const row = (ok, l, sub) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "✗"}</i><div><b>${l}</b>${sub ? `<div class="mut xs">${sub}</div>` : ""}</div></div>`;
@@ -3652,7 +3672,45 @@ async function vCashRep(v) {
   await draw(); return unb;
 }
 
-/* =================== Cash Register and local Tally preview =================== */
+/* =================== Cash Register and Tally vouchers =================== */
+Object.assign(SbAPI, {
+  async cashTallyRange(from, to) {
+    const records = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await sb.from("cash_tally_vouchers").select("date,type,ref,ledger,amount")
+        .gte("date", from).lte("date", to).order("date", {ascending:false}).order("type").order("ref").range(offset, offset + 999);
+      if (error) throw error;
+      records.push(...data.map(({date,type,ref,ledger,amount}) => ({date,type,ref,led:ledger,a:Number(amount),source:"tally"})));
+      if (data.length < 1000) return records;
+    }
+  },
+  async importCashTally(records) {
+    const vouchers = records.map(({date,type,ref,led,a}) => ({date,type,ref,led,a}));
+    const { data, error } = await sb.rpc("import_cash_tally", {vouchers});
+    if (error) throw error;
+    return data;
+  }
+});
+Object.assign(DemoAPI, {
+  async cashTallyRange(from, to) { return (demoStore.tally || []).filter(row => row.date >= from && row.date <= to); }
+});
+const tallyLedgerKey = name => String(name ?? "").trim().toLowerCase();
+function tallyPurpose(row, ledgers) {
+  const match = ledgers.get(tallyLedgerKey(row.led));
+  if (!match || match.active === false) return "";
+  const category = cashCategory(row.type === "receipt" ? match.cat_r : match.cat_p);
+  return CASH_KEYS(row.type).includes(category) ? category : "";
+}
+const tallySchemaMissing = error => ["42P01", "42883", "PGRST202", "PGRST205"].includes(error?.code);
+async function cashTallyImport(file) {
+  const records = await cashTallyRows(file);
+  const dates = records.map(r => r.date).sort();
+  if (!ask(bi(`${money0(records.length)}টি voucher import করবেন? ${dmy(dates[0])} থেকে ${dmy(dates.at(-1))}।`,
+    `Import ${money0(records.length)} vouchers from ${dmy(dates[0])} to ${dmy(dates.at(-1))}?`))) return null;
+  const count = await API.importCashTally(records);
+  await cbLedLoad(true);
+  return count;
+}
 async function cashTallyRows(file) {
   if (file.size > 32 * 1024 * 1024) throw new Error(bi("ফাইলের সর্বোচ্চ আকার ৩২ MB।", "Choose a file up to 32 MB."));
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -3661,6 +3719,7 @@ async function cashTallyRows(file) {
   try { records = JSON.parse(new TextDecoder(encoding, {fatal: true}).decode(bytes))?.lvbody?.dspvchdetail; } catch { }
   if (!Array.isArray(records) || !records.length) throw new Error(bi("Tally Cash Book JSON-এ voucher পাওয়া যায়নি।", "No voucher rows found in the Tally Cash Book JSON."));
   const months = "jan feb mar apr may jun jul aug sep oct nov dec".split(" ");
+  const keys = new Set();
   return records.map((row, i) => {
     const type = row?.dspvchtype === "Rcpt" ? "receipt" : row?.dspvchtype === "Pymt" ? "payment" : "";
     const parts = /^(\d{1,2})-([a-z]{3})-(\d{2}|\d{4})$/i.exec(String(row?.dspvchdate ?? "").trim());
@@ -3673,24 +3732,29 @@ async function cashTallyRows(file) {
       throw new Error(bi(`${i + 1} নম্বর voucher লাইনে অসমর্থিত তথ্য আছে।`, `Unsupported data in voucher row ${i + 1}.`));
     }
     // An expanded voucher still has one top-level total. Its child entries are not separate cash movements.
-    const ref = row.dspvchnumber?.dspvchnumber?.dspexplvchnumber;
-    return {date, type, a: amount, led, ref: typeof ref === "string" ? ref.trim() : "", source: "tally"};
+    const ref = String(row.dspvchnumber?.dspvchnumber?.dspexplvchnumber ?? "").trim();
+    const key = JSON.stringify([date,type,ref]);
+    if (!ref || ref.length > 160 || led.length > 300 || keys.has(key)) {
+      throw new Error(bi(`${i + 1} নম্বর লাইনে voucher no অনুপস্থিত, পুনরাবৃত্ত বা তথ্য বেশি দীর্ঘ।`,
+        `Voucher row ${i + 1} has a missing or repeated voucher number or an overlong field.`));
+    }
+    keys.add(key);
+    return {date, type, a: Math.round(amount * 100) / 100, led, ref, source: "tally"};
   });
 }
 async function vRegister(v) {
-  const F = { ...pbInit("month"), q: "", type: "", k: "" }, tallyPeriod = pbInit("month");
+  const F = { ...pbInit("month"), q: "", type: "", k: "" };
+  const canMap = ["admin","staff"].includes(S.me.role) && moduleOpen("cash");
+  const ungrouped = bi("খাত নির্ধারিত নয়","Unmapped");
   const categoryTotal = bi("খাতের মোট", "Category total");
   const sources = { checker: bi("ক্যাশ চেকার", "Cash Checker"), book: bi("ক্যাশ খাতা", "Cash Book"), tally: "Tally" };
   const all = bi("সব", "All");
-  v.innerHTML = head("ক্যাশ রেজিস্টার", `<button type="button" class="btn" id="rg-open">${ico("book")} ${bi("Tally JSON খুলুন", "Open Tally JSON")}</button><button type="button" class="btn" id="rg-x">${ico("dl")} Excel</button>`) +
+  v.innerHTML = head("ক্যাশ রেজিস্টার", `${canMap ? `<button type="button" class="btn" id="rg-map">${ico("sliders")} ${bi("লেজার খাত নির্ধারণ", "Ledger → Purpose/Group")}</button>` : ""}<button type="button" class="btn" id="rg-x">${ico("dl")} Excel</button>`) +
     `<div class="card tbar rg-tools noprint">
-       <input type="file" id="rg-file" accept=".json,application/json" hidden>
-       <div class="rg-source chips" id="rg-source" role="group" aria-label="${bi("রেকর্ডের উৎস", "Record source")}" hidden>
+       <div class="rg-source chips" id="rg-source" role="group" aria-label="${bi("রেকর্ডের উৎস", "Record source")}">
          <button type="button" class="chip on" data-rg-source="app" aria-pressed="true">${bi("অ্যাপ রেকর্ড", "App records")}</button>
-         <button type="button" class="chip" data-rg-source="tally" aria-pressed="false">${bi("Tally প্রিভিউ", "Tally preview")}</button>
+         <button type="button" class="chip" data-rg-source="tally" aria-pressed="false">${bi("Tally ভাউচার", "Tally vouchers")}</button>
        </div>
-       <div id="rg-file-info" class="mut sm" role="status"></div>
-       <div id="rg-file-error" class="rd sm" role="alert"></div>
        <div id="rg-period">${pbBar("rg", F)}</div>
        <div class="rg-filters">
          <div><label class="f" for="rg-q">${bi("লেজার, voucher, নোট বা অঙ্ক", "Ledger, voucher, note or amount")}</label><input class="in" id="rg-q" type="search" autocomplete="off"></div>
@@ -3702,21 +3766,32 @@ async function vRegister(v) {
      <div id="rg-notice"></div>
      <div class="card flush" id="rg-out"></div>
      <div class="cq-pager rg-pager" id="rg-pager" hidden><button type="button" class="btn" id="rg-prev">${bi("আগের", "Previous")}</button><span class="mut sm" id="rg-page"></span><button type="button" class="btn" id="rg-next">${bi("পরের", "Next")}</button></div>`;
-  const g = id => $("#" + id, v), out = g("rg-out"), file = g("rg-file"), excel = g("rg-x");
-  let source = "app", page = 0, version = 0, ready = false, lines = [], shown = [], tally = [];
-  const pageSize = 75, currentPeriod = () => source === "app" ? F : tallyPeriod;
+  const g = id => $("#" + id, v), out = g("rg-out"), excel = g("rg-x");
+  let source = "app", page = 0, version = 0, ready = false, lines = [], shown = [];
+  let ledgerMap = new Map();
+  const pageSize = 75;
   function showNotice(message) {
     g("rg-notice").innerHTML = message ? `<div class="alert am">${esc(message)}</div>` : "";
   }
   async function load() {
-    const versionAtStart = ++version, [f, t] = cashPeriod(currentPeriod());
+    const versionAtStart = ++version, [f, t] = cashPeriod(F);
     const current = () => out.isConnected && versionAtStart === version;
     page = 0; ready = false; shown = []; excel.disabled = true;
     g("rg-sum").textContent = ""; g("rg-pager").hidden = true; showNotice("");
+    out.innerHTML = `<div class="empty">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
     if (source === "tally") {
-      lines = tally.filter(r => r.date >= f && r.date <= t);
+      try {
+        const [rows, ledgers] = await Promise.all([API.cashTallyRange(f,t), cbLedLoad()]);
+        if (!current()) return;
+        ledgerMap = new Map(ledgers.list.map(row => [tallyLedgerKey(row.name),row]));
+        lines = rows;
+        if (ledgers.err) showNotice(bi("লেজারের খাত লোড হয়নি। আবার চেষ্টা করুন।","Ledger mappings could not load. Try again."));
+        else if (!rows.length) showNotice(bi("এই সময়ে Tally voucher নেই। Admin Panel → Setup থেকে ইতিহাস import করা যায়।","No Tally vouchers for this period. Import history from Admin Panel → Setup."));
+      } catch (error) {
+        if (current()) out.innerHTML = `<div class="alert rd">${esc(tallySchemaMissing(error) ? bi("Tally history এখনো চালু হয়নি।","Tally history is not configured yet.") : cashErr(error))}</div>`;
+        return;
+      }
     } else {
-      out.innerHTML = `<div class="empty">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
       try {
         const [rows, allBooks] = await Promise.all([API.cashRange(f, t).then(rows => rows.map(r => ({ ...r, items: cashItems(r.items) }))), API.cbRange(f, t).catch(() => null)]);
         if (!current()) return;
@@ -3756,7 +3831,8 @@ async function vRegister(v) {
   function draw() {
     if (!ready || !out.isConnected) return;
     const q = chequeSearchKey(F.q), isTally = source === "tally";
-    shown = lines.filter(l => (!F.type || l.type === F.type) && (isTally || !F.k || F.k === l.k) &&
+    const rows = isTally ? lines.map(row => ({...row,k:tallyPurpose(row,ledgerMap)})) : lines;
+    shown = rows.filter(l => (!F.type || l.type === F.type) && (!F.k || F.k === (l.k || "unmapped")) &&
       (!q || chequeSearchKey([l.led, l.k && cashLabel(l.k), l.n, l.accounts, l.ref, l.a, l.x].join(" ")).includes(q)));
     const sums = {receipt: 0, payment: 0};
     for (const l of shown) sums[l.type] += Math.round(l.a * 100);
@@ -3769,44 +3845,33 @@ async function vRegister(v) {
     g("rg-prev").disabled = page === 0; g("rg-next").disabled = page + 1 === pages;
     excel.disabled = !shown.length;
     const ledger = bi("লেজার", "Ledger"), detail = bi("ভাউচার / নোট", "Voucher / note"), recordSource = bi("উৎস", "Source");
-    out.innerHTML = shown.length ? `<div class="tw cards"><table class="rg-table"><thead><tr><th>তারিখ</th><th>ধরন</th><th>${ledger}</th>${isTally ? "" : "<th>খাত</th>"}<th class="r">টাকা</th><th>${detail}</th><th>${recordSource}</th></tr></thead><tbody>
+    out.innerHTML = shown.length ? `<div class="tw cards"><table class="rg-table"><thead><tr><th>তারিখ</th><th>ধরন</th><th>${ledger}</th><th>${bi("খাত","Purpose / Group")}</th><th class="r">টাকা</th><th>${detail}</th><th>${recordSource}</th></tr></thead><tbody>
       ${shown.slice(first, first + pageSize).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td>
       <td>${l.led ? `<b>${esc(l.led)}</b>` : `<span class="mut">${l.source === "checker" ? categoryTotal : bi("নাম দেওয়া হয়নি", "Unnamed entry")}</span>`}</td>
-      ${isTally ? "" : `<td>${esc(cashLabel(l.k))}</td>`}<td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td>
+      <td>${esc(l.k ? cashLabel(l.k) : ungrouped)}</td><td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td>
       <td class="sm">${[l.ref, l.accounts && "A/C " + l.accounts, l.n].filter(Boolean).map(x => `<div>${esc(x)}</div>`).join("") || "—"}</td>
       <td class="mut sm">${sources[l.source]}${l.st ? ` · ${l.st === "final" ? bi("ফাইনাল", "Final") : bi("ড্রাফট", "Draft")}` : ""}${l.by ? " · " + esc(l.by) : ""}</td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty">${bi("এই ফিল্টারে কোনো লাইন নেই", "No lines match these filters")}</div>`;
   }
   function setSource(next) {
     source = next;
-    g("rg-period").innerHTML = pbBar("rg", currentPeriod());
-    g("rg-purpose").hidden = source === "tally";
+    const purpose = g("rg-k"), option = purpose.querySelector('option[value="unmapped"]');
+    if (source === "tally" && !option) purpose.add(new Option(ungrouped, "unmapped"));
+    if (source === "app" && option) {
+      option.remove();
+      if (F.k === "unmapped") { F.k = ""; purpose.value = ""; }
+    }
     for (const btn of $$("[data-rg-source]", v)) {
       const active = btn.dataset.rgSource === source;
       btn.classList.toggle("on", active); btn.setAttribute("aria-pressed", active);
     }
-    pbBind(v, "rg", currentPeriod(), load); return load();
+    return load();
   }
-  g("rg-open").onclick = () => file.click();
-  file.onchange = async () => {
-    const chosen = file.files[0], open = g("rg-open");
-    file.value = "";
-    if (!chosen || open.disabled) return;
-    open.disabled = true; g("rg-file-error").textContent = "";
-    try {
-      const records = await cashTallyRows(chosen);
-      if (!out.isConnected) return;
-      tally = records;
-      tallyPeriod.d = records.reduce((last, row) => row.date > last ? row.date : last, "");
-      tallyPeriod.m = "month";
-      tallyPeriod.f = records.reduce((first, row) => row.date < first ? row.date : first, tallyPeriod.d);
-      tallyPeriod.t = tallyPeriod.d;
-      g("rg-source").hidden = false;
-      g("rg-file-info").textContent = `${chosen.name} · ${bi("শুধু এই পেজে প্রিভিউ", "Read-only preview on this page")} · ${records.length.toLocaleString("en-IN")} ${bi("লাইন", "lines")}`;
-      await setSource("tally");
-    } catch (e) { if (out.isConnected) g("rg-file-error").textContent = e.message || String(e); }
-    finally { open.disabled = false; }
-  };
+  if (canMap) g("rg-map").onclick = () => cbLedgerModal(() => {
+    if (!out.isConnected || source !== "tally") return;
+    ledgerMap = new Map((CBLED?.list || []).map(row => [tallyLedgerKey(row.name),row]));
+    resetPage();
+  }, {mappingOnly:true});
   for (const btn of $$("[data-rg-source]", v)) btn.onclick = () => { if (source !== btn.dataset.rgSource) setSource(btn.dataset.rgSource); };
   g("rg-q").oninput = e => { F.q = e.target.value; resetPage(); };
   g("rg-t").onchange = e => { F.type = e.target.value; resetPage(); };
@@ -3814,11 +3879,12 @@ async function vRegister(v) {
   const changePage = delta => { page += delta; draw(); out.scrollIntoView({block: "start"}); };
   g("rg-prev").onclick = () => changePage(-1); g("rg-next").onclick = () => changePage(1);
   excel.onclick = () => {
-    const [from, to] = cashPeriod(currentPeriod());
+    const [from, to] = cashPeriod(F);
     if (shown.length) exportXlsx({ Register: [["Date", "Type", "Ledger", "Category", "Amount", "Expression", "Note", "Status", "By", "Voucher", "A/C", "Source"],
-      ...shown.map(l => [dmy(l.date), l.type, l.led || "", l.k ? cashLabel(l.k) : "", l.a, l.x || "", l.n || "", l.st || "", l.by || "", l.ref || "", l.accounts || "", sources[l.source]])] },
+      ...shown.map(l => [dmy(l.date), l.type, l.led || "", l.k ? cashLabel(l.k) : l.source === "tally" ? ungrouped : "", l.a, l.x || "", l.n || "", l.st || "", l.by || "", l.ref || "", l.accounts || "", sources[l.source]])] },
       `Cash_Register_${source}_${from}_to_${to}.xlsx`);
   };
+  pbBind(v, "rg", F, load);
   await setSource("app");
 }
 
