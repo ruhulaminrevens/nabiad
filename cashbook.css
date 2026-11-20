@@ -75,7 +75,6 @@
 .cb-reg-total{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid #e5e7eb}
 .cb-reg-total b{white-space:nowrap;font-variant-numeric:tabular-nums}
 .cb-register-dialog{width:min(860px,100%);max-width:860px}
-.cb-register-actions{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
 .cb-register-actions [hidden]{display:none}
 .cb-register.rep{min-height:0;font-family:"Hind Siliguri","Inter","Segoe UI",sans-serif}
 .cb-reg-table{table-layout:fixed;margin-top:10px}
