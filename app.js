@@ -1775,7 +1775,12 @@ const accHay = a => norm([a.code, a.holder, a.bank, a.branch, a.acno, a.type].jo
 const DRAFT_KEY = d => "nabiad_draft_" + d;
 const Draft = {
   local(d) { try { return JSON.parse(localStorage.getItem(DRAFT_KEY(d)) || "null"); } catch { return null; } },
-  saveLocal(d, rows) { try { localStorage.setItem(DRAFT_KEY(d), JSON.stringify({ rows, at: new Date().toISOString(), by: S.me.name, local: true })); } catch { } },
+  saveLocal(d, rows) {
+    try {
+      localStorage.setItem(DRAFT_KEY(d), JSON.stringify({ rows, at: new Date().toISOString(), by: S.me.name, local: true }));
+      return true;
+    } catch { return false; }
+  },
   dropLocal(d) { try { localStorage.removeItem(DRAFT_KEY(d)); } catch { } },
   localDates() { const o = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith("nabiad_draft_")) o.push(k.slice(13)); } return o.sort(); },
   async get(d) {
@@ -1783,7 +1788,6 @@ const Draft = {
     if (navigator.onLine || DEMO) { try { s = await API.getDraft(d); } catch (e) { console.warn("draft", e); } }
     if (l && s) return new Date(l.at) > new Date(s.at) ? l : s; return l || s;
   },
-  async save(d, rows) { this.saveLocal(d, rows); await API.saveDraft(d, rows); },
   async drop(d) { this.dropLocal(d); try { await API.deleteDraft(d); } catch { } }
 };
 
@@ -1806,11 +1810,16 @@ async function vClosing(v) {
   $("#c-d", v).setAttribute("aria-label", bi("ক্লোজিংয়ের তারিখ", "Closing date"));
   const dateControls = ["#c-p", "#c-d", "#c-n"].map(s => $(s, v));
   let autoT, pendingDraft, revision = 0, saving = false, review = "all";
+  const setDraftState = local => {
+    info.dataset.state = "draft";
+    info.textContent = local ? bi("ড্রাফট · এই ডিভাইস", "Draft · This device") : bi("ড্রাফট · সার্ভারে সেভ", "Draft · Saved online");
+  };
   function flushDraft() {
     clearTimeout(autoT);
     if (!pendingDraft) return;
-    Draft.saveLocal(pendingDraft.date, pendingDraft.rows);
+    const stored = Draft.saveLocal(pendingDraft.date, pendingDraft.rows);
     pendingDraft = null;
+    return stored;
   }
   async function draw(saved = false) {
     if (saving) return;
@@ -1851,13 +1860,16 @@ async function vClosing(v) {
     (colRows || []).forEach(r => { if (r.date === date && r.status === "approved" && r.account) aCc[r.account] = (aCc[r.account] || 0) + (+r.amount || 0); });
     const gap = prev.date ? workGap(prev.date, date) : 0;
     const queued = Object.values(ex).some(r => r.pending);
-    info.dataset.state = queued ? "draft" : has ? "final" : draft ? "draft" : "open";
-    info.textContent = queued ? bi("সিঙ্ক বাকি", "Pending sync") : has ? bi("ফাইনাল", "Final") : draft ? bi("ড্রাফট", "Draft") : bi("সেভ হয়নি", "Not saved");
+    if (draft) setDraftState(DEMO || draft.local);
+    else {
+      info.dataset.state = queued ? "queued" : has ? "final" : "open";
+      info.textContent = queued ? bi("ফাইনাল · সিঙ্ক বাকি", "Final · Pending sync") : has ? bi("ফাইনাল", "Final") : bi("সেভ হয়নি", "Not saved");
+    }
     const msgs = [];
     if (saved) msgs.push(`<div class="alert gr bc-notice"><span>${queued ? bi("এই ডিভাইসে সেভ হয়েছে", "Saved on this device") : bi("ক্লোজিং সেভ হয়েছে", "Closing saved")}</span>${queued ? "" : `<a class="btn sm" href="#/crep" data-go="crep">${ico("img")} ${bi("ব্যালেন্স স্ন্যাপশট", "Balance Snapshot")}</a>`}</div>`);
     if (has && !queued) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 এই তারিখের ব্যালেন্স ফাইনাল সেভ হয়েছে। বদলাতে Admin কে বলুন।" : "⚠ এই তারিখ ফাইনাল সেভ আছে। সেভ করলে নতুন মান বসবে।"}</div>`);
     if (!has && prev.date) msgs.push(`<div class="mut sm">আগের ডাটা: <b>${dmy(prev.date)}</b>${gap ? ` <b class="am">(${bi("মাঝে " + gap + " কর্মদিবসের ডাটা নেই", gap + " working days of data missing in between")})</b>` : ""}</div>`);
-    if (draft && !locked) msgs.push(`<div class="alert vi">📝 <span>ড্রাফট লোড হয়েছে — ${esc(draft.by || "")} · ${new Date(draft.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}${draft.local ? " (এই ডিভাইস)" : ""}</span><button class="btn sm" id="c-dd" style="margin-left:auto">ড্রাফট বাদ দিন</button></div>`);
+    if (draft && !locked) msgs.push(`<div class="alert vi bc-notice"><span>${bi("ড্রাফট লোড হয়েছে", "Draft loaded")} · ${esc(draft.by || "")} · ${new Date(draft.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span><button type="button" class="btn sm" id="c-dd">${bi("ড্রাফট বাদ দিন", "Discard draft")}</button></div>`);
     if (isFri(date) && !has) msgs.push(`<div class="alert am">শুক্রবার — সাধারণত ব্যাংক বন্ধ থাকে। দরকার না হলে "পরের ›" চাপুন।</div>`);
     if (!srcOk) msgs.push(`<div class="alert am">⚠ ${bi("লিংক করা ডাটা পুরোপুরি লোড হয়নি। ফাইনাল সেভের আগে হিসাব মতে ব্যালেন্স যাচাই করুন।", "Some linked data could not load. Review the expected balance before finalizing.")}</div>`);
     msg.innerHTML = msgs.join("");
@@ -1866,10 +1878,15 @@ async function vClosing(v) {
     if (discard) discard.onclick = async () => {
       if (saving || !ask("এই তারিখের ড্রাফট মুছে আগের দিনের ক্লোজিং থেকে নতুন করে শুরু করবেন?")) return;
       setBusy(true);
-      pendingDraft = null;
-      clearTimeout(autoT);
-      await Draft.drop(date);
-      setBusy(false);
+      try {
+        await API.deleteDraft(date);
+        pendingDraft = null;
+        clearTimeout(autoT);
+        Draft.dropLocal(date);
+      } catch (e) {
+        if (current()) toast(bi("ড্রাফট বাদ দেওয়া যায়নি। আবার চেষ্টা করুন।", "Could not discard the draft. Try again."), "err");
+        return;
+      } finally { setBusy(false); }
       if (current()) draw();
     };
     const rows = accs.map(a => {
@@ -1894,16 +1911,16 @@ async function vClosing(v) {
     const autoCr = r => (r.acc || r.acb) ? `${r.acc ? `<span><em>${bi("কালেকশন", "Collection")}</em> <b class="num">${money(r.acc)}</b></span>` : ""}${r.acb ? `<span><em>${bi("ক্যাশ জমা", "Cash dep.")}</em> <b class="num">${money(r.acb)}</b></span>` : ""}` : `<span class="mut">—</span>`;
     body.innerHTML = `<div class="bc-summary" aria-label="${bi("দিনের মোট", "Daily totals")}">${tiles.map(([i, label]) => `<div class="card bc-kpi" data-kpi="${i}"><span>${label}</span><strong class="num"></strong></div>`).join("")}</div>
     <section class="card bc-register" aria-label="${bi("অ্যাকাউন্ট পর্যালোচনা", "Account review")}">
-    <div class="bc-review"><span class="mut sm" id="c-shown" role="status"></span></div>
+    <div class="bc-review">${locked ? "" : `<span class="mut sm" id="c-extra-help">${bi("অতিরিক্ত ডেবিট বা ক্রেডিট দিতে আগে ওই A/C-এর ব্যাংক ক্লোজিং লিখুন।", "Enter the account’s Bank Closing amount to enable extra debit and credit.")}</span>`}<span class="mut sm" id="c-shown" role="status"></span></div>
     <div id="c-empty" class="empty" hidden>${bi("এই ফিল্টারে কোনো অ্যাকাউন্ট নেই", "No accounts match these filters")}</div>
     <div class="tw cards closing bc-table"><table id="ct"><thead><tr><th>#</th><th>A/C</th><th class="r">আগের ক্লোজিং</th><th class="r c-dr">${bi("ডেবিট / উত্তোলন", "Debit / Withdraw")}</th><th class="r c-cr">${bi("ক্রেডিট / জমা", "Credit / Deposit")}</th><th class="r">হিসাব মতে</th><th class="r c-bk">ব্যাংক ক্লোজিং</th><th class="r">BLOCK</th><th class="r">USABLE</th><th class="r">Diff</th><th>মন্তব্য</th></tr></thead><tbody>
     ${rows.map((r, i) => { const b = B(r.a); return `<tr data-i="${i}" ><td class="mut">${i + 1}</td><td class="acc-c" style="--b1:${b.c1}"><b>${esc(r.code)}</b> <span class="mvdot" aria-label="${bi("লেনদেন", "Activity")}" hidden>●</span><div class="mut sm">${esc(r.holder)}</div></td><td class="r num">${money(r.prevT)}</td>
-     <td class="c-dr"><div class="au">${autoDr(r)}</div><input class="cell od" aria-label="${esc(r.code)} · ${bi("অতিরিক্ত ডেবিট", "Additional debit")}" value="${fmtIn(r.od || "")}" inputmode="decimal" placeholder="${bi("অতিরিক্ত", "Extra")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
-     <td class="c-cr"><div class="au">${autoCr(r)}</div><input class="cell odp" aria-label="${esc(r.code)} · ${bi("অতিরিক্ত ক্রেডিট", "Additional credit")}" value="${fmtIn(r.odp || "")}" inputmode="decimal" placeholder="${bi("অতিরিক্ত", "Extra")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
+     <td class="c-dr"><div class="au">${autoDr(r)}</div><input class="cell od" ${locked ? "" : 'aria-describedby="c-extra-help"'} aria-label="${esc(r.code)} · ${bi("অতিরিক্ত ডেবিট", "Additional debit")}" value="${fmtIn(r.od || "")}" inputmode="decimal" placeholder="${bi("অতিরিক্ত", "Extra")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
+     <td class="c-cr"><div class="au">${autoCr(r)}</div><input class="cell odp" ${locked ? "" : 'aria-describedby="c-extra-help"'} aria-label="${esc(r.code)} · ${bi("অতিরিক্ত ক্রেডিট", "Additional credit")}" value="${fmtIn(r.odp || "")}" inputmode="decimal" placeholder="${bi("অতিরিক্ত", "Extra")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
      <td class="r num exp"></td><td class="c-bk"><input class="cell tot" aria-label="${esc(r.code)} · ${bi("ব্যাংক ক্লোজিং", "Bank closing")}" value="${r.total == null ? "" : fmtIn(r.total)}" data-dirty="${r.total == null ? "" : "1"}" inputmode="decimal" ${locked ? "disabled" : ""}></td><td><input class="cell blk" aria-label="${esc(r.code)} · ${bi("ব্লক", "Blocked amount")}" value="${fmtIn(r.block || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
      <td class="r num usa b"></td><td class="r num dif"></td><td><input class="cell t rem" aria-label="${esc(r.code)} · ${bi("মন্তব্য", "Remarks")}" value="${esc(r.remark)}" ${locked ? "disabled" : ""}></td></tr>`; }).join("")}
     <tr class="tot"><td></td><td>মোট <span class="mut sm" id="T-n"></span></td><td class="r num" id="T0"></td><td class="r num c-dr" id="T1"></td><td class="r num c-cr" id="T2"></td><td class="r num" id="T3"></td><td class="r num c-bk t-bank" id="T4"></td><td class="r num" id="T5"></td><td class="r num t-usa" id="T6"></td><td class="r num t-diff" id="T7"></td><td></td></tr></tbody></table></div>
-    ${locked || !rows.length ? "" : `<div class="cbar entry-actions">${has ? "" : `<button class="btn lg fix" id="c-draft">${ico("edit")} ড্রাফট সেভ</button>`}<button class="btn pri lg fix" id="c-save">${ico("save")} <span class="bl">ফাইনাল সেভ<small>${date === today() ? "আজকের" : dmy(date)}</small></span></button><div class="hint" id="c-err" role="alert"></div><span class="mut sm" id="c-auto" role="status"></span></div>`}
+    ${locked || !rows.length ? "" : `<div class="cbar entry-actions">${has ? "" : `<button type="button" class="btn lg fix" id="c-draft">${ico("edit")} <span data-save-label>${bi("ড্রাফট সেভ", "Save draft")}</span></button>`}<button type="button" class="btn pri lg fix" id="c-save">${ico("save")} <span class="bl"><span data-save-label>${bi("ফাইনাল সেভ", "Final save")}</span><small>${dmy(date)}</small></span></button><div class="hint" id="c-err" role="alert"></div><span class="mut sm" id="c-auto" role="status"></span></div>`}
     </section>`;
     [...$$("[data-go]", body), ...$$("[data-go]", msg)].forEach(a => a.onclick = () => {
       const key = {crep: "nabiad_crep_date"}[a.dataset.go];
@@ -1932,17 +1949,36 @@ async function vClosing(v) {
       $("#c-empty", body).hidden = visible > 0;
       reviewButtons.forEach(btn => btn.setAttribute("aria-pressed", btn.dataset.review === review));
     };
-    const setBusy = busy => {
+    const actions = $(".bc-register .cbar", body), feedback = $("#c-auto", body);
+    const validClosing = input => {
+      const value = input.value.trim().replace(/,/g, "");
+      return !!input.dataset.dirty && /^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value) && Number.isFinite(Number(value));
+    };
+    const setExtraInputs = ({odI, odpI, ti}) => {
+      odI.disabled = odpI.disabled = saving || locked || !validClosing(ti) || (has && !ti.dataset.edited);
+    };
+    const setBusy = (busy, button) => {
       saving = busy;
       [...dateControls, ...$$("#c-draft, #c-save, #ct input", body), ...(discard ? [discard] : [])].forEach(el => { el.disabled = busy || (locked && el.matches("#ct input")); });
+      cells.forEach(setExtraInputs);
+      if (actions) actions.setAttribute("aria-busy", String(busy));
+      const label = button && $("[data-save-label]", button);
+      if (label) {
+        label.dataset.idle ||= label.textContent;
+        label.textContent = busy ? bi("সেভ হচ্ছে…", "Saving…") : label.dataset.idle;
+      }
     };
     const calc = (keepFocus = false) => {
       const T = Array(8).fill(0), counts = {all: rows.length, mv: 0, diff: 0, remarks: 0};
-      cells.forEach(({tr, r, odI, odpI, ti, blkI, remI, eff, expO, usaO, difO, dot}) => {
-        const od = num(odI.value), odp = num(odpI.value), blk = num(blkI.value);
+      cells.forEach(cell => {
+        const {tr, r, odI, odpI, ti, blkI, remI, eff, expO, usaO, difO, dot} = cell;
+        const closingSet = validClosing(ti);
+        const draftDebit = num(odI.value), draftCredit = num(odpI.value);
+        const od = closingSet ? draftDebit : 0, odp = closingSet ? draftCredit : 0, blk = num(blkI.value);
         const dr = r.adr + od, cr = r.acc + r.acb + odp, exp = r.prevT - dr + cr;
         if (!ti.dataset.dirty && document.activeElement !== ti) ti.value = fmtIn(exp);
-        const tot = !ti.dataset.dirty || ti.value.trim() === "" ? exp : num(ti.value);
+        const tot = closingSet ? num(ti.value) : exp;
+        setExtraInputs(cell);
         const diff = tot - exp, usa = tot - blk, chg = Math.abs(diff) > 0.001;
         const mv = !!(r.adr || r.acc || r.acb || od || odp);
         ti.classList.toggle("chg", chg); blkI.classList.toggle("chg", !same(blk, r.prevB));
@@ -1956,7 +1992,7 @@ async function vClosing(v) {
         difO.textContent = chg ? money(diff) : "0";
         difO.className = "r num dif " + (chg ? "diffx" : "diff0");
         [r.prevT, dr, cr, exp, tot, blk, usa, diff].forEach((n, i) => T[i] += n);
-        Object.assign(r, { _od: od, _odp: odp, _tot: tot, _blk: blk, _rem: remI.value.trim(), _chg: chg, _mv: mv, _dirty: !!ti.dataset.dirty });
+        Object.assign(r, { _od: od, _odp: odp, _draftDebit: draftDebit, _draftCredit: draftCredit, _tot: tot, _blk: blk, _rem: remI.value.trim(), _chg: chg, _mv: mv, _dirty: closingSet });
         remI.required = chg && !locked;
         remI.setAttribute("aria-invalid", String(needsRemark(r) && !locked));
         counts.mv += Number(mv);
@@ -1969,28 +2005,36 @@ async function vClosing(v) {
       reviewButtons.forEach(btn => $(".bc-count", btn).textContent = counts[btn.dataset.review]);
       filter(keepFocus);
     };
-    const collect = () => Object.fromEntries(rows.map(r => [r.code, { od: r._od || 0, odp: r._odp || 0, tot: r._dirty ? r._tot : null, blk: r._blk || 0, rem: r._rem || "" }]));
+    const collect = () => Object.fromEntries(rows.map(r => [r.code, { od: r._draftDebit, odp: r._draftCredit, tot: r._dirty ? r._tot : null, blk: r._blk || 0, rem: r._rem || "" }]));
     const autosave = () => {
       if (has || saving) return;
       pendingDraft = {date, rows: collect()};
       clearTimeout(autoT);
       autoT = setTimeout(() => {
-        flushDraft();
+        const stored = flushDraft();
         if (!current()) return;
-        info.textContent = bi("ড্রাফট", "Draft");
-        info.dataset.state = "draft";
-        $("#c-auto", body).textContent = bi("ডিভাইসে ড্রাফট সেভ হয়েছে", "Draft saved on this device");
+        if (stored) setDraftState(true);
+        feedback.textContent = stored ? bi("ডিভাইসে ড্রাফট সেভ হয়েছে", "Draft saved on this device")
+          : bi("ডিভাইসে ড্রাফট সেভ হয়নি। Save draft চাপুন।", "Could not save on this device. Use Save draft to retry.");
       }, 700);
     };
     $$("#ct input", body).forEach(input => input.addEventListener("input", () => {
-      if (input.classList.contains("tot")) input.dataset.dirty = input.value.trim() === "" ? "" : "1";
+      if (input.classList.contains("tot")) {
+        input.dataset.dirty = input.value.trim() === "" ? "" : "1";
+        input.dataset.edited = "1";
+      }
       calc(true);
       autosave();
     }));
-    $$("#ct .rem", body).forEach(input => input.addEventListener("blur", () => filter()));
+    $$("#ct .rem", body).forEach(input => input.addEventListener("blur", event => {
+      if (!actions?.contains(event.relatedTarget)) filter();
+    }));
     $$("#ct input.cell:not(.rem)", body).forEach(inp => {
       inp.addEventListener("focus", () => inp.select());
-      inp.addEventListener("blur", () => { if (inp.value.trim() !== "") inp.value = fmtIn(num(inp.value)); calc(); });
+      inp.addEventListener("blur", event => {
+        if (inp.value.trim() !== "" && (!inp.classList.contains("tot") || validClosing(inp))) inp.value = fmtIn(num(inp.value));
+        if (!actions?.contains(event.relatedTarget)) calc();
+      });
       inp.addEventListener("keydown", e => { if (e.key !== "Enter") return; e.preventDefault(); let tr = inp.closest("tr").nextElementSibling; while (tr && tr.style.display === "none") tr = tr.nextElementSibling; const cls = [...inp.classList].find(c => ["od", "odp", "tot", "blk"].includes(c)); const nx = tr && $("." + cls, tr); if (nx) nx.focus(); });
     });
     query.oninput = () => filter();
@@ -1998,23 +2042,41 @@ async function vClosing(v) {
     calc();
     filters.hidden = false;
     if (locked || !rows.length) return;
-    const saveDraft = $("#c-draft", body);
+    const saveDraft = $("#c-draft", body), saveFinal = $("#c-save", body);
     if (saveDraft) saveDraft.onclick = async () => {
       if (saving) return;
-      calc(); flushDraft(); setBusy(true);
+      calc();
+      const draftRows = collect();
+      pendingDraft = null;
+      clearTimeout(autoT);
+      const stored = Draft.saveLocal(date, draftRows);
+      if (stored) setDraftState(true);
+      feedback.textContent = "";
+      setBusy(true, saveDraft);
       try {
-        await Draft.save(date, collect());
-        if (current()) {
-          if (!has) { info.textContent = bi("ড্রাফট", "Draft"); info.dataset.state = "draft"; }
-          toast("✔ ড্রাফট সেভ হয়েছে — পরে যেকোনো ডিভাইস থেকে চালিয়ে যেতে পারবেন");
-        }
-      }
-      catch (e) { toast(isNetErr(e) ? "ইন্টারনেট নেই — ড্রাফট শুধু এই ডিভাইসে জমা আছে" : "সার্ভারে ড্রাফট সেভ হয়নি (এই ডিভাইসে জমা আছে): " + (e.message || e), "err"); }
-      finally { setBusy(false); }
+        await API.saveDraft(date, draftRows);
+        if (!current()) return;
+        setDraftState(DEMO);
+        feedback.textContent = DEMO ? bi("ডিভাইসে ড্রাফট সেভ হয়েছে", "Draft saved on this device")
+          : bi("সার্ভারে ড্রাফট সেভ হয়েছে", "Draft saved online");
+      } catch (e) {
+        if (!current()) return;
+        feedback.textContent = stored
+          ? bi("অনলাইনে সেভ হয়নি। ড্রাফট এই ডিভাইসে সেভ হয়েছে।", "Online save failed. Draft saved on this device.")
+          : bi("ড্রাফট সেভ হয়নি। আবার চেষ্টা করুন।", "Draft could not be saved. Try again.");
+      } finally { setBusy(false, saveDraft); }
     };
-    $("#c-save", body).onclick = async () => {
+    saveFinal.onclick = async () => {
       if (saving) return;
       calc(); const err = $("#c-err", body); err.className = "hint rd"; err.textContent = "";
+      const missing = cells.filter(({r, ti}) => !r._dirty && (ti.dataset.dirty || r._draftDebit || r._draftCredit));
+      if (missing.length) {
+        err.textContent = bi("সঠিক ব্যাংক ক্লোজিং লিখুন", "Enter a valid Bank Closing amount") + " · " + missing.map(({r}) => r.code).join(", ");
+        query.value = ""; review = "all"; filter();
+        const closing = missing[0].ti;
+        closing.scrollIntoView({block: "center"}); closing.focus();
+        return;
+      }
       const bad = rows.filter(needsRemark);
       if (bad.length) {
         err.textContent = bi(`অমিলের মন্তব্য দিন · ${bad.map(r => r.code).join(", ")}`, `Add remarks for differences · ${bad.map(r => r.code).join(", ")}`);
@@ -2027,19 +2089,20 @@ async function vClosing(v) {
       const nDiff = rows.filter(r => r._chg).length;
       if (!ask(bi(`${dmy(date)} · ফাইনাল সেভ\nক্লোজিং ৳ ${money(tot)} · ব্লক ৳ ${money(blk)} · ব্যবহারযোগ্য ৳ ${money(tot - blk)}\nঅমিল: ${nDiff} / ${rows.length}${!canEdit ? "\nফাইনাল সেভের পর সম্পাদনার অনুমতি লাগবে।" : ""}`, `${dmy(date)} · Final save\nClosing ৳ ${money(tot)} · Blocked ৳ ${money(blk)} · Usable ৳ ${money(tot - blk)}\nDifferences: ${nDiff} / ${rows.length}${!canEdit ? "\nEditing after final save requires Edit access." : ""}`))) return;
       flushDraft();
-      setBusy(true);
+      feedback.textContent = "";
+      setBusy(true, saveFinal);
       try {
         await API.saveBalances(date, rows.map(r => ({ code: r.code, total: r._tot, block: r._blk || null, remark: r._rem, od: r._od, odp: r._odp })), has && canEdit);
       } catch (e) {
         err.textContent = e.message || String(e);
         if (current()) toast(e.message || String(e), "err");
-        setBusy(false);
+        setBusy(false, saveFinal);
         return;
       }
       if (!S.lastBal || date > S.lastBal) S.lastBal = date;
       await Draft.drop(date);
       refreshBadges();
-      setBusy(false);
+      setBusy(false, saveFinal);
       if (current()) await draw(true);
     };
   }
