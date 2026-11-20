@@ -10,7 +10,42 @@
 /* ---------- categories, guessing, grouping ---------- */
 const CB_CAT = { r: CASH.receipt.flatMap(g => g.items.map(i => i[0])), p: CASH.payment.flatMap(g => g.items.map(i => i[0])) };
 const CB_BANK = ["bank_in", "bank_out"];
-const cbCatName = k => k === "bank_in" ? bi("Bank — উত্তোলন", "Bank — withdrawal") : k === "bank_out" ? bi("Bank — জমা", "Bank — deposit") : cashLabel(k);
+const cbCatName = k => k === "bank_in" ? cashHead(k, bi("Bank — উত্তোলন", "Bank — withdrawal")) : k === "bank_out" ? cashHead(k, bi("Bank — জমা", "Bank — deposit")) : cashLabel(k);
+const cashGroupDefaults = new Map(Object.values(CASH).flatMap(groups => groups.flatMap(group => group.items)));
+let cashGroupRead = 0;
+
+async function cashGroupLoad() {
+  const read = ++cashGroupRead;
+  try {
+    const rows = await API.cashGroupNames();
+    if (read !== cashGroupRead) return;
+    cashGroupNames.clear();
+    rows.forEach(row => cashGroupNames.set(row.group_key, row.label));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+Object.assign(SbAPI, {
+  async cashGroupNames() {
+    return fetchAll("cash_group_names", "group_key", "group_key,label");
+  },
+  async cashGroupSave(rows) {
+    const { error } = await sb.from("cash_group_names").upsert(rows);
+    if (error) throw error;
+  }
+});
+Object.assign(DemoAPI, {
+  async cashGroupNames() {
+    return Object.entries(demoStore.cashGroupNames || {}).map(([group_key, label]) => ({ group_key, label }));
+  },
+  async cashGroupSave(rows) {
+    const names = demoStore.cashGroupNames ||= {};
+    rows.forEach(({group_key, label}) => names[group_key] = label);
+    this.save();
+  }
+});
 const cbNorm = s => String(s || "").toLowerCase().replace(/[\s.,\-_()\/]+/g, "");
 const CB_DRAFT = d => "nabiad_cb_draft_" + d;
 const CB_KW = {
@@ -120,7 +155,7 @@ function cbChecks(row, bk, prevBk) {
     const exp = row.opening_cash + allR - allP, d = row.cash_in_hand - exp;
     if (Math.abs(d) > 0.5) add("err", bi(`হাতে ক্যাশ মেলে না — Opening ${m(row.opening_cash)} + Receipt (Bank সহ) ${m(allR)} − Payment (Bank সহ) ${m(allP)} = ${m(exp)} হওয়ার কথা, লেখা ${m(row.cash_in_hand)} → পার্থক্য ${cbSigned(d)}`, `Cash in hand does not tally — Opening ${m(row.opening_cash)} + Receipt (incl. Bank) ${m(allR)} − Payment (incl. Bank) ${m(allP)} = ${m(exp)} expected, entered ${m(row.cash_in_hand)} → difference ${cbSigned(d)}`));
     else add("ok", bi("হাতে ক্যাশের হিসাব মিলেছে", "Cash in hand tallies"));
-    if (row.closing - row.cash_in_hand < -0.5) add("err", bi(`Total Bank ঋণাত্মক হচ্ছে (${m(row.closing - row.cash_in_hand)}) — Cash in hand Closing-এর চেয়ে বেশি`, `Total Bank is negative (${m(row.closing - row.cash_in_hand)}) — Cash in hand is more than Closing`));
+    if (row.closing != null && row.closing - row.cash_in_hand < -0.5) add("err", bi(`Total Bank ঋণাত্মক হচ্ছে (${m(row.closing - row.cash_in_hand)}) — Cash in hand Closing-এর চেয়ে বেশি`, `Total Bank is negative (${m(row.closing - row.cash_in_hand)}) — Cash in hand is more than Closing`));
   } else add("warn", bi("Cash in hand এখনো লেখা হয়নি", "Cash in hand is not entered yet"));
   if (!bk) { add("info", bi("এই তারিখের ক্যাশ খাতা এন্ট্রি নেই — খাতার সাথে মেলানোর কিছু নেই", "No Cash Book entry for this date — nothing to compare with")); return L; }
   const g = cbGroup(bk), T = cbTot(bk);
@@ -300,6 +335,9 @@ function cbRegisterModal(book) {
 
 /* ---------- the Cash Book page ---------- */
 async function vCashBook(v) {
+  const routeToken = ROUTE_TOK;
+  await cashGroupLoad();
+  if (routeToken !== ROUTE_TOK) return;
   const t0 = today(), last = [S.lastBook, S.lastCash].filter(Boolean).sort().pop();
   let date = sessionStorage.getItem("nabiad_cash_date") || (last && last < t0 ? stepDay(last, 1) : t0); sessionStorage.removeItem("nabiad_cash_date"); if (date > t0) date = t0;
   v.innerHTML = head(ROUTES[CUR].t, `<button type="button" class="btn" id="cb-led" title="${bi("লেজার তালিকা", "Ledger list")}">${ico("list")}<span class="lb">${bi("লেজার", "Ledgers")}</span></button><a class="btn" href="#/cashchk" title="${bi("ক্যাশ চেকার", "Cash Checker")}">${ico("check")}<span class="lb">${bi("ক্যাশ চেকার", "Cash Checker")}</span></a><a class="btn" href="#/cashsum" title="${bi("সামারি", "Summary")}">${ico("chart")}<span class="lb">${bi("সামারি", "Summary")}</span></a>`, "tc") + `<div class="card tbar navcard">${dateNav("cb", date)}<div id="cb-msg" style="margin-top:10px"></div></div><div id="cb-body"><div class="card empty">${bi("লোড হচ্ছে…", "Loading…")}</div></div>`;
@@ -576,7 +614,12 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
   const title = mappingOnly ? bi("লেজার খাত নির্ধারণ", "Ledger → Purpose/Group") : bi("লেজার তালিকা", "Ledger list");
   modal(`<h2>📒 ${title}</h2>
    ${mappingOnly ? `<p class="mut sm">${bi("Tally voucher ও নতুন Cash Book এন্ট্রির Receipt এবং Payment খাত নির্ধারণ করুন। কোনো খাতে একটিমাত্র সক্রিয় লেজার ম্যাপ করা থাকলে Cash Checker-এর খাতের মোটে সেই নাম দেখা যাবে।","Set receipt and payment groups for Tally vouchers and future Cash Book entries. Cash Checker category totals show a ledger label where one active ledger is mapped.")}</p>` : ""}
-   <div id="lg-err"></div>
+   <div id="lg-err" aria-live="polite"></div>
+   ${mappingOnly && canEdit ? `<fieldset class="cblg-group-editor" id="lg-head-editor" hidden disabled>
+     <legend>${bi("খাতের নাম", "Purpose / Group name")}</legend>
+     <div class="cblg-filters-map"><label class="f">${bi("খাত", "Group")}<select class="in" id="lg-head"></select></label>
+     <label class="f">${bi("প্রদর্শিত নাম", "Display name")}<input class="in" id="lg-head-name" maxlength="120" autocomplete="off"></label></div>
+   </fieldset>` : ""}
    ${canAdd ? `<div class="cblg-new"><input class="in" id="lg-n" placeholder="${bi("নতুন লেজারের নাম", "New ledger name")}" autocomplete="off"><select class="in" id="lg-r">${cbLgOpts("r")}</select><select class="in" id="lg-p">${cbLgOpts("p")}</select><button class="btn pri" id="lg-add">${ico("plus")} ${bi("যোগ", "Add")}</button></div>` : ""}
    <div class="cblg-filters${mappingOnly ? " cblg-filters-map" : ""}">
      <div>${mappingOnly ? `<label class="f" for="lg-q">${bi("লেজার খুঁজুন", "Search ledgers")}</label>` : ""}<input class="in" id="lg-q" type="search" placeholder="${bi("খুঁজুন…", "Search…")}" autocomplete="off"></div>
@@ -587,13 +630,47 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
      </select></div>` : ""}
    </div>
    <div class="cblg-h ${mappingOnly ? "cblg-map" : ""}"><span>${bi("লেজার", "Ledger")}</span><span>Receipt ${bi("খাত", "group")}</span><span>Payment ${bi("খাত", "group")}</span>${mappingOnly ? "" : "<span>Bank A/C</span><span></span>"}</div>
-   <div class="mut sm" id="lg-c"></div><div class="cblg" id="lg-l"></div>`, async (root, close) => {
-    $(".modal", root).classList.add("wide"); const g = id => $("#" + id, root);
-    await cbLedLoad(true); if (!root.isConnected) return; let changed = false;
+   <div class="mut sm" id="lg-c"></div><div class="cblg" id="lg-l"></div>
+   ${mappingOnly ? `<div class="modal-actions"><span id="lg-status" class="mut sm" role="status"></span><button type="button" class="btn" id="lg-close">${bi("বন্ধ", "Close")}</button>${canEdit ? `<button type="button" class="btn" id="lg-edit" disabled>${ico("edit")} ${bi("এডিট", "Edit")}</button><button type="button" class="btn pri" id="lg-save" disabled>${ico("save")} ${bi("সেভ", "Save")}</button>` : ""}</div>` : ""}`, async (root, close) => {
+    const panel = $(".modal", root), g = id => $("#" + id, panel);
+    panel.classList.add("wide");
+    if (mappingOnly) g("lg-close").onclick = close;
+    const [, namesReady] = await Promise.all([cbLedLoad(true), mappingOnly ? cashGroupLoad() : true]);
+    if (!panel.isConnected) return;
+    let changed = false, editing = false, saving = false;
+    const mappings = new Map(), names = new Map();
+    const headEditor = g("lg-head-editor"), head = g("lg-head"), headName = g("lg-head-name");
+    const status = g("lg-status"), saveButton = g("lg-save"), editButton = g("lg-edit");
+    const controls = () => {
+      if (!editButton) return;
+      editButton.disabled = editing || saving || !!CBLED.err;
+      saveButton.disabled = saving || (!mappings.size && !names.size);
+      g("lg-close").disabled = saving;
+      if (g("lg-add")) g("lg-add").disabled = saving;
+      headEditor.disabled = saving || !namesReady;
+    };
+    const refreshHeads = () => {
+      if (!head) return;
+      const selected = head.value;
+      head.innerHTML = [["r", "Receipt"], ["p", "Payment"]].map(([side, label]) => `<optgroup label="${label}">${CB_CAT[side].map(key => `<option value="${key}">${esc(cbCatName(key))}</option>`).join("")}</optgroup>`).join("");
+      if (selected) head.value = selected;
+      headName.value = names.get(head.value) ?? cashHead(head.value, cashGroupDefaults.get(head.value));
+    };
     const notify = () => { changed = true; if (mappingOnly) after?.(); };
     if (CBLED.err) g("lg-err").innerHTML = `<div class="alert rd">${/relation|does not exist|schema cache|not find/i.test(CBLED.err.message || "") ? bi("লেজার টেবিল নেই — Supabase-এ schema_v6.sql-এর v6.77 অংশ চালাতে হবে", "Ledger table is missing — run the v6.77 part of schema_v6.sql in Supabase") : esc(CBLED.err.message || "")}</div>`;
     const acOpts = c => `<option value="">—</option>` + (S.accounts || []).map(a => `<option value="${esc(a.code)}" ${a.code === c ? "selected" : ""}>${esc(a.code)} · ${esc(a.holder || "")}</option>`).join("");
     const group = g("lg-group");
+    const refreshGroups = () => {
+      if (!group) return;
+      for (const option of group.options) {
+        const key = option.value.split(":")[1];
+        if (key) option.textContent = cbCatName(key);
+      }
+      for (const side of ["r", "p"]) {
+        const select = g("lg-" + side);
+        if (select) select.innerHTML = cbLgOpts(side, select.value);
+      }
+    };
     if (mappingOnly && !CBLED.err) after?.();
     const draw = () => {
       const q = norm(g("lg-q").value), selected = group?.value || "";
@@ -604,11 +681,12 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
         return !selected || cbLedCat(m, side) === category;
       });
       const shown = matches.slice(0, 150);
+      const selectable = canEdit && (!mappingOnly || (editing && !saving));
       g("lg-c").textContent = bi(`${CBLED.list.length}টি লেজার · দেখানো হচ্ছে ${shown.length}`, `${CBLED.list.length} ledgers · showing ${shown.length}`);
       g("lg-l").innerHTML = shown.map(m => `<div class="cblg-r ${mappingOnly ? "cblg-map" : ""} ${m.active === false ? "off" : ""}" data-id="${m.id}">
         <span class="nm" title="${esc(m.name)}">${mappingOnly ? esc(m.name) : `<input class="cell ln" value="${esc(m.name)}">`}</span>
-        <select class="in lr" aria-label="${esc(m.name)} · Receipt group" ${canEdit ? "" : "disabled"}>${cbLgOpts("r", cbLedCat(m, "r"))}</select>
-        <select class="in lp" aria-label="${esc(m.name)} · Payment group" ${canEdit ? "" : "disabled"}>${cbLgOpts("p", cbLedCat(m, "p"))}</select>
+        <select class="in lr" aria-label="${esc(m.name)} · Receipt group" ${selectable ? "" : "disabled"}>${cbLgOpts("r", cbLedCat(mappings.get(m.id) || m, "r"))}</select>
+        <select class="in lp" aria-label="${esc(m.name)} · Payment group" ${selectable ? "" : "disabled"}>${cbLgOpts("p", cbLedCat(mappings.get(m.id) || m, "p"))}</select>
         ${mappingOnly ? "" : `<select class="in la">${acOpts(m.bank_code)}</select><span class="act"><label class="chk" title="${bi("চালু","Active")}"><input type="checkbox" class="lo" ${m.active === false ? "" : "checked"}></label>${admin ? `<button type="button" class="cbx2 ld" title="${bi("মুছুন","Delete")}">×</button>` : ""}</span>`}
       </div>`).join("") || `<div class="empty">${bi("কোনো লেজার মেলেনি", "No ledgers match")}</div>`;
     };
@@ -618,30 +696,118 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
       const parent = el.closest(".cblg-r");
       el.disabled = true;
       try {
-        const row = mappingOnly ? await API.cbLedgerGroupSave(m.id,patch) : await API.cbLedgerSave({...m,...patch});
-        Object.assign(m,mappingOnly ? patch : row); CBLED.byNorm = new Map(CBLED.list.map(x => [cbNorm(x.name),x]));
-        notify(); parent.classList.toggle("off",m.active === false);
-        if (mappingOnly) {
-          toast(bi("খাত সেভ হয়েছে","Group saved"));
-          if (group.value) draw();
-        }
+        const row = await API.cbLedgerSave({...m, ...patch});
+        Object.assign(m, row);
+        CBLED.byNorm = new Map(CBLED.list.map(x => [cbNorm(x.name), x]));
+        notify();
+        parent.classList.toggle("off", m.active === false);
       } catch (e) {
-        toast(/duplicate|unique/i.test(e.message || "") ? bi("এই নামে লেজার আগেই আছে","A ledger with this name already exists") : e.message || String(e),"err");
+        toast(/duplicate|unique/i.test(e.message || "") ? bi("এই নামে লেজার আগেই আছে","A ledger with this name already exists") : e.message || String(e), "err");
         draw();
       } finally { el.disabled = false; }
     };
+    if (editButton) {
+      editButton.onclick = () => {
+        editing = true;
+        headEditor.hidden = false;
+        refreshHeads();
+        status.textContent = namesReady
+          ? bi("নাম বা ম্যাপিং বদলে সেভ করুন।", "Change group names or mappings, then select Save.")
+          : bi("খাতের নাম পরিবর্তনের জন্য ডাটাবেস সেটআপ প্রয়োজন।", "Group name editing requires the database setup.");
+        controls();
+        draw();
+      };
+      head.onchange = refreshHeads;
+      headName.oninput = () => {
+        const key = head.value, label = headName.value.trim();
+        const original = cashHead(key, cashGroupDefaults.get(key));
+        if (label === original) names.delete(key);
+        else names.set(key, label);
+        controls();
+      };
+      saveButton.onclick = async () => {
+        if (saving) return;
+        if ([...names.values()].some(label => !label)) {
+          status.textContent = bi("খাতের নাম খালি রাখা যাবে না।", "Enter a display name for every edited group.");
+          return;
+        }
+        saving = true;
+        controls();
+        draw();
+        let saved = false;
+        try {
+          if (names.size) {
+            await API.cashGroupSave([...names].map(([group_key, label]) => ({ group_key, label })));
+            ++cashGroupRead;
+            names.forEach((label, key) => cashGroupNames.set(key, label));
+            names.clear();
+            saved = true;
+          }
+          for (const [id, draft] of mappings) {
+            const ledger = CBLED.list.find(row => row.id === id);
+            const patch = {};
+            for (const field of ["cat_r", "cat_p"]) {
+              if ((draft[field] || null) !== (ledger[field] || null)) patch[field] = draft[field] || null;
+            }
+            const row = await API.cbLedgerGroupSave(id, patch);
+            Object.assign(ledger, row);
+            mappings.delete(id);
+            saved = true;
+          }
+          editing = false;
+          headEditor.hidden = true;
+          status.textContent = bi("পরিবর্তন সেভ হয়েছে।", "Changes saved.");
+        } catch (error) {
+          status.textContent = (saved ? bi("কিছু পরিবর্তন সেভ হয়েছে। ", "Some changes were saved. ") : "") + (error.message || String(error));
+        } finally {
+          saving = false;
+          if (saved) notify();
+          if (panel.isConnected) {
+            refreshHeads();
+            refreshGroups();
+            controls();
+            draw();
+          }
+        }
+      };
+    }
     g("lg-q").oninput = draw;
     if (group) group.onchange = draw;
-    g("lg-l").onchange = e => { const t = e.target; if (t.classList.contains("ln")) { const n = t.value.trim(); if (!n) return draw(); save(t, { name: n }); } else if (t.classList.contains("lr")) save(t, { cat_r: t.value || null }); else if (t.classList.contains("lp")) save(t, { cat_p: t.value || null }); else if (t.classList.contains("la")) save(t, { bank_code: t.value || null }); else if (t.classList.contains("lo")) save(t, { active: t.checked }); };
+    g("lg-l").onchange = e => {
+      const t = e.target;
+      if (mappingOnly) {
+        if (!editing || saving || !canEdit) return;
+        const field = t.classList.contains("lr") ? "cat_r" : t.classList.contains("lp") ? "cat_p" : null;
+        if (!field) return;
+        const id = Number(t.closest(".cblg-r").dataset.id), ledger = CBLED.list.find(row => row.id === id);
+        const draft = { ...ledger, ...mappings.get(id), [field]: t.value || null };
+        if (["cat_r", "cat_p"].some(key => (draft[key] || null) !== (ledger[key] || null))) mappings.set(id, draft);
+        else mappings.delete(id);
+        controls();
+      } else if (t.classList.contains("ln")) {
+        const name = t.value.trim(); if (!name) return draw();
+        save(t, { name });
+      } else if (t.classList.contains("lr")) save(t, { cat_r: t.value || null });
+      else if (t.classList.contains("lp")) save(t, { cat_p: t.value || null });
+      else if (t.classList.contains("la")) save(t, { bank_code: t.value || null });
+      else if (t.classList.contains("lo")) save(t, { active: t.checked });
+    };
     g("lg-l").onclick = async e => { const b = e.target.closest(".ld"); if (!b) return; const row = b.closest(".cblg-r"), m = CBLED.list.find(x => x.id === +row.dataset.id); if (!m || !ask(bi(`"${m.name}" লেজার মুছবেন? (আগের খাতার লাইন বদলাবে না)`, `Delete ledger "${m.name}"? (earlier book lines are not changed)`))) return; try { await API.cbLedgerDel(m.id); CBLED.list = CBLED.list.filter(x => x.id !== m.id); CBLED.byNorm.delete(cbNorm(m.name)); changed = true; draw(); } catch (er) { toast(er.message || String(er), "err"); } };
     if (canAdd) g("lg-add").onclick = async () => {
+      if (saving) return;
       const name = g("lg-n").value.trim(); if (!name) return g("lg-n").focus(), toast(bi("লেজারের নাম লিখুন", "Enter the ledger name"), "err");
       const cr = g("lg-r").value, cp = g("lg-p").value;
       try { const row = await API.cbLedgerSave({ name, kind: cr && !cp ? "r" : cp && !cr ? "p" : "both", cat_r: cr, cat_p: cp }); CBLED.list.push(row); CBLED.list.sort((a, b) => a.name.localeCompare(b.name)); CBLED.byNorm.set(cbNorm(name), row); notify(); g("lg-n").value = ""; g("lg-q").value = ""; draw(); g("lg-n").focus(); }
       catch (e) { toast(/duplicate|unique/i.test(e.message || "") ? bi("এই নামে লেজার আগেই আছে", "A ledger with this name already exists") : e.message || String(e), "err"); }
     };
     if (canAdd) g("lg-n").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); g("lg-add").click(); } };
-    $(".mback", root).addEventListener("mousedown", () => { }); const done = () => { close(); changed && !mappingOnly && after?.(); };
+    if (mappingOnly) {
+      refreshGroups();
+      controls();
+      draw();
+      return;
+    }
+    const done = () => { close(); changed && !mappingOnly && after?.(); };
     const bk = $(".mback", root); bk.addEventListener("mousedown", e => { if (e.target === bk && changed && !mappingOnly) after?.(); });
     root.addEventListener("keydown", e => { if (e.key === "Escape") done(); });
     draw();
