@@ -2317,3 +2317,39 @@ button.as-kpi[aria-pressed="true"] { border-color: var(--pri); box-shadow: inset
 #ad-imports > summary { cursor: pointer; font-weight: 700; }
 .adm-import-tally { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
 #bk-upload-status:empty { display: none; }
+
+/* Cheque List & Enquiry */
+.ksum.enquiry-summary {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 3px 0 7px;
+  margin-bottom: 8px;
+  scroll-snap-type: x proximity;
+}
+.enquiry-summary:focus-visible { outline: 2px solid var(--pri); outline-offset: 2px; border-radius: 12px; }
+.ksum.enquiry-summary .kc {
+  flex: 1 0 134px;
+  padding: 9px 12px 9px 15px;
+  scroll-snap-align: start;
+}
+.enquiry-summary .kc .kv b { font-size: 20px; }
+.enquiry-summary .kc .kv small { white-space: nowrap; }
+.enquiry-toolbar, .enquiry-actions, .enquiry-pager {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.enquiry-toolbar { justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.enquiry-actions .in { width: auto; height: 34px; padding-block: 4px; }
+.enquiry-actions label { font-weight: 600; }
+.enquiry-pager { padding: 10px; justify-content: center; border-top: 1px solid var(--line); }
+.enquiry-pager[hidden] { display: none; }
+@media (max-width: 900px) {
+  .enquiry-results td > div { min-width: 0; overflow-wrap: anywhere; }
+}
+@media (max-width: 640px) {
+  .enquiry-toolbar { align-items: flex-start; flex-direction: column; }
+}
