@@ -761,7 +761,7 @@ const ROUTES = {
   dparty: { t: "পার্টি তালিকা", ic: "users", roles: "asb", sec: "more", f: () => vDparty },
   rem: { t: "রিমাইন্ডার", ic: "bell", roles: "asb", sec: "more", f: () => vRem },
   settings: { t: "সেটিংস", ic: "gear", roles: "asb", sec: "more", f: () => vSettings },
-  audit: { t: "অডিট ও সিকিউরিটি", ic: "shield", roles: "ab", sec: "more", f: () => vSecurity },
+  audit: { t: "অডিট ও সিকিউরিটি", ic: "shield", roles: "b", sec: "more", f: () => vSecurity },
   admin: { t: "অ্যাডমিন প্যানেল", ic: "sliders", roles: "a", sec: "more", f: () => vAdmin }
 };
 const SECS = { top: "", main: "চেক", bank: "ব্যাংক", cash: "ক্যাশ", dist: "ডিস্ট্রিবিউশন কালেকশন", more: "অন্যান্য" };
@@ -874,6 +874,12 @@ async function route() {
   if (updReady && navigator.onLine && !Outbox.busy) { location.reload(); return; }   // switching page = safe moment to load the new version
   DIRTY = false;
   let k = (location.hash.match(/^#\/(\w+)/) || [])[1];
+  if (k === "audit" && S.me.role === "admin") {
+    const old = sessionStorage.getItem("nabiad_sec_tab");
+    const target = ["audit", "backup", "sec"].includes(old) ? old : "audit";
+    history.replaceState(null, "", "#/admin?tab=" + target);
+    k = "admin";
+  }
   if (!allowed().includes(k)) k = "dash";
   CUR = k; document.body.classList.remove("print-rep");
   if (cleanup) { cleanup(); cleanup = null; }
@@ -2784,26 +2790,81 @@ function moduleAccessModal(user, after) {
 }
 
 async function vAdmin(v) {
-  let tab = sessionStorage.getItem("nabiad_admin_tab") || "acc";
-  if (tab === "imp") tab = "help";
-  if (!["acc", "usr", "help"].includes(tab)) tab = "acc";
+  const sections = [
+    ["Overview", [["home", "grid", bi("সারসংক্ষেপ", "Overview")]]],
+    [bi("ব্যবস্থাপনা", "Management"), [["acc", "bank", bi("অ্যাকাউন্ট", "Accounts")], ["usr", "users", bi("ব্যবহারকারী", "Users")], ["help", "sliders", bi("সেটআপ", "Setup")]]],
+    [bi("অডিট ও সিকিউরিটি", "Audit & Security"), [["audit", "list", bi("অডিট লগ", "Audit log"), vAudit], ["backup", "save", bi("ব্যাকআপ ও রিস্টোর", "Backup & Restore"), vBackup], ["sec", "shield", bi("সিকিউরিটি", "Security"), vSec]]]
+  ];
+  const pages = new Map(sections.flatMap(([, entries]) => entries.map(([key, icon, label, view]) => [key, {icon, label, view}])));
+  const requested = new URLSearchParams(location.hash.split("?")[1]).get("tab");
+  let tab = pages.has(requested) ? requested : "home";
+  let childCleanup, focusSection = false;
   const accountFilters = { q:"", status:"Active", bank:"", daily:"", sort:"order" };
   const userFilters = { q:"", role:"", status:"" };
   let importing = false;
   const metrics = rows => `<div class="adm-metrics">${rows.map(([name, value]) => `<div class="card"><span class="mut sm">${name}</span><strong class="num">${value}</strong></div>`).join("")}</div>`;
   const all = bi("সব", "All");
   let setupEvents;
-  const draw = async () => {
+  const draw = async options => {
     setupEvents?.abort();
+    childCleanup?.();
+    childCleanup = null;
     setupEvents = new AbortController();
     const setupSignal = setupEvents.signal;
-    sessionStorage.setItem("nabiad_admin_tab", tab);
-    v.innerHTML = head("অ্যাডমিন প্যানেল") + `<div class="tabs ntabs adm-tabs" role="group" aria-label="${bi("অ্যাডমিন বিভাগ", "Admin sections")}">${[["acc", "bank", bi("অ্যাকাউন্ট", "Accounts")], ["usr", "users", bi("ব্যবহারকারী", "Users")], ["help", "sliders", bi("সেটআপ", "Setup")]].map(([id, icon, text]) => `<button type="button" class="chip ${id === tab ? "on" : ""}" data-admin-tab="${id}" aria-pressed="${id === tab}">${ico(icon)} ${text}</button>`).join("")}</div>
-      <div id="ad"></div>`;
-    $$("[data-admin-tab]", v).forEach(btn => btn.onclick = () => { tab = btn.dataset.adminTab; draw(); });
-    const out = $("#ad", v);
+    const nav = sections.map(([label, entries], index) => `<div class="adm-nav-group">
+      ${index ? `<span class="mut xs adm-nav-label">${esc(label)}</span>` : ""}
+      ${entries.map(([id, icon, name]) => `<a href="#/admin?tab=${id}" data-admin-tab="${id}" ${id === tab ? 'aria-current="page"' : ""}>${ico(icon)}${esc(name)}</a>`).join("")}</div>`).join("");
+    v.innerHTML = head("অ্যাডমিন প্যানেল") + `<div class="adm-layout">
+      <div class="adm-nav-wrap"><button class="btn adm-nav-toggle" id="adm-nav-toggle" type="button" aria-expanded="false" aria-controls="adm-nav">${ico("list")} ${esc(pages.get(tab).label)}</button>
+      <nav id="adm-nav" class="card adm-nav" aria-label="${bi("অ্যাডমিন বিভাগ", "Admin sections")}">${nav}</nav></div>
+      <div id="ad" class="adm-content" tabindex="-1"></div></div>`;
+    const out = $("#ad", v), navToggle = $("#adm-nav-toggle", v);
+    navToggle.onclick = () => {
+      const expanded = navToggle.getAttribute("aria-expanded") !== "true";
+      navToggle.setAttribute("aria-expanded", expanded);
+      $("#adm-nav", v).classList.toggle("expanded", expanded);
+    };
+    const open = (key, options) => {
+      if (!pages.has(key)) return;
+      tab = key;
+      focusSection = true;
+      history.pushState(null, "", "#/admin?tab=" + key);
+      window.scrollTo({top: 0, behavior: "smooth"});
+      return draw(options);
+    };
+    $$("[data-admin-tab]", v).forEach(link => link.onclick = event => {
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      if (link.dataset.adminTab !== tab) open(link.dataset.adminTab);
+    });
+    if (focusSection) { out.focus({preventScroll: true}); focusSection = false; }
     const refresh = () => { if (out.isConnected) return draw(); };
-    if (tab === "acc") {
+    const page = pages.get(tab);
+    if (page.view) {
+      const dispose = await page.view(out, options, open);
+      if (out.isConnected) childCleanup = dispose;
+      else dispose?.();
+      return;
+    }
+    if (tab === "home") {
+      const destinations = [
+        ["acc", bi("ব্যাংক অ্যাকাউন্ট ও দৈনিক ক্লোজিং সেটআপ", "Manage bank accounts and daily closing settings")],
+        ["usr", bi("ব্যবহারকারী, রোল ও মডিউল অনুমতি", "Manage users, roles and module permissions")],
+        ["help", bi("সিস্টেম পরীক্ষা ও পূর্বের ডাটা ইমপোর্ট", "Check system health and import historical records")],
+        ["audit", bi("ব্যবহারকারী ও রেকর্ডের পরিবর্তন দেখুন", "Review changes to records and users")],
+        ["backup", bi("Snapshot দেখুন, ডাউনলোড বা রিস্টোর করুন", "Review, export or restore database snapshots")],
+        ["sec", bi("সাইন-ইন, সেশন ও দুই ধাপের যাচাই", "Review sign-ins, sessions and two-factor authentication")]
+      ];
+      out.innerHTML = metrics([
+        [bi("ব্যাংক অ্যাকাউন্ট", "Bank accounts"), money0(S.accounts.length)],
+        [bi("সক্রিয় অ্যাকাউন্ট", "Active accounts"), money0(S.accounts.filter(row => row.status === "Active").length)],
+        [bi("শেষ ব্যাংক ক্লোজিং", "Latest bank closing"), dmy(S.lastBal) || "—"],
+        [bi("শেষ ক্যাশ খাতা", "Latest Cash Book"), dmy(S.lastBook) || "—"]
+      ]) + `<div class="adm-overview">${destinations.map(([key, description]) => {
+        const {icon, label} = pages.get(key);
+        return `<a class="card adm-destination" href="#/admin?tab=${key}"><span class="adm-destination-icon">${ico(icon)}</span><strong>${esc(label)}</strong><span class="mut sm">${esc(description)}</span></a>`;
+      }).join("")}</div>`;
+    } else if (tab === "acc") {
       const F = accountFilters;
       const compare = new Intl.Collator(LANG === "bn" ? "bn" : "en", {numeric:true, sensitivity:"base"}).compare;
       const banks = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort(compare);
@@ -2880,7 +2941,7 @@ async function vAdmin(v) {
         <div class="adm-setup-head"><h3 id="ad-status-title">🩺 ${bi("সিস্টেম অবস্থা","System status")}</h3><button type="button" class="btn sm" id="ad-recheck">${bi("আবার পরীক্ষা","Recheck status")}</button></div>
         <div id="ad-offline"></div><div class="hcl" id="ad-health"></div>
       </section><section class="card" id="ad-history" aria-labelledby="ad-history-title"></section>
-      <section class="card adm-setup-links"><h3>⚡ দ্রুত লিংক</h3><div class="qlinks"><a href="#/audit">${ico("shield")} Audit ও Backup</a><a href="#/books">${ico("book")} চেক বই</a><a href="#/settings">${ico("gear")} সেটিংস</a><a href="https://supabase.com/dashboard/project/mtzxcwuojiajsanearsz" target="_blank" rel="noopener">${ico("bank")} Supabase ড্যাশবোর্ড ↗</a><a href="https://github.com/ruhulaminrevens/nabiad" target="_blank" rel="noopener">${ico("copyt")} GitHub কোড ↗</a><button type="button" class="btn" id="ad-go-users">${ico("users")} ${bi("ব্যবহারকারী ব্যবস্থাপনা","Manage users")}</button></div></section></div>`;
+      <section class="card adm-setup-links"><h3>⚡ দ্রুত লিংক</h3><div class="qlinks"><a href="#/admin?tab=backup">${ico("shield")} ${bi("ব্যাকআপ ও রিস্টোর", "Backup & Restore")}</a><a href="#/books">${ico("book")} চেক বই</a><a href="#/settings">${ico("gear")} সেটিংস</a><a href="https://supabase.com/dashboard/project/mtzxcwuojiajsanearsz" target="_blank" rel="noopener">${ico("bank")} Supabase ড্যাশবোর্ড ↗</a><a href="https://github.com/ruhulaminrevens/nabiad" target="_blank" rel="noopener">${ico("copyt")} GitHub কোড ↗</a><button type="button" class="btn" id="ad-go-users">${ico("users")} ${bi("ব্যবহারকারী ব্যবস্থাপনা","Manage users")}</button></div></section></div>`;
       if (!DEMO) {
         $("#ad-history",out).insertAdjacentHTML("afterend", `<section class="card adm-setup-links"><h3>${bi("Tally ভাউচার ইতিহাস","Tally voucher history")}</h3>
           <p class="mut sm">${bi("একবার import করলে Cash Register-এর Tally vouchers-এ সেভ করা ইতিহাস পাবেন।","Import once to view saved history under Cash Register → Tally vouchers.")}</p>
@@ -2901,7 +2962,7 @@ async function vAdmin(v) {
           } finally { button.disabled = false; }
         };
       }
-      $("#ad-go-users",out).onclick = () => { tab = "usr"; draw(); };
+      $("#ad-go-users",out).onclick = () => open("usr");
       const history = $("#ad-history",out), health = $("#ad-health",out), offline = $("#ad-offline",out), recheck = $("#ad-recheck",out);
       const row = (ok, l, sub) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "✗"}</i><div><b>${l}</b>${sub ? `<div class="mut xs">${sub}</div>` : ""}</div></div>`;
       const renderOffline = () => paintOfflineStatus(offline,row);
@@ -2956,7 +3017,7 @@ async function vAdmin(v) {
     }
   };
   await draw();
-  return () => setupEvents?.abort();
+  return () => { setupEvents?.abort(); childCleanup?.(); };
 }
 Object.assign(SbAPI, {
   async health() {
@@ -3233,6 +3294,11 @@ Object.assign(SbAPI, {
   async lastBookDate() { const { data, error } = await sb.from("cashbook_days").select("date").eq("status", "final").order("date", { ascending: false }).limit(1); if (error) throw error; return data?.[0]?.date || null; },
   async backups() { const { data, error } = await sb.from("backups").select("id,at,kind,size_rows").order("at", { ascending: false }).limit(60); if (error) throw error; return data; },
   async backupData(id) { const { data, error } = await sb.from("backups").select("data").eq("id", id).single(); if (error) throw error; return data.data; },
+  async restoreSnapshot(id, apply = false, tables = null) {
+    const { data, error } = await sb.rpc("nabiad_restore_snapshot", {p_backup_id: id, p_apply: apply, p_tables: tables});
+    if (error) throw error;
+    return data;
+  },
   async backupNow() { const { data, error } = await sb.rpc("make_backup", { k: "manual" }); if (error) throw error; return data; },
   async setMyName(n) { const { error } = await sb.rpc("set_my_name", { n }); if (error) throw error; },
   async changePassword(p) { const { error } = await sb.auth.updateUser({ password: p }); if (error) throw error; },
@@ -3432,7 +3498,7 @@ async function vDash(v) {
         : `<div class="empty" style="padding:18px 0">গত ৭ দিনে কোনো কালেকশন এন্ট্রি নেই${boss ? "" : `<div style="margin-top:10px"><a class="btn sm" href="#/dcol">${ico("plus")} কালেকশন এন্ট্রি</a></div>`}</div>`;
     } catch (e) { if (el) el.innerHTML = `<div class="mut sm" style="padding:14px 0">${isNetErr(e) ? "ইন্টারনেট নেই" : "কালেকশন ডাটা পাওয়া যায়নি"}</div>`; }
   })();
-  if (admin) (async () => { const el = $("#d-bk", v); try { const b = (await API.backups())[0]; if (!el) return; const ok = b && Date.now() - new Date(b.at) < 36 * 36e5; el.className = "stchip " + (ok ? "ok" : "no"); el.innerHTML = `<i>${ok ? "✓" : "!"}</i><span><b>Backup</b><small>${b ? relTime(b.at) : "এখনো হয়নি"}</small></span>`; el.onclick = () => location.hash = "#/audit"; } catch { if (el) { el.className = "stchip no"; el.innerHTML = `<i>!</i><span><b>Backup</b><small>সেটআপ বাকি</small></span>`; } } })();
+  if (admin) (async () => { const el = $("#d-bk", v); try { const b = (await API.backups())[0]; if (!el) return; const ok = b && Date.now() - new Date(b.at) < 36 * 36e5; el.className = "stchip " + (ok ? "ok" : "no"); el.innerHTML = `<i>${ok ? "✓" : "!"}</i><span><b>Backup</b><small>${b ? relTime(b.at) : "এখনো হয়নি"}</small></span>`; el.onclick = () => location.hash = "#/admin?tab=backup"; } catch { if (el) { el.className = "stchip no"; el.innerHTML = `<i>!</i><span><b>Backup</b><small>সেটআপ বাকি</small></span>`; } } })();
 }
 
 /* =================== v6: bank + cheque reports =================== */
@@ -4167,7 +4233,7 @@ async function vSettings(v) {
      <div class="row"><button class="btn fix" id="st-lock">🔒 ${LANG === "en" ? "Lock now" : "এখনই লক করুন"}</button></div>
      ${DEMO ? "" : `<div id="st-mfa" class="scrow"><div class="mut sm">…</div></div>`}</div></div>
    ${!DEMO && "serviceWorker" in navigator && "PushManager" in window ? `<div class="card"><h3>🔔 ${bi("পুশ নোটিফিকেশন", "Push notifications")}</h3><div id="st-push" class="scrow"><div class="mut sm">…</div></div><div class="mut xs" style="margin-top:6px">${bi("Boss/Admin চালু করলে প্রতিদিন রাত ৮টায় (বাংলাদেশ সময়) সারাংশ পাবেন। iPhone-এ আগে অ্যাপটি Home Screen-এ Add করতে হবে।", "Boss/Admin get a daily summary at 8 pm (Bangladesh time). On iPhone, add the app to the Home Screen first.")}</div></div>` : ""}
-   ${admin ? `<div class="card" style="grid-column:1/-1"><h3>🛡 Admin শর্টকাট</h3><div class="row"><a class="btn fix" href="#/admin">${ico("gear")} ব্যবহারকারী ও অ্যাকাউন্ট</a><a class="btn fix" href="#/audit">${ico("shield")} Audit ও Backup</a><a class="btn fix" href="#/books">${ico("book")} চেক বই</a></div></div>` : ""}</div>`;
+   ${admin ? `<div class="card" style="grid-column:1/-1"><h3>🛡 Admin শর্টকাট</h3><div class="row"><a class="btn fix" href="#/admin">${ico("gear")} ব্যবহারকারী ও অ্যাকাউন্ট</a><a class="btn fix" href="#/admin?tab=audit">${ico("shield")} Audit ও Backup</a><a class="btn fix" href="#/books">${ico("book")} চেক বই</a></div></div>` : ""}</div>`;
   const g = id => $("#" + id, v);
   { const f = g("pf-f"), rm = g("pf-rm"); g("pf-up").onclick = () => f.click();
     f.onchange = async () => { const f0 = f.files[0]; f.value = ""; if (!f0) return; const file = await pickImage(f0, { title: LANG === "en" ? "Crop profile picture" : "প্রোফাইল ছবি ক্রপ", aspect: 1, aspects: [], circle: true, face: true, allowFull: false, maxSide: 512 }, f); if (!file) return; const b = g("pf-up"); b.disabled = true; try { const img = await imgToAvatar(file); await API.setAvatar(img); avaMap()[S.me.id] = img; try { localStorage.setItem("nabiad_ava_" + S.me.id, img); } catch { } refreshAvatars(); rm.classList.remove("hide"); toast(LANG === "en" ? "✔ Photo updated" : "✔ ছবি সেভ হয়েছে"); } catch (e) { toast(/function|does not exist/i.test(e.message) ? bi("schema_v6.sql-এর v6.41 অংশ চালানো হয়নি", "The v6.41 part of schema_v6.sql has not been run") : e.message, "err"); } b.disabled = false; };
@@ -4450,15 +4516,82 @@ function backupDetails(r, data) {
     <div class="modal-actions"><button class="btn pri" type="button" id="backup-detail-close">${bi("বন্ধ","Close")}</button></div>`,
     (root, close) => $("#backup-detail-close",root).onclick = close);
 }
+function backupRestoreModal(snapshot, preview, refresh) {
+  const exclusions = preview.excluded.map(auditTable).join(", ");
+  const name = row => esc(auditTable(row.table));
+  const candidate = row => !row.unavailable && row.missing > 0;
+  const eligible = preview.tables.filter(candidate);
+  modal(`<h2>${bi("রিস্টোর প্রিভিউ", "Restore preview")}</h2>
+    <p class="mut sm">${esc(auditStamp(snapshot.at))} · #${esc(snapshot.id)}</p>
+    <p>${bi("হারানো রেকর্ড যোগ হবে। বর্তমান রেকর্ড অক্ষত থাকবে। রিস্টোরের আগে বর্তমান ডাটার একটি snapshot নেওয়া হবে।",
+      "Restore adds missing records and keeps existing records. A snapshot of current data is taken before applying changes.")}</p>
+    <div class="tw cards"><table class="adm-restore-table"><thead><tr><th>${bi("বিভাগ", "Table")}</th><th>${bi("ব্যাকআপে", "In backup")}</th><th>${bi("অনুপস্থিত", "Missing")}</th></tr></thead><tbody>
+    ${preview.tables.map(row => `<tr><td>${candidate(row) ? `<label><input type="checkbox" value="${esc(row.table)}" data-restore-table checked> ${name(row)}</label>` : name(row)}</td>
+    <td>${row.unavailable ? "—" : money0(row.snapshot)}</td><td>${row.unavailable ? bi("টেবিল নেই", "Table unavailable") : money0(row.missing)}</td></tr>`).join("")}
+    </tbody></table></div>
+    ${exclusions ? `<p class="mut sm">${bi("আলাদা রিকভারি প্রয়োজন", "Requires separate recovery")} · ${esc(exclusions)}</p>` : ""}
+    <p class="mut sm">${bi("প্রিভিউতে primary key ধরে গণনা হয়। অন্য unique key-এর অমিলে কিছু রেকর্ড বাদ যেতে পারে। লগইন ও ফাইল স্টোরেজ আলাদাভাবে রিকভার করতে হয়।",
+      "Preview counts missing primary keys. Other unique conflicts can reduce the restored count. Sign-in credentials and stored files require separate recovery.")}</p>
+    ${eligible.length ? `<label class="f">${bi("নিশ্চিত করতে RESTORE লিখুন", "Type RESTORE to confirm")}<input class="in" id="bk-restore-confirm" autocomplete="off" spellcheck="false"></label>`
+      : `<p>${bi("রিস্টোর করার মতো অনুপস্থিত রেকর্ড নেই।", "There are no missing records to restore.")}</p>`}
+    <div class="hint" id="bk-restore-result" role="status" aria-live="polite"></div>
+    <div id="bk-restore-breakdown"></div>
+    <div class="modal-actions"><button class="btn" type="button" id="bk-restore-close">${bi("বন্ধ", "Close")}</button>
+    ${eligible.length ? `<button class="btn pri" type="button" id="bk-restore-apply" disabled>${bi("নির্বাচিত রেকর্ড রিস্টোর করুন", "Restore selected records")}</button>` : ""}</div>`, (root, close) => {
+    const panel = $("#bk-restore-result", root), apply = $("#bk-restore-apply", root), closeButton = $("#bk-restore-close", root);
+    const input = $("#bk-restore-confirm", root), tables = $$("[data-restore-table]", root);
+    let busy = false, completed = false;
+    closeButton.onclick = close;
+    if (!apply) return;
+    const update = () => { apply.disabled = busy || completed || input.value.trim() !== "RESTORE" || !tables.some(box => box.checked); };
+    input.oninput = update;
+    tables.forEach(box => box.onchange = update);
+    apply.onclick = async () => {
+      if (apply.disabled) return;
+      busy = true; update();
+      input.disabled = closeButton.disabled = true;
+      tables.forEach(box => box.disabled = true);
+      panel.textContent = bi("রিস্টোর চলছে…", "Restoring…");
+      try {
+        const result = await API.restoreSnapshot(snapshot.id, true, tables.filter(box => box.checked).map(box => box.value));
+        completed = true;
+        panel.textContent = bi(`${money0(result.inserted)}টি রেকর্ড রিস্টোর হয়েছে।`, `${money0(result.inserted)} records restored.`)
+          + (result.restore_point ? " · " + bi("রিস্টোরের আগের snapshot", "Pre-restore snapshot") + " #" + result.restore_point : "");
+        const actual = (result.tables || []).filter(row => !row.unavailable && row.missing > 0);
+        if ($("#bk-restore-breakdown", root) && actual.length) {
+          $("#bk-restore-breakdown", root).innerHTML = `<h3>${bi("রিস্টোরের ফলাফল", "Restore results")}</h3>${actual.map(row =>
+            `<div class="kv"><span>${name(row)}</span><b class="num">${money0(row.inserted)} / ${money0(row.missing)}</b></div>`).join("")}`;
+        }
+        if (result.inserted) {
+          balCache.clear(); CBLED = null; CBL = null;
+          ["cash", "bal", "br", "inv", "dist"].forEach(key => dropCache(key));
+          reload().then(refreshBadges).catch(() => {});
+        }
+        await refresh();
+      } catch (error) {
+        const message = error.message || String(error);
+        panel.textContent = /restore_blocked_by_open_leaf_mark/.test(message)
+          ? bi("একটি চেকের জন্য খোলা leaf mark আছে। চেক বাদ দিয়ে অন্য টেবিল রিস্টোর করতে পারেন।", "An open cheque leaf mark needs reconciliation. You can deselect Cheques and restore the other tables if they have no missing cheque dependencies.")
+          : bi("রিস্টোর সম্পন্ন হয়নি। ", "Restore did not complete. ") + message;
+      } finally {
+        busy = false;
+        closeButton.disabled = false;
+        input.disabled = completed;
+        tables.forEach(box => box.disabled = completed);
+        update();
+      }
+    };
+  });
+}
 async function vBackup(out) {
-  out.innerHTML = head("Backup", `<button class="btn pri" type="button" id="bk-now">${ico("save")} ${bi("এখনই Backup","Backup now")}</button><button class="btn" type="button" id="bk-dl">${ico("dl")} ${bi("বর্তমান ডাটা (Excel)","Current data (Excel)")}</button>`) +
+  out.innerHTML = head(bi("ব্যাকআপ ও রিস্টোর", "Backup & Restore"), `<button class="btn pri" type="button" id="bk-now">${ico("save")} ${bi("এখনই Backup","Backup now")}</button><button class="btn" type="button" id="bk-dl">${ico("dl")} ${bi("বর্তমান ডাটা (Excel)","Current data (Excel)")}</button>`) +
     `<div id="bk-kpi"></div><div class="card flush" id="bk-archive">
       <div class="ch"><h3>${bi("ব্যাকআপ তালিকা","Backup history")}</h3><span class="tag" id="bk-count" role="status"></span></div>
       <div class="as-result as-toolbar"><div class="chips" role="group" aria-label="${bi("ব্যাকআপের ধরন","Backup type")}">${[["",bi("সব","All")],["auto",bi("স্বয়ংক্রিয়","Automatic")],["manual",bi("ম্যানুয়াল","Manual")],["other",bi("অন্যান্য","Other")]].map(([key,label]) => `<button type="button" class="chip" data-bk-kind="${key}" aria-pressed="false">${label}</button>`).join("")}</div>
       <button type="button" class="btn sm" id="bk-refresh">${bi("রিফ্রেশ","Refresh")}</button></div>
       <div id="bk-list"></div></div>`;
   const g = id => $("#" + id,out), list = g("bk-list");
-  const kind = value => ({auto:bi("স্বয়ংক্রিয়","Automatic"),manual:bi("ম্যানুয়াল","Manual"),other:bi("অন্যান্য","Other")})[value] || bi("অন্যান্য","Other");
+  const kind = value => ({auto:bi("স্বয়ংক্রিয়","Automatic"),manual:bi("ম্যানুয়াল","Manual"),restore_point:bi("রিস্টোরের আগের ব্যাকআপ","Pre-restore snapshot"),other:bi("অন্যান্য","Other")})[value] || bi("অন্যান্য","Other");
   let rows = [], selected = "", busy = false;
   const timestamp = row => row ? auditStamp(row.at) : "—";
   function draw() {
@@ -4478,6 +4611,7 @@ async function vBackup(out) {
     list.innerHTML = visible.length ? visible.map(r => `<article class="bkr"><span class="bki ${r.kind === "auto" ? "auto" : "manual"}">${ico(r.kind === "auto" ? "clock" : "save")}</span>
       <div class="bkb"><b>${esc(auditStamp(r.at))}</b><div class="mut sm">${kind(r.kind)} · ${bi("রেকর্ড","Records")} ${money0(r.size_rows)}</div></div>
       <div class="bka"><button type="button" class="btn sm" data-backup="details" data-id="${esc(r.id)}">${bi("বিস্তারিত","Details")}</button><button type="button" class="btn sm" data-backup="json" data-id="${esc(r.id)}">JSON</button>
+      ${!DEMO ? `<button type="button" class="btn sm" data-backup="restore" data-id="${esc(r.id)}">${bi("রিস্টোর দেখুন","Preview restore")}</button>` : ""}
       <button type="button" class="btn sm" data-backup="xlsx" data-id="${esc(r.id)}">Excel</button>
       ${r.kind === "manual" ? `<button class="btn sm rdo" type="button" data-backup="remove" data-id="${esc(r.id)}" aria-label="${bi("ম্যানুয়াল ব্যাকআপ মুছুন","Delete manual backup")}">${ico("trash")}</button>` : ""}</div></article>`).join("") :
       `<div class="empty">${bi("এই ধরনের কোনো snapshot নেই","No snapshots match this type")}</div>`;
@@ -4514,6 +4648,14 @@ async function vBackup(out) {
       if (action === "remove") {
         if (r.kind !== "manual" || !ask(bi("এই ম্যানুয়াল snapshot মুছবেন?","Delete this manual snapshot?"))) return;
         await API.deleteBackup(r.id); if (out.isConnected) await refresh(); return;
+      }
+      if (action === "restore") {
+        const preview = await API.restoreSnapshot(r.id).catch(error => {
+          if (tallySchemaMissing(error)) throw new Error(bi("আগে schema_admin_restore.sql প্রয়োগ করুন।", "Apply schema_admin_restore.sql to enable restore."));
+          throw error;
+        });
+        if (out.isConnected) backupRestoreModal(r, preview, refresh);
+        return;
       }
       const data = await API.backupData(r.id);
       if (!out.isConnected) return;
