@@ -48,7 +48,6 @@
 .iv-chks{display:flex;gap:16px;flex-wrap:wrap;margin:6px 0}
 .iv-lines{max-height:min(46vh,420px);overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface2)}
 .iv-ln{display:grid;grid-template-columns:minmax(0,1fr) 96px 96px 92px;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line2)}
-.iv-lines.dm .iv-ln{grid-template-columns:minmax(0,1fr) 120px}
 .iv-ln:last-child{border-bottom:0}
 .iv-ln.has{background:color-mix(in srgb,var(--pri) 7%,var(--surface))}
 .iv-ln .nm{font-size:13px;font-weight:600;min-width:0;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
@@ -59,7 +58,7 @@
 .iv-ltot b{font-size:15px;color:var(--pri-ink);margin-left:4px}
 
 /* RM factory */
-.iv-rm2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:10px}
+.iv-rm2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px;margin-bottom:10px}
 .card.iv-rmc{padding:14px 16px;margin-bottom:12px;border-left:4px solid var(--vi)}
 .card.iv-rmc.neg{border-left-color:var(--rd)}
 .iv-rmh{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px} .iv-rmh b{font-size:15px}
@@ -74,7 +73,7 @@
 .iv-neg,.iv-negr td{color:var(--rd)!important} .iv-negr td{background:color-mix(in srgb,var(--rd) 6%,var(--surface))}
 .iv-op td{background:var(--surface2);font-weight:600}
 .card.iv-rmf{padding:12px 14px;margin-bottom:12px}
-.iv-fg.rm{grid-template-columns:150px 120px 120px minmax(160px,1fr) auto;align-items:end;margin:0}
+.iv-fg.rm{grid-template-columns:repeat(auto-fit,minmax(min(100%,130px),1fr));align-items:end;margin:0}
 .iv-fg.rm .bt .btn{height:42px}
 .iv-fg.rmo{grid-template-columns:minmax(140px,1fr) 90px 150px 110px;padding:10px 0;border-bottom:1px dashed var(--line)}
 .iv-hn{margin-top:6px}
@@ -123,7 +122,6 @@
   .iv-fg.two{grid-template-columns:1fr}
   .iv-ln{grid-template-columns:minmax(0,1fr) 78px 78px;grid-template-areas:"n q r" "n v v";row-gap:2px}
   .iv-ln .nm{grid-area:n} .iv-ln .q{grid-area:q} .iv-ln .r{grid-area:r} .iv-ln .v{grid-area:v;font-size:12px;color:var(--mut)}
-  .iv-lines.dm .iv-ln{grid-template-columns:minmax(0,1fr) 100px;grid-template-areas:none}
   .iv-lines{max-height:50vh}
   .tw.cards table.iv-ot td.iv-its{max-width:none;display:block;text-align:left}
   .tw.cards table.iv-ot td.iv-its::before{display:block;margin-bottom:2px}
@@ -177,10 +175,10 @@
 .iv-due{color:var(--rd)!important} .iv-paid{color:var(--gr)!important} .iv-adv{color:#4f46e5!important}
 /* RM quick entry */
 .card.iv-rmq{padding:14px 16px;margin-bottom:12px}
-.iv-rq{display:grid;grid-template-columns:160px repeat(2,minmax(0,1fr)) minmax(140px,1fr) auto;gap:12px;align-items:end;margin-top:8px}
+.iv-rq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:8px;align-items:start}
 .iv-rq label.f{display:block;font-size:11.5px;font-weight:700;color:var(--mut);margin-bottom:4px}
 .iv-rqp{border:1px solid var(--line2);border-radius:12px;padding:8px 10px;background:var(--surface2)} .iv-rqp>b{font-size:12.5px} .iv-rqp small{display:block;font-size:11px;margin-top:3px}
-.iv-rq2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.iv-rq2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:4px}
 .iv-rq .bt .btn{height:46px}
 /* party match */
 .iv-ml{max-height:60vh;overflow:auto;margin-top:10px;border:1px solid var(--line);border-radius:12px}
@@ -194,7 +192,6 @@
   .iv-or{grid-template-columns:22px minmax(0,1fr) auto;grid-template-areas:"c m v" "c a b";row-gap:6px}
   .iv-or>:first-child{grid-area:c} .iv-om{grid-area:m} .iv-ov{grid-area:v} .iv-oa{grid-area:a;flex-direction:row;align-items:center;gap:6px} .iv-ob{grid-area:b}
   .iv-eg2{grid-template-columns:1fr} .iv-sts{display:flex} .iv-sts .chip{flex:1;text-align:center}
-  .iv-rq{grid-template-columns:1fr} .iv-rq .bt .btn{width:100%}
   .iv-mr{grid-template-columns:1fr} .iv-mr [data-go]{width:100%}
   .iv-cr{grid-template-columns:minmax(0,1fr) 64px 76px 30px;grid-template-areas:"n q v x" "r r r r";row-gap:2px}
   .iv-cr .nm{grid-area:n} .iv-cr>.in{grid-area:q} .iv-cr .rt{grid-area:r} .iv-cr>b{grid-area:v} .iv-cr>.btn{grid-area:x}
@@ -233,20 +230,30 @@
 .pbm.iv-seg .chip:not(.on):hover{background:color-mix(in srgb,var(--pri) 9%,transparent)}
 /* inputs: clear focus ring everywhere in Inventory */
 .iv-eg .in:focus,.iv-rq .in:focus,.iv-fg .in:focus,.iv-ln .in:focus,.iv-cr .in:focus{outline:0;border-color:var(--pri);box-shadow:0 0 0 3px color-mix(in srgb,var(--pri) 18%,transparent)}
-.in.big{height:46px;font-size:15px}
+:is(.iv-mode,.iv-modal,.iv-rmq) .in.big{height:46px}
 /* RM quick entry — tidy aligned grid */
 .card.iv-rmq h3{display:flex;align-items:center;gap:8px;margin:0}
-.iv-rq{grid-template-columns:150px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;align-items:stretch;gap:12px}
 .iv-rq>div:not(.iv-rqp){display:flex;flex-direction:column;justify-content:flex-start}
-.iv-rq>.wide{min-width:0}
+.iv-rq>*{min-width:0}
+.iv-rq>.wide,.iv-rq>.bt{grid-column:1/-1}
+.iv-rq>.bt{justify-self:end}
 .iv-rq .bt{display:flex;align-items:flex-end}
 .iv-rqp{display:flex;flex-direction:column;gap:2px}
 .iv-rqp>b{display:flex;align-items:center;gap:6px;color:var(--pri-ink)}
 .iv-rqp>b::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--vi)}
 .iv-rqp:focus-within{border-color:var(--pri);box-shadow:0 0 0 3px color-mix(in srgb,var(--pri) 12%,transparent)}
 .iv-rq .bt .btn{height:46px;min-width:110px;justify-content:center}
-@media (max-width:1100px) and (min-width:901px){.iv-rq{grid-template-columns:150px minmax(0,1fr) minmax(0,1fr)}.iv-rq .wide{grid-column:1/3}.iv-rq .bt{grid-column:3}}
-@media (max-width:900px){.iv-rq .bt .btn{width:100%}}
+@media (min-width: 1050px) {
+  .iv-rq {
+    grid-template-columns: minmax(130px,.7fr) repeat(2,minmax(0,1fr));
+  }
+  .iv-rq > .wide { grid-column: 1 / -2; }
+  .iv-rq > .bt { grid-column: -2 / -1; align-self: end; }
+}
+@media (max-width: 600px) {
+  .iv-rq { grid-template-columns: minmax(0,1fr); }
+  .iv-rq > .bt, .iv-rq .bt .btn { width: 100%; }
+}
 /* RM stat cards */
 .card.iv-rmc{transition:box-shadow .18s ease}
 .iv-rmg b{font-size:19px}
@@ -271,7 +278,6 @@
 }
 @media (prefers-reduced-motion:reduce){.iv-bars span,.ksum .kc.iv-k,.iv-li{animation:none!important;transition:none!important}}
 
-.iv-eh{margin:2px 2px 8px;line-height:1.5;padding:8px 12px;border-radius:10px;background:color-mix(in srgb,var(--pri) 7%,var(--surface));border:1px dashed color-mix(in srgb,var(--pri) 30%,var(--line))}
 
 .iv-cart:empty { display: none; }
 .iv-ent > .iv-b { margin-top: 10px; }
@@ -299,4 +305,26 @@
   .iv-it .iv-item-meta { display: block; color: var(--mut); font-size: 11px; font-weight: 600; }
   .iv-it .iv-item-rate { white-space: normal; overflow-wrap: anywhere; }
   .iv-it .iv-item-edit button { min-width: 44px; min-height: 44px; }
+}
+
+.iv-demand-list { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; }
+.iv-demand-row { display: grid; grid-template-columns: minmax(0,1fr) clamp(64px,26%,112px); gap: 10px; align-items: center; padding: 8px 10px; }
+.iv-demand-row + .iv-demand-row { border-top: 1px solid var(--line2); }
+.iv-demand-row label { font-weight: 650; overflow-wrap: anywhere; }
+.iv-demand-row .in { min-width: 0; height: 44px; text-align: end; }
+.iv-demand-row[hidden], #dm-empty[hidden] { display: none; }
+.iv-demand-list:empty { display: none; }
+.modal-actions .iv-demand-total { grid-column: 1/-1; text-align: end; }
+.iv-demand-total b { margin-inline-start: 5px; color: var(--pri-ink); }
+.iv-err:empty { display: none; }
+.pbm.iv-seg .chip { min-height: 42px; font-family: inherit; white-space: normal; }
+@media (max-width: 600px) {
+  .pbm.iv-seg { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .pbm.iv-seg .chip { padding: 6px 4px; }
+  .pbm.iv-seg .chip:last-child:nth-child(odd) { grid-column: 1/-1; }
+  .iv-rq2 > div, .iv-fg.rm > div, .iv-fg.rmo > div { min-width: 0; }
+  .iv-rq .in, .iv-fg .in, .iv-ln .in { font-size: 16px; }
+  .iv-or { grid-template-columns: 20px minmax(0,1fr) auto; grid-template-areas: "c m m" "c a v" ". b b"; }
+  .iv-ob .btn.sm { min-width: 40px; min-height: 40px; }
+  .iv-om, .iv-ot1 b, .iv-ot2 { overflow-wrap: anywhere; }
 }

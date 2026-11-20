@@ -632,11 +632,12 @@ function suggest(input, getItems, onPick, opts = {}) {
     } else input.removeAttribute("aria-activedescendant");
   };
   show(false);
+  const normalize = opts.normalize || norm;
   const fmt = it => opts.free ? it.value : `${it.value} (${it.label})`;
   const render = () => {
-    const q = norm(input.value);
-    const rank = it => { if (it.last) return 9; const v = norm(it.value); if (!q) return 0; if (v === q) return 0; if (v.startsWith(q)) return 1; if (v.includes(q)) return 2; return 3; };
-    items = getItems().filter(it => !q || it.last || [it.value, it.label, it.sub].some(f => norm(f).includes(q)))
+    const q = normalize(input.value);
+    const rank = it => { if (it.last) return 9; const v = normalize(it.value); if (!q) return 0; if (v === q) return 0; if (v.startsWith(q)) return 1; if (v.includes(q)) return 2; return 3; };
+    items = getItems().filter(it => !q || it.last || [it.value, it.label, it.sub].some(f => normalize(f).includes(q)))
       .map(it => ({ it, r: rank(it) })).sort((a, b) => a.r - b.r).slice(0, opts.max || 40).map(x => x.it);
     idx = 0; moved = false; list.innerHTML = items.map((it, i) => `<div data-i="${i}" id="${list.id}-${i}" role="option">${it.html || `<span><b>${esc(it.value)}</b> ${esc(it.label)}</span>`}<small>${esc(it.sub || "")}</small></div>`).join("") || `<div class="mut" role="option" aria-disabled="true">${bi("কিছু পাওয়া যায়নি", "No matches")}</div>`;
     show(!!(items.length || input.value));
@@ -649,7 +650,7 @@ function suggest(input, getItems, onPick, opts = {}) {
     if (list.classList.contains("hide") && ["ArrowDown", "ArrowUp"].includes(e.key)) render();
     if (e.key === "ArrowDown") { idx = Math.min(idx + 1, items.length - 1); moved = true; e.preventDefault(); } else if (e.key === "ArrowUp") { idx = Math.max(idx - 1, 0); moved = true; e.preventDefault(); }
     else if (e.key === "Enter" || e.key === "Tab") {
-      const exact = items.find(it => !it.last && norm(it.value) === norm(input.value)), sel = items[idx];
+      const exact = items.find(it => !it.last && normalize(it.value) === normalize(input.value)), sel = items[idx];
       const cand = opts.free && !input.value.trim() ? null : (exact || (sel && (!sel.last || moved) ? sel : null));
       if (!picked && cand && !list.classList.contains("hide")) { pick(cand); if (e.key === "Enter") { e.preventDefault(); input.dispatchEvent(new CustomEvent("picked")); } }
       else if (picked && e.key === "Enter") { e.preventDefault(); input.dispatchEvent(new CustomEvent("picked")); }
