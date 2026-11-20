@@ -363,7 +363,11 @@ const SbAPI = {
     for (const k in p) row[m[k]] = p[k] === "" ? null : p[k];
     const { data, error } = await sb.from("cheques").update(row).eq("id", id).select("id"); if (error) throw error; if (!data || !data.length) throw new Error(LANG === "en" ? "Edit not allowed — your edit window is closed or switched off" : "এডিট করা যাবে না — আপনার এডিটের সময় শেষ বা বন্ধ আছে");
   },
-  async deleteCheque(id) { const { error } = await sb.from("cheques").delete().eq("id", id); if (error) throw /in_use/.test(error.message || "") ? new Error(bi("এই চেকের স্ট্যাটাস রেকর্ড আছে — মুছা যাবে না। \"Cancelled\" স্ট্যাটাস দিন", "This cheque has status records — it cannot be deleted. Set the status to \"Cancelled\" instead.")) : error; },
+  async deleteCheque(id) {
+    const {data,error} = await sb.from("cheques").delete().eq("id",id).select("id");
+    if (error) throw /in_use/.test(error.message || "") ? new Error(bi("এই চেকের স্ট্যাটাস রেকর্ড আছে — ভুল এন্ট্রি হলে Cancelled দিন।", "This cheque has status records. Set the status to Cancelled to correct a mistaken entry.")) : error;
+    if (!data?.length) throw new Error(bi("চেক মুছে ফেলার অ্যাক্সেস নেই অথবা রেকর্ডটি পাওয়া যায়নি।","Cheque deletion is not allowed or the record no longer exists."));
+  },
   async deleteStatus(id) { const { error } = await sb.from("cheque_status").delete().eq("id", id); if (error) throw error; },
   async lastBalDate() { const { data } = await sb.from("balances").select("date").order("date", { ascending: false }).limit(1); return data?.[0]?.date || null; },
   async balancesOn(d) { const { data, error } = await sb.from("balances").select("*").eq("date", d).limit(2000); if (error) throw error; return Object.fromEntries(data.map(r => [r.code, { total: r.total == null ? null : Number(r.total), block: r.block == null ? null : Number(r.block), remark: r.remark, od: r.other_debit, odp: r.other_deposit, by: r.entered_by }])); },
@@ -452,7 +456,7 @@ const DemoAPI = {
   },
   async addCheque(c) {
     if (demoStore.cheques.some(x => x.code === c.code && x.no === c.no)) throw new Error("এই চেক নম্বর এই অ্যাকাউন্টে আগেই এন্ট্রি আছে");
-    const row = { ...c, id: crypto.randomUUID(), by: S.me.name, at: new Date().toISOString() }; demoStore.cheques.push(row); this.save(); return { ...row, events: [] };
+    const row = { ...c, id: crypto.randomUUID(), uid: S.me.id, by: S.me.name, at: new Date().toISOString() }; demoStore.cheques.push(row); this.save(); return { ...row, events: [] };
   },
   async addStatus(chequeId, status, date, remarks) { const e = { id: crypto.randomUUID(), cheque_id: chequeId, status, date, remarks, by: S.me.name, at: new Date().toISOString() }; demoStore.events.push(e); this.save(); return e; },
   async updateCheque(id, p) { const c = demoStore.cheques.find(c => c.id === id); this.aud("cheques", "update", `${c.code} · ${c.no}`, { ...c }, { ...c, ...p }); Object.assign(c, p); this.save(); },
@@ -1194,17 +1198,22 @@ async function vEntry(v) {
     $e("e-more").hidden = visible.length >= filtered.length;
     const countText = records.length ? bi(`${filtered.length}টির মধ্যে ${visible.length}টি দেখানো হয়েছে`, `Showing ${visible.length} of ${filtered.length} matches`) : "";
     if ($e("e-visible").textContent !== countText) $e("e-visible").textContent = countText;
-    const html = visible.length ? `<div class="tw cards cp-activity-table"><table><thead><tr><th scope="col">A/C · ${bi("চেক", "Cheque")}</th><th scope="col" class="r">${bi("অঙ্ক", "Amount")}</th><th scope="col">${bi("স্ট্যাটাস", "Status")}</th><th scope="col">${bi("তারিখ ও অপারেটর", "Date & operator")}</th></tr></thead><tbody>
-      ${visible.map(({c, posted}) => `<tr><td data-l=""><button type="button" class="cq-link" data-recent="${esc(c.id)}">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc([c.purpose?.split(" (")[0], c.party].filter(Boolean).join(" · "))}</div></td>
+    const html = visible.length ? `<div class="tw cards cp-activity-table"><table><thead><tr><th scope="col">A/C · ${bi("চেক", "Cheque")}</th><th scope="col" class="r">${bi("অঙ্ক", "Amount")}</th><th scope="col">${bi("স্ট্যাটাস", "Status")}</th><th scope="col">${bi("তারিখ ও অপারেটর", "Date & operator")}</th><th scope="col">${bi("অ্যাকশন","Action")}</th></tr></thead><tbody>
+      ${visible.map(({c, posted}) => `<tr><td data-l=""><button type="button" class="cq-link" data-recent="${esc(c.id)}" data-activity-action="reference">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc([c.purpose?.split(" (")[0], c.party].filter(Boolean).join(" · "))}</div></td>
         <td class="r num"><strong>৳ ${money(c.amount)}</strong></td>
         <td><div class="stc">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}</div></td>
-        <td><div class="cp-row-date mut sm"><span>${byDate ? postedLabel : dateLabel} ${dmy(byDate ? posted : c.date) || "—"}</span><span>${esc(c.by || "—")}</span></div></td></tr>`).join("")}
+        <td><div class="cp-row-date mut sm"><span>${byDate ? postedLabel : dateLabel} ${dmy(byDate ? posted : c.date) || "—"}</span><span>${esc(c.by || "—")}</span></div></td>
+        <td><div class="cp-row-actions">
+          <button type="button" class="btn sm" data-recent="${esc(c.id)}" data-activity-action="view">${bi("দেখুন","View")}</button>
+          ${canEditChq(c) ? `<button type="button" class="btn sm" data-recent="${esc(c.id)}" data-activity-action="edit">${bi("এডিট","Edit")}</button>` : ""}
+          ${canDeleteChq(c) ? `<button type="button" class="btn sm bad" data-recent="${esc(c.id)}" data-activity-action="delete">${bi("মুছুন","Delete")}</button>` : ""}
+        </div></td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty cp-empty"><strong>${records.length ? bi("ফিল্টারে কোনো চেক মেলেনি", "No cheques match these filters") : byDate ? bi("এই তারিখে কোনো চেক নেই", "No cheques for this date") : bi("আজ কোনো চেক পোস্ট হয়নি", "No cheques posted today")}</strong>${records.length ? `<button class="btn sm" type="button" id="e-reset-activity">${bi("ফিল্টার মুছুন", "Clear filters")}</button>` : ""}</div>`;
     if (html !== renderedActivity) {
       const listEl = $e("e-list"), focused = listEl.contains(document.activeElement) ? document.activeElement : null;
       listEl.innerHTML = renderedActivity = html;
       if (focused?.dataset.recent) {
-        ($$("[data-recent]", listEl).find(btn => btn.dataset.recent === focused.dataset.recent) || $e("e-find")).focus({preventScroll: true});
+        ($$("[data-recent]", listEl).find(btn => btn.dataset.recent === focused.dataset.recent && btn.dataset.activityAction === focused.dataset.activityAction) || $e("e-find")).focus({preventScroll: true});
       }
     }
   }
@@ -1252,14 +1261,17 @@ async function vEntry(v) {
     const previous = activityLimit;
     activityLimit += activityPageSize;
     list();
-    $$("[data-recent]", $e("e-list"))[previous]?.focus();
+    $$('[data-activity-action="reference"]', $e("e-list"))[previous]?.focus();
   };
   $e("e-list").onclick = event => {
     const btn = event.target.closest("button");
     if (!btn) return;
     if (btn.id === "e-reset-activity") { resetActivityFilters(); list(); $e("e-find").focus(); return; }
     const row = S.cheques.find(c => c.id === btn.dataset.recent);
-    if (row) chequeModal(row, list);
+    if (!row) return;
+    if (btn.dataset.activityAction === "edit") editChequeModal(row,list);
+    else if (btn.dataset.activityAction === "delete") deleteChequeEntry(row,list);
+    else chequeModal(row,list);
   };
   let busy = false;
   async function save() {
@@ -1483,6 +1495,25 @@ const chqRow = c => [dmy(c.date), c.code, (accMap()[c.code] || {}).holder || "",
 const CHQ_HEAD = ["Date", "A/C Code", "Holder", "Cheque No", "Amount", "Purpose", "Cash Taker", "Party", "To A/C", "Status", "Status Date", "Remarks", "Entered By", "Statement Verification", "Statement Date", "Verified By", "Verified At"];
 
 /* ---------- cheque list / enquiry ---------- */
+const canDeleteChq = c => S.me.role === "admin" && !c.pending;
+async function deleteChequeEntry(c, after) {
+  if (!canDeleteChq(c)) return;
+  if (c.events.length) return toast(bi(
+    `এই চেকের ${c.events.length}টি স্ট্যাটাস রেকর্ড আছে। ভুল এন্ট্রি হলে "Cancelled" স্ট্যাটাস দিন।`,
+    `This cheque has ${c.events.length} status record(s). If it was entered by mistake, set the status to "Cancelled".`), "err");
+  if (!ask(bi(`চেক ${c.code} · ${c.no} স্থায়ীভাবে মুছবেন? (ফেরানো যাবে না)`,
+    `Permanently delete cheque ${c.code} · ${c.no}? (cannot be undone)`))) return;
+  try {
+    await API.deleteCheque(c.id);
+  } catch (error) {
+    return toast(error.message || String(error),"err");
+  }
+  S.cheques = S.cheques.filter(row => row.id !== c.id);
+  S.reminders = (S.reminders || []).map(row => row.cheque_id === c.id ? {...row,cheque_id:null} : row);
+  saveCache(); refreshBadges();
+  after?.();
+  toast(bi("চেক মুছে ফেলা হয়েছে","Cheque deleted"));
+}
 function chequeModal(c, after) {
   const admin = S.me.role === "admin"; const a = accMap()[c.code] || {};
   modal(`<h2><span class="cq-detail-ref">${esc(c.code)} · ${c.no}</span> ${stTag(c.status)} ${statementBadge(c)}<button class="shclose" id="c-x" type="button">✕ ${bi("বন্ধ", "Close")}</button></h2>
@@ -1495,18 +1526,21 @@ function chequeModal(c, after) {
    ${(S.reminders || []).filter(r => r.cheque_id === c.id && !r.done).map(r => `<div class="alert vi" style="margin-top:10px">⏰ <span>${esc(r.title)} — ${new Date(remDue(r)).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span></div>`).join("")}
    <h3 style="margin:16px 0 8px;font-size:13px;color:var(--mut)">স্ট্যাটাস ইতিহাস</h3>
    ${c.events.length ? c.events.map(e => `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">${stTag(e.status)} <span>${dmy(e.date)}</span> <span class="mut sm">${esc(e.by || "")} ${esc(e.remarks || "")}</span>${admin ? `<button class="btn ghost sm evdel" style="margin-left:auto" data-de="${e.id}" type="button" title="${bi("এই স্ট্যাটাস এন্ট্রি মুছুন", "Delete this status entry")}" aria-label="${bi("স্ট্যাটাস এন্ট্রি মুছুন", "Delete status entry")}">${ico("x")}</button>` : ""}</div>`).join("") : `<div class="mut sm">কোনো আপডেট নেই (ডিফল্ট: ${c.status})</div>`}
-   <div class="modal-actions">${moduleCan("cheque", "edit") ? `<button class="btn pri" id="c-st">স্ট্যাটাস দিন</button>` : ""}<button class="btn" id="c-rm">${ico("bell")} রিমাইন্ডার</button>${moduleCan("cheque", "edit", S.me.role === "staff" && (!c.photo || canEditChq(c))) ? `<button class="btn" id="c-ap">${ico("cam")} ${c.photo ? "ছবি বদলান" : "ছবি যোগ"}</button>` : ""}${admin ? `<button class="btn" id="c-ed">✎ এডিট</button><button class="btn bad" id="c-dl">🗑 ${bi("চেক মুছুন", "Delete cheque")}</button>` : canEditChq(c) ? `<button class="btn" id="c-ed">✎ এডিট</button>` : ""}</div>${!admin && S.me.module_access == null && canEditChq(c) ? `<div class="mut xs" style="margin-top:8px">⏳ ${LANG === "en" ? "You can edit this entry for another " : "এই এন্ট্রি আরও এডিট করতে পারবেন: "}${leftTxt(chqEditLeft(c))}</div>` : ""}`, (root, close) => {
+   <div class="modal-actions">${moduleCan("cheque", "edit") ? `<button class="btn pri" id="c-st">স্ট্যাটাস দিন</button>` : ""}<button class="btn" id="c-rm">${ico("bell")} রিমাইন্ডার</button>${moduleCan("cheque", "edit", S.me.role === "staff" && (!c.photo || canEditChq(c))) ? `<button class="btn" id="c-ap">${ico("cam")} ${c.photo ? "ছবি বদলান" : "ছবি যোগ"}</button>` : ""}${canEditChq(c) ? `<button class="btn" id="c-ed">✎ ${bi("এডিট","Edit")}</button>` : ""}${canDeleteChq(c) ? `<button class="btn bad" id="c-dl">🗑 ${bi("চেক মুছুন", "Delete cheque")}</button>` : ""}</div>${!admin && canEditChq(c) ? `<div class="mut xs" style="margin-top:8px">⏳ ${LANG === "en" ? "You can edit this entry for another " : "এই এন্ট্রি আরও এডিট করতে পারবেন: "}${leftTxt(chqEditLeft(c))}</div>` : ""}`, (root, close) => {
     $("#c-x", root).onclick = close; showPhoto($("#c-ph", root), c);
     $("#c-rm", root).onclick = () => { close(); reminderModal(null, { title: bi(`চেক ${c.code} · ${c.no} পাস হয়েছে কি না দেখুন`, `Check whether cheque ${c.code} · ${c.no} has cleared`), note: `৳ ${money(c.amount)}${c.party ? " · " + c.party : ""} · ${bi("চেকের তারিখ", "Cheque date")} ${dmy(c.date)}`, due: (() => { const d = new Date(addDays(c.date < today() ? today() : c.date, 3) + "T10:00"); return d; })(), kind: "cheque", cheque_id: c.id, for_role: "all" }, after); };
     $("#c-ap", root) && ($("#c-ap", root).onclick = () => { close(); addPhotoModal(c, after); });
     $("#c-st", root) && ($("#c-st", root).onclick = () => { close(); statusModal(c, after); });
     $$("[data-de]", root).forEach(b => b.onclick = async () => { if (!ask("এই স্ট্যাটাস এন্ট্রি স্থায়ীভাবে মুছবেন?")) return; await API.deleteStatus(b.dataset.de); await reload(); close(); after && after(); toast("মুছে ফেলা হয়েছে"); });
-    $("#c-dl", root) && ($("#c-dl", root).onclick = async () => { if (c.events.length) return toast(bi(`এই চেকের ${c.events.length}টি স্ট্যাটাস রেকর্ড আছে — মুছা যাবে না। ভুল এন্ট্রি হলে "Cancelled" স্ট্যাটাস দিন`, `This cheque has ${c.events.length} status record(s) — it cannot be deleted. If it was entered by mistake, set the status to "Cancelled".`), "err"); if (!ask(bi(`চেক ${c.code} · ${c.no} স্থায়ীভাবে মুছবেন? (ফেরানো যাবে না)`, `Permanently delete cheque ${c.code} · ${c.no}? (cannot be undone)`))) return; try { await API.deleteCheque(c.id); await reload(); close(); after && after(); toast("চেক মুছে ফেলা হয়েছে"); } catch (e) { toast(e.message, "err"); } });
+    const deleteButton = $("#c-dl",root);
+    if (deleteButton) deleteButton.onclick = () => deleteChequeEntry(c,() => { close(); after?.(); });
     $("#c-ed", root) && ($("#c-ed", root).onclick = () => { close(); editChequeModal(c, after); });
   });
 }
+const chequeEditDenied = () => bi("এই চেক এডিটের অনুমোদিত সময় বা অ্যাক্সেস নেই।", "The edit window is closed or you do not have permission to edit this cheque.");
 function editChequeModal(c, after) {
-  modal(`<h2>এডিট: ${esc(c.code)} · ${c.no}</h2><div class="grid" style="gap:10px">
+  if (!canEditChq(c)) { after?.(); return toast(chequeEditDenied(),"err"); }
+  modal(`<h2>${bi("চেক এডিট","Edit cheque")} · ${esc(c.code)} · ${c.no}</h2><div class="grid" style="gap:10px">
    <div class="cq-edit-row"><div><label class="f" for="x-d">তারিখ</label><input class="in" type="date" id="x-d" value="${c.date}"></div><div><label class="f" for="x-c">A/C Code</label><select class="in" id="x-c">${S.accounts.map(a => `<option ${a.code === c.code ? "selected" : ""}>${esc(a.code)}</option>`).join("")}</select></div></div>
    <div class="cq-edit-row"><div><label class="f" for="x-n">চেক নং</label><input class="in" id="x-n" inputmode="numeric" value="${c.no}"></div><div><label class="f" for="x-a">টাকা</label><input class="in" id="x-a" inputmode="decimal" value="${c.amount}"></div></div>
    <div><label class="f" for="x-p">খাত</label><select class="in" id="x-p">${allPurposes(true).map(p => `<option ${pKey(p) === pKey(c.purpose) ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></div>
@@ -1517,6 +1551,7 @@ function editChequeModal(c, after) {
     cancel.onclick = close;
     save.onclick = async () => {
       if (save.disabled) return;
+      if (!canEditChq(c)) { error.textContent = chequeEditDenied(); return; }
       const date = get("d").value, code = get("c").value, no = chequeNumber(get("n").value);
       const purpose = get("p").value, kind = purposeKey(purpose), rawAmount = get("a").value.trim();
       const amount = kind === "cancel" && !rawAmount ? 0 : chequeAmount(rawAmount);
@@ -2987,8 +3022,8 @@ async function compressImage(file, max = 1600, q = 0.72) {
 }
 const photoPath = (id, code, no, date) => `${(date || today()).slice(0, 4)}/${norm(code)}_${no}_${id.slice(0, 8)}_${Date.now().toString(36)}.jpg`;
 /* v6.43 — who may edit a cheque: admin always; staff only own entries inside the per-user window (profiles.edit_days, 0 = off) */
-const chqEditLeft = c => { if (S.me.role === "admin") return Infinity; if (S.me.role !== "staff") return 0; const d = S.me.edit_days || 0; if (!d || !c.at) return 0; if (c.uid ? c.uid !== S.me.id : c.by !== S.me.name) return 0; return new Date(c.at).getTime() + d * 864e5 - Date.now(); };
-const canEditChq = c => moduleCan("cheque", "edit", chqEditLeft(c) > 0);
+const chqEditLeft = c => { if (S.me.role === "admin") return Infinity; if (S.me.role !== "staff") return 0; const d = S.me.edit_days || 0; if (!d || !c.at) return 0; if (c.uid !== S.me.id && !(DEMO && !c.uid && c.by === S.me.name)) return 0; return new Date(c.at).getTime() + d * 864e5 - Date.now(); };
+const canEditChq = c => !c.pending && chqEditLeft(c) > 0 && moduleCan("cheque", "edit", true);
 const leftTxt = ms => { const h = Math.floor(ms / 36e5); return h >= 24 ? Math.floor(h / 24) + (LANG === "en" ? "d " : " দিন ") + (h % 24) + (LANG === "en" ? "h" : " ঘণ্টা") : Math.max(1, h) + (LANG === "en" ? "h" : " ঘণ্টা"); };
 async function showPhoto(el, c) {
   if (!c.photo) return; el.innerHTML = `<div class="skel" style="height:120px"></div>`;
