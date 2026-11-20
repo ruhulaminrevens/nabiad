@@ -1325,6 +1325,7 @@ async function vEntry(v) {
 /* ---------- status update ---------- */
 function statusModal(c, after, initialDate = today(), initialStatus = c.status) {
   const events = c.events || [];
+  const canEditEntry = canEditChq(c), canDeleteEntry = canDeleteChq(c);
   const reasonLabels = [
     bi("অপর্যাপ্ত তহবিল", "Insufficient funds"),
     bi("স্বাক্ষর মেলেনি", "Signature differs"),
@@ -1339,11 +1340,33 @@ function statusModal(c, after, initialDate = today(), initialStatus = c.status) 
       <div class="chips cq-reasons" id="cq-reasons" hidden>${reasonLabels.map((label, i) => `<button class="chip" type="button" data-reason="${i}">${esc(label)}</button>`).join("")}</div>
       <div class="hint rd" id="m-err" role="alert"></div>
     </form>
+    ${canEditEntry || canDeleteEntry ? `<div class="cq-events">
+      <div class="chips" role="group" aria-label="${bi("চেক এন্ট্রির কাজ", "Cheque entry actions")}">
+        ${canEditEntry ? `<button class="btn" id="m-edit-entry" type="button">${bi("চেক এডিট", "Edit cheque")}</button>` : ""}
+        ${canDeleteEntry ? `<button class="btn bad" id="m-delete-entry" type="button"${events.length ? ' disabled aria-describedby="m-delete-note"' : ""}>${bi("চেক মুছুন", "Delete cheque")}</button>` : ""}
+      </div>
+      ${canDeleteEntry && events.length ? `<p class="mut sm" id="m-delete-note">${bi("স্ট্যাটাস ইতিহাস থাকা চেক মুছতে পারবেন না। ভুল এন্ট্রি সংশোধনে Cancelled স্ট্যাটাস দিন।", "This cheque has status history. Set the status to Cancelled to correct a mistaken entry.")}</p>` : ""}
+    </div>` : ""}
     ${events.length ? `<details class="cq-events"><summary>${bi("স্ট্যাটাসের ইতিহাস", "Status history")} · ${events.length}</summary><ul>${events.slice().reverse().map(e => `<li><strong>${esc(e.status)}</strong> · ${dmy(e.date)}${e.by ? " · " + esc(e.by) : ""}${e.remarks ? `<div class="mut">${esc(e.remarks)}</div>` : ""}</li>`).join("")}</ul></details>` : ""}
     <div class="modal-actions"><button class="btn" type="button" id="m-x">${bi("বাতিল", "Cancel")}</button><button class="btn pri" type="submit" form="cq-status-form" id="m-ok">${bi("সেভ", "Save")}</button></div>`, (root, close) => {
     const form = $("#cq-status-form", root), select = $("#m-st", root), date = $("#m-d", root);
     const remarks = $("#m-r", root), reasons = $("#cq-reasons", root), error = $("#m-err", root);
     const save = $("#m-ok", root), cancel = $("#m-x", root);
+    const editEntry = $("#m-edit-entry", root), deleteEntry = $("#m-delete-entry", root);
+    const controls = [save, cancel, editEntry, deleteEntry].filter(button => button && !button.disabled);
+    const setBusy = busy => controls.forEach(button => { button.disabled = busy; });
+    if (editEntry) editEntry.onclick = () => {
+      if (save.disabled) return;
+      if (!canEditChq(c)) { error.textContent = chequeEditDenied(); return; }
+      close();
+      editChequeModal(c, after);
+    };
+    if (deleteEntry && !deleteEntry.disabled) deleteEntry.onclick = async () => {
+      if (save.disabled) return;
+      setBusy(true);
+      try { await deleteChequeEntry(c, () => { close(); after?.(); }); }
+      finally { setBusy(false); }
+    };
     const showReasons = () => { reasons.hidden = select.value !== "Bounced"; };
     showReasons(); select.onchange = showReasons;
     $$("[data-reason]", reasons).forEach(btn => btn.onclick = () => {
@@ -1356,14 +1379,14 @@ function statusModal(c, after, initialDate = today(), initialStatus = c.status) 
       e.preventDefault();
       if (save.disabled) return;
       error.textContent = "";
-      save.disabled = cancel.disabled = true;
+      setBusy(true);
       try {
         const updated = await setStatus(c, select.value, date.value, remarks.value.trim());
         toast(`✔ ${updated.code} · ${updated.no} → ${updated.status}`);
         close();
         after?.();
       } catch (err) { error.textContent = err.message || String(err); }
-      finally { save.disabled = cancel.disabled = false; }
+      finally { setBusy(false); }
     };
   });
 }
