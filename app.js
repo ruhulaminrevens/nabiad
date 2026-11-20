@@ -3110,7 +3110,9 @@ const AU_T = { cheques: "চেক", cheque_status: "স্ট্যাটাস
 const AU_A = { insert: ["যোগ", "gr"], update: ["বদল", "am"], delete: ["মুছে ফেলা", "rd"] };
 const AU_F = { chq_date: "তারিখ", code: "A/C", chq_no: "চেক নং", amount: "টাকা", purpose: "খাত", cash_taker: "কে তুলেছে", party: "পার্টি", to_ac: "To A/C", remarks: "মন্তব্য", new_status: "স্ট্যাটাস", status_date: "স্ট্যাটাস তারিখ", total: "ক্লোজিং", block: "Block", remark: "মন্তব্য", other_debit: "অন্য খরচ", other_deposit: "অন্য জমা", photo: "ছবি", holder: "হোল্ডার", bank: "ব্যাংক", acno: "A/C নং", status: "Status", role: "Role", active: "সক্রিয়", name: "নাম" };
 const AU_SKIP = new Set(["created_at", "user_id", "id", "updated_at", "entered_by", "cheque_id"]);
-const auV = x => x === null || x === undefined || x === "" ? "—" : typeof x === "number" || /^-?\d+(\.\d+)?$/.test(String(x)) && String(x).length > 3 ? money(x) : String(x);
+const AU_IDENTIFIERS = new Set(["chq_no", "acno", "leaf_no", "routing", "first_leaf", "last_leaf", "track_from", "phone", "ref"]);
+const auV = (value, key) => value == null || value === "" ? "—" : typeof value === "object" ? JSON.stringify(value) :
+  typeof value === "number" && !AU_IDENTIFIERS.has(key) ? money(value) : String(value);
 
 /* =================== v6: API extensions =================== */
 Object.assign(SbAPI, {
@@ -3945,75 +3947,143 @@ async function vSettings(v) {
 /* =================== v6.2: audit log =================== */
 AU_F.event = "ঘটনা"; AU_T.cash_records = "ক্যাশ"; AU_T.audit_log = "Audit log";
 const AU_IC = { insert: "plus", update: "edit", delete: "trash" };
-const auText = r => { const o = r.old || {}, n = r.new || {}; if (r.action === "update") return Object.keys({ ...o, ...n }).filter(k => !AU_SKIP.has(k) && JSON.stringify(o[k]) !== JSON.stringify(n[k])).map(k => `${AU_F[k] || k}: ${auV(o[k])} → ${auV(n[k])}`).join("; "); const x = r.action === "delete" ? o : n; return Object.entries(x).filter(([k, val]) => !AU_SKIP.has(k) && val !== null && val !== "").map(([k, val]) => `${AU_F[k] || k}: ${auV(val)}`).join("; "); };
-function auChips(r, all) {
-  const o = r.old || {}, n = r.new || {}, L = k => `<span class="au-k">${esc(AU_F[k] || k)}</span>`;
-  if (r.action === "update") { const ks = Object.keys({ ...o, ...n }).filter(k => !AU_SKIP.has(k) && JSON.stringify(o[k]) !== JSON.stringify(n[k])); return ks.map(k => `<span class="auc">${L(k)}<s>${esc(auV(o[k]))}</s><i>→</i><b>${esc(auV(n[k]))}</b></span>`).join("") || `<span class="mut xs">—</span>`; }
-  const x = r.action === "delete" ? o : n, es = Object.entries(x).filter(([k, val]) => !AU_SKIP.has(k) && val !== null && val !== "" && typeof val !== "object");
-  return es.slice(0, all ? 99 : 4).map(([k, val]) => `<span class="auc">${L(k)}<b>${esc(auV(val))}</b></span>`).join("") + (!all && es.length > 4 ? `<button class="btn sm ghost au-more">+${es.length - 4}</button>` : "");
+const AUDIT_ZONE = "Asia/Dhaka";
+const auditDate = value => new Intl.DateTimeFormat("en-CA", {timeZone:AUDIT_ZONE, year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(value));
+const auditStamp = (value, options = {dateStyle:"medium", timeStyle:"short"}) => value && Number.isFinite(new Date(value).getTime())
+  ? new Date(value).toLocaleString(LANG === "en" ? "en-GB" : "bn-BD", {...options,timeZone:AUDIT_ZONE}) : "—";
+const auditTable = tbl => Object.hasOwn(AU_T,tbl) ? tr(AU_T[tbl]) : String(tbl || "—");
+Object.assign(AU_T, {inv_orders:"Inventory order", inv_items:"Inventory item", inv_demand:"Inventory demand", rm_daily:"RM daily stock",
+  rm_products:"RM product", cashbook_days:"Cash Book", cashbook_ledgers:"Cash ledgers", leaf_marks:"Cheque leaf", cheque_statement_verifications:"Statement verification"});
+const auditActor = r => r.user_name || bi("সিস্টেম", "System");
+function auditFields(r) {
+  const old = r.old || {}, next = r.new || {}, changed = r.action === "update";
+  const entry = r.action === "delete" ? old : next;
+  return Object.keys(changed ? {...old,...next} : entry)
+    .filter(k => !AU_SKIP.has(k) && (changed ? JSON.stringify(old[k]) !== JSON.stringify(next[k]) : entry[k] != null && entry[k] !== ""))
+    .map(key => ({key, label:Object.hasOwn(AU_F,key) ? tr(AU_F[key]) : key, before:auV(old[key], key), after:auV(next[key], key)}));
 }
-async function vAudit(v) {
+const auText = r => auditFields(r).map(f => `${f.label}: ${r.action === "update" ? f.before + " → " + f.after : r.action === "delete" ? f.before : f.after}`).join("; ");
+function auChips(r) {
+  const fields = auditFields(r);
+  const short = x => x.length > 72 ? x.slice(0, 69) + "…" : x;
+  return fields.slice(0, 4).map(f => `<span class="auc"><span class="au-k">${esc(f.label)}</span>${r.action === "update" ? `<s>${esc(short(f.before))}</s><i>→</i>` : ""}<b>${esc(short(r.action === "delete" ? f.before : f.after))}</b></span>`).join("") +
+    (fields.length > 4 ? `<span class="mut sm">+${fields.length - 4}</span>` : "");
+}
+function auditDetails(r) {
+  const fields = auditFields(r);
+  modal(`<h2>${bi("পরিবর্তনের বিস্তারিত", "Change details")}</h2><div class="aim">${esc(auditTable(r.tbl))} · ${esc(auditActor(r))} · ${esc(auditStamp(r.at))}</div><p class="as-break">${esc(r.row_key || "—")}</p>
+    ${fields.length ? `<dl class="as-field-diff">${fields.map(f => `<div><dt>${esc(f.label)}</dt><dd>${r.action !== "insert" ? `<div><span class="mut xs">${bi("আগে", "Before")}</span><b>${esc(f.before)}</b></div>` : ""}${r.action !== "delete" ? `<div><span class="mut xs">${bi("পরে", "After")}</span><b>${esc(f.after)}</b></div>` : ""}</dd></div>`).join("")}</dl>` : `<div class="empty">${bi("ফিল্ড পরিবর্তন নেই", "No field changes recorded")}</div>`}
+    <div class="modal-actions"><button type="button" class="btn" id="au-detail-copy">${ico("copy")} ${bi("রেফারেন্স কপি", "Copy reference")}</button><button type="button" class="btn pri" id="au-detail-close">${bi("বন্ধ", "Close")}</button></div>`, (root, close) => {
+    $("#au-detail-close", root).onclick = close;
+    const copy = $("#au-detail-copy", root); copy.disabled = !r.row_key;
+    copy.onclick = () => copyText(String(r.row_key),bi("রেফারেন্স কপি হয়েছে","Reference copied"));
+  });
+}
+async function vAudit(v, options) {
   const admin = S.me.role === "admin", F = { ...pbInit("month"), tbl: "", act: "", who: "", q: "" };
+  F.d = auditDate(Date.now());
+  if (options?.deletions) { F.m = "custom"; F.t = auditDate(Date.now()); F.f = addDays(F.t,-6); F.act = "delete"; }
   v.innerHTML = head("Audit log", `<div class="dd"><button class="btn" id="au-dl">${ico("dl")} ডাউনলোড ▾</button><div class="ddm hide" id="au-menu"><button data-dl="xlsx">${ico("dl")} Excel (.xlsx)</button><button data-dl="csv">${ico("list")} CSV</button><button data-dl="print">${ico("print")} প্রিন্ট / PDF</button></div></div>${admin ? `<button class="btn rdo" id="au-clr">${ico("trash")} লগ পরিষ্কার</button>` : ""}`) + `
    <div class="card tbar noprint">${pbBar("au", F)}
-    <div class="srch"><label class="si">${ico("search")}<input class="in" id="au-q" placeholder="খুঁজুন — A/C, চেক নং, ইমেইল…" autocomplete="off" type="search"></label></div>
-    <div class="aufl"><select class="in" id="au-t"><option value="">সব জায়গা</option>${Object.entries({ ...AU_T, cash_records: "ক্যাশ" }).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select><select class="in" id="au-a"><option value="">সব কাজ</option>${Object.entries(AU_A).map(([k, l]) => `<option value="${k}">${l[0]}</option>`).join("")}</select><select class="in" id="au-w"><option value="">সবাই</option></select></div></div>
-   <div class="grid g4 au-k4" id="au-kpi"></div><div id="au-out" style="margin-top:12px"><div class="card empty">লোড হচ্ছে…</div></div>`;
-  let rows = [], shown = [], more = false;
-  const range = () => pbRange(F);
-  async function load(append) {
-    const [from, to] = range(); if (!append) $("#au-out", v).innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
-    try { const r = await API.audit({ tbl: F.tbl, act: F.act, from, to, offset: append ? rows.length : 0 }); rows = append ? rows.concat(r) : r; more = r.length >= 500; }
-    catch (e) { $("#au-out", v).innerHTML = `<div class="alert rd">${/relation|does not exist|schema cache|not find/i.test(e.message || "") ? "Audit log টেবিল নেই — Supabase-এ schema_v2.sql চালাতে হবে" : esc(e.message || e)}</div>`; return; }
-    const users = [...new Set(rows.map(r => r.user_name).filter(Boolean))].sort(); const ws = $("#au-w", v), cur = ws.value; ws.innerHTML = `<option value="">সবাই</option>` + users.map(u => `<option ${u === cur ? "selected" : ""}>${esc(u)}</option>`).join("");
-    draw();
+    <div class="srch"><label class="si">${ico("search")}<input class="in" id="au-q" placeholder="${bi("রেফারেন্স, ব্যবহারকারী বা ফিল্ডের মান", "Reference, user or field value")}" aria-label="${bi("লগ খুঁজুন", "Search audit log")}" autocomplete="off" type="search"></label></div>
+    <div class="aufl"><select class="in" id="au-t" aria-label="${bi("মডিউল", "Module")}"><option value="">সব জায়গা</option>${Object.entries({ ...AU_T, cash_records: "ক্যাশ" }).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select><select class="in" id="au-a" aria-label="${bi("কাজ", "Action")}"><option value="">সব কাজ</option>${Object.entries(AU_A).map(([k, l]) => `<option value="${k}">${l[0]}</option>`).join("")}</select><select class="in" id="au-w" aria-label="${bi("ব্যবহারকারী", "Actor")}"><option value="">সবাই</option></select></div></div>
+   <div class="as-metrics au-k4" id="au-kpi"></div><div class="as-result"><p class="mut sm" id="au-total" role="status"></p><button class="btn sm" type="button" id="au-reset">${bi("ফিল্টার রিসেট", "Reset filters")}</button></div><div id="au-out" style="margin-top:12px"><div class="card empty">লোড হচ্ছে…</div></div>`;
+  let rows = [], shown = [], more = false, busy = false, failed = false, revision = 0, cutoff;
+  const batch = 100, out = $("#au-out", v), range = () => pbRange(F);
+  async function load(append = false) {
+    if (append && busy) return;
+    const seq = ++revision, [from, to] = range();
+    if (!append) { rows = []; shown = []; more = false; cutoff = new Date().toISOString(); }
+    failed = false; busy = true; draw();
+    try {
+      const result = await API.audit({tbl:F.tbl, act:F.act, from, to, before:cutoff, offset:rows.length, limit:batch});
+      if (!out.isConnected || seq !== revision) return;
+      rows = rows.concat(result);
+      more = result.length === batch;
+      const users = [...new Set(rows.map(auditActor))].sort();
+      const ws = $("#au-w", v);
+      ws.innerHTML = `<option value="">${bi("সবাই", "Everyone")}</option>` + users.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join("");
+      if (!users.includes(F.who)) F.who = "";
+      ws.value = F.who;
+    } catch { if (out.isConnected && seq === revision) failed = true; }
+    finally { if (out.isConnected && seq === revision) { busy = false; draw(); } }
   }
   function draw() {
-    const q = norm(F.q); shown = rows.filter(r => (!F.who || r.user_name === F.who) && (!q || norm([r.user_name, r.row_key, r.tbl, JSON.stringify(r.new || r.old)].join(" ")).includes(q)));
-    const c = a => shown.filter(r => r.action === a).length, top = Object.entries(shown.reduce((m, r) => (m[r.user_name] = (m[r.user_name] || 0) + 1, m), {})).sort((a, b) => b[1] - a[1])[0];
-    $("#au-kpi", v).innerHTML = `<div class="kpi card k-vi"><div class="l">মোট পরিবর্তন</div><div class="v num">${shown.length}${more ? "+" : ""}</div><div class="s">${top ? `<span>সবচেয়ে বেশি:</span> ${esc(top[0])} (${top[1]})` : "—"}</div></div><div class="kpi card k-gr"><div class="l">যোগ</div><div class="v num">${c("insert")}</div></div><div class="kpi card k-am"><div class="l">বদল</div><div class="v num">${c("update")}</div></div><div class="kpi card k-rd"><div class="l">মুছে ফেলা</div><div class="v num">${c("delete")}</div></div>`;
-    if (!shown.length) { $("#au-out", v).innerHTML = `<div class="card empty">এই সময়ে কোনো পরিবর্তন নেই</div>`; return; }
+    const q = chequeSearchKey(F.q);
+    shown = rows.filter(r => (!F.who || auditActor(r) === F.who) && (!q ||
+      chequeSearchKey([auditActor(r), r.row_key, r.tbl, auditTable(r.tbl), JSON.stringify(r.old), JSON.stringify(r.new)].join(" ")).includes(q)));
+    const counts = {insert:0, update:0, delete:0};
+    shown.forEach(r => { if (Object.hasOwn(counts,r.action)) counts[r.action]++; });
+    const cards = [["",bi("মিলেছে", "Matching entries"),shown.length], ...Object.entries(AU_A).map(([key,[label,cls]]) => [key,tr(label),counts[key],cls])];
+    $("#au-kpi", v).innerHTML = cards.map(([key,label,count,cls]) => `<button type="button" class="card as-kpi ${cls || ""}" data-au-action="${key}" aria-pressed="${key === F.act}"><span>${esc(label)}</span><strong class="num">${count}</strong></button>`).join("");
+    $("#au-total", v).textContent = bi(`${rows.length}টি লোড হয়েছে · ${shown.length}টি মিলেছে · ঢাকা সময়`, `${rows.length} loaded · ${shown.length} match · Dhaka time`);
+    $("#au-dl", v).disabled = busy || !shown.length;
     let last = "", html = "";
-    shown.forEach((r, i) => { const d = r.at.slice(0, 10), ld = new Date(r.at); if (d !== last) { last = d; html += `<div class="au-day">${ld.toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>`; }
-      html += `<div class="aui a-${r.action}" data-i="${i}"><div class="aic">${ico(AU_IC[r.action] || "edit")}</div><div class="aib"><div class="ait"><span class="tag au-${r.action}">${(AU_A[r.action] || [r.action])[0]}</span><b>${esc(AU_T[r.tbl] || (r.tbl === "cash_records" ? "ক্যাশ" : r.tbl))}</b><span class="aik">${esc(r.row_key || "")}</span></div><div class="aim">${ico("clock").replace("<svg", '<svg width="12" height="12"')} ${ld.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · <b>${esc(r.user_name || "system")}</b></div><div class="aud">${auChips(r)}</div></div></div>`; });
-    $("#au-out", v).innerHTML = `<div class="card au-list">${html}</div>${more ? `<div class="row" style="justify-content:center;margin-top:10px"><button class="btn fix" id="au-more">আরও লোড করুন</button></div>` : ""}`;
-    $$(".au-more", v).forEach(b => b.onclick = e => { e.stopPropagation(); const r = shown[+b.closest(".aui").dataset.i]; b.closest(".aud").innerHTML = auChips(r, true); });
-    $("#au-more", v) && ($("#au-more", v).onclick = () => load(true));
+    shown.forEach((r, i) => {
+      const d = auditDate(r.at), action = Object.hasOwn(AU_A,r.action) ? r.action : "update";
+      if (d !== last) { last = d; html += `<div class="au-day">${auditStamp(r.at,{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>`; }
+      html += `<article class="aui a-${action}"><div class="aic">${ico(AU_IC[action])}</div><div class="aib"><div class="ait"><span class="tag au-${action}">${esc(tr((AU_A[action] || [action])[0]))}</span><b>${esc(auditTable(r.tbl))}</b><span class="aik">${esc(r.row_key || "")}</span></div>
+        <div class="aim">${esc(auditStamp(r.at,{hour:"2-digit",minute:"2-digit"}))} · <b>${esc(auditActor(r))}</b></div><div class="aud">${auChips(r)}</div>
+        <button class="btn sm" type="button" data-au-detail="${i}">${bi("বিস্তারিত", "Details")}</button></div></article>`;
+    });
+    const status = busy ? bi("লোড হচ্ছে…","Loading…") : failed ? bi("লগ লোড হয়নি","Audit entries could not be loaded") : bi("এই ফিল্টারে কোনো রেকর্ড মেলেনি","No entries match these filters");
+    out.innerHTML = html ? `<div class="card au-list">${html}</div>` : `<div class="card empty">${status}</div>`;
+    if (more || failed) out.insertAdjacentHTML("beforeend", `<div class="as-result"><span class="mut sm">${more ? bi("এই সময়ের আরও রেকর্ড আছে। এক্সপোর্টে লোড হওয়া রেকর্ড থাকবে।","More entries are available. Exports include loaded matches.") : status}</span><button class="btn" type="button" id="au-more" ${busy ? "disabled" : ""}>${failed ? bi("আবার চেষ্টা করুন","Retry") : bi("আরও লোড করুন","Load more")}</button></div>`);
+    $("#au-more", v)?.addEventListener("click", () => load(rows.length > 0));
   }
+  out.onclick = e => { const btn = e.target.closest("[data-au-detail]"); if (btn) auditDetails(shown[Number(btn.dataset.auDetail)]); };
+  $("#au-kpi", v).onclick = e => {
+    const btn = e.target.closest("[data-au-action]"); if (!btn) return;
+    F.act = btn.dataset.auAction; $("#au-a", v).value = F.act; load();
+  };
+  $("#au-reset", v).onclick = () => {
+    F.q = F.tbl = F.act = F.who = "";
+    for (const id of ["au-q","au-t","au-a","au-w"]) $("#" + id,v).value = "";
+    load();
+  };
   const fname = ext => `Audit_${range()[0]}_${range()[1]}.${ext}`;
   async function download(kind) {
     $("#au-menu", v).classList.add("hide"); if (!shown.length) return toast("ডাটা নেই", "err");
-    const H = ["Time", "User", "Where", "Action", "Item", "Changes", "Old (JSON)", "New (JSON)"], R = shown.map(r => [new Date(r.at).toLocaleString("en-GB"), r.user_name || "", AU_T[r.tbl] ? tr(AU_T[r.tbl]) : r.tbl, r.action, r.row_key || "", auText(r), r.old ? JSON.stringify(r.old) : "", r.new ? JSON.stringify(r.new) : ""]);
+    const H = ["Time", "User", "Where", "Action", "Item", "Changes", "Old (JSON)", "New (JSON)"], R = shown.map(r => [auditStamp(r.at), r.user_name || "", AU_T[r.tbl] ? tr(AU_T[r.tbl]) : r.tbl, r.action, r.row_key || "", auText(r), r.old ? JSON.stringify(r.old) : "", r.new ? JSON.stringify(r.new) : ""]);
     if (kind === "xlsx") return exportXlsx({ Audit: [H, ...R] }, fname("xlsx"));
-    if (kind === "csv") { const csv = "﻿" + [H, ...R].map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\r\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = fname("csv"); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); return; }
+    if (kind === "csv") { const csv = "﻿" + [H, ...R].map(r => r.map(x => `"${String(x).replace(/^(?=[\s\uFEFF]*[=+@-])/, "\u0027").replace(/"/g, '""')}"`).join(",")).join("\r\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = fname("csv"); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); return; }
     const [f0, t0] = range(), cnt = a => shown.filter(r => r.action === a).length;
-    const body = shown.map(r => `<tr><td>${esc(new Date(r.at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }))}</td><td>${esc(r.user_name || "")}</td><td>${esc(AU_T[r.tbl] ? tr(AU_T[r.tbl]) : (r.tbl === "cash_records" ? tr("ক্যাশ") : r.tbl))}</td><td>${esc((AU_A[r.action] || [r.action])[0])}</td><td>${esc(r.row_key || "")}</td><td>${esc(auText(r))}</td></tr>`).join("");
+    const body = shown.map(r => `<tr><td>${esc(auditStamp(r.at,{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}))}</td><td>${esc(r.user_name || "")}</td><td>${esc(AU_T[r.tbl] ? tr(AU_T[r.tbl]) : (r.tbl === "cash_records" ? tr("ক্যাশ") : r.tbl))}</td><td>${esc((AU_A[r.action] || [r.action])[0])}</td><td>${esc(r.row_key || "")}</td><td>${esc(auText(r))}</td></tr>`).join("");
     printSheet(repSheet("au-sheet", "Audit Log · পরিবর্তনের লগ", f0, t0, repKpi([["Changes", shown.length], ["Added", cnt("insert")], ["Edited", cnt("update")], ["Deleted", cnt("delete")]]), repOne(repBox("Change history", ["~Time", "~User", "~Where", "~Action", "~Item", "~Changes"], body)), more ? "Note: only the loaded records are included." : ""), fname("pdf").replace(/\.pdf$/, ""));
   }
   $("#au-dl", v).onclick = e => { e.stopPropagation(); $("#au-menu", v).classList.toggle("hide"); };
-  $$("#au-menu [data-dl]", v).forEach(b => b.onclick = () => download(b.dataset.dl));
+  $$("#au-menu [data-dl]", v).forEach(b => b.onclick = () => download(b.dataset.dl).catch(e => toast(e.message || String(e), "err")));
   const hideMenu = () => $("#au-menu", v)?.classList.add("hide"); document.addEventListener("click", hideMenu);
   $("#au-clr", v) && ($("#au-clr", v).onclick = () => clearAuditModal(() => load()));
-  pbBind(v, "au", F, load);
+  pbBind(v, "au", F, () => load());
   $("#au-t", v).onchange = e => { F.tbl = e.target.value; load(); }; $("#au-a", v).onchange = e => { F.act = e.target.value; load(); }; $("#au-w", v).onchange = e => { F.who = e.target.value; draw(); };
   $("#au-q", v).oninput = e => { F.q = e.target.value; draw(); };
-  await load();
-  return () => document.removeEventListener("click", hideMenu);
+  $("#au-a", v).value = F.act;
+  load();
+  return () => { ++revision; document.removeEventListener("click", hideMenu); };
 }
 function clearAuditModal(after) {
   modal(`<h2>🧹 Audit log পরিষ্কার</h2><p class="mut sm" style="margin-top:-6px">পুরনো লগ মুছে জায়গা খালি করুন। মোছার পরেও "কে কখন পরিষ্কার করেছে" তার একটা রেকর্ড থেকে যাবে।</p>
    <div class="grid" style="gap:8px">${[["90", bi("৯০ দিনের বেশি পুরনো", "Older than 90 days")], ["30", bi("৩০ দিনের বেশি পুরনো", "Older than 30 days")], ["7", bi("৭ দিনের বেশি পুরনো", "Older than 7 days")], ["all", bi("সব লগ", "All logs")]].map(([k, l], i) => `<label class="rad"><input type="radio" name="clr" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
-   <label class="rad" style="margin-top:12px"><input type="checkbox" id="clr-dl" checked><span>মোছার আগে Excel কপি ডাউনলোড করুন</span></label>
+   <label class="rad" style="margin-top:12px"><input type="checkbox" id="clr-dl" checked><span>মোছার আগে সম্পূর্ণ JSON আর্কাইভ ডাউনলোড করুন</span></label>
    <div id="clr-all" class="hide" style="margin-top:10px"><label class="f">নিশ্চিত করতে <b>CLEAR</b> লিখুন</label><input class="in" id="clr-t" autocomplete="off"></div>
    <div class="modal-actions"><button class="btn bad fix" id="clr-ok">${ico("trash")} পরিষ্কার করুন</button><button class="btn fix" id="clr-x">বাতিল</button></div>`, (root, close) => {
     $$("[name=clr]", root).forEach(r => r.onchange = () => $("#clr-all", root).classList.toggle("hide", $("[name=clr]:checked", root).value !== "all"));
     $("#clr-x", root).onclick = close;
     $("#clr-ok", root).onclick = async () => {
       const k = $("[name=clr]:checked", root).value; if (k === "all" && $("#clr-t", root).value.trim().toUpperCase() !== "CLEAR") return toast("CLEAR লিখুন", "err");
-      const before = k === "all" ? new Date(Date.now() + 60000).toISOString() : new Date(addDays(today(), -+k) + "T00:00:00").toISOString();
+      const before = k === "all" ? new Date().toISOString() : new Date(addDays(auditDate(Date.now()), -+k) + "T00:00:00+06:00").toISOString();
       const b = $("#clr-ok", root); b.disabled = true;
       try {
-        if ($("#clr-dl", root).checked) { const old = await API.audit({ from: "2000-01-01", to: k === "all" ? today() : addDays(today(), -+k - 1), limit: 20000 }); if (old.length) await exportXlsx({ Audit: [["Time", "User", "Where", "Action", "Item", "Changes"], ...old.map(r => [new Date(r.at).toLocaleString("en-GB"), r.user_name || "", r.tbl, r.action, r.row_key || "", auText(r)])] }, `Audit_archive_${today()}.xlsx`); }
+        if ($("#clr-dl", root).checked) {
+          const archive = [], batch = 500;
+          for (let offset = 0; ; offset += batch) {
+            const page = await API.audit({before, offset, limit:batch});
+            archive.push(...page);
+            if (page.length < batch) break;
+          }
+          if (archive.length) dlBlob(new Blob([JSON.stringify({before,entries:archive})], {type:"application/json"}), `Audit_archive_${today()}.json`);
+        }
         const n = await API.clearAudit(before); close(); toast(bi(`✔ ${n}টি পুরনো লগ মুছে ফেলা হয়েছে`, `✔ ${n} old log(s) deleted`)); after && after();
       } catch (e) { toast(/function|does not exist/i.test(e.message || "") ? "schema_v4.sql চালানো বাকি" : e.message, "err"); b.disabled = false; }
     };
@@ -4022,60 +4092,231 @@ function clearAuditModal(after) {
 
 /* =================== v6.2: audit & security shell =================== */
 async function vSecurity(v) {
-  const admin = S.me.role === "admin"; let tab = sessionStorage.getItem("nabiad_sec_tab") || "audit"; if (!admin && tab !== "audit") tab = "audit";
-  const tabs = [["audit", "📜", "Audit log"], ...(admin ? [["backup", "💾", "Backup"], ["sec", "🔐", "Security"]] : [])];
-  v.innerHTML = `<div class="tabs ntabs" style="margin-bottom:12px">${tabs.map(([k, i, l]) => `<span class="chip ${k === tab ? "on" : ""}" data-st="${k}"><i class="te">${i}</i> <span>${l}</span></span>`).join("")}</div><div id="sec-out"></div>`;
-  $$("[data-st]", v).forEach(c => c.onclick = () => { sessionStorage.setItem("nabiad_sec_tab", c.dataset.st); if (cleanup) { cleanup(); cleanup = null; } vSecurity(v).then(f => { cleanup = f || null; }); });
-  const out = $("#sec-out", v);
-  if (tab === "audit") return vAudit(out);
-  if (tab === "backup") return vBackup(out);
-  return vSec(out);
-}
-function nextMidnight() { const d = new Date(); d.setHours(24, 0, 0, 0); return d; }
-async function vBackup(out) {
-  out.innerHTML = head("Backup", `<button class="btn pri" id="bk-now">${ico("save")} এখনই Backup</button><button class="btn" id="bk-dl">${ico("dl")} পুরো ডাটা (Excel)</button>`) + `<div class="grid g4" id="bk-kpi"><div class="kpi card"><div class="skel"></div></div><div class="kpi card"><div class="skel"></div></div><div class="kpi card"><div class="skel"></div></div><div class="kpi card"><div class="skel"></div></div></div>
-   <div class="card flush" style="margin-top:12px" id="bk-list"><div class="empty">লোড হচ্ছে…</div></div>
-   <div class="card" style="margin-top:12px"><h3>ℹ️ Backup কীভাবে কাজ করে</h3><ul class="chk"><li>🕛 প্রতি রাত ১২টায় (বাংলাদেশ সময়) ডাটাবেস নিজে থেকে Backup নেয় — কাউকে কিছু করতে হয় না।</li><li>🗂 স্বয়ংক্রিয় Backup শেষ ১৪ দিনের রাখা হয়, হাতে নেওয়া Backup শেষ ১০টি।</li><li>⬇ যেকোনো Backup JSON বা Excel হিসেবে ডাউনলোড করে নিজের কম্পিউটার / Google Drive-এ রাখুন — মাসে অন্তত একবার।</li><li>♻ ডাটা ফেরত আনতে হলে Admin ডাউনলোড করা ফাইল দিয়ে Supabase-এ restore করতে পারে।</li></ul></div>`;
-  const toXlsx = async (d, name) => { const sheets = {}; for (const [t, rows] of Object.entries(d || {})) { if (!Array.isArray(rows) || !rows.length) continue; const keys = [...new Set(rows.flatMap(r => Object.keys(r)))]; sheets[t.slice(0, 31)] = [keys, ...rows.map(r => keys.map(k => r[k] !== null && typeof r[k] === "object" ? JSON.stringify(r[k]) : r[k]))]; } if (!Object.keys(sheets).length) return toast("ডাটা নেই", "err"); await exportXlsx(sheets, name); };
-  const list = async () => {
-    let rows; try { rows = await API.backups(); } catch (e) { $("#bk-list", out).innerHTML = `<div class="alert rd" style="margin:12px">${/relation|does not exist|schema cache|not find/i.test(e.message || "") ? "Backup টেবিল নেই — Supabase-এ schema_v3.sql চালাতে হবে" : esc(e.message)}</div>`; $("#bk-kpi", out).innerHTML = ""; return; }
-    const lastA = rows.find(r => r.kind === "auto"), lastM = rows.find(r => r.kind === "manual"), nm = nextMidnight(), ok = lastA && Date.now() - new Date(lastA.at) < 36 * 36e5;
-    $("#bk-kpi", out).innerHTML = `<div class="kpi card ${ok ? "k-gr" : "k-am"}"><div class="l">শেষ স্বয়ংক্রিয়</div><div class="v" style="font-size:17px">${lastA ? new Date(lastA.at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "এখনো হয়নি"}</div><div class="s">${lastA ? relTime(lastA.at) : "আজ রাতে প্রথমটি হবে"}</div></div>
-      <div class="kpi card k-vi"><div class="l">পরের Backup</div><div class="v" style="font-size:17px">${nm.toLocaleString("en-GB", { day: "2-digit", month: "short" })}, 12:00 AM</div><div class="s">${relTime(nm)}</div></div>
-      <div class="kpi card k-cy"><div class="l">মোট Backup</div><div class="v num">${rows.length}</div><div class="s"><span>স্বয়ংক্রিয়</span> ${rows.filter(r => r.kind === "auto").length} · <span>হাতে</span> ${rows.filter(r => r.kind === "manual").length}</div></div>
-      <div class="kpi card"><div class="l">শেষ হাতে-নেওয়া</div><div class="v" style="font-size:17px">${lastM ? new Date(lastM.at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</div><div class="s">${rows[0] ? `<span>রেকর্ড</span> ${money0(rows[0].size_rows)}` : ""}</div></div>`;
-    $("#bk-list", out).innerHTML = `<div class="ch"><h3>Backup তালিকা</h3><span class="tag">${rows.length}</span></div>` + (rows.length ? `<div class="bkl">${rows.map(r => `<div class="bkr"><div class="bki ${r.kind}">${ico(r.kind === "auto" ? "clock" : "save")}</div><div class="bkb"><b>${new Date(r.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</b><div class="mut xs"><span>${r.kind === "auto" ? "স্বয়ংক্রিয়" : "হাতে"}</span> · ${money0(r.size_rows)} <span>রেকর্ড</span> · ${relTime(r.at)}</div></div><div class="bka"><button class="btn sm" data-j="${r.id}" data-at="${r.at}" title="JSON">JSON</button><button class="btn sm" data-x="${r.id}" data-at="${r.at}" title="Excel">${ico("dl")} Excel</button>${r.kind === "manual" ? `<button class="btn sm ghost" data-del="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></div>`).join("")}</div>` : `<div class="empty">এখনো কোনো Backup নেই — "এখনই Backup" চাপুন</div>`);
-    const fn = (at, ext) => `nabiad_backup_${at.slice(0, 16).replace(/[:T]/g, "-")}.${ext}`;
-    $$("[data-j]", out).forEach(b => b.onclick = async () => { b.disabled = true; try { const d = await API.backupData(+b.dataset.j || b.dataset.j); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(d)], { type: "application/json" })); a.download = fn(b.dataset.at, "json"); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); } catch (e) { toast(e.message, "err"); } b.disabled = false; });
-    $$("[data-x]", out).forEach(b => b.onclick = async () => { b.disabled = true; try { await toXlsx(await API.backupData(+b.dataset.x || b.dataset.x), fn(b.dataset.at, "xlsx")); } catch (e) { toast(e.message, "err"); } b.disabled = false; });
-    $$("[data-del]", out).forEach(b => b.onclick = async () => { if (!ask("এই হাতে-নেওয়া Backup মুছবেন?")) return; try { await API.deleteBackup(+b.dataset.del || b.dataset.del); toast("✔ মুছে ফেলা হয়েছে"); list(); } catch (e) { toast(/function|does not exist/i.test(e.message || "") ? "schema_v4.sql চালানো বাকি" : e.message, "err"); } });
+  const tabs = [["audit","list",bi("অডিট লগ","Audit log"),vAudit],
+    ...(S.me.role === "admin" ? [["backup","save","Backup",vBackup],["sec","shield","Security",vSec]] : [])];
+  const requested = sessionStorage.getItem("nabiad_sec_tab");
+  let tab = tabs.some(([key]) => key === requested) ? requested : "audit";
+  let childCleanup, epoch = 0;
+  v.innerHTML = `<div class="tabs ntabs adm-tabs as-tabs" role="group" aria-label="${bi("অডিট ও সিকিউরিটি বিভাগ","Audit and security sections")}">${tabs.map(([key, icon, label]) =>
+    `<button type="button" class="chip" data-security-tab="${key}" aria-controls="sec-out" aria-pressed="false">${ico(icon)} ${label}</button>`).join("")}</div><div id="sec-out"></div>`;
+  const panels = $("#sec-out", v), buttons = $$("[data-security-tab]", v);
+  const open = (key, options) => {
+    const visit = ++epoch;
+    childCleanup?.(); childCleanup = null;
+    tab = key;
+    sessionStorage.setItem("nabiad_sec_tab", tab);
+    buttons.forEach(btn => {
+      const active = btn.dataset.securityTab === tab;
+      btn.classList.toggle("on", active); btn.setAttribute("aria-pressed", active);
+    });
+    const panel = document.createElement("div");
+    panels.replaceChildren(panel);
+    Promise.resolve(tabs.find(([id]) => id === tab)[3](panel, options, open)).then(dispose => {
+      if (visit !== epoch || !panel.isConnected) { dispose?.(); return; }
+      childCleanup = dispose;
+    }).catch(() => {
+      if (panel.isConnected && visit === epoch) panel.innerHTML = `<div class="alert rd">${bi("এই বিভাগ লোড হয়নি","This section could not load")}</div>`;
+    });
   };
-  $("#bk-now", out).onclick = async () => { const b = $("#bk-now", out); b.disabled = true; try { await API.backupNow(); toast("✔ Backup নেওয়া হয়েছে"); await list(); } catch (e) { toast(e.message, "err"); } b.disabled = false; };
-  $("#bk-dl", out).onclick = async () => { const b = $("#bk-dl", out); b.disabled = true; toast("ডাটা আনা হচ্ছে… একটু সময় লাগবে"); try { await toXlsx(await API.dumpAll(), `Nabiad_Full_Data_${today()}.xlsx`); } catch (e) { toast(e.message, "err"); } b.disabled = false; };
-  await list();
+  buttons.forEach(btn => btn.onclick = () => { if (btn.dataset.securityTab !== tab) open(btn.dataset.securityTab); });
+  open(tab);
+  return () => { ++epoch; childCleanup?.(); };
 }
-async function vSec(out) {
-  out.innerHTML = head("Security") + `<div class="card empty">লোড হচ্ছে…</div>`;
-  const [logins, bks, recent] = await Promise.all([API.userLogins().catch(() => null), API.backups().catch(() => []), API.audit({ act: "delete", from: addDays(today(), -6), to: today() }).catch(() => [])]);
-  let us = logins; if (!us) { try { us = (await API.users()).map(u => ({ ...u, last_sign_in_at: null })); } catch { us = []; } }
-  const perm = "Notification" in window ? Notification.permission : "na", lastB = bks.find(b => b.kind === "auto"), noName = us.filter(u => !u.name || u.name === (u.email || "").split("@")[0]).length;
-  const checks = [[true, "ডাটাবেস নিরাপত্তা (RLS) চালু", "Staff শুধু যোগ করতে পারে; বদলানো ও মোছা শুধু Admin"], [true, "নতুন কেউ নিজে অ্যাকাউন্ট খুলতে পারে না", "শুধু Admin ব্যবহারকারী যোগ করে"], [location.protocol === "https:" || DEMO, "নিরাপদ সংযোগ (HTTPS)", location.host],
-    [!!lastB && Date.now() - new Date(lastB.at) < 36 * 36e5, "দৈনিক Backup", lastB ? relTime(lastB.at) : "এখনো স্বয়ংক্রিয় Backup হয়নি"], [true, "সব পরিবর্তনের রেকর্ড (Audit log)", "কে, কখন, আগে কী ছিল"], [true, "চেকের ছবি সুরক্ষিত", "লগইন ছাড়া দেখা যায় না"],
-    [perm === "granted", "এই ডিভাইসে নোটিফিকেশন", perm === "granted" ? "চালু" : "সেটিংস থেকে চালু করুন"], [!noName, "সব ব্যবহারকারীর নাম দেওয়া", noName ? `${noName} জনের নাম ঠিক করা বাকি` : "ঠিক আছে"]];
-  const score = Math.round(checks.filter(c => c[0]).length / checks.length * 100);
-  out.innerHTML = head("Security") + `<div class="grid g2">
-    <div class="card"><div class="secs"><div class="ring" style="--p:${score}"><b>${score}%</b></div><div><h3 style="margin:0">নিরাপত্তা স্কোর</h3><div class="mut sm">${checks.filter(c => c[0]).length} / ${checks.length} <span>ঠিক আছে</span></div></div></div>
-      <div class="hcl">${checks.map(([ok, l, s]) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "!"}</i><div><b>${l}</b><div class="mut xs">${esc(s)}</div></div></div>`).join("")}</div></div>
-    <div class="grid" style="gap:14px;align-content:start"><div class="card"><h3>💻 এই ডিভাইস</h3><div class="kv"><span>লগইন ইমেইল</span><b class="sm">${esc(S.me.email)}</b></div><div class="kv"><span>Role</span><b>${esc(S.me.role)}</b></div><div class="kv"><span>ডিভাইস</span><b class="sm">${esc((navigator.userAgentData?.platform || navigator.platform || "") + " · " + (/Mobi/.test(navigator.userAgent) ? "Mobile" : "Desktop"))}</b></div>
-       <div class="row" style="margin-top:12px"><button class="btn fix" id="sc-oth">${ico("out")} অন্য সব ডিভাইস থেকে লগআউট</button><a class="btn fix" href="#/settings">${ico("gear")} পাসওয়ার্ড বদলান</a></div><div class="mut xs" style="margin-top:6px">ফোন হারালে বা পাসওয়ার্ড অন্য কেউ জানলে আগে "অন্য সব ডিভাইস থেকে লগআউট" চাপুন, তারপর পাসওয়ার্ড বদলান।</div></div>
-      <div class="card"><h3>🗑 গত ৭ দিনে মুছে ফেলা</h3>${recent.length ? `<div class="mini">${recent.slice(0, 6).map(r => `<div class="mi"><div><b>${esc(AU_T[r.tbl] || r.tbl)} · ${esc(r.row_key || "")}</b><div class="mut xs">${esc(r.user_name || "")} · ${new Date(r.at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}</div></div></div>`).join("")}</div><a class="btn sm" style="margin-top:8px" href="#/audit" onclick="sessionStorage.setItem('nabiad_sec_tab','audit')">সব দেখুন →</a>` : `<div class="alert gr">✔ গত ৭ দিনে কিছু মোছা হয়নি</div>`}</div></div>
-    <div class="card flush" style="grid-column:1/-1"><div class="ch"><h3>👥 ব্যবহারকারী ও শেষ লগইন</h3><span class="tag">${us.length}</span><div class="sp" style="flex:1"></div><a class="sm" href="#/admin" onclick="sessionStorage.setItem('nabiad_admin_tab','usr')">বদলান →</a></div>
-      <div class="ulr">${us.map(u => `<div class="ur">${avaEl(u.id, u.name, u.email)}<div class="ub"><b>${esc(u.name || "—")}</b> <span class="pill sm">${esc(u.role)}</span>${u.active ? "" : ` <span class="tag cl">নিষ্ক্রিয়</span>`}<div class="mut xs">${esc(u.email)}</div></div><div class="ut"><span class="mut xs">শেষ লগইন</span><b class="sm">${u.last_sign_in_at ? relTime(u.last_sign_in_at) : "—"}</b></div></div>`).join("")}</div>
-      ${logins ? "" : `<div class="mut xs" style="padding:0 16px 12px">শেষ লগইনের সময় দেখাতে schema_v4.sql চালাতে হবে।</div>`}</div></div>`;
-  $("#sc-oth", out).onclick = async () => { if (!ask(bi("অন্য সব ডিভাইস থেকে লগআউট করবেন? (এই ডিভাইস লগইন থাকবে)", "Sign out all other devices? (This device stays signed in)"))) return; try { await API.signOutOthers(); toast(bi("✔ অন্য ডিভাইস থেকে লগআউট হয়েছে", "✔ Other devices signed out")); } catch (e) { toast(e.message, "err"); } };
+function securityMetrics(cards) {
+  return `<div class="as-metrics">${cards.map(([label,value,sub]) => `<div class="card as-kpi"><span>${label}</span><strong>${esc(value)}</strong>${sub ? `<small class="mut">${esc(sub)}</small>` : ""}</div>`).join("")}</div>`;
+}
+const asUnavailable = () => bi("পাওয়া যায়নি","Unavailable");
+function backupSheets(data) {
+  const sheets = {};
+  for (const [name, rows] of Object.entries(data || {})) {
+    if (!Array.isArray(rows) || !rows.length) continue;
+    const keys = [...new Set(rows.flatMap(row => Object.keys(row)))];
+    sheets[name] = [keys, ...rows.map(row => keys.map(key => row[key] != null && typeof row[key] === "object" ? JSON.stringify(row[key]) : row[key]))];
+  }
+  if (!Object.keys(sheets).length) throw new Error(bi("এক্সপোর্টের রেকর্ড নেই","No records to export"));
+  return sheets;
+}
+function backupDetails(r, data) {
+  const entries = Object.entries(data || {}).filter(([,rows]) => Array.isArray(rows));
+  const counts = entries.map(([name,rows]) => `<div class="kv"><span>${esc(auditTable(name))}</span><b class="num">${money0(rows.length)}</b></div>`).join("");
+  modal(`<h2>${bi("ব্যাকআপের বিস্তারিত","Snapshot details")}</h2><p class="mut sm">${esc(auditStamp(r.at))} · ${bi("ঢাকা সময়","Dhaka time")}</p>
+    ${counts || `<div class="empty">${bi("এই snapshot-এ টেবিল পাওয়া যায়নি","No tables found in this snapshot")}</div>`}
+    <div class="modal-actions"><button class="btn pri" type="button" id="backup-detail-close">${bi("বন্ধ","Close")}</button></div>`,
+    (root, close) => $("#backup-detail-close",root).onclick = close);
+}
+async function vBackup(out) {
+  out.innerHTML = head("Backup", `<button class="btn pri" type="button" id="bk-now">${ico("save")} ${bi("এখনই Backup","Backup now")}</button><button class="btn" type="button" id="bk-dl">${ico("dl")} ${bi("বর্তমান ডাটা (Excel)","Current data (Excel)")}</button>`) +
+    `<div id="bk-kpi"></div><div class="card flush" id="bk-archive">
+      <div class="ch"><h3>${bi("ব্যাকআপ তালিকা","Backup history")}</h3><span class="tag" id="bk-count" role="status"></span></div>
+      <div class="as-result as-toolbar"><div class="chips" role="group" aria-label="${bi("ব্যাকআপের ধরন","Backup type")}">${[["",bi("সব","All")],["auto",bi("স্বয়ংক্রিয়","Automatic")],["manual",bi("ম্যানুয়াল","Manual")],["other",bi("অন্যান্য","Other")]].map(([key,label]) => `<button type="button" class="chip" data-bk-kind="${key}" aria-pressed="false">${label}</button>`).join("")}</div>
+      <button type="button" class="btn sm" id="bk-refresh">${bi("রিফ্রেশ","Refresh")}</button></div>
+      <div id="bk-list"></div></div>`;
+  const g = id => $("#" + id,out), list = g("bk-list");
+  const kind = value => ({auto:bi("স্বয়ংক্রিয়","Automatic"),manual:bi("ম্যানুয়াল","Manual"),other:bi("অন্যান্য","Other")})[value] || bi("অন্যান্য","Other");
+  let rows = [], selected = "", busy = false;
+  const timestamp = row => row ? auditStamp(row.at) : "—";
+  function draw() {
+    const auto = rows.filter(r => r.kind === "auto"), manual = rows.filter(r => r.kind === "manual");
+    const fresh = auto[0] && Date.now() - Date.parse(auto[0].at) < 36 * 3600000;
+    g("bk-kpi").innerHTML = securityMetrics([
+      [bi("শেষ স্বয়ংক্রিয়","Latest automatic"),timestamp(auto[0]),auto[0] ? (fresh ? relTime(auto[0].at) : bi("৩৬ ঘণ্টা পেরিয়েছে","Older than 36 hours")) : bi("স্বয়ংক্রিয় snapshot পাওয়া যায়নি","No automatic snapshot found")],
+      [bi("শেষ ম্যানুয়াল","Latest manual"),timestamp(manual[0]),manual[0] ? bi("রেকর্ড ","Records ") + money0(manual[0].size_rows) : ""],
+      [bi("সংরক্ষিত snapshot","Stored snapshots"),String(rows.length),bi("স্বয়ংক্রিয় ","Automatic ") + auto.length + " · " + bi("ম্যানুয়াল ","Manual ") + manual.length + " · " + bi("অন্যান্য ","Other ") + (rows.length-auto.length-manual.length)],
+      [bi("নির্ধারিত সময়","Configured schedule"),bi("প্রতিদিন ০০:০০","Daily at 00:00"),bi("ঢাকা সময়","Dhaka time")]
+    ]);
+    const visible = rows.filter(r => !selected || (["auto","manual"].includes(r.kind) ? r.kind : "other") === selected);
+    g("bk-count").textContent = String(visible.length);
+    $$("[data-bk-kind]",out).forEach(btn => {
+      btn.classList.toggle("on",btn.dataset.bkKind === selected); btn.setAttribute("aria-pressed",btn.dataset.bkKind === selected);
+    });
+    list.innerHTML = visible.length ? visible.map(r => `<article class="bkr"><span class="bki ${r.kind === "auto" ? "auto" : "manual"}">${ico(r.kind === "auto" ? "clock" : "save")}</span>
+      <div class="bkb"><b>${esc(auditStamp(r.at))}</b><div class="mut sm">${kind(r.kind)} · ${bi("রেকর্ড","Records")} ${money0(r.size_rows)}</div></div>
+      <div class="bka"><button type="button" class="btn sm" data-backup="details" data-id="${esc(r.id)}">${bi("বিস্তারিত","Details")}</button><button type="button" class="btn sm" data-backup="json" data-id="${esc(r.id)}">JSON</button>
+      <button type="button" class="btn sm" data-backup="xlsx" data-id="${esc(r.id)}">Excel</button>
+      ${r.kind === "manual" ? `<button class="btn sm rdo" type="button" data-backup="remove" data-id="${esc(r.id)}" aria-label="${bi("ম্যানুয়াল ব্যাকআপ মুছুন","Delete manual backup")}">${ico("trash")}</button>` : ""}</div></article>`).join("") :
+      `<div class="empty">${bi("এই ধরনের কোনো snapshot নেই","No snapshots match this type")}</div>`;
+  }
+  async function refresh() {
+    if (busy) return;
+    busy = true; g("bk-refresh").disabled = true;
+    list.innerHTML = `<div class="empty">${bi("লোড হচ্ছে…","Loading…")}</div>`;
+    try {
+      const data = await API.backups();
+      if (!out.isConnected) return;
+      rows = [...data].sort((a,b) => Date.parse(b.at)-Date.parse(a.at)); draw();
+    } catch {
+      if (out.isConnected) {
+        g("bk-kpi").textContent = ""; g("bk-count").textContent = "";
+        list.innerHTML = `<div class="empty">${bi("ব্যাকআপ তালিকা লোড হয়নি। রিফ্রেশ করে আবার চেষ্টা করুন।","Backup history could not load. Refresh to retry.")}</div>`;
+      }
+    } finally { busy = false; g("bk-refresh").disabled = false; }
+  }
+  let backupAction = false;
+  async function runBackupAction(button, task) {
+    if (backupAction) return;
+    backupAction = true; button.disabled = true;
+    try { await task(); }
+    catch (e) { if (out.isConnected) toast(e.message || String(e),"err"); }
+    finally { backupAction = false; button.disabled = false; }
+  }
+  $$("[data-bk-kind]",out).forEach(btn => btn.onclick = () => { selected = btn.dataset.bkKind; if (!busy && g("bk-count").textContent) draw(); });
+  list.onclick = e => {
+    const btn = e.target.closest("[data-backup]"); if (!btn) return;
+    const r = rows.find(item => String(item.id) === btn.dataset.id), action = btn.dataset.backup;
+    if (!r) return;
+    runBackupAction(btn,async () => {
+      if (action === "remove") {
+        if (r.kind !== "manual" || !ask(bi("এই ম্যানুয়াল snapshot মুছবেন?","Delete this manual snapshot?"))) return;
+        await API.deleteBackup(r.id); if (out.isConnected) await refresh(); return;
+      }
+      const data = await API.backupData(r.id);
+      if (!out.isConnected) return;
+      if (!data || typeof data !== "object") throw new Error(bi("Snapshot পড়া যায়নি","Snapshot could not be read"));
+      const filename = `nabiad_backup_${r.at.slice(0,19).replace(/[:T]/g,"-")}_${r.id}`;
+      if (action === "details") backupDetails(r,data);
+      else if (action === "json") dlBlob(new Blob([JSON.stringify(data)],{type:"application/json"}),filename+".json");
+      else await exportXlsx(backupSheets(data),filename+".xlsx");
+    });
+  };
+  g("bk-refresh").onclick = refresh;
+  g("bk-now").onclick = () => runBackupAction(g("bk-now"),async () => {
+    await API.backupNow();
+    if (out.isConnected) { toast(bi("ব্যাকআপ নেওয়া হয়েছে","Backup created")); await refresh(); }
+  });
+  g("bk-dl").onclick = () => runBackupAction(g("bk-dl"),async () => {
+    const data = await API.dumpAll();
+    if (!out.isConnected) return;
+    const failed = Object.keys(data).filter(key => data[key]?.error);
+    const sheets = backupSheets(data);
+    if (failed.length) sheets["Export status"] = [["Table","Status"], ...failed.map(key => [key,"Unavailable"])];
+    await exportXlsx(sheets,`Nabiad_${failed.length ? "Partial" : "Full"}_Data_${today()}.xlsx`);
+    if (failed.length) toast(bi("আংশিক এক্সপোর্ট হয়েছে। বাদ পড়া টেবিল Export status-এ আছে।","Partial export. See the Export status sheet for unavailable tables."),"err");
+  });
+  await refresh();
+}
+async function vSec(out, _options, open) {
+  const F = {q:"", mode:""};
+  out.innerHTML = head("Security", `<button class="btn" type="button" id="sc-refresh">${bi("রিফ্রেশ","Refresh")}</button>`) +
+    `<div id="sc-overview"></div><div class="grid g2 as-panels"><div class="card" id="sc-devices"></div><div class="card" id="sc-recent"></div></div>
+      <section class="card flush" id="sc-directory"><div class="ch"><h3>${bi("ব্যবহারকারী ও সাইন-ইন","Users and sign-ins")}</h3><span id="sc-count" class="tag" role="status"></span></div>
+      <div class="as-result as-toolbar">${searchBox("sc-query",bi("নাম বা ইমেইল","Name or email"))}<select id="sc-mode" class="in" aria-label="${bi("ব্যবহারকারী ফিল্টার","User filter")}">
+      <option value="">${bi("সব ব্যবহারকারী","All users")}</option><option value="disabled">${bi("নিষ্ক্রিয়","Inactive")}</option><option value="mfa">${bi("সক্রিয় · 2FA বন্ধ","Active · 2FA off")}</option></select></div><div id="sc-users"></div></section>`;
+  const g = id => $("#" + id,out), unknown = asUnavailable();
+  let users = [], byId = new Map(), sessions = null, refreshing = false;
+  g("sc-query").setAttribute("aria-label",bi("ব্যবহারকারী খুঁজুন","Search users"));
+  function drawUsers() {
+    const q = chequeSearchKey(F.q);
+    const visible = users.filter(u => (!q || chequeSearchKey([u.name,u.email].join(" ")).includes(q)) &&
+      (F.mode === "disabled" ? !u.active : F.mode === "mfa" ? u.active && byId.get(u.id)?.has_2fa === false : true));
+    g("sc-count").textContent = String(visible.length);
+    g("sc-users").innerHTML = visible.length ? visible.map(u => {
+      const sec = byId.get(u.id);
+      return `<article class="ur"><div class="as-user-ref">${avaEl(u.id,u.name,u.email)}<div class="ub"><b>${esc(u.name || "—")}</b> <span class="pill">${esc(u.role)}</span><div class="mut xs">${esc(u.email || "")}</div></div></div>
+      <div class="as-user-state"><span class="tag">${u.active ? bi("সক্রিয়","Active") : bi("নিষ্ক্রিয়","Inactive")}</span><span class="tag">2FA · ${sec ? sec.has_2fa ? bi("চালু","On") : bi("বন্ধ","Off") : unknown}</span><span class="mut sm">${sec ? bi(`${sec.sessions} সেশন`,`${sec.sessions} sessions`) : ""}</span></div>
+      <div class="ut"><span class="mut xs">${bi("শেষ সাইন-ইন","Last sign-in")}</span><b class="sm">${esc(auditStamp(u.last_sign_in_at || sec?.last_sign_in_at))}</b></div>
+      ${u.id ? `<button type="button" class="btn sm" data-user-security="${esc(u.id)}">${bi("নিরাপত্তা","Manage security")}</button>` : ""}</article>`;
+    }).join("") : `<div class="empty">${bi("কোনো ব্যবহারকারী মেলেনি","No users match")}</div>`;
+  }
+  async function refresh() {
+    if (refreshing) return;
+    refreshing = true; const button = g("sc-refresh"); button.disabled = true;
+    const settled = await Promise.allSettled([API.userLogins(),API.userSec(),API.userSessions(S.me.id),API.backups(),API.audit({act:"delete",from:addDays(auditDate(Date.now()),-6),to:auditDate(Date.now()),limit:6})]);
+    refreshing = false; button.disabled = false;
+    if (!out.isConnected) return;
+    const [logins, sec, own, backups, recent] = settled.map(r => r.status === "fulfilled" ? r.value : null);
+    users = logins ?? [];
+    byId = new Map((sec || []).map(u => [u.user_id,u]));
+    sessions = own;
+    const enrolled = users.filter(u => u.active && byId.get(u.id)?.has_2fa).length;
+    const eligible = users.filter(u => u.active).length, known = users.filter(u => u.active && byId.has(u.id)).length;
+    const auto = backups?.find(r => r.kind === "auto");
+    g("sc-overview").innerHTML = securityMetrics([
+      [bi("সংযোগ","Connection"),location.protocol === "https:" ? "HTTPS" : (DEMO ? "Demo" : "HTTP"),location.host],
+      [bi("সক্রিয় অ্যাকাউন্টে 2FA","2FA on active accounts"),sec && logins && known===eligible ? `${enrolled} / ${eligible}` : unknown,""],
+      [bi("আপনার সেশন","Your sessions"),own ? String(own.length) : unknown,""],
+      [bi("শেষ স্বয়ংক্রিয় ব্যাকআপ","Latest automatic backup"),auto ? auditStamp(auto.at) : backups ? "—" : unknown,auto ? relTime(auto.at) : ""]
+    ]);
+    g("sc-devices").innerHTML = `<h3>${bi("আপনার সাইন-ইন সেশন","Your signed-in sessions")}</h3><p class="mut sm as-break">${esc(S.me.email || "")}</p>${own ? own.length ? own.map(row => `<div class="scrow"><div><b>${esc(uaName(row.user_agent))}</b> ${row.mine ? `<span class="tag ok">${bi("এই ডিভাইস","This device")}</span>` : ""}<div class="mut sm">${esc(auditStamp(row.last_seen))}</div></div>
+      ${!row.mine ? `<button type="button" class="btn sm" data-sc-device="${esc(row.id)}">${bi("লগআউট","Sign out")}</button>` : ""}</div>`).join("") : `<p class="mut sm">${bi("কোনো সক্রিয় সেশন নেই","No active sessions")}</p>` : `<p class="mut sm">${bi("সেশনের তথ্য লোড হয়নি","Session information could not load")}</p>`}
+      <div class="adm-actions"><button type="button" class="btn" id="sc-oth" ${own && !own.some(row => !row.mine) ? "disabled" : ""}>${bi("অন্য সব ডিভাইস থেকে লগআউট","Sign out other devices")}</button><a class="btn" href="#/settings">${bi("পাসওয়ার্ড ও 2FA","Password and 2FA")}</a></div>`;
+    g("sc-recent").innerHTML = `<h3>${bi("গত ৭ দিনের সাম্প্রতিক ডিলিট","Recent deletions · 7 days")}</h3>${recent ? recent.length ? recent.map(r => `<div class="scrow"><div class="as-break"><b>${esc(auditTable(r.tbl))} · ${esc(r.row_key || "—")}</b><div class="mut sm">${esc(auditActor(r))} · ${esc(auditStamp(r.at))}</div></div></div>`).join("") : `<p class="mut sm">${bi("এই সময়ে ডিলিট নেই","No deletions in this period")}</p>` : `<p class="mut sm">${bi("ডিলিটের রেকর্ড লোড হয়নি","Deletion activity could not load")}</p>`}
+      <button type="button" class="btn sm" id="sc-audit-link">${bi("অডিট লগে দেখুন","View in Audit Log")}</button>`;
+    g("sc-audit-link").onclick = () => open("audit",{deletions:true});
+    if (logins) drawUsers();
+    else { g("sc-count").textContent = ""; g("sc-users").innerHTML = `<div class="empty">${bi("ব্যবহারকারীর তালিকা লোড হয়নি","User sign-ins could not load")}</div>`; }
+  }
+  let revoking = false;
+  g("sc-devices").onclick = async e => {
+    const btn = e.target.closest("#sc-oth,[data-sc-device]");
+    if (!btn || revoking || !ask(btn.id === "sc-oth" ? bi("অন্য ডিভাইসগুলো লগআউট করবেন?","Sign out other devices?") : bi("এই সেশনটি বন্ধ করবেন?","Sign out this session?"))) return;
+    revoking = true; btn.disabled = true;
+    try {
+      if (btn.id === "sc-oth") await API.signOutOthers();
+      else if (sessions?.some(r => !r.mine && String(r.id) === btn.dataset.scDevice)) await API.revokeSessions(S.me.id,btn.dataset.scDevice);
+      if (out.isConnected) await refresh();
+    } catch (err) { toast(err.message || String(err),"err"); }
+    finally { revoking = false; btn.disabled = false; }
+  };
+  g("sc-users").onclick = e => {
+    const btn = e.target.closest("[data-user-security]"), user = btn && users.find(u => String(u.id) === btn.dataset.userSecurity);
+    if (user) userSecModal(user, () => { if (out.isConnected) refresh(); });
+  };
+  g("sc-query").oninput = e => { F.q = e.target.value; if (g("sc-count").textContent) drawUsers(); };
+  g("sc-mode").onchange = e => { F.mode = e.target.value; if (g("sc-count").textContent) drawUsers(); };
+  g("sc-refresh").onclick = refresh;
+  await refresh();
 }
 Object.assign(SbAPI, {
-  async audit(f) { const lim = f.limit || 500, off = f.offset || 0; let q = sb.from("audit_log").select("*").order("at", { ascending: false }).range(off, off + lim - 1); if (f.tbl) q = q.eq("tbl", f.tbl); if (f.act) q = q.eq("action", f.act); if (f.from) q = q.gte("at", new Date(f.from + "T00:00:00").toISOString()); if (f.to) q = q.lt("at", new Date(addDays(f.to, 1) + "T00:00:00").toISOString()); const { data, error } = await q; if (error) throw error; return data; },
+  async audit(f) {
+    const lim = f.limit || 500, off = f.offset || 0;
+    let q = sb.from("audit_log").select("*").order("at",{ascending:false}).order("id",{ascending:false}).range(off, off + lim - 1);
+    if (f.tbl) q = q.eq("tbl",f.tbl);
+    if (f.act) q = q.eq("action",f.act);
+    if (f.from) q = q.gte("at", f.from + "T00:00:00+06:00");
+    if (f.to) q = q.lt("at", addDays(f.to,1) + "T00:00:00+06:00");
+    if (f.before) q = q.lt("at", f.before);
+    const {data,error} = await q; if (error) throw error; return data;
+  },
   async clearAudit(before) { const { data, error } = await sb.rpc("clear_audit", { before }); if (error) throw error; return data; },
   async deleteBackup(id) { const { error } = await sb.rpc("delete_backup", { bid: id }); if (error) throw error; },
   async userLogins() { const { data, error } = await sb.rpc("user_logins"); if (error) throw error; return data; },
@@ -4096,7 +4337,15 @@ Object.assign(SbAPI, {
   async mfaFactor() { const { data } = await sb.auth.mfa.listFactors(); return (data?.totp || []).find(f => f.status === "verified") || null; },
 });
 Object.assign(DemoAPI, {
-  async audit(f) { const off = f.offset || 0, lim = f.limit || 500; return demoStore.audit.filter(r => (!f.tbl || r.tbl === f.tbl) && (!f.act || r.action === f.act) && (!f.from || r.at.slice(0, 10) >= f.from) && (!f.to || r.at.slice(0, 10) <= f.to)).slice(off, off + lim); },
+  async audit(f) {
+    const from = f.from ? Date.parse(f.from + "T00:00:00+06:00") : -Infinity;
+    const to = f.to ? Date.parse(addDays(f.to,1) + "T00:00:00+06:00") : Infinity;
+    const before = f.before ? Date.parse(f.before) : Infinity, off = f.offset || 0;
+    return demoStore.audit.filter(r => {
+      const at = Date.parse(r.at);
+      return (!f.tbl || r.tbl === f.tbl) && (!f.act || r.action === f.act) && at >= from && at < to && at < before;
+    }).sort((a,b) => Date.parse(b.at) - Date.parse(a.at) || Number(b.id) - Number(a.id)).slice(off, off + (f.limit || 500));
+  },
   async clearAudit(before) { const n = demoStore.audit.filter(r => r.at < before).length; demoStore.audit = demoStore.audit.filter(r => r.at >= before); this.aud("audit_log", "delete", `${n} rows cleared`, null, null); this.save(); return n; },
   async deleteBackup(id) { demoStore.backups = (demoStore.backups || []).filter(b => b.id !== id); this.save(); },
   async userLogins() { return [{ email: "admin@demo", name: S.me.name, role: "admin", active: true, last_sign_in_at: new Date().toISOString() }]; },
