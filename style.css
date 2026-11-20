@@ -2171,3 +2171,49 @@ body:has(#modal-root .mback) { overflow: hidden; }
   .rg-filters > :first-child { grid-column: 1 / -1; }
   .rg-summary .card { padding-inline: 6px; }
 }
+
+/* Admin workspace */
+.adm-tabs .chip, .adm-access > span { display: inline-flex; align-items: center; gap: 7px; }
+.adm-tabs .chip svg, .adm-access svg { width: 16px; height: 16px; flex: none; }
+.adm-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(155px, 100%), 1fr)); gap: 10px; margin-bottom: 12px; }
+.adm-metrics .card { display: grid; gap: 4px; padding: 10px 14px; }
+.adm-metrics strong { font-size: 1.24rem; }
+.adm-tools { display: grid; gap: 10px; }
+.adm-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.adm-toolbar .srch { margin: 0; }
+.adm-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.adm-filters .in, .adm-actions .in { min-width: 0; }
+.adm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.adm-actions select { width: auto; max-width: 100%; }
+.adm-setup-switch, .adm-count { margin-block: 10px; }
+.adm-account {
+  display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, .75fr) auto;
+  gap: 10px 15px; align-items: center; padding: 12px 14px;
+  border-inline-start: 3px solid var(--bank-color); border-bottom: 1px solid var(--line2);
+}
+.adm-account:last-child { border-bottom: 0; }
+.adm-account-ref { display: flex; gap: 9px; align-items: center; }
+.adm-account-ref, .adm-account-detail { min-width: 0; overflow-wrap: anywhere; }
+.adm-brand { color: var(--txt); font-weight: 700; padding: 4px 7px; border-radius: 6px; background: color-mix(in srgb, var(--bank-color) 14%, var(--surface)); }
+.adm-attention { color: var(--am); background: var(--am-soft); }
+.adm-user-access { padding-block: 7px; border-top: 1px solid var(--line2); }
+.adm-user-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.adm-user-actions .btn, .adm-system .btn { min-height: 38px; height: auto; white-space: normal; }
+.adm-access { display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, minmax(58px, .35fr)); align-items: center; margin-block: 10px; }
+.adm-access > * { padding: 7px 5px; min-width: 0; border-bottom: 1px solid var(--line2); }
+.adm-access > :nth-child(3n), .adm-access > :nth-child(3n + 2) { text-align: center; }
+.adm-access label { cursor: pointer; }
+.adm-access input { width: 19px; height: 19px; margin: 3px; }
+.adm-mode { margin-bottom: 8px; }
+#ma-error:empty, #ma-custom[hidden], .dcx-entry[hidden] { display: none; }
+@media (max-width: 760px) {
+  .adm-account { grid-template-columns: minmax(0, 1fr) auto; }
+  .adm-account-detail, .adm-account .adm-actions { grid-column: 1; }
+  .adm-account > .btn { grid-column: 2; grid-row: 1 / span 3; }
+  .adm-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 440px) {
+  .adm-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .adm-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .adm-metrics .card { padding-inline: 9px; }
+}
