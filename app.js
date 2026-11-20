@@ -308,10 +308,10 @@ const isLive = c => !["Cancelled", "Bounced", "Stopped"].includes(c.status);
 
 /* ---------- data layer: Supabase ---------- */
 let sb = null;
-async function fetchAll(table, order = "id") {
+async function fetchAll(table, order = "id", columns = "*") {
   let out = [], from = 0; const step = 1000;
   for (;;) {
-    const { data, error } = await sb.from(table).select("*").order(order).range(from, from + step - 1);
+    const { data, error } = await sb.from(table).select(columns).order(order).range(from, from + step - 1);
     if (error) throw error; out = out.concat(data); if (data.length < step) break; from += step;
   }
   return out;
@@ -3955,24 +3955,67 @@ const auditTable = tbl => Object.hasOwn(AU_T,tbl) ? tr(AU_T[tbl]) : String(tbl |
 Object.assign(AU_T, {inv_orders:"Inventory order", inv_items:"Inventory item", inv_demand:"Inventory demand", rm_daily:"RM daily stock",
   rm_products:"RM product", cashbook_days:"Cash Book", cashbook_ledgers:"Cash ledgers", leaf_marks:"Cheque leaf", cheque_statement_verifications:"Statement verification"});
 const auditActor = r => r.user_name || bi("সিস্টেম", "System");
-function auditFields(r) {
+const auditOrderLabels = {
+  ch: ["চ্যানেল", "Channel"], rent: ["ভাড়া", "Rent"], lines: ["অর্ডার আইটেম", "Order items"],
+  value: ["অর্ডারের মূল্য", "Order value"], total_qty: ["মোট পরিমাণ", "Total quantity"],
+  vehicle: ["গাড়ি নম্বর", "Vehicle no."], transport: ["পরিবহন", "Transport"],
+  delivery_date: ["ডেলিভারির তারিখ", "Delivery date"], free: ["ফ্রি অফার", "Free offer"]
+};
+function auditOrderItems(value, catalog) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entries = Object.entries(value);
+  const isNumber = v => (typeof v === "number" || (typeof v === "string" && v.trim() !== "")) && Number.isFinite(Number(v));
+  if (!entries.every(([id,line]) => /^\d+$/.test(id) && line && isNumber(line.q) && isNumber(line.r))) return null;
+  return entries.map(([id,line]) => {
+    const item = catalog.get(id);
+    return {id, name:item?.name || bi("আইটেম #" + id, "Item #" + id), unit:item?.unit || "", qty:Number(line.q), rate:Number(line.r)};
+  });
+}
+function auditOrderText(items) {
+  return items.length ? items.map(i => `${i.name} · ${bi("পরিমাণ","Qty")} ${money(i.qty)} ${i.unit} × ৳${money(i.rate)} = ৳${money(i.qty * i.rate)}`).join(" | ") : bi("কোনো আইটেম নেই","No items");
+}
+function auditOrderDetail(items) {
+  if (!items.length) return `<b>${bi("কোনো আইটেম নেই","No items")}</b>`;
+  return `<ul class="as-order-items">${items.map(i => `<li><strong>${esc(i.name)}</strong> ${i.name.endsWith("#" + i.id) ? "" : `<small class="mut">#${esc(i.id)}</small>`}
+    <dl><div><dt>${bi("পরিমাণ","Quantity")}</dt><dd>${money(i.qty)} ${esc(i.unit)}</dd></div>
+    <div><dt>${bi("দর","Unit rate")}</dt><dd>৳${money(i.rate)}</dd></div>
+    <div><dt>${bi("মোট","Line amount")}</dt><dd>৳${money(i.qty * i.rate)}</dd></div></dl></li>`).join("")}</ul>`;
+}
+function auditValue(r, key, value) {
+  if (r.tbl === "inv_orders") {
+    if (key === "ch" && Object.hasOwn(IV_CH, value)) return bi(...IV_CH[value]);
+    if (key === "status" && Object.hasOwn(IV_ST, value)) return bi(IV_ST[value][0], IV_ST[value][1]);
+  }
+  return auV(value,key);
+}
+function auditFields(r, catalog) {
   const old = r.old || {}, next = r.new || {}, changed = r.action === "update";
   const entry = r.action === "delete" ? old : next;
   return Object.keys(changed ? {...old,...next} : entry)
     .filter(k => !AU_SKIP.has(k) && (changed ? JSON.stringify(old[k]) !== JSON.stringify(next[k]) : entry[k] != null && entry[k] !== ""))
-    .map(key => ({key, label:Object.hasOwn(AU_F,key) ? tr(AU_F[key]) : key, before:auV(old[key], key), after:auV(next[key], key)}));
+    .map(key => {
+      const order = r.tbl === "inv_orders", label = order && Object.hasOwn(auditOrderLabels,key)
+        ? bi(...auditOrderLabels[key]) : Object.hasOwn(AU_F,key) ? tr(AU_F[key]) : key;
+      const format = value => {
+        const items = order && key === "lines" ? auditOrderItems(value,catalog) : null;
+        const text = items ? auditOrderText(items) : auditValue(r,key,value);
+        return {text, items};
+      };
+      return {label, before:format(old[key]), after:format(next[key])};
+    });
 }
-const auText = r => auditFields(r).map(f => `${f.label}: ${r.action === "update" ? f.before + " → " + f.after : r.action === "delete" ? f.before : f.after}`).join("; ");
-function auChips(r) {
-  const fields = auditFields(r);
-  const short = x => x.length > 72 ? x.slice(0, 69) + "…" : x;
+const auText = (r, catalog) => auditFields(r,catalog).map(f => `${f.label}: ${r.action === "update" ? f.before.text + " → " + f.after.text : r.action === "delete" ? f.before.text : f.after.text}`).join("; ");
+function auChips(r, catalog) {
+  const fields = auditFields(r,catalog);
+  const short = ({text,items}) => items ? bi(`${items.length}টি আইটেম`, `${items.length} ${items.length === 1 ? "item" : "items"}`) : text.length > 72 ? text.slice(0, 69) + "…" : text;
   return fields.slice(0, 4).map(f => `<span class="auc"><span class="au-k">${esc(f.label)}</span>${r.action === "update" ? `<s>${esc(short(f.before))}</s><i>→</i>` : ""}<b>${esc(short(r.action === "delete" ? f.before : f.after))}</b></span>`).join("") +
     (fields.length > 4 ? `<span class="mut sm">+${fields.length - 4}</span>` : "");
 }
-function auditDetails(r) {
-  const fields = auditFields(r);
+function auditDetails(r, catalog) {
+  const fields = auditFields(r,catalog);
+  const detail = (label, value) => `<div><span class="mut xs">${label}</span>${value.items ? auditOrderDetail(value.items) : `<b>${esc(value.text)}</b>`}</div>`;
   modal(`<h2>${bi("পরিবর্তনের বিস্তারিত", "Change details")}</h2><div class="aim">${esc(auditTable(r.tbl))} · ${esc(auditActor(r))} · ${esc(auditStamp(r.at))}</div><p class="as-break">${esc(r.row_key || "—")}</p>
-    ${fields.length ? `<dl class="as-field-diff">${fields.map(f => `<div><dt>${esc(f.label)}</dt><dd>${r.action !== "insert" ? `<div><span class="mut xs">${bi("আগে", "Before")}</span><b>${esc(f.before)}</b></div>` : ""}${r.action !== "delete" ? `<div><span class="mut xs">${bi("পরে", "After")}</span><b>${esc(f.after)}</b></div>` : ""}</dd></div>`).join("")}</dl>` : `<div class="empty">${bi("ফিল্ড পরিবর্তন নেই", "No field changes recorded")}</div>`}
+    ${fields.length ? `<dl class="as-field-diff">${fields.map(f => `<div><dt>${esc(f.label)}</dt><dd>${r.action !== "insert" ? detail(bi("আগে", "Before"),f.before) : ""}${r.action !== "delete" ? detail(bi("পরে", "After"),f.after) : ""}</dd></div>`).join("")}</dl>` : `<div class="empty">${bi("ফিল্ড পরিবর্তন নেই", "No field changes recorded")}</div>`}
     <div class="modal-actions"><button type="button" class="btn" id="au-detail-copy">${ico("copy")} ${bi("রেফারেন্স কপি", "Copy reference")}</button><button type="button" class="btn pri" id="au-detail-close">${bi("বন্ধ", "Close")}</button></div>`, (root, close) => {
     $("#au-detail-close", root).onclick = close;
     const copy = $("#au-detail-copy", root); copy.disabled = !r.row_key;
@@ -3990,6 +4033,14 @@ async function vAudit(v, options) {
    <div class="as-metrics au-k4" id="au-kpi"></div><div class="as-result"><p class="mut sm" id="au-total" role="status"></p><button class="btn sm" type="button" id="au-reset">${bi("ফিল্টার রিসেট", "Reset filters")}</button></div><div id="au-out" style="margin-top:12px"><div class="card empty">লোড হচ্ছে…</div></div>`;
   let rows = [], shown = [], more = false, busy = false, failed = false, revision = 0, cutoff;
   const batch = 100, out = $("#au-out", v), range = () => pbRange(F);
+  let catalog = new Map(), catalogRequest;
+  function loadCatalog() {
+    if (catalogRequest) return;
+    catalogRequest = API.auditItemCatalog().then(items => {
+      catalog = new Map(items.map(item => [String(item.id),item]));
+      if (out.isConnected) draw();
+    }).catch(() => {});
+  }
   async function load(append = false) {
     if (append && busy) return;
     const seq = ++revision, [from, to] = range();
@@ -3999,6 +4050,7 @@ async function vAudit(v, options) {
       const result = await API.audit({tbl:F.tbl, act:F.act, from, to, before:cutoff, offset:rows.length, limit:batch});
       if (!out.isConnected || seq !== revision) return;
       rows = rows.concat(result);
+      if (result.some(r => r.tbl === "inv_orders")) loadCatalog();
       more = result.length === batch;
       const users = [...new Set(rows.map(auditActor))].sort();
       const ws = $("#au-w", v);
@@ -4011,7 +4063,7 @@ async function vAudit(v, options) {
   function draw() {
     const q = chequeSearchKey(F.q);
     shown = rows.filter(r => (!F.who || auditActor(r) === F.who) && (!q ||
-      chequeSearchKey([auditActor(r), r.row_key, r.tbl, auditTable(r.tbl), JSON.stringify(r.old), JSON.stringify(r.new)].join(" ")).includes(q)));
+      chequeSearchKey([auditActor(r), r.row_key, r.tbl, auditTable(r.tbl), JSON.stringify(r.old), JSON.stringify(r.new), r.tbl === "inv_orders" ? auText(r,catalog) : ""].join(" ")).includes(q)));
     const counts = {insert:0, update:0, delete:0};
     shown.forEach(r => { if (Object.hasOwn(counts,r.action)) counts[r.action]++; });
     const cards = [["",bi("মিলেছে", "Matching entries"),shown.length], ...Object.entries(AU_A).map(([key,[label,cls]]) => [key,tr(label),counts[key],cls])];
@@ -4023,7 +4075,7 @@ async function vAudit(v, options) {
       const d = auditDate(r.at), action = Object.hasOwn(AU_A,r.action) ? r.action : "update";
       if (d !== last) { last = d; html += `<div class="au-day">${auditStamp(r.at,{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>`; }
       html += `<article class="aui a-${action}"><div class="aic">${ico(AU_IC[action])}</div><div class="aib"><div class="ait"><span class="tag au-${action}">${esc(tr((AU_A[action] || [action])[0]))}</span><b>${esc(auditTable(r.tbl))}</b><span class="aik">${esc(r.row_key || "")}</span></div>
-        <div class="aim">${esc(auditStamp(r.at,{hour:"2-digit",minute:"2-digit"}))} · <b>${esc(auditActor(r))}</b></div><div class="aud">${auChips(r)}</div>
+        <div class="aim">${esc(auditStamp(r.at,{hour:"2-digit",minute:"2-digit"}))} · <b>${esc(auditActor(r))}</b></div><div class="aud">${auChips(r,catalog)}</div>
         <button class="btn sm" type="button" data-au-detail="${i}">${bi("বিস্তারিত", "Details")}</button></div></article>`;
     });
     const status = busy ? bi("লোড হচ্ছে…","Loading…") : failed ? bi("লগ লোড হয়নি","Audit entries could not be loaded") : bi("এই ফিল্টারে কোনো রেকর্ড মেলেনি","No entries match these filters");
@@ -4031,7 +4083,7 @@ async function vAudit(v, options) {
     if (more || failed) out.insertAdjacentHTML("beforeend", `<div class="as-result"><span class="mut sm">${more ? bi("এই সময়ের আরও রেকর্ড আছে। এক্সপোর্টে লোড হওয়া রেকর্ড থাকবে।","More entries are available. Exports include loaded matches.") : status}</span><button class="btn" type="button" id="au-more" ${busy ? "disabled" : ""}>${failed ? bi("আবার চেষ্টা করুন","Retry") : bi("আরও লোড করুন","Load more")}</button></div>`);
     $("#au-more", v)?.addEventListener("click", () => load(rows.length > 0));
   }
-  out.onclick = e => { const btn = e.target.closest("[data-au-detail]"); if (btn) auditDetails(shown[Number(btn.dataset.auDetail)]); };
+  out.onclick = e => { const btn = e.target.closest("[data-au-detail]"); if (btn) auditDetails(shown[Number(btn.dataset.auDetail)],catalog); };
   $("#au-kpi", v).onclick = e => {
     const btn = e.target.closest("[data-au-action]"); if (!btn) return;
     F.act = btn.dataset.auAction; $("#au-a", v).value = F.act; load();
@@ -4044,11 +4096,11 @@ async function vAudit(v, options) {
   const fname = ext => `Audit_${range()[0]}_${range()[1]}.${ext}`;
   async function download(kind) {
     $("#au-menu", v).classList.add("hide"); if (!shown.length) return toast("ডাটা নেই", "err");
-    const H = ["Time", "User", "Where", "Action", "Item", "Changes", "Old (JSON)", "New (JSON)"], R = shown.map(r => [auditStamp(r.at), r.user_name || "", AU_T[r.tbl] ? tr(AU_T[r.tbl]) : r.tbl, r.action, r.row_key || "", auText(r), r.old ? JSON.stringify(r.old) : "", r.new ? JSON.stringify(r.new) : ""]);
+    const H = ["Time", "User", "Where", "Action", "Item", "Changes", "Old (JSON)", "New (JSON)"], R = shown.map(r => [auditStamp(r.at), r.user_name || "", AU_T[r.tbl] ? tr(AU_T[r.tbl]) : r.tbl, r.action, r.row_key || "", auText(r,catalog), r.old ? JSON.stringify(r.old) : "", r.new ? JSON.stringify(r.new) : ""]);
     if (kind === "xlsx") return exportXlsx({ Audit: [H, ...R] }, fname("xlsx"));
     if (kind === "csv") { const csv = "﻿" + [H, ...R].map(r => r.map(x => `"${String(x).replace(/^(?=[\s\uFEFF]*[=+@-])/, "\u0027").replace(/"/g, '""')}"`).join(",")).join("\r\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = fname("csv"); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); return; }
     const [f0, t0] = range(), cnt = a => shown.filter(r => r.action === a).length;
-    const body = shown.map(r => `<tr><td>${esc(auditStamp(r.at,{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}))}</td><td>${esc(r.user_name || "")}</td><td>${esc(AU_T[r.tbl] ? tr(AU_T[r.tbl]) : (r.tbl === "cash_records" ? tr("ক্যাশ") : r.tbl))}</td><td>${esc((AU_A[r.action] || [r.action])[0])}</td><td>${esc(r.row_key || "")}</td><td>${esc(auText(r))}</td></tr>`).join("");
+    const body = shown.map(r => `<tr><td>${esc(auditStamp(r.at,{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}))}</td><td>${esc(r.user_name || "")}</td><td>${esc(AU_T[r.tbl] ? tr(AU_T[r.tbl]) : (r.tbl === "cash_records" ? tr("ক্যাশ") : r.tbl))}</td><td>${esc((AU_A[r.action] || [r.action])[0])}</td><td>${esc(r.row_key || "")}</td><td>${esc(auText(r,catalog))}</td></tr>`).join("");
     printSheet(repSheet("au-sheet", "Audit Log · পরিবর্তনের লগ", f0, t0, repKpi([["Changes", shown.length], ["Added", cnt("insert")], ["Edited", cnt("update")], ["Deleted", cnt("delete")]]), repOne(repBox("Change history", ["~Time", "~User", "~Where", "~Action", "~Item", "~Changes"], body)), more ? "Note: only the loaded records are included." : ""), fname("pdf").replace(/\.pdf$/, ""));
   }
   $("#au-dl", v).onclick = e => { e.stopPropagation(); $("#au-menu", v).classList.toggle("hide"); };
@@ -4276,7 +4328,7 @@ async function vSec(out, _options, open) {
       [bi("আপনার সেশন","Your sessions"),own ? String(own.length) : unknown,""],
       [bi("শেষ স্বয়ংক্রিয় ব্যাকআপ","Latest automatic backup"),auto ? auditStamp(auto.at) : backups ? "—" : unknown,auto ? relTime(auto.at) : ""]
     ]);
-    g("sc-devices").innerHTML = `<h3>${bi("আপনার সাইন-ইন সেশন","Your signed-in sessions")}</h3><p class="mut sm as-break">${esc(S.me.email || "")}</p>${own ? own.length ? own.map(row => `<div class="scrow"><div><b>${esc(uaName(row.user_agent))}</b> ${row.mine ? `<span class="tag ok">${bi("এই ডিভাইস","This device")}</span>` : ""}<div class="mut sm">${esc(auditStamp(row.last_seen))}</div></div>
+    g("sc-devices").innerHTML = `<h3>${bi("আপনার সাইন-ইন সেশন","Your signed-in sessions")}</h3><p class="mut sm as-break">${esc(S.me.email || "")}</p>${own ? own.length ? own.map(row => `<div class="scrow">${sessionDevice(row)}
       ${!row.mine ? `<button type="button" class="btn sm" data-sc-device="${esc(row.id)}">${bi("লগআউট","Sign out")}</button>` : ""}</div>`).join("") : `<p class="mut sm">${bi("কোনো সক্রিয় সেশন নেই","No active sessions")}</p>` : `<p class="mut sm">${bi("সেশনের তথ্য লোড হয়নি","Session information could not load")}</p>`}
       <div class="adm-actions"><button type="button" class="btn" id="sc-oth" ${own && !own.some(row => !row.mine) ? "disabled" : ""}>${bi("অন্য সব ডিভাইস থেকে লগআউট","Sign out other devices")}</button><a class="btn" href="#/settings">${bi("পাসওয়ার্ড ও 2FA","Password and 2FA")}</a></div>`;
     g("sc-recent").innerHTML = `<h3>${bi("গত ৭ দিনের সাম্প্রতিক ডিলিট","Recent deletions · 7 days")}</h3>${recent ? recent.length ? recent.map(r => `<div class="scrow"><div class="as-break"><b>${esc(auditTable(r.tbl))} · ${esc(r.row_key || "—")}</b><div class="mut sm">${esc(auditActor(r))} · ${esc(auditStamp(r.at))}</div></div></div>`).join("") : `<p class="mut sm">${bi("এই সময়ে ডিলিট নেই","No deletions in this period")}</p>` : `<p class="mut sm">${bi("ডিলিটের রেকর্ড লোড হয়নি","Deletion activity could not load")}</p>`}
@@ -4307,6 +4359,7 @@ async function vSec(out, _options, open) {
   await refresh();
 }
 Object.assign(SbAPI, {
+  async auditItemCatalog() { return fetchAll("inv_items", "id", "id,name,unit"); },
   async audit(f) {
     const lim = f.limit || 500, off = f.offset || 0;
     let q = sb.from("audit_log").select("*").order("at",{ascending:false}).order("id",{ascending:false}).range(off, off + lim - 1);
@@ -4350,6 +4403,7 @@ Object.assign(DemoAPI, {
   async deleteBackup(id) { demoStore.backups = (demoStore.backups || []).filter(b => b.id !== id); this.save(); },
   async userLogins() { return [{ email: "admin@demo", name: S.me.name, role: "admin", active: true, last_sign_in_at: new Date().toISOString() }]; },
   async verifyPassword() { return true; }, async userSec() { return []; },
+  async auditItemCatalog() { return (await this.ivStore()).items; },
   async userSessions() { return [{ id: "d1", created_at: new Date().toISOString(), last_seen: new Date().toISOString(), user_agent: navigator.userAgent, ip: "demo", aal: "aal1", mine: true }]; },
   async revokeSessions() { return 0; }, async reset2fa() { }, async setUserEmail(id, e) { const u = (demoStore.users || []).find(x => x.id === id); if (u) { u.email = e; this.save(); } }, async deleteUser(id) { demoStore.users = (demoStore.users || []).filter(x => x.id !== id); this.save(); },
   async userActivity() { return []; }, async pushMine() { return null; }, async pushOn() {}, async pushOff() {}, async pushSummary() {}, async pushTest() { return { ok: 0 }; }, async mfaNeeded() { return false; }, async mfaFactor() { return null; },
@@ -5108,7 +5162,23 @@ async function mfaEnrollModal(done) {
     $("#mf-ok", root).onclick = go; $("#mf-c", root).onkeydown = e => { if (e.key === "Enter") go(); };
   });
 }
-const uaName = ua => { ua = ua || ""; const b = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser"; const o = /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Mac OS/.test(ua) ? "Mac" : /Linux/.test(ua) ? "Linux" : ""; return b + (o ? " · " + o : ""); };
+function sessionDevice(row) {
+  const ua = row.user_agent || "";
+  const browser = /Edg(?:A|iOS)?\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera"
+    : /SamsungBrowser\//.test(ua) ? "Samsung Internet" : /(?:Firefox|FxiOS)\//.test(ua) ? "Firefox"
+    : /(?:Chrome|CriOS)\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "";
+  const model = ua.match(/Android [^;)]*;\s*([^;)]+?)(?:\s+Build\/[^;)]*)?(?=[;)])/)?.[1]?.trim();
+  const device = /Android/.test(ua) ? (model && !/^(?:K|wv|[a-z]{2}(?:-[A-Z]{2})?)$/.test(model) ? model : "Android")
+    : /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Windows/.test(ua) ? "Windows PC"
+    : /CrOS/.test(ua) ? "Chromebook" : /Macintosh|Mac OS/.test(ua) ? "Mac" : /Linux/.test(ua) ? "Linux" : "";
+  const unknown = asUnavailable();
+  return `<div class="as-session-device"><b>${esc(device || unknown)}</b>${row.mine ? ` <span class="tag ok">${bi("এই ডিভাইস","This device")}</span>` : ""}
+    <dl class="as-session-meta">
+      <div><dt>${bi("ব্রাউজার","Browser")}</dt><dd>${esc(browser || unknown)}</dd></div>
+      <div><dt>${bi("আইপি ঠিকানা","IP address")}</dt><dd class="mono">${esc(row.ip || unknown)}</dd></div>
+      <div><dt>${bi("শেষ ব্যবহার","Last seen")}</dt><dd>${esc(auditStamp(row.last_seen))}</dd></div>
+    </dl></div>`;
+}
 async function userSecModal(u, after) {
   const en = LANG === "en", me = u.id === S.me.id;
   modal(`<h2>🛡 ${en ? "Security" : "সিকিউরিটি"} — ${esc(u.name || u.email)}</h2><div class="card empty">${en ? "Loading…" : "লোড হচ্ছে…"}</div>`);
@@ -5118,7 +5188,7 @@ async function userSecModal(u, after) {
   modal(`<h2>🛡 ${en ? "Security" : "সিকিউরিটি"}</h2>
     <div class="uh2">${avaEl(u.id, u.name, u.email)}<div><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div></div>
     <h3 class="sch">📱 ${en ? "Signed-in devices" : "লগইন করা ডিভাইস"} (${ss.length})</h3>
-    ${ss.length ? ss.map(x => `<div class="scrow"><div style="flex:1;min-width:0"><b>${esc(uaName(x.user_agent))}</b>${x.mine ? ` <span class="tag ok">${en ? "this device" : "এই ডিভাইস"}</span>` : ""}<div class="mut xs">${esc(x.ip || "")} · ${en ? "last seen" : "শেষ ব্যবহার"} ${relTime(x.last_seen)}</div></div><button class="btn sm ghost" data-rs="${x.id}" title="${en ? "Sign this device out" : "এই ডিভাইস লগআউট"}">${en ? "Sign out" : "লগআউট"}</button></div>`).join("") : `<div class="mut sm">${en ? "No active sessions" : "কোনো সক্রিয় সেশন নেই"}</div>`}
+    ${ss.length ? ss.map(x => `<div class="scrow">${sessionDevice(x)}<button class="btn sm ghost" data-rs="${x.id}" title="${en ? "Sign this device out" : "এই ডিভাইস লগআউট"}">${en ? "Sign out" : "লগআউট"}</button></div>`).join("") : `<div class="mut sm">${en ? "No active sessions" : "কোনো সক্রিয় সেশন নেই"}</div>`}
     ${ss.length ? `<div class="mut xs" style="margin:6px 0">${en ? "Signing out takes effect immediately — the next request from that device is refused." : "লগআউট সাথে সাথে কার্যকর — ওই ডিভাইসের পরের রিকোয়েস্টই বন্ধ হয়ে যায়।"}</div><button class="btn sm bad" id="rs-all">${en ? "Sign out everywhere" : "সব ডিভাইস থেকে লগআউট"}</button>` : ""}
     <h3 class="sch">🔐 2FA</h3>
     <div class="scrow"><div style="flex:1"><b>${sec?.has_2fa ? (en ? "On" : "চালু") : (en ? "Off" : "বন্ধ")}</b><div class="mut xs">${en ? "Each user turns 2FA on from their own Settings. If they lose their phone, reset it here." : "প্রত্যেক ইউজার নিজের সেটিংস থেকে 2FA চালু করেন। ফোন হারালে এখান থেকে রিসেট করুন।"}</div></div>${sec?.has_2fa ? `<button class="btn sm bad" id="r2fa">${en ? "Reset 2FA" : "2FA রিসেট"}</button>` : ""}</div>

@@ -2239,8 +2239,14 @@ button.as-kpi[aria-pressed="true"] { border-color: var(--pri); box-shadow: inset
 .as-field-diff > div { border-top: 1px solid var(--line); padding: 8px 0; overflow-wrap: anywhere; }
 .as-field-diff dt { font-weight: 700; }
 .as-field-diff dd { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,140px),1fr)); gap: 6px; margin: 6px 0 0; }
-.as-field-diff dd div { min-width: 0; background: var(--surface2); border-radius: 8px; padding: 6px 8px; }
-.as-field-diff dd b { display: block; white-space: pre-wrap; font-weight: 600; }
+.as-field-diff > div > dd > div { min-width: 0; background: var(--surface2); border-radius: 8px; padding: 6px 8px; }
+.as-field-diff > div > dd > div > b { display: block; white-space: pre-wrap; font-weight: 600; }
+.as-order-items { list-style: none; margin: 6px 0 0; padding: 0; }
+.as-order-items li + li { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
+.as-order-items dl, .as-session-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 0; }
+.as-order-items dl dt, .as-session-meta dt { color: var(--mut); font-size: .78rem; font-weight: 500; }
+.as-order-items dl dd, .as-session-meta dd { display: block; margin: 0; font-variant-numeric: tabular-nums; }
+.as-session-device { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .as-panels { margin-block: 12px; }
 #sc-devices .scrow > div, #sc-recent .scrow > div { min-width: 0; flex: 1; }
 #sc-devices .adm-actions { margin-top: 10px; }
