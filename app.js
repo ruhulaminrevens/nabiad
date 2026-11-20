@@ -1614,20 +1614,50 @@ function editChequeModal(c, after) {
   });
 }
 async function vCheques(v) {
-  const F = { q: "", code: "", status: "", purpose: "", verification: "", page: 0 }, PF = pbInit("month"), PS = 100, PBO = { all: true };
+  const F = { q: "", code: "", status: "", purpose: "", verification: "", sort: "newest", page: 0 }, PF = pbInit("month"), PS = 100, PBO = { all: true };
+  const filterFields = { "k-q": "q", "k-c": "code", "k-s": "status", "k-u": "purpose", "k-vf": "verification" };
+  const columns = [
+    bi("তারিখ", "Date"), bi("A/C · চেক", "A/C · Cheque"), bi("হোল্ডার", "Holder"), bi("টাকা", "Amount"),
+    bi("খাত / বিবরণ", "Purpose / Details"), bi("স্ট্যাটাস", "Status"), bi("কে", "Entered by")
+  ];
   v.innerHTML = head("চেক তালিকা ও এনকোয়ারি", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>${S.me.role !== "boss" && moduleCan("cheque", "edit") ? `<button class="btn" id="k-verify">${ico("check")} ${bi("স্টেটমেন্ট যাচাই", "Verify statement")}</button>` : ""}`) + `<div class="card tbar noprint">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
-   <div style="flex:2 1 220px"><label class="f" for="k-q">${bi("চেক খুঁজুন", "Search cheques")}</label><input class="in" id="k-q" type="search" placeholder="${bi("চেক নং, A/C, ব্যাংক, মন্তব্য, টাকা", "Cheque no, A/C, bank, remarks, amount")}"></div>
+   <div style="flex:2 1 220px"><label class="f" for="k-q">${bi("চেক খুঁজুন", "Search cheques")}</label><input class="in" id="k-q" type="search" autocomplete="off" placeholder="${bi("চেক নং, A/C, ব্যাংক, মন্তব্য, টাকা", "Cheque no, A/C, bank, remarks, amount")}"></div>
    <div style="flex:1 1 220px"><label class="f" for="k-c">A/C</label><select class="in" id="k-c"><option value="">সব</option>${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)}${a.holder ? " · " + esc(a.holder) : ""}${a.bank ? " · " + esc(a.bank) : ""}</option>`).join("")}</select></div>
    <div><label class="f" for="k-s">স্ট্যাটাস</label><select class="in" id="k-s"></select></div>
    <div><label class="f" for="k-u">খাত</label><select class="in" id="k-u"><option value="">সব</option>${allPurposes(true).map(p => `<option value="${esc(p)}">${esc(p.split(" (")[0])}</option>`).join("")}</select></div>
    ${S.statementReady ? `<div><label class="f" for="k-vf">${bi("স্টেটমেন্ট যাচাই", "Statement verification")}</label><select class="in" id="k-vf"><option value="">${bi("সব", "All")}</option><option value="yes">Verified</option><option value="no">Unverified</option></select></div>` : ""}</div></div>
-   <div id="k-sum" class="ksum"></div><div class="card flush"><div id="k-tab"></div></div><div id="k-pg" class="row noprint" style="margin-top:10px;justify-content:center"></div>`;
-  const filt = () => {
-    const [from, to] = pbRange(PF), matches = chequeMatcher(F.q, accMap());
+   <div id="k-sum" class="ksum enquiry-summary" role="region" tabindex="0" aria-label="${bi("চেকের সারাংশ", "Cheque summary")}"></div>
+   <section class="card flush enquiry-results" aria-label="${bi("চেকের ফলাফল", "Cheque results")}">
+     <div class="enquiry-toolbar noprint">
+       <div id="k-count" class="mut sm" role="status" tabindex="-1"></div>
+       <div class="enquiry-actions">
+         <button type="button" class="btn sm" id="k-reset">${bi("ফিল্টার মুছুন", "Clear filters")}</button>
+         <label for="k-sort" class="mut sm">${bi("সাজান", "Sort by")}</label>
+         <select class="in" id="k-sort"><option value="newest">${bi("নতুন চেক আগে", "Newest date")}</option>
+           <option value="oldest">${bi("পুরোনো চেক আগে", "Oldest date")}</option>
+           <option value="highest">${bi("বেশি টাকা আগে", "Highest amount")}</option>
+           <option value="lowest">${bi("কম টাকা আগে", "Lowest amount")}</option></select>
+       </div>
+     </div>
+     <div id="k-tab"></div><div id="k-pg" class="row noprint enquiry-pager" hidden>
+       <button type="button" class="btn sm fix" id="k-prev">‹ ${bi("আগের", "Previous")}</button>
+       <span id="k-page" class="mut sm fix"></span>
+       <button type="button" class="btn sm fix" id="k-next">${bi("পরের", "Next")} ›</button>
+     </div>
+   </section>`;
+  const filt = (accounts = accMap()) => {
+    const [from, to] = pbRange(PF), matches = chequeMatcher(F.q, accounts);
     return S.cheques.filter(c => c.date >= from && c.date <= to && (!F.code || c.code === F.code) && (!F.purpose || pKey(c.purpose) === pKey(F.purpose)) && matches(c));
   };
   const withStatus = rows => rows.filter(c => (!F.status || c.status === F.status) && (!F.verification || (F.verification === "yes") === Boolean(statementVerification(c))));
-  const sorted = rows => rows.sort((a, b) => b.date.localeCompare(a.date) || b.no - a.no);
+  const newest = (a, b) => b.date.localeCompare(a.date) || b.no - a.no;
+  const comparators = {
+    newest,
+    oldest: (a, b) => newest(b, a),
+    highest: (a, b) => b.amount - a.amount || newest(a, b),
+    lowest: (a, b) => a.amount - b.amount || newest(a, b)
+  };
+  const sorted = rows => rows.sort(comparators[F.sort]);
   const stOpts = base => {
     const counts = {};
     base.forEach(c => { counts[c.status] = (counts[c.status] || 0) + 1; });
@@ -1637,14 +1667,48 @@ async function vCheques(v) {
   };
   const draw = () => {
     if (!$("#k-tab", v)) return;
-    const accounts = accMap(), base = filt(); stOpts(base);
-    const arr = sorted(withStatus(base)), pages = Math.max(1, Math.ceil(arr.length / PS)); F.page = Math.min(F.page, pages - 1); const part = arr.slice(F.page * PS, F.page * PS + PS), live = arr.filter(isLive), verified = statementSummary(arr);
-    const kc = (l, n, a, cls = "") => `<div class="kc ${cls}"><span>${l}</span><div class="kv"><b>${n}</b>${a != null ? `<small class="num">৳ ${money(a)}</small>` : ""}</div></div>`;
-    $("#k-sum", v).innerHTML = kc(bi("মোট চেক", "Cheques"), arr.length, null) + kc(bi("কার্যকর মোট", "Live total"), live.length, sumAmt(live), "main") + (S.statementReady ? kc("Verified", verified.count, verified.amount) + kc("Unverified", verified.rest, null) : "") + STATUSES.map(s => { const x = arr.filter(c => c.status === s); return x.length ? kc(stTag(s), x.length, sumAmt(x), "st-" + s.toLowerCase()) : ""; }).join("");
-    $("#k-tab", v).innerHTML = part.length ? `<div class="tw cards"><table><thead><tr><th>তারিখ</th><th>A/C · চেক</th><th>হোল্ডার</th><th class="r">টাকা</th><th>খাত / বিবরণ</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${part.map(c => `<tr><td>${dmy(c.date)}</td><td><button type="button" class="cq-link" data-register-id="${esc(c.id)}">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}</td><td class="mut sm">${esc(accounts[c.code]?.holder || "")}</td><td class="r num">${money(c.amount)}</td><td>${esc(c.purpose.split(" (")[0])}<div class="mut sm">${esc([c.taker, c.party, c.toac && "→ " + c.toac, c.remarks].filter(Boolean).join(" · "))}</div></td><td><span class="stc">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}${c.sdate && c.status !== "Pending" ? `<span class="mut sm stc-d">${dmy(c.sdate)}</span>` : ""}</span></td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">কিছু পাওয়া যায়নি</div>`;
-    $("#k-pg", v).innerHTML = pages > 1 ? `<button class="btn sm fix" id="pv" ${F.page ? "" : "disabled"}>‹ আগের</button><span class="mut fix">পাতা ${F.page + 1} / ${pages}</span><button class="btn sm fix" id="nx" ${F.page < pages - 1 ? "" : "disabled"}>পরের ›</button>` : "";
-    $("#pv", v) && ($("#pv", v).onclick = () => { F.page--; draw(); }); $("#nx", v) && ($("#nx", v).onclick = () => { F.page++; draw(); });
-
+    const accounts = accMap(), base = filt(accounts);
+    stOpts(base);
+    const arr = sorted(withStatus(base)), pages = Math.max(1, Math.ceil(arr.length / PS));
+    F.page = Math.min(F.page, pages - 1);
+    const offset = F.page * PS, part = arr.slice(offset, offset + PS);
+    const live = arr.filter(isLive);
+    const statusTotals = new Map(group(arr, c => c.status).map(total => [total.k, total]));
+    const kc = (label, count, amount, cls = "") => `<div class="kc ${cls}"><span>${label}</span><div class="kv"><b>${count}</b>${amount != null ? `<small class="num">৳ ${money(amount)}</small>` : ""}</div></div>`;
+    let summary = kc(bi("মোট চেক", "Cheques"), arr.length, null) + kc(bi("কার্যকর মোট", "Live total"), live.length, sumAmt(live), "main");
+    if (S.statementReady) {
+      const verified = statementSummary(arr);
+      summary += kc(bi("যাচাইকৃত", "Verified"), verified.count, verified.amount) + kc(bi("অযাচাইকৃত", "Unverified"), verified.rest, null);
+    }
+    for (const status of STATUSES) {
+      const total = statusTotals.get(status);
+      if (total) summary += kc(stTag(status), total.n, total.amt, "st-" + status.toLowerCase());
+    }
+    $("#k-sum", v).innerHTML = summary;
+    const activeCount = Object.values(filterFields).filter(key => F[key].trim()).length;
+    const reset = $("#k-reset", v);
+    reset.disabled = activeCount === 0;
+    reset.textContent = bi("ফিল্টার মুছুন", "Clear filters") + (activeCount ? ` (${activeCount})` : "");
+    $("#k-count", v).textContent = part.length
+      ? bi(`${money(offset + 1)}–${money(offset + part.length)} দেখাচ্ছে · মোট ${money(arr.length)} চেক`, `Showing ${money(offset + 1)}–${money(offset + part.length)} of ${money(arr.length)} cheques`)
+      : bi("০টি চেক", "0 cheques");
+    const cell = (index, content, cls = "") => `<td class="${cls}" data-l="${columns[index]}"><div>${content}</div></td>`;
+    $("#k-tab", v).innerHTML = part.length ? `<div class="tw cards"><table><thead><tr>${columns.map((column, i) => `<th scope="col"${i === 3 ? ' class="r"' : ""}>${column}</th>`).join("")}</tr></thead><tbody>${part.map(c => `<tr>
+      ${cell(0, dmy(c.date))}
+      ${cell(1, `<button type="button" class="cq-link" data-register-id="${esc(c.id)}">${esc(c.code)} · ${esc(c.no)}</button>${chqIcons(c)}`)}
+      ${cell(2, esc(accounts[c.code]?.holder || "—"), "mut sm")}
+      ${cell(3, money(c.amount), "r num")}
+      ${cell(4, `${esc(c.purpose.split(" (")[0])}<div class="mut sm">${esc([c.taker, c.party, c.toac && "→ " + c.toac, c.remarks].filter(Boolean).join(" · "))}</div>`)}
+      ${cell(5, `<span class="stc">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}${c.sdate && c.status !== "Pending" ? `<span class="mut sm stc-d">${dmy(c.sdate)}</span>` : ""}</span>`)}
+      ${cell(6, esc(c.by || "—"), "mut sm")}
+    </tr>`).join("")}</tbody></table></div>` : `<div class="empty">${activeCount
+      ? bi("কোনো চেক মেলেনি। ফিল্টার পরিবর্তন করে দেখুন।", "No cheques match these filters.")
+      : bi("এই সময়সীমায় কোনো চেক নেই।", "No cheques in this period.")}</div>`;
+    const pager = $("#k-pg", v);
+    pager.hidden = pages <= 1;
+    $("#k-prev", v).disabled = F.page === 0;
+    $("#k-next", v).disabled = F.page >= pages - 1;
+    $("#k-page", v).textContent = bi(`পাতা ${F.page + 1} / ${pages}`, `Page ${F.page + 1} of ${pages}`);
   };
   $("#k-tab", v).onclick = event => {
     const id = event.target.closest("[data-register-id]")?.dataset.registerId;
@@ -1653,8 +1717,28 @@ async function vCheques(v) {
   };
   const bind = (id, k) => { const el = $("#" + id, v); el.addEventListener("input", () => { F[k] = el.value; F.page = 0; draw(); }); };
   const pre = sessionStorage.getItem("nabiad_chq_ac"); if (pre) { sessionStorage.removeItem("nabiad_chq_ac"); F.code = pre; $("#k-c", v).value = pre; }
-  pbBind(v, "k", PF, () => { F.page = 0; draw(); }, PBO); bind("k-q", "q"); bind("k-c", "code"); bind("k-s", "status"); bind("k-u", "purpose");
-  if ($("#k-vf", v)) bind("k-vf", "verification");
+  pbBind(v, "k", PF, () => { F.page = 0; draw(); }, PBO);
+  for (const [id, key] of Object.entries(filterFields)) {
+    if ($("#" + id, v)) bind(id, key);
+  }
+  bind("k-sort", "sort");
+  $("#k-reset", v).onclick = () => {
+    for (const [id, key] of Object.entries(filterFields)) {
+      F[key] = "";
+      const field = $("#" + id, v);
+      if (field) field.value = "";
+    }
+    F.page = 0;
+    $("#k-q", v).focus();
+    draw();
+  };
+  const turnPage = step => {
+    F.page += step;
+    draw();
+    $("#k-count", v).focus();
+  };
+  $("#k-prev", v).onclick = () => turnPage(-1);
+  $("#k-next", v).onclick = () => turnPage(1);
   if ($("#k-verify", v)) $("#k-verify", v).onclick = () => S.statementReady
     ? statementModal(draw)
     : toast(bi("স্টেটমেন্ট যাচাই চালু নেই। ডাটাবেস সেটআপ ও সংযোগ দেখুন।", "Statement verification is unavailable. Check the database setup and connection."), "err");
