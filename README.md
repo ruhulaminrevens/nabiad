@@ -202,3 +202,7 @@ python -m http.server 8765
 <div align="center">
 <sub>Built for <b>NABIAD Group</b> · Kaliganj, Dhaka · by Ruhul Amin</sub>
 </div>
+
+### Bank statement verification
+
+Apply `schema_cheque_verification.sql` in Supabase SQL Editor before enabling verification. Admin and staff can open **Cheque Register → Verify statement**, select the statement account, and choose an XLSX, XLS, or CSV file. Use the first sheet with columns `Cheque No` and `Amount` or `Debit`. `A/C Code` and `Date` are optional. The preview compares the selected A/C, cheque number, and exact amount against the register. Review and select matches before confirming. The file stays in the browser. Only verification metadata is saved. Cheque status continues to use the existing workflow, including records without a statement. Verification is available in the register, its Excel and print exports, and the cheque report summary and Excel details. Changes to the cheque’s A/C, number, or amount invalidate its verification.

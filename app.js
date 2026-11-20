@@ -328,11 +328,12 @@ const SbAPI = {
   async login(email, pw) { const { error } = await sb.auth.signInWithPassword({ email, password: pw }); if (error) throw error; return this.session(); },
   async logout() { try { localStorage.removeItem("nabiad_locked"); } catch { } await sb.auth.signOut(); },
   async loadAll() {
-    const [acc, ch, ev, bk] = await Promise.all([fetchAll("accounts", "sort"), fetchAll("cheques", "created_at"), fetchAll("cheque_status", "created_at"), fetchAll("books", "code")]);
+    const [acc, ch, ev, bk, verifications] = await Promise.all([fetchAll("accounts", "sort"), fetchAll("cheques", "created_at"), fetchAll("cheque_status", "created_at"), fetchAll("books", "code"), fetchAll("cheque_statement_verifications", "cheque_id").catch(() => null)]);
+    const verified = new Map((verifications || []).map(r => [r.cheque_id, r]));
     const by = {}; ev.forEach(e => (by[e.cheque_id] ||= []).push({ id: e.id, status: e.new_status, date: e.status_date, remarks: e.remarks, by: e.entered_by, at: e.created_at }));
     return {
-      accounts: acc, books: bk.map(b => ({ id: b.id, code: b.code, series: b.series, first: Number(b.first_leaf), last: b.last_leaf == null ? null : Number(b.last_leaf), track: b.track_from == null ? null : Number(b.track_from), status: b.status, note: b.note })),
-      cheques: ch.map(r => ({ id: r.id, date: r.chq_date, code: r.code, no: Number(r.chq_no), amount: Number(r.amount), purpose: r.purpose, taker: r.cash_taker, party: r.party, toac: r.to_ac, remarks: r.remarks, photo: r.photo || null, by: r.entered_by, uid: r.user_id || null, at: r.created_at, events: by[r.id] || [] }))
+      accounts: acc, statementReady: verifications !== null, books: bk.map(b => ({ id: b.id, code: b.code, series: b.series, first: Number(b.first_leaf), last: b.last_leaf == null ? null : Number(b.last_leaf), track: b.track_from == null ? null : Number(b.track_from), status: b.status, note: b.note })),
+      cheques: ch.map(r => ({ id: r.id, date: r.chq_date, code: r.code, no: Number(r.chq_no), amount: Number(r.amount), purpose: r.purpose, taker: r.cash_taker, party: r.party, toac: r.to_ac, remarks: r.remarks, photo: r.photo || null, by: r.entered_by, uid: r.user_id || null, at: r.created_at, events: by[r.id] || [], statementVerification: verified.get(r.id) || null }))
     };
   },
   async addCheque(c) {
@@ -437,7 +438,7 @@ const DemoAPI = {
   async logout() { try { localStorage.removeItem("nabiad_locked"); } catch { } sessionStorage.removeItem("nabiad_demo_user"); },
   async loadAll() {
     const ev = {}; demoStore.events.forEach(e => (ev[e.cheque_id] ||= []).push(e));
-    return { accounts: demoStore.accounts, books: demoStore.books, cheques: demoStore.cheques.map(c => ({ ...c, events: ev[c.id] || [] })) };
+    return { accounts: demoStore.accounts, books: demoStore.books, statementReady: true, cheques: demoStore.cheques.map(c => ({ ...c, events: ev[c.id] || [], statementVerification: demoStore.statementVerifications?.[c.id] || null })) };
   },
   async addCheque(c) {
     if (demoStore.cheques.some(x => x.code === c.code && x.no === c.no)) throw new Error("এই চেক নম্বর এই অ্যাকাউন্টে আগেই এন্ট্রি আছে");
@@ -561,7 +562,7 @@ async function balancesOn(d) {
 async function reload() {
   const [d, lb, lc, lbk, rm, mk] = await Promise.all([API.loadAll(), API.lastBalDate(), API.lastCashDate().then(x => { S.cashOff = false; return x; }).catch(() => { S.cashOff = true; return S.lastCash || null; }), API.lastBookDate().catch(() => S.lastBook || null), API.reminders().then(x => { S.remErr = null; return x; }).catch(e => { S.remErr = e.message || String(e); return null; }), API.marks().then(x => { S.marksOff = false; return x; }).catch(() => { S.marksOff = true; return null; })]);
   if (rm) S.reminders = rm; if (mk) S.marks = mk; S.lastCash = lc; S.lastBook = lbk;
-  S.accounts = d.accounts; S.books = d.books; S.cheques = d.cheques.map(derive); S.lastBal = lb; S.loaded = true; saveCache(); setTimeout(() => typeof remTick === "function" && remTick(), 50);
+  S.accounts = d.accounts; S.books = d.books; S.cheques = d.cheques.map(derive); S.statementReady = d.statementReady; S.lastBal = lb; S.loaded = true; saveCache(); setTimeout(() => typeof remTick === "function" && remTick(), 50);
   if (!DEMO) { mergeOutbox(); const pd = pendingBalDates().sort().pop(); if (pd && (!S.lastBal || pd > S.lastBal)) S.lastBal = pd; if (S.lastBal && S.snap?.date !== S.lastBal) balancesOn(S.lastBal).catch(() => { }); }
 }
 
@@ -1194,7 +1195,7 @@ async function vStatus(v) {
         <div class="mut sm">${dmy(c.date)}${accounts[c.code]?.holder ? " · " + esc(accounts[c.code].holder) : ""}</div>
         <div class="cq-purpose sm">${esc(c.purpose.split(" (")[0])}${c.party || c.remarks ? " · " + esc(c.party || c.remarks) : ""}</div>
         </div><div class="cq-value"><strong class="num">৳ ${money(c.amount)}</strong>
-        <div class="cq-state">${stTag(c.status)}${pendTag(c)}${c.status === "Pending" && age > (CFG.PENDING_ALERT_DAYS ?? 3) ? `<span class="am sm">${bi(`${age} দিন`, `${age} days`)}</span>` : ""}${c.sdate ? `<span class="mut sm">${dmy(c.sdate)}</span>` : ""}</div></div>
+        <div class="cq-state">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}${c.status === "Pending" && age > (CFG.PENDING_ALERT_DAYS ?? 3) ? `<span class="am sm">${bi(`${age} দিন`, `${age} days`)}</span>` : ""}${c.sdate ? `<span class="mut sm">${dmy(c.sdate)}</span>` : ""}</div></div>
         <div class="cq-actions">${c.status === "Pending" ? `<button class="btn ok" type="button" data-cq-clear="${esc(c.id)}">${bi("ক্লিয়ার করুন", "Mark cleared")}</button>` : ""}<button class="btn" type="button" data-cq-status="${esc(c.id)}">${bi("স্ট্যাটাস বদলান", "Update status")}</button></div></article>`;
     }).join("");
   };
@@ -1235,7 +1236,7 @@ async function exportChequesXlsx(rows, filename, btn) {
   const lbl = btn && btn.innerHTML; const prog = t => { if (btn) btn.innerHTML = t; };
   try { prog("⏳ …"); await loadScript("vendor/exceljs.min.js");
     const wb = new ExcelJS.Workbook(); wb.creator = "Nabiad"; const ws = wb.addWorksheet("Cheques", { views: [{ state: "frozen", ySplit: 1 }] });
-    const head = [...CHQ_HEAD, "Photo"], widths = [12, 12, 28, 12, 14, 26, 12, 18, 12, 11, 12, 26, 12, 34];
+    const head = [...CHQ_HEAD, "Photo"], widths = [12, 12, 28, 12, 14, 26, 12, 18, 12, 11, 12, 26, 12, 23, 15, 22, 28, 34];
     ws.columns = head.map((h, i) => ({ header: h, key: "c" + i, width: widths[i] }));
     const hr = ws.getRow(1); hr.height = 22; hr.eachCell(c => { c.font = { bold: true, color: { argb: "FFFFFFFF" } }; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4F46E5" } }; c.alignment = { vertical: "middle" }; });
     rows.forEach(c => { const r = ws.addRow(chqRow(c)); r.alignment = { vertical: "middle", wrapText: true }; r.getCell(5).numFmt = "#,##0.##"; });
@@ -1247,17 +1248,18 @@ async function exportChequesXlsx(rows, filename, btn) {
   } catch (e) { console.error(e); toast(bi("Excel তৈরি হয়নি: ", "Excel failed: ") + (e.message || e), "err"); }
   finally { if (btn) { btn.innerHTML = lbl; btn.disabled = false; } }
 }
-const chqRow = c => [dmy(c.date), c.code, (accMap()[c.code] || {}).holder || "", c.no, c.amount, c.purpose, c.taker || "", c.party || "", c.toac || "", c.status, c.sdate ? dmy(c.sdate) : "", c.remarks || "", c.by || ""];
-const CHQ_HEAD = ["Date", "A/C Code", "Holder", "Cheque No", "Amount", "Purpose", "Cash Taker", "Party", "To A/C", "Status", "Status Date", "Remarks", "Entered By"];
+const chqRow = c => [dmy(c.date), c.code, (accMap()[c.code] || {}).holder || "", c.no, c.amount, c.purpose, c.taker || "", c.party || "", c.toac || "", c.status, c.sdate ? dmy(c.sdate) : "", c.remarks || "", c.by || "", ...statementExport(c)];
+const CHQ_HEAD = ["Date", "A/C Code", "Holder", "Cheque No", "Amount", "Purpose", "Cash Taker", "Party", "To A/C", "Status", "Status Date", "Remarks", "Entered By", "Statement Verification", "Statement Date", "Verified By", "Verified At"];
 
 /* ---------- cheque list / enquiry ---------- */
 function chequeModal(c, after) {
   const admin = S.me.role === "admin"; const a = accMap()[c.code] || {};
-  modal(`<h2><span class="cq-detail-ref">${esc(c.code)} · ${c.no}</span> ${stTag(c.status)}<button class="shclose" id="c-x" type="button">✕ ${bi("বন্ধ", "Close")}</button></h2>
+  modal(`<h2><span class="cq-detail-ref">${esc(c.code)} · ${c.no}</span> ${stTag(c.status)} ${statementBadge(c)}<button class="shclose" id="c-x" type="button">✕ ${bi("বন্ধ", "Close")}</button></h2>
    <div class="grid g2 cq-detail" style="gap:8px;font-size:14px"><div><span class="mut sm">তারিখ</span><br>${dmy(c.date)}</div><div><span class="mut sm">টাকা</span><br><b class="num">৳ ${money(c.amount)}</b></div>
    <div><span class="mut sm">A/C</span><br>${esc(a.holder || "")}<div class="mut sm">${esc(a.bank || "")}</div></div><div><span class="mut sm">খাত</span><br>${esc(c.purpose)}</div>
    ${c.taker ? `<div><span class="mut sm">কে তুলেছে</span><br>${esc(c.taker)}</div>` : ""}${c.toac ? `<div><span class="mut sm">To A/C</span><br>${esc(c.toac)}</div>` : ""}${c.party ? `<div><span class="mut sm">পার্টি</span><br>${esc(c.party)}</div>` : ""}${c.remarks ? `<div><span class="mut sm">মন্তব্য</span><br>${esc(c.remarks)}</div>` : ""}
    <div><span class="mut sm">এন্ট্রি</span><br>${esc(c.by || "")} <span class="mut sm">${c.at ? new Date(c.at).toLocaleString("en-GB") : ""}</span></div></div>
+   ${statementDetail(c)}
    <div id="c-ph" style="margin-top:12px"></div>
    ${(S.reminders || []).filter(r => r.cheque_id === c.id && !r.done).map(r => `<div class="alert vi" style="margin-top:10px">⏰ <span>${esc(r.title)} — ${new Date(remDue(r)).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span></div>`).join("")}
    <h3 style="margin:16px 0 8px;font-size:13px;color:var(--mut)">স্ট্যাটাস ইতিহাস</h3>
@@ -1304,7 +1306,12 @@ function editChequeModal(c, after) {
       try {
         const fields = { date, code, no, amount, purpose, taker, toac, party: get("y").value.trim(), remarks: get("r").value.trim() };
         await API.updateCheque(c.id, fields);
-        derive(Object.assign(S.cheques.find(row => row.id === c.id) || c, fields)); saveCache(); refreshBadges();
+        const updated = S.cheques.find(row => row.id === c.id) || c;
+        if (updated.code !== code || updated.no !== no || updated.amount !== amount) {
+          updated.statementVerification = null;
+          if (DEMO && demoStore.statementVerifications) { delete demoStore.statementVerifications[c.id]; DemoAPI.save(); }
+        }
+        derive(Object.assign(updated, fields)); saveCache(); refreshBadges();
         close(); after?.(); toast(bi("আপডেট হয়েছে", "Cheque updated"));
       } catch (err) { error.textContent = err.message || String(err); }
       finally { save.disabled = cancel.disabled = false; }
@@ -1312,18 +1319,19 @@ function editChequeModal(c, after) {
   });
 }
 async function vCheques(v) {
-  const F = { q: "", code: "", status: "", purpose: "", page: 0 }, PF = pbInit("all"), PS = 100, PBO = { all: true };
-  v.innerHTML = head("চেক তালিকা ও এনকোয়ারি", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>`) + `<div class="card tbar noprint">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
+  const F = { q: "", code: "", status: "", purpose: "", verification: "", page: 0 }, PF = pbInit("all"), PS = 100, PBO = { all: true };
+  v.innerHTML = head("চেক তালিকা ও এনকোয়ারি", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>${S.me.role !== "boss" ? `<button class="btn" id="k-verify">${ico("check")} ${bi("স্টেটমেন্ট যাচাই", "Verify statement")}</button>` : ""}`) + `<div class="card tbar noprint">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
    <div style="flex:2 1 220px"><label class="f" for="k-q">${bi("চেক খুঁজুন", "Search cheques")}</label><input class="in" id="k-q" type="search" placeholder="${bi("চেক নং, A/C, ব্যাংক, মন্তব্য, টাকা", "Cheque no, A/C, bank, remarks, amount")}"></div>
    <div style="flex:1 1 220px"><label class="f" for="k-c">A/C</label><select class="in" id="k-c"><option value="">সব</option>${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)}${a.holder ? " · " + esc(a.holder) : ""}${a.bank ? " · " + esc(a.bank) : ""}</option>`).join("")}</select></div>
    <div><label class="f" for="k-s">স্ট্যাটাস</label><select class="in" id="k-s"></select></div>
-   <div><label class="f" for="k-u">খাত</label><select class="in" id="k-u"><option value="">সব</option>${allPurposes(true).map(p => `<option value="${esc(p)}">${esc(p.split(" (")[0])}</option>`).join("")}</select></div></div></div>
+   <div><label class="f" for="k-u">খাত</label><select class="in" id="k-u"><option value="">সব</option>${allPurposes(true).map(p => `<option value="${esc(p)}">${esc(p.split(" (")[0])}</option>`).join("")}</select></div>
+   ${S.statementReady ? `<div><label class="f" for="k-vf">${bi("স্টেটমেন্ট যাচাই", "Statement verification")}</label><select class="in" id="k-vf"><option value="">${bi("সব", "All")}</option><option value="yes">Verified</option><option value="no">Unverified</option></select></div>` : ""}</div></div>
    <div id="k-sum" class="ksum"></div><div class="card flush"><div id="k-tab"></div></div><div id="k-pg" class="row noprint" style="margin-top:10px;justify-content:center"></div>`;
   const filt = () => {
     const [from, to] = pbRange(PF), matches = chequeMatcher(F.q, accMap());
     return S.cheques.filter(c => c.date >= from && c.date <= to && (!F.code || c.code === F.code) && (!F.purpose || pKey(c.purpose) === pKey(F.purpose)) && matches(c));
   };
-  const withStatus = rows => F.status ? rows.filter(c => c.status === F.status) : rows;
+  const withStatus = rows => rows.filter(c => (!F.status || c.status === F.status) && (!F.verification || (F.verification === "yes") === Boolean(statementVerification(c))));
   const sorted = rows => rows.sort((a, b) => b.date.localeCompare(a.date) || b.no - a.no);
   const stOpts = base => {
     const counts = {};
@@ -1335,10 +1343,10 @@ async function vCheques(v) {
   const draw = () => {
     if (!$("#k-tab", v)) return;
     const accounts = accMap(), base = filt(); stOpts(base);
-    const arr = sorted(withStatus(base)), pages = Math.max(1, Math.ceil(arr.length / PS)); F.page = Math.min(F.page, pages - 1); const part = arr.slice(F.page * PS, F.page * PS + PS), live = arr.filter(isLive);
+    const arr = sorted(withStatus(base)), pages = Math.max(1, Math.ceil(arr.length / PS)); F.page = Math.min(F.page, pages - 1); const part = arr.slice(F.page * PS, F.page * PS + PS), live = arr.filter(isLive), verified = statementSummary(arr);
     const kc = (l, n, a, cls = "") => `<div class="kc ${cls}"><span>${l}</span><div class="kv"><b>${n}</b>${a != null ? `<small class="num">৳ ${money(a)}</small>` : ""}</div></div>`;
-    $("#k-sum", v).innerHTML = kc(bi("মোট চেক", "Cheques"), arr.length, null) + kc(bi("কার্যকর মোট", "Live total"), live.length, sumAmt(live), "main") + STATUSES.map(s => { const x = arr.filter(c => c.status === s); return x.length ? kc(stTag(s), x.length, sumAmt(x), "st-" + s.toLowerCase()) : ""; }).join("");
-    $("#k-tab", v).innerHTML = part.length ? `<div class="tw cards"><table><thead><tr><th>তারিখ</th><th>A/C · চেক</th><th>হোল্ডার</th><th class="r">টাকা</th><th>খাত / বিবরণ</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${part.map(c => `<tr><td>${dmy(c.date)}</td><td><button type="button" class="cq-link" data-register-id="${esc(c.id)}">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}</td><td class="mut sm">${esc(accounts[c.code]?.holder || "")}</td><td class="r num">${money(c.amount)}</td><td>${esc(c.purpose.split(" (")[0])}<div class="mut sm">${esc([c.taker, c.party, c.toac && "→ " + c.toac, c.remarks].filter(Boolean).join(" · "))}</div></td><td><span class="stc">${stTag(c.status)}${pendTag(c)}${c.sdate && c.status !== "Pending" ? `<span class="mut sm stc-d">${dmy(c.sdate)}</span>` : ""}</span></td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">কিছু পাওয়া যায়নি</div>`;
+    $("#k-sum", v).innerHTML = kc(bi("মোট চেক", "Cheques"), arr.length, null) + kc(bi("কার্যকর মোট", "Live total"), live.length, sumAmt(live), "main") + (S.statementReady ? kc("Verified", verified.count, verified.amount) + kc("Unverified", verified.rest, null) : "") + STATUSES.map(s => { const x = arr.filter(c => c.status === s); return x.length ? kc(stTag(s), x.length, sumAmt(x), "st-" + s.toLowerCase()) : ""; }).join("");
+    $("#k-tab", v).innerHTML = part.length ? `<div class="tw cards"><table><thead><tr><th>তারিখ</th><th>A/C · চেক</th><th>হোল্ডার</th><th class="r">টাকা</th><th>খাত / বিবরণ</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${part.map(c => `<tr><td>${dmy(c.date)}</td><td><button type="button" class="cq-link" data-register-id="${esc(c.id)}">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}</td><td class="mut sm">${esc(accounts[c.code]?.holder || "")}</td><td class="r num">${money(c.amount)}</td><td>${esc(c.purpose.split(" (")[0])}<div class="mut sm">${esc([c.taker, c.party, c.toac && "→ " + c.toac, c.remarks].filter(Boolean).join(" · "))}</div></td><td><span class="stc">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}${c.sdate && c.status !== "Pending" ? `<span class="mut sm stc-d">${dmy(c.sdate)}</span>` : ""}</span></td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">কিছু পাওয়া যায়নি</div>`;
     $("#k-pg", v).innerHTML = pages > 1 ? `<button class="btn sm fix" id="pv" ${F.page ? "" : "disabled"}>‹ আগের</button><span class="mut fix">পাতা ${F.page + 1} / ${pages}</span><button class="btn sm fix" id="nx" ${F.page < pages - 1 ? "" : "disabled"}>পরের ›</button>` : "";
     $("#pv", v) && ($("#pv", v).onclick = () => { F.page--; draw(); }); $("#nx", v) && ($("#nx", v).onclick = () => { F.page++; draw(); });
 
@@ -1351,13 +1359,17 @@ async function vCheques(v) {
   const bind = (id, k) => { const el = $("#" + id, v); el.addEventListener("input", () => { F[k] = el.value; F.page = 0; draw(); }); };
   const pre = sessionStorage.getItem("nabiad_chq_ac"); if (pre) { sessionStorage.removeItem("nabiad_chq_ac"); F.code = pre; $("#k-c", v).value = pre; }
   pbBind(v, "k", PF, () => { F.page = 0; draw(); }, PBO); bind("k-q", "q"); bind("k-c", "code"); bind("k-s", "status"); bind("k-u", "purpose");
+  if ($("#k-vf", v)) bind("k-vf", "verification");
+  if ($("#k-verify", v)) $("#k-verify", v).onclick = () => S.statementReady
+    ? statementModal(draw)
+    : toast(bi("স্টেটমেন্ট যাচাই চালু নেই। ডাটাবেস সেটআপ ও সংযোগ দেখুন।", "Statement verification is unavailable. Check the database setup and connection."), "err");
   $("#k-x", v).onclick = () => exportChequesXlsx(sorted(withStatus(filt())), `Cheques_${PF.m === "all" ? today() : pbRange(PF).join("_to_")}.xlsx`, $("#k-x", v));
   $("#k-p", v).onclick = () => {
     const arr = withStatus(filt()).sort((x, y) => x.date.localeCompare(y.date) || x.code.localeCompare(y.code)), live = arr.filter(isLive), am = accMap(); if (!arr.length) return toast("ডাটা নেই", "err");
-    const [pa, pb] = pbRange(PF), f = PF.m === "all" ? arr[0].date : pa, t = PF.m === "all" ? arr[arr.length - 1].date : pb, flt = [F.code, F.status, F.purpose && F.purpose.split(" (")[0], F.q && `"${esc(F.q)}"`].filter(Boolean).join(" · ");
+    const [pa, pb] = pbRange(PF), f = PF.m === "all" ? arr[0].date : pa, t = PF.m === "all" ? arr[arr.length - 1].date : pb, flt = [F.code, F.status, F.purpose && F.purpose.split(" (")[0], F.verification === "yes" ? "Verified" : F.verification === "no" ? "Unverified" : "", F.q && `"${esc(F.q)}"`].filter(Boolean).join(" · ");
     printSheet(repSheet("k-sheet", "Cheque List · চেক তালিকা" + (flt ? " · " + flt : ""), f, t,
       repKpi([[`Cheques · live`, `${live.length} <small>/ ${arr.length}</small>`, "k1"], ["Live Amount", "৳ " + money(sumAmt(live)), "k3"], ["Pending", `${arr.filter(c => c.status === "Pending").length} · ৳ ${money(sumAmt(arr.filter(c => c.status === "Pending")))}`, ""], ["Cleared", `${arr.filter(c => c.status === "Cleared").length} · ৳ ${money(sumAmt(arr.filter(c => c.status === "Cleared")))}`, ""]]),
-      repOne(repBox(`Cheques (${arr.length})`, ["~Date", "~A/C · Cheque", "~Holder", "Amount", "~Purpose / Detail", "Status"], arr.map(c => `<tr><td class="cd">${dmy(c.date)}</td><td><b>${esc(c.code)}</b> #${esc(c.no)}</td><td>${esc((am[c.code] || {}).holder || "")}</td><td class="r num b">${money(c.amount)}</td><td>${esc(c.purpose.split(" (")[0])}${c.party || c.taker || c.remarks ? `<div class="mut" style="font-size:10px">${esc([c.party, c.taker, c.remarks].filter(Boolean).join(" · "))}</div>` : ""}</td><td class="r">${esc(c.status)}</td></tr>`).join(""), `<tr class="tot"><td colspan="3">TOTAL (live)</td><td class="r num">${money(sumAmt(live))}</td><td colspan="2"></td></tr>`))), `Cheque_List_${f}_${t}`);
+      repOne(repBox(`Cheques (${arr.length})`, ["~Date", "~A/C · Cheque", "~Holder", "Amount", "~Purpose / Detail", "Status", "~Statement"], arr.map(c => `<tr><td class="cd">${dmy(c.date)}</td><td><b>${esc(c.code)}</b> #${esc(c.no)}</td><td>${esc((am[c.code] || {}).holder || "")}</td><td class="r num b">${money(c.amount)}</td><td>${esc(c.purpose.split(" (")[0])}${c.party || c.taker || c.remarks ? `<div class="mut" style="font-size:10px">${esc([c.party, c.taker, c.remarks].filter(Boolean).join(" · "))}</div>` : ""}</td><td class="r">${esc(c.status)}</td><td>${statementLabel(c)}</td></tr>`).join(""), `<tr class="tot"><td colspan="3">TOTAL (live)</td><td class="r num">${money(sumAmt(live))}</td><td colspan="3"></td></tr>`)) + statementReportBlock(arr)), `Cheque_List_${f}_${t}`);
   };
   draw();
 }
@@ -2696,7 +2708,7 @@ async function vReports(v) {
       repKpi([[`Live Cheques · ৳ ${money0(sumAmt(live))}`, live.length, "k1"], [`Cleared · ৳ ${money0(sumAmt(by("Cleared")))}`, by("Cleared").length, "k3"], [`Pending · ৳ ${money0(sumAmt(by("Pending")))}`, by("Pending").length, ""], [`Bounced / Cancelled · ৳ ${money0(sumAmt(by("Bounced")))}`, `${by("Bounced").length} / ${by("Cancelled").length}`, "k2"]]),
       repTwo(tbl("By Purpose", T.pur, ["Purpose", "Cheque", "Amount"]), tbl("Cash Taken By", T.tak, ["Name", "Cheque", "Amount"])) +
       repTwo(tbl("By Status", T.st, ["Status", "Cheque", "Amount"]), tbl("By Bank", T.bank, ["Bank", "Cheque", "Amount"])) +
-      repOne(tbl("By Account", T.acc, ["Account", "Cheque", "Amount"])) +
+      repOne(tbl("By Account", T.acc, ["Account", "Cheque", "Amount"])) + statementReportBlock(all) +
       repTwo(daysBetween(from, to) <= 62 ? tbl("By Day", T.day, ["Date", "Cheque", "Amount"]) : "", tbl("By Month", T.mon, ["Month", "Cheque", "Amount"])));
     dcFit(v, "p-in");
   }
@@ -2707,7 +2719,7 @@ async function vReports(v) {
     if (!cur) return toast("ডাটা নেই", "err"); const strip = s => String(s).replace(/<[^>]+>/g, "").trim();
     if (cur.kind === "bank") return exportXlsx({ Daily: [["Date", "Accounts", "Total", "Block", "Usable"], ...cur.ser.map(x => [dmy(x.date), x.n, x.t, x.b, x.t - x.b])], Accounts: [["Code", "Holder", "Bank", "Opening", "Closing", "Block", "Change"], ...cur.accRows.map(r => [r.c, r.a?.holder || "", r.a?.bank || "", r.o, r.cl, r.bl, r.ch])], "By Bank": [["Bank", "A/C", "Closing", "Block"], ...cur.byBank.map(r => [r.k, r.n, r.amt, r.bl])], "By Holder": [["Holder", "A/C", "Closing", "Block"], ...cur.byHolder.map(r => [r.k, r.n, r.amt, r.bl])] }, `Bank_Report_${cur.from}_${cur.to}.xlsx`);
     const sh = (rows, h) => [h, ...rows.map(r => [strip(r.k), r.n, r.amt])];
-    exportXlsx({ Summary: [["Period", `${cur.from} → ${cur.to}`], ["Holder", F.holder || "All"], [], ["Live cheques", cur.live.length, sumAmt(cur.live)]], "By Purpose": sh(cur.T.pur, ["Purpose", "Count", "Amount"]), "By Cash Taker": sh(cur.T.tak, ["Name", "Count", "Amount"]), "By Status": sh(cur.T.st, ["Status", "Count", "Amount"]), "By Bank": sh(cur.T.bank, ["Bank", "Count", "Amount"]), "By Account": sh(cur.T.acc, ["Account", "Count", "Amount"]), "By Day": sh(cur.T.day, ["Date", "Count", "Amount"]), "By Month": sh(cur.T.mon, ["Month", "Count", "Amount"]), Details: [CHQ_HEAD, ...[...cur.all].sort((a, b) => a.date.localeCompare(b.date)).map(chqRow)] }, `Cheque_Report_${today()}.xlsx`);
+    exportXlsx({ Summary: [["Period", `${cur.from} → ${cur.to}`], ["Holder", F.holder || "All"], [], ["Live cheques", cur.live.length, sumAmt(cur.live)], ...statementSummaryExport(cur.all)], "By Purpose": sh(cur.T.pur, ["Purpose", "Count", "Amount"]), "By Cash Taker": sh(cur.T.tak, ["Name", "Count", "Amount"]), "By Status": sh(cur.T.st, ["Status", "Count", "Amount"]), "By Bank": sh(cur.T.bank, ["Bank", "Count", "Amount"]), "By Account": sh(cur.T.acc, ["Account", "Count", "Amount"]), "By Day": sh(cur.T.day, ["Date", "Count", "Amount"]), "By Month": sh(cur.T.mon, ["Month", "Count", "Amount"]), Details: [CHQ_HEAD, ...[...cur.all].sort((a, b) => a.date.localeCompare(b.date)).map(chqRow)] }, `Cheque_Report_${today()}.xlsx`);
   };
   await draw();
   return repBind(v, "p", "p-in", () => `${cur?.kind === "chq" ? "Cheque" : "Bank"}_Report_${cur ? cur.from + "_" + cur.to : today()}`, () => cur ? `${cur.kind === "chq" ? "Cheque" : "Bank balance"} report ${dmy(cur.from)} → ${dmy(cur.to)}` : "");
