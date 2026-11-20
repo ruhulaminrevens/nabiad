@@ -3791,6 +3791,11 @@ async function vRegister(v) {
   if (routeToken !== ROUTE_TOK) return;
   const F = { ...pbInit("month"), ...(date ? { m: "day", d: date } : {}), q: "", type: "", k: "" };
   const canMap = ["admin","staff"].includes(S.me.role) && moduleOpen("cash");
+  const canToggleLedger = canMap && moduleCan("cash", "edit");
+  const ledgerTypes = { r: ["receipt", bi("প্রাপ্তি", "Receipt")], p: ["payment", bi("পরিশোধ", "Payment")], both: ["both", bi("উভয়", "Both")] };
+  const ledgerHeadings = [bi("আইডি", "ID"), bi("ধরন", "Type"), bi("লেজার", "Ledger"), bi("খাত", "Purpose / Group"), bi("তারিখ", "Date"), bi("অবস্থা", "Status")];
+  const dateFormat = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Dhaka", day: "2-digit", month: "2-digit", year: "numeric" });
+  const ledgerDate = value => value && Number.isFinite(Date.parse(value)) ? dateFormat.format(new Date(value)).replaceAll("/", "-") : "";
   const ungrouped = bi("খাত নির্ধারিত নয়","Unmapped");
   const categoryTotal = bi("খাতের মোট", "Category total");
   const mappedCategoryTotal = bi("ম্যাপ করা লেজার · খাতের মোট", "Mapped ledger · category total");
@@ -3800,11 +3805,15 @@ async function vRegister(v) {
     `<div class="card tbar rg-tools noprint">
        <div class="rg-source chips" id="rg-source" role="group" aria-label="${bi("রেকর্ডের উৎস", "Record source")}">
          <button type="button" class="chip on" data-rg-source="app" aria-pressed="true">${bi("অ্যাপ রেকর্ড", "App records")}</button>
-         <button type="button" class="chip" data-rg-source="tally" aria-pressed="false">${bi("Tally ভাউচার", "Tally vouchers")}</button>
+         <button type="button" class="chip" data-rg-source="ledgers" aria-pressed="false">${bi("Tally ভাউচার", "Tally vouchers")}</button>
+       </div>
+       <div class="chips" id="rg-tally-view" role="group" aria-label="${bi("Tally ভিউ", "Tally view")}" hidden>
+         <button type="button" class="chip" data-rg-tally="ledgers" aria-pressed="true">${bi("লেজার তালিকা", "Ledger list")}</button>
+         <button type="button" class="chip" data-rg-tally="tally" aria-pressed="false">${bi("ভাউচার ইতিহাস", "Voucher history")}</button>
        </div>
        <div id="rg-period">${pbBar("rg", F)}</div>
        <div class="rg-filters">
-         <div><label class="f" for="rg-q">${bi("লেজার, voucher, নোট বা অঙ্ক", "Ledger, voucher, note or amount")}</label><input class="in" id="rg-q" type="search" autocomplete="off"></div>
+         <div><label class="f" for="rg-q" id="rg-query-label">${bi("লেজার, voucher, নোট বা অঙ্ক", "Ledger, voucher, note or amount")}</label><input class="in" id="rg-q" type="search" autocomplete="off"></div>
          <div><label class="f" for="rg-t">${bi("ধরন", "Type")}</label><select class="in" id="rg-t"><option value="">${all}</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div>
          <div id="rg-purpose"><label class="f" for="rg-k">${bi("খাত", "Purpose")}</label><select class="in" id="rg-k"><option value="">${all}</option>${[...CASH_KEYS("receipt"), ...CASH_KEYS("payment")].map(k => `<option value="${k}">${esc(cashLabel(k))}</option>`).join("")}</select></div>
        </div>
@@ -3815,8 +3824,10 @@ async function vRegister(v) {
      <div class="cq-pager rg-pager" id="rg-pager" hidden><button type="button" class="btn" id="rg-prev">${bi("আগের", "Previous")}</button><span class="mut sm" id="rg-page"></span><button type="button" class="btn" id="rg-next">${bi("পরের", "Next")}</button></div>`;
   const g = id => $("#" + id, v), out = g("rg-out"), excel = g("rg-x");
   let source = "app", page = 0, version = 0, ready = false, lines = [], shown = [];
-  let ledgerMap = new Map(), checkerLabels = new Map();
+  let ledgerMap = new Map(), checkerLabels = new Map(), ledgerRows = [], shownLedgers = [];
+  const toggling = new Set();
   function setLedgers(list) {
+    ledgerRows = list;
     ledgerMap = new Map(list.map(row => [tallyLedgerKey(row.name), row]));
     checkerLabels = cashCheckerLedgerLabels(ledgerMap);
   }
@@ -3827,9 +3838,21 @@ async function vRegister(v) {
   async function load() {
     const versionAtStart = ++version, [f, t] = cashPeriod(F);
     const current = () => out.isConnected && versionAtStart === version;
-    page = 0; ready = false; shown = []; excel.disabled = true;
+    page = 0; ready = false; shown = []; shownLedgers = []; excel.disabled = true;
     g("rg-sum").textContent = ""; g("rg-pager").hidden = true; showNotice("");
     out.innerHTML = `<div class="empty">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
+    if (source === "ledgers") {
+      const result = await cbLedLoad(true);
+      if (!current()) return;
+      if (result.err) {
+        out.innerHTML = `<div class="alert rd">${esc(bi("লেজার তালিকা লোড হয়নি। আবার চেষ্টা করুন।", "Ledger list could not load. Try again."))}</div>`;
+        return;
+      }
+      setLedgers(result.list);
+      ready = true;
+      draw();
+      return;
+    }
     if (source === "tally") {
       try {
         const [rows, ledgers] = await Promise.all([API.cashTallyRange(f,t), cbLedLoad()]);
@@ -3884,8 +3907,74 @@ async function vRegister(v) {
     ready = true; draw();
   }
   const resetPage = () => { page = 0; draw(); };
+  function paginate(count) {
+    const pages = Math.max(1, Math.ceil(count / pageSize));
+    page = Math.min(page, pages - 1);
+    g("rg-pager").hidden = pages === 1;
+    g("rg-page").textContent = `${page + 1} / ${pages}`;
+    g("rg-prev").disabled = page === 0;
+    g("rg-next").disabled = page + 1 === pages;
+    excel.disabled = !count;
+    return page * pageSize;
+  }
+  function ledgerFields(row) {
+    const [type, typeLabel] = ledgerTypes[row.kind] || ledgerTypes.both;
+    const groupFields = [["receipt", cbLedCat(row, "r")], ["payment", cbLedCat(row, "p")]]
+      .filter(([side, key]) => CASH_KEYS(side).includes(key));
+    const groups = groupFields.map(([side, key]) => `${side === "receipt" ? ledgerTypes.r[1] : ledgerTypes.p[1]}: ${cbCatName(key)}`);
+    const dates = [[bi("তৈরি", "Created"), ledgerDate(row.created_at)], [bi("আপডেট", "Updated"), ledgerDate(row.updated_at)]]
+      .filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`);
+    return { type, typeLabel, groupFields, groups, dates, id: String(row.id).padStart(2, "0") };
+  }
+  const ledgerStatus = active => active ? bi("চালু", "Active") : bi("নিষ্ক্রিয়", "Inactive");
+  function drawLedgers() {
+    const query = chequeSearchKey(F.q);
+    shownLedgers = ledgerRows.map(row => ({ row, ...ledgerFields(row) })).filter(ledger => {
+      const matchesGroup = !F.k || (F.k === "unmapped" ? !ledger.groupFields.length : ledger.groupFields.some(([, key]) => key === F.k));
+      return matchesGroup && (!F.type || F.type === ledger.type) &&
+        (!query || chequeSearchKey([ledger.id, ledger.row.name, ...ledger.groups].join(" ")).includes(query));
+    });
+    const first = paginate(shownLedgers.length);
+    g("rg-sum").textContent = "";
+    const details = values => values.length ? values.map(value => `<div>${esc(value)}</div>`).join("") : "—";
+    out.innerHTML = `<div class="tw cards"><table class="rg-table"><thead><tr>${ledgerHeadings.map(label => `<th scope="col">${esc(label)}</th>`).join("")}</tr></thead><tbody>
+      ${shownLedgers.slice(first, first + pageSize).map(({ row, id, typeLabel, groups, dates }) => {
+        const active = row.active !== false, status = ledgerStatus(active);
+        const tag = active ? "au-insert" : "au-delete";
+        const control = canToggleLedger
+          ? `<button type="button" class="btn sm" data-rg-ledger="${esc(row.id)}" aria-pressed="${active}" aria-label="${esc(`${bi("লেজারের সক্রিয়তা", "Ledger activation")} · ${row.name} · ${status}`)}"${toggling.has(String(row.id)) ? " disabled" : ""}><span class="tag ${tag}">${esc(status)}</span></button>`
+          : `<span class="tag ${tag}">${esc(status)}</span>`;
+        return `<tr><td class="num">${esc(id)}</td><td>${esc(typeLabel)}</td><td><b>${esc(row.name)}</b></td><td>${groups.length ? details(groups) : esc(ungrouped)}</td><td class="num sm">${details(dates)}</td><td>${control}</td></tr>`;
+      }).join("")}
+      </tbody></table></div>${shownLedgers.length ? "" : `<div class="empty">${bi("কোনো লেজার মেলেনি", "No ledgers match these filters")}</div>`}`;
+  }
+  out.addEventListener("click", async event => {
+    const button = event.target.closest("[data-rg-ledger]");
+    if (!button || !canToggleLedger || source !== "ledgers") return;
+    const id = button.dataset.rgLedger;
+    const row = ledgerRows.find(item => String(item.id) === id);
+    if (!row || toggling.has(id)) return;
+    toggling.add(id);
+    button.disabled = true;
+    try {
+      const saved = await API.cbLedgerGroupSave(row.id, { active: row.active === false });
+      const latest = CBLED?.list.find(item => String(item.id) === id);
+      if (latest) Object.assign(latest, saved);
+      Object.assign(row, saved);
+      setLedgers(ledgerRows);
+    } catch (error) {
+      toast(esc(error.message || String(error)), "err");
+    } finally {
+      toggling.delete(id);
+      if (source === "ledgers" && ready && out.isConnected) {
+        draw();
+        $$("[data-rg-ledger]", out).find(item => item.dataset.rgLedger === id)?.focus({ preventScroll: true });
+      }
+    }
+  });
   function draw() {
     if (!ready || !out.isConnected) return;
+    if (source === "ledgers") { drawLedgers(); return; }
     const q = chequeSearchKey(F.q), isTally = source === "tally";
     const rows = lines.map(row => {
       if (isTally) return {...row, k: tallyPurpose(row, ledgerMap)};
@@ -3898,12 +3987,7 @@ async function vRegister(v) {
     for (const l of shown) sums[l.type] += Math.round(l.a * 100);
     g("rg-sum").innerHTML = [[bi("লাইন", "Lines"), shown.length, ""], ["Receipt", "৳ " + money(sums.receipt / 100), "gr"], ["Payment", "৳ " + money(sums.payment / 100), "rd"]]
       .map(([label, value, cls]) => `<div class="card"><span class="mut sm">${label}</span><strong class="${cls}">${value}</strong></div>`).join("");
-    const pages = Math.max(1, Math.ceil(shown.length / pageSize));
-    page = Math.min(page, pages - 1);
-    const first = page * pageSize;
-    g("rg-pager").hidden = pages === 1; g("rg-page").textContent = `${page + 1} / ${pages}`;
-    g("rg-prev").disabled = page === 0; g("rg-next").disabled = page + 1 === pages;
-    excel.disabled = !shown.length;
+    const first = paginate(shown.length);
     const ledger = bi("লেজার", "Ledger"), detail = bi("ভাউচার / নোট", "Voucher / note"), recordSource = bi("উৎস", "Source");
     out.innerHTML = shown.length ? `<div class="tw cards"><table class="rg-table"><thead><tr><th>তারিখ</th><th>ধরন</th><th>${ledger}</th><th>${bi("খাত","Purpose / Group")}</th><th class="r">টাকা</th><th>${detail}</th><th>${recordSource}</th></tr></thead><tbody>
       ${shown.slice(first, first + pageSize).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td>
@@ -3915,15 +3999,27 @@ async function vRegister(v) {
   }
   function setSource(next) {
     source = next;
+    const isLedger = source === "ledgers", isTally = source !== "app";
+    g("rg-period").hidden = isLedger;
+    g("rg-tally-view").hidden = !isTally;
+    g("rg-query-label").textContent = isLedger ? bi("আইডি, লেজার বা খাত", "ID, ledger or group") : bi("লেজার, voucher, নোট বা অঙ্ক", "Ledger, voucher, note or amount");
     const purpose = g("rg-k"), option = purpose.querySelector('option[value="unmapped"]');
-    if (source === "tally" && !option) purpose.add(new Option(ungrouped, "unmapped"));
-    if (source === "app" && option) {
+    if (isTally && !option) purpose.add(new Option(ungrouped, "unmapped"));
+    if (!isTally && option) {
       option.remove();
       if (F.k === "unmapped") { F.k = ""; purpose.value = ""; }
     }
-    for (const btn of $$("[data-rg-source]", v)) {
-      const active = btn.dataset.rgSource === source;
-      btn.classList.toggle("on", active); btn.setAttribute("aria-pressed", active);
+    const type = g("rg-t"), both = type.querySelector('option[value="both"]');
+    if (isLedger && !both) type.add(new Option(ledgerTypes.both[1], "both"));
+    if (!isLedger && both) {
+      both.remove();
+      if (F.type === "both") { F.type = ""; type.value = ""; }
+    }
+    for (const btn of $$("[data-rg-source], [data-rg-tally]", v)) {
+      const active = btn.dataset.rgTally ? btn.dataset.rgTally === source
+        : btn.dataset.rgSource === (isTally ? "ledgers" : "app");
+      btn.classList.toggle("on", active);
+      btn.setAttribute("aria-pressed", active);
     }
     return load();
   }
@@ -3935,13 +4031,22 @@ async function vRegister(v) {
     });
     resetPage();
   }, {mappingOnly:true});
-  for (const btn of $$("[data-rg-source]", v)) btn.onclick = () => { if (source !== btn.dataset.rgSource) setSource(btn.dataset.rgSource); };
+  for (const btn of $$("[data-rg-source], [data-rg-tally]", v)) btn.onclick = () => {
+    const next = btn.dataset.rgTally || btn.dataset.rgSource;
+    if (source !== next) setSource(next);
+  };
   g("rg-q").oninput = e => { F.q = e.target.value; resetPage(); };
   g("rg-t").onchange = e => { F.type = e.target.value; resetPage(); };
   g("rg-k").onchange = e => { F.k = e.target.value; resetPage(); };
   const changePage = delta => { page += delta; draw(); out.scrollIntoView({block: "start"}); };
   g("rg-prev").onclick = () => changePage(-1); g("rg-next").onclick = () => changePage(1);
   excel.onclick = () => {
+    if (source === "ledgers") {
+      if (shownLedgers.length) exportXlsx({ Ledgers: [ledgerHeadings, ...shownLedgers.map(({ row, id, typeLabel, groups, dates }) => [
+        id, typeLabel, row.name, groups.join(" · ") || ungrouped, dates.join(" · "), ledgerStatus(row.active !== false)
+      ])] }, "Cash_Register_Tally_Ledgers.xlsx");
+      return;
+    }
     const [from, to] = cashPeriod(F);
     if (shown.length) exportXlsx({ Register: [["Date", "Type", "Ledger", "Category", "Amount", "Expression", "Note", "Status", "By", "Voucher", "A/C", "Source"],
       ...shown.map(l => [dmy(l.date), l.type, l.led || "", l.k ? cashLabel(l.k) : l.source === "tally" ? ungrouped : "", l.a, l.x || "", l.n || "", l.st || "", l.by || "", l.ref || "", l.accounts || "", l.source === "checker" ? sources.checker + " · " + (l.led ? mappedCategoryTotal : categoryTotal) : sources[l.source]])] },
