@@ -75,7 +75,7 @@ Object.assign(SbAPI, {
     if (r.id) { const { data, error } = await sb.from("cashbook_ledgers").update(row).eq("id", r.id).select().single(); if (error) throw error; return data; }
     const { data, error } = await sb.from("cashbook_ledgers").insert({ ...row, created_by: S.me.name }).select().single(); if (error) throw error; return data;
   },
-  async cbLedgerDel(id) { const { error } = await sb.from("cashbook_ledgers").delete().eq("id", id); if (error) throw error; }
+  async cbLedgerDel(id) { const { error } = await sb.from("cashbook_ledgers").delete().eq("id", id).select("id").single(); if (error) throw error; }
 });
 Object.assign(DemoAPI, {
   _cbl() { return demoStore.cbl ||= [["Demo Cosmetics Store", "r", "cz_cos", null], ["Demo Food Store", "r", "cz_food", null], ["Niramoy Traders", "both", "niramoy", "supp"], ["Demo Supplier Ltd", "p", null, "supp"], ["Office Expenses", "p", null, "p_oth"], ["Demo Bank Main", "both", "bank_in", "bank_out"]].map(([name, kind, cat_r, cat_p], i) => ({ id: i + 1, name, kind, cat_r, cat_p, bank_code: null, active: true })); },
@@ -629,7 +629,7 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
        <option value="unmapped">${bi("খাত নির্ধারিত নয়", "Unmapped")}</option>
      </select></div>` : ""}
    </div>
-   <div class="cblg-h ${mappingOnly ? "cblg-map" : ""}"><span>${bi("লেজার", "Ledger")}</span><span>Receipt ${bi("খাত", "group")}</span><span>Payment ${bi("খাত", "group")}</span>${mappingOnly ? "" : "<span>Bank A/C</span><span></span>"}</div>
+   <div class="cblg-h ${mappingOnly ? "cblg-map" : ""}"><span>${bi("লেজার", "Ledger")}</span><span>Receipt ${bi("খাত", "group")}</span><span>Payment ${bi("খাত", "group")}</span>${mappingOnly ? `<span>${bi("স্ট্যাটাস ও অ্যাকশন", "Status & actions")}</span>` : "<span>Bank A/C</span><span></span>"}</div>
    <div class="mut sm" id="lg-c"></div><div class="cblg" id="lg-l"></div>
    ${mappingOnly ? `<div class="modal-actions"><span id="lg-status" class="mut sm" role="status"></span><button type="button" class="btn" id="lg-close">${bi("বন্ধ", "Close")}</button>${canEdit ? `<button type="button" class="btn" id="lg-edit" disabled>${ico("edit")} ${bi("এডিট", "Edit")}</button><button type="button" class="btn pri" id="lg-save" disabled>${ico("save")} ${bi("সেভ", "Save")}</button>` : ""}</div>` : ""}`, async (root, close) => {
     const panel = $(".modal", root), g = id => $("#" + id, panel);
@@ -638,13 +638,14 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
     const [, namesReady] = await Promise.all([cbLedLoad(true), mappingOnly ? cashGroupLoad() : true]);
     if (!panel.isConnected) return;
     let changed = false, editing = false, saving = false;
+    const deleting = new Set();
     const mappings = new Map(), names = new Map();
     const headEditor = g("lg-head-editor"), head = g("lg-head"), headName = g("lg-head-name");
     const status = g("lg-status"), saveButton = g("lg-save"), editButton = g("lg-edit");
     const controls = () => {
       if (!editButton) return;
       editButton.disabled = editing || saving || !!CBLED.err;
-      saveButton.disabled = saving || (!mappings.size && !names.size);
+      saveButton.disabled = saving || deleting.size > 0 || (!mappings.size && !names.size);
       g("lg-close").disabled = saving;
       if (g("lg-add")) g("lg-add").disabled = saving;
       headEditor.disabled = saving || !namesReady;
@@ -672,6 +673,18 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
       }
     };
     if (mappingOnly && !CBLED.err) after?.();
+    function mappingActions(ledger) {
+      const pending = mappings.get(ledger.id)?.active;
+      const active = pending ?? (ledger.active !== false);
+      const state = active ? bi("সক্রিয়", "Active") : bi("নিষ্ক্রিয়", "Inactive");
+      const action = active ? bi("নিষ্ক্রিয় করুন", "Disable") : bi("সক্রিয় করুন", "Activate");
+      const busy = saving || deleting.has(ledger.id) ? "disabled" : "";
+      return `<div class="cblg-actions">
+        <span class="tag ${active ? "au-insert" : "au-delete"}">${state}${pending !== undefined ? ` · ${bi("সেভ হয়নি", "Unsaved")}` : ""}</span>
+        ${canEdit ? `<button type="button" class="btn sm lg-toggle" aria-label="${esc(action + " · " + ledger.name)}" ${busy}>${action}</button>` : ""}
+        ${admin ? `<button type="button" class="btn sm ld" aria-label="${esc(bi("মুছুন", "Delete") + " · " + ledger.name)}" ${busy}>${bi("মুছুন", "Delete")}</button>` : ""}
+      </div>`;
+    }
     const draw = () => {
       const q = norm(g("lg-q").value), selected = group?.value || "";
       const [side, category] = selected.split(":");
@@ -683,11 +696,11 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
       const shown = matches.slice(0, 150);
       const selectable = canEdit && (!mappingOnly || (editing && !saving));
       g("lg-c").textContent = bi(`${CBLED.list.length}টি লেজার · দেখানো হচ্ছে ${shown.length}`, `${CBLED.list.length} ledgers · showing ${shown.length}`);
-      g("lg-l").innerHTML = shown.map(m => `<div class="cblg-r ${mappingOnly ? "cblg-map" : ""} ${m.active === false ? "off" : ""}" data-id="${m.id}">
+      g("lg-l").innerHTML = shown.map(m => `<div class="cblg-r ${mappingOnly ? "cblg-map" : ""} ${!mappingOnly && m.active === false ? "off" : ""}" data-id="${m.id}">
         <span class="nm" title="${esc(m.name)}">${mappingOnly ? esc(m.name) : `<input class="cell ln" value="${esc(m.name)}">`}</span>
-        <select class="in lr" aria-label="${esc(m.name)} · Receipt group" ${selectable ? "" : "disabled"}>${cbLgOpts("r", cbLedCat(mappings.get(m.id) || m, "r"))}</select>
-        <select class="in lp" aria-label="${esc(m.name)} · Payment group" ${selectable ? "" : "disabled"}>${cbLgOpts("p", cbLedCat(mappings.get(m.id) || m, "p"))}</select>
-        ${mappingOnly ? "" : `<select class="in la">${acOpts(m.bank_code)}</select><span class="act"><label class="chk" title="${bi("চালু","Active")}"><input type="checkbox" class="lo" ${m.active === false ? "" : "checked"}></label>${admin ? `<button type="button" class="cbx2 ld" title="${bi("মুছুন","Delete")}">×</button>` : ""}</span>`}
+        <select class="in lr" aria-label="${esc(m.name)} · Receipt group" ${selectable ? "" : "disabled"}>${cbLgOpts("r", cbLedCat({ ...m, ...mappings.get(m.id) }, "r"))}</select>
+        <select class="in lp" aria-label="${esc(m.name)} · Payment group" ${selectable ? "" : "disabled"}>${cbLgOpts("p", cbLedCat({ ...m, ...mappings.get(m.id) }, "p"))}</select>
+        ${mappingOnly ? mappingActions(m) : `<select class="in la">${acOpts(m.bank_code)}</select><span class="act"><label class="chk" title="${bi("চালু","Active")}"><input type="checkbox" class="lo" ${m.active === false ? "" : "checked"}></label>${admin ? `<button type="button" class="cbx2 ld" title="${bi("মুছুন","Delete")}">×</button>` : ""}</span>`}
       </div>`).join("") || `<div class="empty">${bi("কোনো লেজার মেলেনি", "No ledgers match")}</div>`;
     };
     const save = async (el, patch) => {
@@ -706,6 +719,15 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
         draw();
       } finally { el.disabled = false; }
     };
+    function stage(ledger, field, value) {
+      const draft = { ...mappings.get(ledger.id) };
+      const original = field === "active" ? ledger.active !== false : ledger[field] || null;
+      if (value === original) delete draft[field];
+      else draft[field] = value;
+      if (Object.keys(draft).length) mappings.set(ledger.id, draft);
+      else mappings.delete(ledger.id);
+      controls();
+    }
     if (editButton) {
       editButton.onclick = () => {
         editing = true;
@@ -726,7 +748,7 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
         controls();
       };
       saveButton.onclick = async () => {
-        if (saving) return;
+        if (saving || deleting.size) return;
         if ([...names.values()].some(label => !label)) {
           status.textContent = bi("খাতের নাম খালি রাখা যাবে না।", "Enter a display name for every edited group.");
           return;
@@ -743,12 +765,8 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
             names.clear();
             saved = true;
           }
-          for (const [id, draft] of mappings) {
+          for (const [id, patch] of mappings) {
             const ledger = CBLED.list.find(row => row.id === id);
-            const patch = {};
-            for (const field of ["cat_r", "cat_p"]) {
-              if ((draft[field] || null) !== (ledger[field] || null)) patch[field] = draft[field] || null;
-            }
             const row = await API.cbLedgerGroupSave(id, patch);
             Object.assign(ledger, row);
             mappings.delete(id);
@@ -780,10 +798,7 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
         const field = t.classList.contains("lr") ? "cat_r" : t.classList.contains("lp") ? "cat_p" : null;
         if (!field) return;
         const id = Number(t.closest(".cblg-r").dataset.id), ledger = CBLED.list.find(row => row.id === id);
-        const draft = { ...ledger, ...mappings.get(id), [field]: t.value || null };
-        if (["cat_r", "cat_p"].some(key => (draft[key] || null) !== (ledger[key] || null))) mappings.set(id, draft);
-        else mappings.delete(id);
-        controls();
+        if (ledger && !deleting.has(id)) stage(ledger, field, t.value || null);
       } else if (t.classList.contains("ln")) {
         const name = t.value.trim(); if (!name) return draw();
         save(t, { name });
@@ -792,7 +807,45 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
       else if (t.classList.contains("la")) save(t, { bank_code: t.value || null });
       else if (t.classList.contains("lo")) save(t, { active: t.checked });
     };
-    g("lg-l").onclick = async e => { const b = e.target.closest(".ld"); if (!b) return; const row = b.closest(".cblg-r"), m = CBLED.list.find(x => x.id === +row.dataset.id); if (!m || !ask(bi(`"${m.name}" লেজার মুছবেন? (আগের খাতার লাইন বদলাবে না)`, `Delete ledger "${m.name}"? (earlier book lines are not changed)`))) return; try { await API.cbLedgerDel(m.id); CBLED.list = CBLED.list.filter(x => x.id !== m.id); CBLED.byNorm.delete(cbNorm(m.name)); changed = true; draw(); } catch (er) { toast(er.message || String(er), "err"); } };
+    g("lg-l").onclick = async e => {
+      const button = e.target.closest(".ld, .lg-toggle");
+      if (!button || saving) return;
+      const id = Number(button.closest(".cblg-r").dataset.id);
+      const ledger = CBLED.list.find(row => row.id === id);
+      if (!ledger || deleting.has(id)) return;
+      if (button.classList.contains("lg-toggle")) {
+        if (!mappingOnly || !canEdit) return;
+        const active = mappings.get(id)?.active ?? (ledger.active !== false);
+        stage(ledger, "active", !active);
+        status.textContent = bi("স্ট্যাটাস পরিবর্তন কার্যকর করতে সেভ করুন।", "Select Save to apply the status change.");
+        draw();
+        $(`.cblg-r[data-id="${id}"] .lg-toggle`, panel)?.focus({ preventScroll: true });
+        return;
+      }
+      if (!admin || !ask(bi(
+        `"${ledger.name}" লেজার স্থায়ীভাবে মুছবেন? এর Tally গ্রুপ ম্যাপিং সরবে। ভাউচার এবং Cash Book এন্ট্রি থাকবে।`,
+        `Permanently delete "${ledger.name}"? Its Tally group mapping will be removed. Voucher and Cash Book entries will be kept.`
+      ))) return;
+      deleting.add(id);
+      controls();
+      draw();
+      try {
+        await API.cbLedgerDel(id);
+        CBLED.list = CBLED.list.filter(row => row.id !== id);
+        CBLED.byNorm.delete(cbNorm(ledger.name));
+        mappings.delete(id);
+        notify();
+        if (status) status.textContent = bi("লেজার মুছে ফেলা হয়েছে।", "Ledger deleted.");
+      } catch (error) {
+        toast(esc(error.message || String(error)), "err");
+      } finally {
+        deleting.delete(id);
+        if (panel.isConnected) {
+          controls();
+          draw();
+        }
+      }
+    };
     if (canAdd) g("lg-add").onclick = async () => {
       if (saving) return;
       const name = g("lg-n").value.trim(); if (!name) return g("lg-n").focus(), toast(bi("লেজারের নাম লিখুন", "Enter the ledger name"), "err");
