@@ -319,14 +319,18 @@ async function fetchAll(table, order = "id", columns = "*") {
 const SbAPI = {
   async init() { await loadScript("vendor/supabase.js"); sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY); },
   async session() {
+    if (!navigator.onLine) return readCache()?.me || null;
     const { data } = await sb.auth.getSession(); const u = data.session?.user;
-    if (!u) { const c = readCache(); if (!navigator.onLine && c?.me) return c.me; return null; }
+    if (!u) return null;
     const { data: p, error } = await sb.from("profiles").select("*").eq("id", u.id).maybeSingle();
     if (error && isNetErr(error)) { const c = readCache(); if (c?.me?.id === u.id) return c.me; }
     if (error || !p || !p.active) return null; return { id: u.id, email: p.email, name: p.name, role: p.role, edit_days: p.edit_days || 0, module_access: p.module_access ?? null };
   },
   async login(email, pw) { const { error } = await sb.auth.signInWithPassword({ email, password: pw }); if (error) throw error; return this.session(); },
-  async logout() { try { localStorage.removeItem("nabiad_locked"); } catch { } await sb.auth.signOut(); },
+  async logout() {
+    try { localStorage.removeItem(CACHE_KEY); localStorage.removeItem("nabiad_locked"); } catch { }
+    await sb.auth.signOut();
+  },
   async loadAll() {
     const [acc, ch, ev, bk, verifications] = await Promise.all([fetchAll("accounts", "sort"), fetchAll("cheques", "created_at"), fetchAll("cheque_status", "created_at"), fetchAll("books", "code"), fetchAll("cheque_statement_verifications", "cheque_id").catch(() => null)]);
     const verified = new Map((verifications || []).map(r => [r.cheque_id, r]));
@@ -506,7 +510,9 @@ const API = DEMO ? DemoAPI : SbAPI;
 
 /* local cache: app opens instantly with last known data, then refreshes in background */
 const CACHE_KEY = "nabiad_cache_v2";
-function saveCache() { if (DEMO) return; try { const old = readCache() || {}; localStorage.setItem(CACHE_KEY, JSON.stringify({ u: S.me?.id, me: S.me, t: Date.now(), accounts: S.accounts, books: S.books, marks: S.marks, cheques: S.cheques.filter(c => !c.pending), reminders: S.reminders, lastBal: S.lastBal, lastCash: S.lastCash, snap: S.snap || old.snap || null })); } catch { } }
+function saveCache() { if (DEMO) return; try { const old = readCache() || {}; localStorage.setItem(CACHE_KEY, JSON.stringify({ u: S.me?.id, me: S.me, t: Date.now(), accounts: S.accounts, books: S.books, marks: S.marks, cheques: S.cheques.filter(c => !c.pending), reminders: S.reminders, lastBal: S.lastBal, lastCash: S.lastCash, snap: S.snap || (old.u === S.me?.id ? old.snap : null) }));
+  window.dispatchEvent(new Event("pwa-state"));
+} catch { } }
 function readCache() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); } catch { return null; } }
 const isNetErr = e => !navigator.onLine || /fetch|network|load failed|timed? ?out|ERR_/i.test(String(e?.message || e || ""));
 
@@ -2718,7 +2724,7 @@ function moduleAccessModal(user, after) {
 }
 
 async function vAdmin(v) {
-  let tab = sessionStorage.getItem("nabiad_admin_tab") || "acc", setup = tab === "imp" ? "imp" : "health";
+  let tab = sessionStorage.getItem("nabiad_admin_tab") || "acc";
   if (tab === "imp") tab = "help";
   if (!["acc", "usr", "help"].includes(tab)) tab = "acc";
   const accountFilters = { q:"", status:"Active", bank:"", daily:"", sort:"order" };
@@ -2726,12 +2732,15 @@ async function vAdmin(v) {
   let importing = false;
   const metrics = rows => `<div class="adm-metrics">${rows.map(([name, value]) => `<div class="card"><span class="mut sm">${name}</span><strong class="num">${value}</strong></div>`).join("")}</div>`;
   const all = bi("সব", "All");
+  let setupEvents;
   const draw = async () => {
+    setupEvents?.abort();
+    setupEvents = new AbortController();
+    const setupSignal = setupEvents.signal;
     sessionStorage.setItem("nabiad_admin_tab", tab);
     v.innerHTML = head("অ্যাডমিন প্যানেল") + `<div class="tabs ntabs adm-tabs" role="group" aria-label="${bi("অ্যাডমিন বিভাগ", "Admin sections")}">${[["acc", "bank", bi("অ্যাকাউন্ট", "Accounts")], ["usr", "users", bi("ব্যবহারকারী", "Users")], ["help", "sliders", bi("সেটআপ", "Setup")]].map(([id, icon, text]) => `<button type="button" class="chip ${id === tab ? "on" : ""}" data-admin-tab="${id}" aria-pressed="${id === tab}">${ico(icon)} ${text}</button>`).join("")}</div>
-      ${tab === "help" ? `<div class="adm-setup-switch chips" role="group" aria-label="${bi("সেটআপ বিভাগ", "Setup sections")}">${[["health", bi("সিস্টেম", "System status")], ["imp", bi("পুরনো ডাটা", "Old data")]].map(([id, label]) => `<button type="button" class="chip ${setup === id ? "on" : ""}" data-admin-setup="${id}" aria-pressed="${setup === id}">${label}</button>`).join("")}</div>` : ""}<div id="ad"></div>`;
+      <div id="ad"></div>`;
     $$("[data-admin-tab]", v).forEach(btn => btn.onclick = () => { tab = btn.dataset.adminTab; draw(); });
-    $$("[data-admin-setup]", v).forEach(btn => btn.onclick = () => { setup = btn.dataset.adminSetup; draw(); });
     const out = $("#ad", v);
     const refresh = () => { if (out.isConnected) return draw(); };
     if (tab === "acc") {
@@ -2806,22 +2815,51 @@ async function vAdmin(v) {
       $("#u-find", out).setAttribute("aria-label", bi("ব্যবহারকারী খুঁজুন","Search users"));
       $("#u-new", out).onclick = () => newUserModal(refresh);
       list();
-    } else if (setup === "imp") {
-      out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
-      let st = { n: null, first: null, last: null };
-      try { st = await API.balanceStats(); } catch { }
-      if (!out.isConnected) return;
-      out.innerHTML = `<div class="card"><h3>📥 পুরনো ব্যাংক ব্যালেন্স ইতিহাস</h3>
+    } else {
+      out.innerHTML = `<div class="adm-setup"><section class="card" id="ad-status" aria-labelledby="ad-status-title">
+        <div class="adm-setup-head"><h3 id="ad-status-title">🩺 ${bi("সিস্টেম অবস্থা","System status")}</h3><button type="button" class="btn sm" id="ad-recheck">${bi("আবার পরীক্ষা","Recheck status")}</button></div>
+        <div id="ad-offline"></div><div class="hcl" id="ad-health"></div>
+      </section><section class="card" id="ad-history" aria-labelledby="ad-history-title"></section>
+      <section class="card adm-setup-links"><h3>⚡ দ্রুত লিংক</h3><div class="qlinks"><a href="#/audit">${ico("shield")} Audit ও Backup</a><a href="#/books">${ico("book")} চেক বই</a><a href="#/settings">${ico("gear")} সেটিংস</a><a href="https://supabase.com/dashboard/project/mtzxcwuojiajsanearsz" target="_blank" rel="noopener">${ico("bank")} Supabase ড্যাশবোর্ড ↗</a><a href="https://github.com/ruhulaminrevens/nabiad" target="_blank" rel="noopener">${ico("copyt")} GitHub কোড ↗</a><button type="button" class="btn" id="ad-go-users">${ico("users")} ${bi("ব্যবহারকারী ব্যবস্থাপনা","Manage users")}</button></div></section></div>`;
+      $("#ad-go-users",out).onclick = () => { tab = "usr"; draw(); };
+      const history = $("#ad-history",out), health = $("#ad-health",out), offline = $("#ad-offline",out), recheck = $("#ad-recheck",out);
+      const row = (ok, l, sub) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "✗"}</i><div><b>${l}</b>${sub ? `<div class="mut xs">${sub}</div>` : ""}</div></div>`;
+      const renderOffline = () => paintOfflineStatus(offline,row);
+      const check = async () => {
+        recheck.disabled = true;
+        health.textContent = bi("পরীক্ষা হচ্ছে…","Checking…");
+        renderOffline();
+        const chk = navigator.onLine || DEMO ? await API.health().catch(() => ({})) : null;
+        if (!health.isConnected) return;
+        health.innerHTML = chk ? `
+          ${row(chk.db, "ডাটাবেস সংযোগ", DEMO ? bi("DEMO মোড", "DEMO mode") : "Supabase")}${row(chk.v2, "v2: ড্রাফট · রিমাইন্ডার · Audit · ছবি", chk.v2 ? "চালু" : "schema_v2.sql চালাতে হবে")}
+          ${row(chk.v3, "v3: ক্যাশ · Backup · নিজের নাম", chk.v3 ? "চালু" : "schema_v3.sql চালাতে হবে")}${row(chk.v6, "v6: ডিস্ট্রিবিউশন কালেকশন", chk.v6 ? "চালু" : "schema_v6.sql চালাতে হবে")}
+          ${row(chk.modules, bi("মডিউল অ্যাক্সেস","Module access"), chk.modules ? bi("ডাটাবেসে সক্রিয়","Enabled in database") : "schema_module_access.sql")}
+          ${row(chk.inventory,bi("ইনভেন্টরি","Inventory"),chk.inventory ? bi("সক্রিয়","Active") : bi("স্ট্যাটাস পাওয়া যায়নি","Unavailable"))}
+          ${row(chk.backup,"রাত ১২টার Backup",chk.backupAt ? esc(auditStamp(chk.backupAt)) : "এখনো হয়নি")}
+          ${row(window.isSecureContext,"HTTPS",esc(location.host))}` : `<p class="mut sm">${bi("সার্ভারের অবস্থা দেখতে ইন্টারনেট লাগবে।","Connect to the internet to check server status.")}</p>`;
+        health.insertAdjacentHTML("beforeend", `<span class="mut xs">${bi("সংস্করণ","Version")} · ${esc(RUN_V)}</span>`);
+        recheck.disabled = false;
+      };
+      for (const event of ["pwa-state","online","offline"]) window.addEventListener(event, renderOffline, {signal:setupSignal});
+      recheck.onclick = () => { if (navigator.onLine) preparePwa(true); check(); };
+      check();
+      history.innerHTML = `<h3 id="ad-history-title">📥 ${bi("পুরনো ব্যাংক ব্যালেন্স ইতিহাস","Old bank balance history")}</h3><p class="mut sm">${bi("লোড হচ্ছে…","Loading…")}</p>`;
+      const st = navigator.onLine || DEMO ? await API.balanceStats().catch(() => ({})) : {};
+      if (!history.isConnected) return;
+      history.innerHTML = `<h3 id="ad-history-title">📥 ${bi("পুরনো ব্যাংক ব্যালেন্স ইতিহাস","Old bank balance history")}</h3>
+        ${!navigator.onLine && !DEMO ? `<p class="mut sm">${bi("ইতিহাস দেখতে ও ইমপোর্ট করতে ইন্টারনেট লাগবে।","Connect to the internet to view and import history.")}</p>` : ""}
         <div class="grid g3" style="margin:12px 0"><div class="kv"><span>ডাটাবেসে রেকর্ড</span><b class="num">${st.n == null ? "—" : money0(st.n)}</b></div><div class="kv"><span>সবচেয়ে পুরনো তারিখ</span><b>${st.first ? dmy(st.first) : "—"}</b></div><div class="kv"><span>সর্বশেষ তারিখ</span><b>${st.last ? dmy(st.last) : "—"}</b></div></div>
         ${DEMO ? `<div class="alert gr">${bi("DEMO মোডে পুরনো ডাটা আগে থেকেই লোড আছে।", "In DEMO mode the old data is already loaded.")}</div>` : `<div class="imopt"><div><b>২০২৬ ডাটা পুনরুদ্ধার</b><div class="mut xs">২০২৬-এর সব রেকর্ড + ২০২৬-এর ঠিক আগের শেষ দিনটি (ওটাই ১ জানুয়ারির Opening)</div></div><button class="btn pri" id="im-26">⬆ শুধু ২০২৬</button></div>
         <div class="imopt"><div><b>সম্পূর্ণ ইতিহাস</b><div class="mut xs">০২-০৯-২০২৩ (প্রথম দিন) থেকে ফাইলের শেষ তারিখ পর্যন্ত সব</div></div><button class="btn" id="im-all">⬆ সম্পূর্ণ import</button></div>`}
         <div class="bar" style="margin-top:12px"><i id="im-bar" style="width:0"></i></div><div class="hint" id="im-t"></div>
-        <div class="mut xs" style="margin-top:8px">শুধু যে তারিখ+A/C ডাটাবেসে নেই সেগুলোই যোগ হয় — আপনার app-এ সেভ/এডিট করা কোনো ব্যালেন্স বদলায় না, ডুপ্লিকেটও হয় না।</div></div>`;
+        <div class="mut xs" style="margin-top:8px">শুধু যে তারিখ+A/C ডাটাবেসে নেই সেগুলোই যোগ হয় — আপনার app-এ সেভ/এডিট করা কোনো ব্যালেন্স বদলায় না, ডুপ্লিকেটও হয় না।</div>`;
       const run = async (mode) => {
         if (importing) return;
         importing = true;
         const b26 = $("#im-26", out), ball = $("#im-all", out);
         try {
+          if (!navigator.onLine) throw new Error(bi("ইমপোর্ট করতে ইন্টারনেট লাগবে।","Connect to the internet to import history."));
           b26.disabled = ball.disabled = true;
           const all = await loadEncrypted("history.enc");
           if (!out.isConnected) return; const anchor = all.map(r => r[0]).filter(d => d < "2026-01-01").sort().pop() || "2026-01-01";
@@ -2834,29 +2872,11 @@ async function vAdmin(v) {
         finally { importing = false; b26.disabled = ball.disabled = false; }
       };
       $("#im-26", out) && ($("#im-26", out).onclick = () => run("26")); $("#im-all", out) && ($("#im-all", out).onclick = () => run("all"));
-    } else {
-      out.innerHTML = `<div class="card empty">সিস্টেম পরীক্ষা হচ্ছে…</div>`;
-      const chk = await API.health().catch(() => ({}));
-      if (!out.isConnected) return;
-      const row = (ok, l, sub) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "✗"}</i><div><b>${l}</b>${sub ? `<div class="mut xs">${sub}</div>` : ""}</div></div>`;
-      out.innerHTML = `<div class="grid g2"><div class="card"><h3>🩺 সিস্টেম অবস্থা</h3><div class="hcl">
-        ${row(chk.db, "ডাটাবেস সংযোগ", DEMO ? bi("DEMO মোড", "DEMO mode") : "Supabase")}${row(chk.v2, "v2: ড্রাফট · রিমাইন্ডার · Audit · ছবি", chk.v2 ? "চালু" : "schema_v2.sql চালাতে হবে")}
-        ${row(chk.v3, "v3: ক্যাশ · Backup · নিজের নাম", chk.v3 ? "চালু" : "schema_v3.sql চালাতে হবে")}${row(chk.v6, "v6: ডিস্ট্রিবিউশন কালেকশন", chk.v6 ? "চালু" : "schema_v6.sql চালাতে হবে")}${row(chk.backup, "রাত ১২টার Backup", chk.backupAt ? "শেষ: " + new Date(chk.backupAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "এখনো হয়নি")}
-        ${row(location.protocol === "https:" || DEMO, "HTTPS", location.host)}${row(!!navigator.serviceWorker?.controller || DEMO, "অফলাইন মোড (PWA)", navigator.serviceWorker?.controller ? "চালু" : "রিলোড দিলে চালু হবে")}</div>
-        <div class="mut xs" style="margin-top:10px">সংস্করণ v6 · ${esc(document.querySelector('script[src^="app.js"]')?.getAttribute("src")?.split("v=")[1] || "")}</div></div>
-       <div class="card adm-system"><h3>${bi("অ্যাক্সেস ও অপারেশন", "Access and operations")}</h3>
-        <div class="hcl">
-          ${row(chk.modules, bi("মডিউল অ্যাক্সেস", "Module access"), chk.modules ? bi("ডাটাবেসে সক্রিয়", "Enabled in database") : "schema_module_access.sql")}
-          ${row(chk.inventory, bi("ইনভেন্টরি", "Inventory"), chk.inventory ? bi("সক্রিয়", "Active") : bi("স্ট্যাটাস পাওয়া যায়নি", "Unavailable"))}
-        </div>
-        <div class="adm-actions"><button type="button" class="btn" id="ad-go-users">${ico("users")} ${bi("ব্যবহারকারী ব্যবস্থাপনা", "Manage users")}</button><button type="button" class="btn" id="ad-go-history">${ico("book")} ${bi("পুরনো ডাটা", "Old data")}</button><button type="button" class="btn" id="ad-recheck">${bi("আবার পরীক্ষা", "Recheck status")}</button></div></div>
-       <div class="card" style="grid-column:1/-1"><h3>⚡ দ্রুত লিংক</h3><div class="qlinks"><a href="#/audit">${ico("shield")} Audit ও Backup</a><a href="#/books">${ico("book")} চেক বই</a><a href="#/settings">${ico("gear")} সেটিংস</a><a href="https://supabase.com/dashboard/project/mtzxcwuojiajsanearsz" target="_blank" rel="noopener">${ico("bank")} Supabase ড্যাশবোর্ড ↗</a><a href="https://github.com/ruhulaminrevens/nabiad" target="_blank" rel="noopener">${ico("copyt")} GitHub কোড ↗</a></div></div></div>`;
-      $("#ad-go-users", out).onclick = () => { tab = "usr"; draw(); };
-      $("#ad-go-history", out).onclick = () => { setup = "imp"; draw(); };
-      $("#ad-recheck", out).onclick = refresh;
+
     }
   };
   await draw();
+  return () => setupEvents?.abort();
 }
 Object.assign(SbAPI, {
   async health() {
@@ -4964,6 +4984,64 @@ async function vDparty(v) {
 
 /* ---------- auto update: every open app notices a new release within minutes ---------- */
 const RUN_V = document.querySelector('script[src^="app.js"]')?.getAttribute("src")?.split("v=")[1] || "";
+const pwa = {phase:"checking", pending:null};
+function pwaStatus(phase) {
+  pwa.phase = phase;
+  window.dispatchEvent(new Event("pwa-state"));
+}
+function verifyOfflineShell(worker, repair) {
+  return new Promise(resolve => {
+    const channel = new MessageChannel();
+    const finish = (ready = false) => { clearTimeout(timer); channel.port1.close(); resolve(ready); };
+    const timer = setTimeout(finish, repair ? 12000 : 1800);
+    channel.port1.onmessage = ({data}) => finish(data?.version === RUN_V && data.ready === true);
+    try { worker.postMessage({type:"nabiad-offline-status", repair}, [channel.port2]); }
+    catch { finish(); }
+  });
+}
+function preparePwa(retry = false) {
+  if (!navigator.serviceWorker || !window.isSecureContext) return pwaStatus("unsupported");
+  if (pwa.pending) return pwa.pending;
+  const sw = navigator.serviceWorker;
+  pwa.pending = (async () => {
+    try {
+      pwaStatus("checking");
+      const reg = navigator.onLine ? await sw.register("sw.js", {updateViaCache:"none"}) : await sw.getRegistration();
+      if (retry && reg && navigator.onLine) await reg.update().catch(() => {});
+      const installing = reg?.installing;
+      if (installing) installing.addEventListener("statechange", () => {
+        if (["activated","redundant"].includes(installing.state)) {
+          Promise.resolve(pwa.pending).then(() => preparePwa());
+        }
+      });
+      if (sw.controller && await verifyOfflineShell(sw.controller, retry && navigator.onLine)) return pwaStatus("ready");
+      pwaStatus(installing && installing.state !== "redundant" ? "installing" : "unavailable");
+    } catch {
+      pwaStatus("unavailable");
+    }
+  })().finally(() => { pwa.pending = null; });
+  return pwa.pending;
+}
+function paintOfflineStatus(target, row) {
+  const cached = S.me?.id && readCache()?.u === S.me.id;
+  const state = pwa.phase === "ready" && !cached ? "data" : pwa.phase;
+  const messages = {
+    ready: bi("অ্যাপ ও সর্বশেষ সিঙ্কের ডাটা এই ডিভাইসে প্রস্তুত।","App and last synced data are ready on this device."),
+    data: bi("অফলাইন অ্যাপ প্রস্তুত। ডাটা রাখতে অনলাইনে সিঙ্ক করুন।","App cached. Sync online to keep a copy of your data."),
+    installing: bi("অফলাইনের জন্য অ্যাপ প্রস্তুত হচ্ছে…","Preparing the app for offline use…"),
+    checking: bi("অফলাইন ক্যাশ পরীক্ষা হচ্ছে…","Checking the offline cache…"),
+    unsupported: bi("এই ব্রাউজারে HTTPS বা service worker পাওয়া যাচ্ছে না।","HTTPS or service worker support is unavailable in this browser."),
+    unavailable: navigator.onLine ? bi("অফলাইন ক্যাশ প্রস্তুত হয়নি। আবার পরীক্ষা করুন।","Offline cache is not ready. Recheck status.")
+      : bi("এই ডিভাইসের অফলাইন ক্যাশ যাচাই করতে ইন্টারনেট লাগবে।","Connect to the internet to check this device’s offline cache.")
+  };
+  target.innerHTML = row(state === "ready",bi("অফলাইন মোড (PWA)","Offline mode (PWA)"),messages[state]);
+}
+navigator.serviceWorker?.addEventListener("controllerchange", () => {
+  Promise.resolve(pwa.pending).then(() => preparePwa());
+});
+window.addEventListener("online", () => preparePwa());
+preparePwa();
+
 let updReady = "", updBusy = false, DIRTY = false;
 document.addEventListener("input", e => { if (e.target.closest?.("#view, .modal")) DIRTY = true; }, true);
 async function checkUpdate() {
@@ -5222,7 +5300,7 @@ async function boot() {
     loadAvatars();
     let mo = null;
     const start = () => { if (!location.hash && PREFS.start && PREFS.start !== "dash" && allowed().includes(PREFS.start)) location.replace("#/" + PREFS.start); shell(); route(); setTimeout(remTick, 1500); if (!mo) { let q = 0; mo = new MutationObserver(() => { if (!q) q = requestAnimationFrame(() => { q = 0; labelTables(document); }); }); mo.observe(document.body, { childList: true, subtree: true }); } };
-    if (loadCache()) { start(); reload().then(() => { refreshBadges(); const k = (location.hash.match(/^#\/(\w+)/) || [])[1] || "dash"; if (["dash", "cheques", "books", "accounts"].includes(k) && !document.querySelector(".mback,.pal") && !document.activeElement?.matches("input,select,textarea")) route(); }).catch(e => { if (!isNetErr(e)) toast(bi("রিফ্রেশ ব্যর্থ: ", "Refresh failed: ") + (e.message || e), "err"); }); Outbox.flush(); }
+    if (loadCache()) { start(); if (!navigator.onLine) return; reload().then(() => { refreshBadges(); const k = (location.hash.match(/^#\/(\w+)/) || [])[1] || "dash"; if (["dash", "cheques", "books", "accounts"].includes(k) && !document.querySelector(".mback,.pal") && !document.activeElement?.matches("input,select,textarea")) route(); }).catch(e => { if (!isNetErr(e)) toast(bi("রিফ্রেশ ব্যর্থ: ", "Refresh failed: ") + (e.message || e), "err"); }); Outbox.flush(); }
     else { $("#app").innerHTML = `<div class="boot"><div><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div class="mut">ডাটা লোড হচ্ছে…</div></div></div>`; await reload(); start(); Outbox.flush(); }
   } catch (e) { console.error(e); $("#app").innerHTML = `<div class="login"><div class="card"><div class="alert rd">${bi("শুরু করা যায়নি: ", "Could not start: ")}${esc(e.message || e)}</div><p class="mut sm">${bi("config.js এ Supabase URL ও key ঠিক আছে কি না এবং schema.sql চালানো হয়েছে কি না দেখুন।", "Check that the Supabase URL and key in config.js are correct and that schema.sql has been run.")}</p></div></div>`; }
 }

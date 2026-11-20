@@ -2185,7 +2185,13 @@ body:has(#modal-root .mback) { overflow: hidden; }
 .adm-filters .in, .adm-actions .in { min-width: 0; }
 .adm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .adm-actions select { width: auto; max-width: 100%; }
-.adm-setup-switch, .adm-count { margin-block: 10px; }
+.adm-count { margin-block: 10px; }
+.adm-setup { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; gap: 14px; margin-top: 14px; }
+.adm-setup-links { grid-column: 1 / -1; }
+.adm-setup-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.adm-setup-head h3 { margin: 0; }
+#ad-offline { margin-bottom: 10px; }
+#ad-history .grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 122px), 1fr)); }
 .adm-account {
   display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, .75fr) auto;
   gap: 10px 15px; align-items: center; padding: 12px 14px;
