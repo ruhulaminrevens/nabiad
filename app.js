@@ -598,7 +598,14 @@ function bookStats(b) {
   return { start, end, used: used.size, maxUsed, missing, marks: [...mk.values()].sort((x, y) => x.no - y.no), remaining: b.last != null ? b.last - (maxUsed ?? start - 1) : null };
 }
 const allMissing = () => S.books.filter(b => b.status === "Active").map(b => ({ b, st: bookStats(b) })).filter(x => x.st.missing.length);
-const nextNo = code => { const n = S.cheques.filter(c => c.code === code).map(c => c.no); return n.length ? Math.max(...n) + 1 : ""; };
+function lastCheque(code) {
+  let last = null;
+  for (const cheque of S.cheques) {
+    if (cheque.code === code && (!last || cheque.no > last.no)) last = cheque;
+  }
+  return last;
+}
+const nextNo = code => { const last = lastCheque(code); return last && Number.isSafeInteger(last.no + 1) ? last.no + 1 : ""; };
 const pendingOld = () => S.cheques.filter(c => c.status === "Pending" && daysBetween(c.date, today()) > (CFG.PENDING_ALERT_DAYS ?? 3));
 const activeAccounts = () => S.accounts.filter(a => a.status === "Active");
 const sumAmt = a => a.reduce((s, c) => s + c.amount, 0);
@@ -908,34 +915,75 @@ function loginView() {
 /* ---------- dashboard ---------- */
 
 /* ---------- cheque entry ---------- */
+const chequeDigits = value => String(value ?? "").trim().replace(/[০-৯]/g, digit => digit.charCodeAt(0) - 2534);
+const chequeSearchKey = value => chequeDigits(value).normalize("NFC").toLowerCase().replace(/[^\p{L}\p{N}\p{M}]/gu, "");
+function chequeNumber(value) {
+  const text = chequeDigits(value);
+  const number = Number(text);
+  return /^\d+$/.test(text) && Number.isSafeInteger(number) && number > 0 ? number : NaN;
+}
+function chequeAmount(value) {
+  const text = chequeDigits(value).replace(/^৳\s*/, "");
+  if (!/^(?:\d+|\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})(?:\.\d{1,2})?$/.test(text)) return NaN;
+  const amount = Number(text.replace(/,/g, ""));
+  return Number.isSafeInteger(Math.round(amount * 100)) ? amount : NaN;
+}
+function validChequeDate(value) {
+  if (!/^[1-9]\d{3}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value + "T00:00:00Z");
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+function chequeMatcher(query, accounts) {
+  const terms = chequeDigits(query).split(/\s+/).map(chequeSearchKey).filter(Boolean);
+  const amount = chequeAmount(query);
+  return c => {
+    if (!terms.length) return true;
+    if (c.amount === amount) return true;
+    const a = accounts[c.code];
+    const text = chequeSearchKey([c.code, c.no, c.purpose, c.party, c.remarks, c.taker, c.toac, a?.holder, a?.bank].join(" "));
+    return terms.every(term => text.includes(term));
+  };
+}
+const statusWrites = new Set();
 async function setStatus(c, status, date, remarks) {
-  const e = await API.addStatus(c.id, status, date, remarks); c.events.push(e); derive(c); saveCache(); refreshBadges(); return c;
+  if (!validChequeDate(date) || date > today()) throw new Error(bi("আজকের বা আগের একটি তারিখ দিন।", "Choose today or an earlier date."));
+  if (!STATUSES.includes(status)) throw new Error(bi("স্ট্যাটাস বাছুন।", "Choose a status."));
+  if (statusWrites.has(c.id)) throw new Error(bi("স্ট্যাটাস সেভ হচ্ছে।", "A status update is in progress."));
+  statusWrites.add(c.id);
+  try {
+    const event = await API.addStatus(c.id, status, date, remarks);
+    const current = S.cheques.find(row => row.id === c.id) || c;
+    if (!current.events.some(e => e.id === event.id)) current.events.push(event);
+    derive(current); saveCache(); refreshBadges();
+    return current;
+  } finally { statusWrites.delete(c.id); }
 }
 async function vEntry(v) {
   const st = { purpose: null, photo: null };
-  v.innerHTML = head("চেক পোস্টিং", `<button class="btn" id="e-imp">${ico("dl")} <span>${bi("Excel ইম্পোর্ট", "Excel import")}</span></button>`, "tc") + `
-  <div class="split">
+  v.innerHTML = head("চেক পোস্টিং", `<button class="btn" id="e-imp">${ico("dl")} <span>${bi("Excel ইম্পোর্ট", "Excel import")}</span></button><a class="btn" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a>`, "tc") + `
+  <div class="split cq-posting">
    <div class="card efc">
     <div class="fgrid ef">
-     <div class="s4 daterow"><div class="dr-d"><label class="f">চেকের তারিখ</label><input class="in big" type="date" id="e-date" value="${today()}"></div><div class="dr-p"><label class="f">চেকের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn big" for="e-ph-c" title="${bi("ক্যামেরায় ছবি তুলুন", "Take a photo with the camera")}">${ico("cam")} <span class="lbl">তুলুন</span></label><label class="btn big" for="e-ph" title="${bi("গ্যালারি থেকে বাছুন", "Choose from the gallery")}">${ico("img")} <span class="lbl">বাছুন</span></label><input type="file" id="e-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="e-ph" accept="image/*" hidden><img id="e-phv" class="hide" alt=""><button class="btn sm ghost hide" id="e-phx" title="ছবি বাদ">✕</button></div></div></div>
-     <div class="s4"><label class="f">A/C Code <span class="mut">(টাইপ করুন: pbl, 483, nabiad…)</span></label><div><input class="in big" id="e-ac" autocomplete="off" placeholder="PBL-483" autofocus></div><div class="hint" id="e-achint"></div></div>
-     <div class="s2"><label class="f">চেক নং (শুধু সংখ্যা)</label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off"><div class="hint" id="e-nohint"></div><div id="e-ocrw" class="hide noprint" style="margin-top:4px"><button type="button" class="btn sm" id="e-ocr">🔍 ${bi("ছবি থেকে পড়ুন", "Read from photo")}</button><div id="e-ocro" style="margin-top:4px"></div></div></div>
-     <div class="s2"><label class="f">টাকা (বাতিল পাতা হলে 0)</label><input class="in big num" id="e-amt" inputmode="decimal" autocomplete="off"><div class="hint num" id="e-amthint"></div></div>
+     <div class="s4 daterow"><div class="dr-d"><label class="f" for="e-date">চেকের তারিখ</label><input class="in big" type="date" id="e-date" value="${today()}"></div><div class="dr-p"><label class="f">চেকের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn big" for="e-ph-c" title="${bi("ক্যামেরায় ছবি তুলুন", "Take a photo with the camera")}">${ico("cam")} <span class="lbl">তুলুন</span></label><label class="btn big" for="e-ph" title="${bi("গ্যালারি থেকে বাছুন", "Choose from the gallery")}">${ico("img")} <span class="lbl">বাছুন</span></label><input type="file" id="e-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="e-ph" accept="image/*" hidden><img id="e-phv" class="hide" alt=""><button class="btn sm ghost hide" id="e-phx" title="ছবি বাদ">✕</button></div></div></div>
+     <div class="s4"><label class="f" for="e-ac">A/C Code</label><div><input class="in big" id="e-ac" autocomplete="off" placeholder="PBL-483" autofocus></div><div class="hint" id="e-achint"></div></div>
+     <div class="s2"><label class="f" for="e-no">চেক নং</label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off"><div class="hint" id="e-nohint"></div><div id="e-ocrw" class="hide noprint" style="margin-top:4px"><button type="button" class="btn sm" id="e-ocr">🔍 ${bi("ছবি থেকে পড়ুন", "Read from photo")}</button><div id="e-ocro" style="margin-top:4px"></div></div></div>
+     <div class="s2"><label class="f" for="e-amt">টাকা</label><input class="in big num" id="e-amt" inputmode="decimal" autocomplete="off"><div class="hint num" id="e-amthint"></div></div>
      <div class="s4"><label class="f">খাত</label><div class="chips" id="e-purp"></div></div>
-     <div class="s4" id="x-cash" style="display:none"><label class="f">${bi("কে তুলেছে *", "Withdrawn by *")}</label><input type="hidden" id="e-taker"><div class="chips takers" id="e-takers">${TAKERS.map(t => `<span class="chip" data-t="${esc(t)}">${esc(t)}</span>`).join("")}</div></div>
-     <div class="s4" id="x-own" style="display:none"><label class="f">কোন A/C তে জমা * <span class="mut">(${bi("শুধু রেকর্ড", "record only")})</span></label><div><input class="in" id="e-toac" autocomplete="off" placeholder="${bi("যে অ্যাকাউন্টে টাকা গেছে — কোড বা নাম টাইপ করুন", "Receiving account — type code or name")}"></div></div>
+     <div class="s4" id="x-cash" style="display:none"><label class="f">${bi("কে তুলেছে *", "Withdrawn by *")}</label><input type="hidden" id="e-taker"><div class="chips takers" id="e-takers">${TAKERS.map(t => `<button class="chip" type="button" data-t="${esc(t)}" aria-pressed="false">${esc(t)}</button>`).join("")}</div></div>
+     <div class="s4" id="x-own" style="display:none"><label class="f" for="e-toac">কোন A/C তে জমা * <span class="mut">(${bi("শুধু রেকর্ড", "record only")})</span></label><div><input class="in" id="e-toac" autocomplete="off" placeholder="${bi("যে অ্যাকাউন্টে টাকা গেছে — কোড বা নাম টাইপ করুন", "Receiving account — type code or name")}"></div></div>
      <div class="s4 cbm" id="e-cashlink" style="display:none"></div>
-     <div class="s4"><label class="f">নোট / মন্তব্য / সাপ্লায়ার / অন্যান্য</label><input class="in" id="e-rem" autocomplete="off" list="dl-rem" placeholder="যেমন: সাপ্লায়ারের নাম — বিলের বিবরণ"></div>
+     <div class="s4"><label class="f" for="e-rem">${bi("মন্তব্য", "Remarks")}</label><input class="in" id="e-rem" autocomplete="off" list="dl-rem" placeholder="যেমন: সাপ্লায়ারের নাম — বিলের বিবরণ"></div>
      <div class="s4" id="e-sum" style="display:none"></div>
     </div>${datalist("dl-rem", [...S.cheques.map(c => c.remarks), ...S.cheques.map(c => c.party)])}
-    <div class="fbar"><div class="fb2 entry-actions"><button class="btn pri lg" id="e-save">${ico("save")} সেভ করুন</button><button class="btn lg" id="e-clear">পরিষ্কার</button></div><div class="hint rd" id="e-err" style="margin:0"></div><div class="sp"></div><label class="keep"><input type="checkbox" id="keep" checked> A/C ও খাত ধরে রাখুন</label></div>
+    <div class="fbar"><div class="fb2 entry-actions"><button class="btn pri lg" id="e-save">${ico("save")} সেভ করুন</button><button class="btn lg" id="e-clear">পরিষ্কার</button></div><div class="hint rd" id="e-err" role="alert"></div><div class="sp"></div><label class="keep"><input type="checkbox" id="keep" checked> A/C ও খাত ধরে রাখুন</label></div>
    </div>
-   <div class="card flush"><div class="ch"><h3>আজকের এন্ট্রি</h3><span class="tag" id="e-cnt"></span></div><div id="e-list"></div></div>
+   <div class="card flush"><div class="ch"><h3>আজকের এন্ট্রি</h3><span class="tag" id="e-cnt"></span><a class="btn sm" href="#/cheques">${bi("চেক তালিকা", "Register")}</a></div><div id="e-list"></div></div>
   </div>`;
-  const $e = id => $("#" + id, v);
+  const posting = $(".cq-posting", v), importButton = $("#e-imp", v);
+  const $e = id => $("#" + id, posting);
   const ac = suggest($e("e-ac"), () => acItems(), it => {
     const a = it && accMap()[it.value]; $e("e-achint").innerHTML = a ? `${esc(a.bank)} ${a.branch ? "· " + esc(a.branch) : ""} ${a.acno ? "· " + esc(a.acno) : ""}` : "";
-    if (it) { const n = nextNo(it.value); $e("e-no").value = n; const last = S.cheques.filter(c => c.code === it.value).sort((x, y) => y.no - x.no)[0]; $e("e-nohint").textContent = last ? `শেষ এন্ট্রি: ${last.no} (${dmy(last.date)})` : "এই অ্যাকাউন্টে এখনো এন্ট্রি নেই"; }
+    if (it) { const n = nextNo(it.value); $e("e-no").value = n; const last = lastCheque(it.value); $e("e-nohint").textContent = last ? `শেষ এন্ট্রি: ${last.no} (${dmy(last.date)})` : "এই অ্যাকাউন্টে এখনো এন্ট্রি নেই"; }
     sum();
   });
   const toac = suggest($e("e-toac"), () => acItems(true).filter(i => i.value !== ac.get()?.value), () => sum());
@@ -943,25 +991,26 @@ async function vEntry(v) {
   $e("e-ocr").onclick = () => runOcr(st, $e("e-ocro"), val => { $e("e-no").value = val; $e("e-no").dispatchEvent(new Event("input")); }, val => { $e("e-amt").value = val; $e("e-amt").dispatchEvent(new Event("input")); });
   const purpKey = () => st.purpose ? purposeKey(st.purpose) : "";
   let clTok = 0, clT = 0;
-  const setTaker = t => { $e("e-taker").value = t || ""; $$("#e-takers .chip", v).forEach(c => c.classList.toggle("on", c.dataset.t === t)); };
+  const setTaker = t => { $e("e-taker").value = t || ""; $$("#e-takers .chip", v).forEach(c => { const on = c.classList.toggle("on", c.dataset.t === t); c.setAttribute("aria-pressed", on); }); };
   $$("#e-takers .chip", v).forEach(c => c.onclick = () => { setTaker($e("e-taker").value === c.dataset.t ? "" : c.dataset.t); $e("e-err").textContent = ""; if (!matchMedia("(pointer:coarse)").matches) $e("e-rem").focus(); });
   function drawPurp() {
-    $e("e-purp").innerHTML = allPurposes().map(p => `<span class="chip" data-p="${esc(p)}">${esc(p.split(" (")[0])}</span>`).join("") + `<span class="chip add" id="e-padd" title="${bi("নতুন খাত যোগ করুন", "Add a new purpose")}">＋ নতুন</span>` + (S.me.role === "admin" ? `<span class="chip add" id="e-pmg" title="${LANG === "en" ? "Edit / delete purposes" : "খাত এডিট / মুছুন"}">⚙ ${LANG === "en" ? "Manage" : "ম্যানেজ"}</span>` : "");
+    if (!posting.isConnected) return;
+    $e("e-purp").innerHTML = allPurposes().map(p => `<button class="chip" type="button" data-p="${esc(p)}" aria-pressed="false">${esc(p.split(" (")[0])}</button>`).join("") + `<button class="chip add" type="button" id="e-padd" title="${bi("নতুন খাত যোগ করুন", "Add a new purpose")}">＋ নতুন</button>` + (S.me.role === "admin" ? `<button class="chip add" type="button" id="e-pmg" title="${LANG === "en" ? "Edit / delete purposes" : "খাত এডিট / মুছুন"}">⚙ ${LANG === "en" ? "Manage" : "ম্যানেজ"}</button>` : "");
     if ($e("e-pmg")) $e("e-pmg").onclick = () => purposeManage(() => { if (st.purpose && !allPurposes().includes(st.purpose)) st.purpose = ""; drawPurp(); });
     $$(".chip[data-p]", v).forEach(c => c.onclick = () => { st.purpose = c.dataset.p; applyPurpose(); if (purpKey() === "cash") $e("x-cash").scrollIntoView({ block: "nearest" }); else if (purpKey() === "own") $e("e-toac").focus(); else $e("e-rem").focus(); });
     $e("e-padd").onclick = () => askText("নতুন খাত (Purpose)", "খাতের নাম লিখুন (যেমন: Salary)", "", async n => {
       if (allPurposes(true).some(p => p.split(" (")[0].trim().toLowerCase() === n.split(" (")[0].trim().toLowerCase())) throw new Error("এই খাত আগেই আছে");
       await API.purposeAdd(n); PURP_X = [...allPurposes(), n]; if (!DEMO) localStorage.setItem("nb_purp_v2", JSON.stringify(PURP_X));
-      st.purpose = n; drawPurp(); applyPurpose(); toast("✔ নতুন খাত যোগ হয়েছে");
+      st.purpose = n; drawPurp(); toast("✔ নতুন খাত যোগ হয়েছে");
     });
     applyPurpose();
   }
   function applyPurpose() {
-    $$(".chip[data-p]", v).forEach(c => c.classList.toggle("on", c.dataset.p === st.purpose));
+    $$(".chip[data-p]", v).forEach(c => { const on = c.classList.toggle("on", c.dataset.p === st.purpose); c.setAttribute("aria-pressed", on); });
     const k = purpKey(); $e("x-cash").style.display = k === "cash" ? "" : "none"; $e("x-own").style.display = k === "own" ? "" : "none"; sum();
   }
-  drawPurp(); loadPurposes().then(() => { if (v.isConnected) drawPurp(); });
-  $e("e-imp").onclick = () => chequeImportModal(() => { list(); });
+  drawPurp(); loadPurposes().then(drawPurp);
+  importButton.onclick = () => chequeImportModal(list);
   /* Cheque Posting (Cash Withdrawal) ↔ Cash Checker "Total Bank" link */
   async function cashLink() {
     const el = $e("e-cashlink"), tok = ++clTok; if (!el) return;
@@ -970,22 +1019,21 @@ async function vEntry(v) {
     const { src, ok } = await cashEff(date);
     if (tok !== clTok || !el.isConnected) return;
     const entered = cashAccSum(src, "bank_in")[code] || 0;
-    const posted = S.cheques.filter(c => c.date === date && c.code === code && purposeKey(c.purpose) === "cash" && isLive(c)).reduce((q, c) => q + c.amount, 0), cur = num($e("e-amt").value) || 0;
+    const posted = S.cheques.filter(c => c.date === date && c.code === code && purposeKey(c.purpose) === "cash" && isLive(c)).reduce((q, c) => q + c.amount, 0), cur = chequeAmount($e("e-amt").value) || 0;
     el.style.display = ""; el.className = "s4 cbm";
     el.innerHTML = `<div class="cbm-h"><span>🔗 Cash Checker (${dmy(date)}) · Receipt › Bank · <b>${esc(code)}</b>: <b class="num">${src ? "৳ " + money0(entered) : ok ? bi("এখনো এন্ট্রি নেই", "no entry yet") : "—"}</b> · ${bi("চেক পোস্টিং", "Cheque Posting")}: <b class="num">৳ ${money0(posted)}</b>${cur ? ` <span class="mut xs">(+ ৳ ${money0(cur)} ${bi("এই চেক", "this cheque")})</span>` : ""}</span><a class="btn sm" href="#/cashchk" id="e-cashgo">${bi("Cash Checker খুলুন", "Open Cash Checker")}</a></div>`;
     $("#e-cashgo", el).onclick = () => sessionStorage.setItem("nabiad_cash_date", date);
   }
   function sum() {
     clearTimeout(clT); clT = setTimeout(cashLink, 350);
-    const code = ac.get()?.value, no = $e("e-no").value, amt = num($e("e-amt").value);
+    const code = ac.get()?.value, no = chequeNumber($e("e-no").value), amt = chequeAmount($e("e-amt").value);
     $e("e-amthint").textContent = amt ? "৳ " + money(amt) : ""; const el = $e("e-sum");
     if (code && no) {
       const dup = S.cheques.find(c => c.code === code && c.no === +no);
       el.style.display = ""; el.className = "s4 sumbox" + (dup ? " dup" : "");
-      el.innerHTML = dup ? `⛔ <b>${esc(code)} · ${no}</b> আগেই এন্ট্রি আছে (${dmy(dup.date)}, ৳ ${money(dup.amount)}, ${dup.status})` : `<span class="tag">${esc(code)}</span><span>চেক নং <b>${no}</b></span><span class="big num">৳ ${money(amt) || 0}</span><span class="mut">${esc((st.purpose || "খাত বাছুন").split(" (")[0])}</span>`;
+      el.innerHTML = dup ? `⛔ <b>${esc(code)} · ${no}</b> আগেই এন্ট্রি আছে (${dmy(dup.date)}, ৳ ${money(dup.amount)}, ${dup.status})` : `<span class="tag">${esc(code)}</span><span>চেক নং <b>${no}</b></span><span class="big num">৳ ${Number.isFinite(amt) ? money(amt) : "—"}</span><span class="mut">${esc((st.purpose || "খাত বাছুন").split(" (")[0])}</span>`;
     } else el.style.display = "none";
   }
-  $$(".chip[data-p]", v).forEach(c => c.onclick = () => { st.purpose = c.dataset.p; applyPurpose(); if (purpKey() === "cash") $e("x-cash").scrollIntoView({ block: "nearest" }); else if (purpKey() === "own") $e("e-toac").focus(); else $e("e-rem").focus(); });
   ["e-no", "e-amt"].forEach(i => $e(i).addEventListener("input", sum));
   $e("e-ac").addEventListener("picked", () => $e("e-no").select() || $e("e-no").focus());
   $e("e-no").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $e("e-amt").focus(); } });
@@ -998,19 +1046,25 @@ async function vEntry(v) {
     toac.set(null); $e("e-no").value = ac.get() ? nextNo(ac.get().value) : ""; $e("e-amt").value = ""; $e("e-rem").value = ""; clearPhoto(); applyPurpose();
   }
   function list() {
-    const t = today(), arr = S.cheques.filter(c => (c.at || "").slice(0, 10) === t || c.date === t).sort((a, b) => (b.at || "").localeCompare(a.at || ""));
+    if (!posting.isConnected) return;
+    const t = today(), arr = S.cheques.filter(c => (c.at && iso(new Date(c.at)) === t) || c.date === t).sort((a, b) => (b.at || "").localeCompare(a.at || ""));
     $e("e-cnt").textContent = arr.length;
-    $e("e-list").innerHTML = arr.length ? `<div class="tw cards" style="max-height:66vh"><table><thead><tr><th>A/C · চেক</th><th class="r">টাকা</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${arr.map(c => `<tr><td><div class="c1"><b>${esc(c.code)}</b> · ${c.no}${chqIcons(c)}<div class="mut sm">${esc(c.purpose.split(" (")[0])}${c.party ? " · " + esc(c.party) : ""}</div></div></td><td class="r num">${money(c.amount)}</td><td>${stTag(c.status)}${pendTag(c)}</td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">আজ এখনো কোনো এন্ট্রি নেই</div>`;
+    $e("e-list").innerHTML = arr.length ? `<div class="tw cards" style="max-height:66vh"><table><thead><tr><th>A/C · চেক</th><th class="r">টাকা</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${arr.map(c => `<tr><td><div class="c1"><button type="button" class="cq-link" data-recent="${esc(c.id)}">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc(c.purpose.split(" (")[0])}${c.party ? " · " + esc(c.party) : ""}</div></div></td><td class="r num">${money(c.amount)}</td><td>${stTag(c.status)}${pendTag(c)}</td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">আজ এখনো কোনো এন্ট্রি নেই</div>`;
   }
+  $e("e-list").onclick = event => {
+    const row = S.cheques.find(c => c.id === event.target.closest("[data-recent]")?.dataset.recent);
+    if (row) chequeModal(row, list);
+  };
   let busy = false;
   async function save() {
     if (busy) return; const err = $e("e-err"); err.textContent = ""; err.className = "hint rd";
-    const code = ac.get()?.value, no = parseInt($e("e-no").value), amount = num($e("e-amt").value), date = $e("e-date").value, k = purpKey();
+    const code = ac.get()?.value, no = chequeNumber($e("e-no").value), amount = chequeAmount($e("e-amt").value), date = $e("e-date").value, k = purpKey();
     if (!code) return err.textContent = "A/C Code বাছুন", $e("e-ac").focus();
-    if (!no || no < 1) return err.textContent = "চেক নং দিন", $e("e-no").focus();
+    if (!no) return err.textContent = bi("সঠিক চেক নম্বর দিন।", "Enter a valid cheque number."), $e("e-no").focus();
     if (!st.purpose) return err.textContent = "খাত বাছুন";
-    if (!date) return err.textContent = "তারিখ দিন";
-    if (k !== "cancel" && !(amount > 0)) return err.textContent = "টাকার অঙ্ক দিন (বাতিল পাতা হলে খাত 'বাতিল/নষ্ট পাতা' বাছুন)", $e("e-amt").focus();
+    if (!validChequeDate(date)) return err.textContent = bi("সঠিক তারিখ দিন।", "Enter a valid cheque date."), $e("e-date").focus();
+    if (k !== "cancel" && !(amount > 0)) return err.textContent = bi("সঠিক টাকার অঙ্ক দিন।", "Enter a valid amount greater than zero."), $e("e-amt").focus();
+    if (k === "cancel" && $e("e-amt").value.trim() && amount !== 0) return err.textContent = bi("বাতিল পাতার অঙ্ক ০ দিন।", "Use a zero amount for a cancelled leaf."), $e("e-amt").focus();
     if (k === "cash" && !$e("e-taker").value) return err.textContent = bi("কে তুলেছে — বাছুন", "Select who withdrew"), $e("x-cash").scrollIntoView({ block: "nearest" });
     if (k === "own" && !toac.get()) return err.textContent = "কোন A/C তে জমা — বাছুন", $e("e-toac").focus();
     if (k === "own" && toac.get().value === code) return err.textContent = "From ও To একই A/C হতে পারে না";
@@ -1018,56 +1072,147 @@ async function vEntry(v) {
     const diff = daysBetween(date, today());
     if ((diff > 7 || diff < 0) && !ask(bi(`তারিখ ${dmy(date)} — আজ থেকে ${Math.abs(diff)} দিন ${diff > 0 ? "আগের" : "পরের"}। ঠিক আছে?`, `Date ${dmy(date)} is ${Math.abs(diff)} day(s) ${diff > 0 ? "before" : "after"} today. Is that right?`))) return;
     if (amount >= 1000000 && !ask(bi(`৳ ${money(amount)} — অঙ্ক ঠিক আছে?`, `৳ ${money(amount)} — is the amount right?`))) return;
-    busy = true; $e("e-save").disabled = true;
+    const fields = { date, code, no, amount: k === "cancel" ? 0 : amount, purpose: st.purpose, taker: k === "cash" ? $e("e-taker").value : "", party: "", toac: k === "own" ? toac.get().value : "", remarks: $e("e-rem").value.trim() };
+    const saveButton = $e("e-save"), clearButton = $e("e-clear");
+    busy = true; saveButton.disabled = clearButton.disabled = true;
     try {
       const id = crypto.randomUUID(); let photo = null, warn = "";
       if (st.photo) {
         if (!navigator.onLine && !DEMO) warn = " · ইন্টারনেট নেই, তাই ছবি সেভ হয়নি (পরে চেকের পাতা থেকে যোগ করুন)";
         else { try { const p = photoPath(id, code, no, date); await API.uploadPhoto(p, st.photo); photo = p; } catch (e) { if (!ask(bi("ছবি আপলোড হয়নি (", "Photo upload failed (") + (e.message || e) + bi(")।\nছবি ছাড়া চেক সেভ করবেন?", ").\nSave the cheque without a photo?"))) throw new Error(bi("ছবি আপলোড হয়নি — আবার চেষ্টা করুন", "Photo upload failed — try again")); warn = bi(" · ছবি সেভ হয়নি", " · photo not saved"); } }
       }
-      const party = "";
-      const row = await API.addCheque({ id, photo, date, code, no, amount: k === "cancel" ? 0 : amount, purpose: st.purpose, taker: k === "cash" ? $e("e-taker").value : "", party, toac: k === "own" ? toac.get().value : "", remarks: $e("e-rem").value.trim() });
-      S.cheques.push(derive(row)); saveCache(); cashLink();
-      if (warn) toast(warn.slice(3), /হয়নি/.test(warn) ? "err" : "ok"); toast(row.pending ? `✔ অফলাইনে জমা হয়েছে: ${code} · ${no} · ৳ ${money(row.amount)} — নেট এলে সিঙ্ক হবে` : `✔ সেভ হয়েছে: ${code} · ${no} · ৳ ${money(row.amount)}`); clearAll(false); list();
+      const row = await API.addCheque({ id, photo, ...fields });
+      if (!S.cheques.some(c => c.id === row.id)) S.cheques.push(derive(row));
+      saveCache(); refreshBadges(); cashLink();
+      if (warn) toast(warn.slice(3), /হয়নি/.test(warn) ? "err" : "ok"); toast(row.pending ? `✔ অফলাইনে জমা হয়েছে: ${code} · ${no} · ৳ ${money(row.amount)} — নেট এলে সিঙ্ক হবে` : `✔ সেভ হয়েছে: ${code} · ${no} · ৳ ${money(row.amount)}`);
+      if (!posting.isConnected) return;
+      clearAll(false); list();
       const n = $e("e-no"); n.focus(); n.select();
     } catch (e) { err.textContent = e.message || String(e); toast(e.message || String(e), "err"); }
-    finally { busy = false; $e("e-save").disabled = false; }
+    finally { busy = false; saveButton.disabled = clearButton.disabled = false; }
   }
   $e("e-save").onclick = save; $e("e-clear").onclick = () => { clearAll(true); $e("e-ac").focus(); };
-  list(); const poll = setInterval(async () => { if (document.hidden) return; try { await reload(); list(); } catch { } }, 30000); return () => clearInterval(poll);
+  list();
+  let refreshing = false;
+  const poll = setInterval(async () => {
+    if (document.hidden || refreshing || busy) return;
+    refreshing = true;
+    try { await reload(); list(); } catch { } finally { refreshing = false; }
+  }, 30000);
+  return () => { clearInterval(poll); clearTimeout(clT); };
 }
 
 /* ---------- status update ---------- */
-function statusModal(c, after) {
-  const evs = (c.events || []);
-  modal(`<h2>${esc(c.code)} · ${c.no} <span class="mut sm">৳ ${money(c.amount)}</span></h2><div class="mut sm" style="margin:-8px 0 12px">${dmy(c.date)} · ${esc(c.purpose)} ${c.party ? "· " + esc(c.party) : ""}</div>
-   <div class="row"><div><label class="f">নতুন স্ট্যাটাস</label><select class="in" id="m-st">${STATUSES.map(s => `<option ${s === c.status ? "selected" : ""}>${s}</option>`).join("")}</select></div><div><label class="f">তারিখ</label><input class="in" type="date" id="m-d" value="${today()}"></div></div>
-   <label class="f" style="margin-top:12px">মন্তব্য (ঐচ্ছিক)</label><input class="in" id="m-r">
-   <div class="mut sm" style="margin-top:12px">ইতিহাস: ${evs.length ? evs.map(e => `${e.status} (${dmy(e.date)}${e.by ? ", " + esc(e.by) : ""})`).join(" → ") : "—"}</div>
-   <div class="modal-actions"><button class="btn pri" id="m-ok">সেভ</button><button class="btn" id="m-x">বাতিল</button></div>`, (root, close) => {
-    $("#m-x", root).onclick = close; $("#m-ok", root).onclick = async () => {
-      try { await setStatus(c, $("#m-st", root).value, $("#m-d", root).value, $("#m-r", root).value.trim()); toast(`✔ ${c.code} · ${c.no} → ${c.status}`); close(); after && after(); } catch (e) { toast(e.message, "err"); }
+function statusModal(c, after, initialDate = today(), initialStatus = c.status) {
+  const events = c.events || [];
+  const reasonLabels = [
+    bi("অপর্যাপ্ত তহবিল", "Insufficient funds"),
+    bi("স্বাক্ষর মেলেনি", "Signature differs"),
+    bi("তারিখে সমস্যা", "Date issue"),
+    bi("কথায় ও অঙ্কে অমিল", "Amount mismatch")
+  ];
+  modal(`<h2>${esc(c.code)} · ${c.no}</h2><div class="cq-meta"><strong class="num">৳ ${money(c.amount)}</strong> ${stTag(c.status)} <span class="mut">${dmy(c.date)} · ${esc(c.purpose.split(" (")[0])}</span></div>
+    <form id="cq-status-form">
+      <div class="cq-status-fields"><div><label class="f" for="m-st">${bi("নতুন স্ট্যাটাস", "New status")}</label><select class="in" id="m-st">${STATUSES.map(s => `<option ${s === initialStatus ? "selected" : ""}>${s}</option>`).join("")}</select></div>
+      <div><label class="f" for="m-d">${bi("স্ট্যাটাসের তারিখ", "Status date")}</label><input class="in" type="date" id="m-d" value="${esc(initialDate)}" max="${today()}" aria-describedby="m-err" required></div></div>
+      <label class="f" for="m-r">${bi("মন্তব্য (ঐচ্ছিক)", "Remarks (optional)")}</label><input class="in" id="m-r">
+      <div class="chips cq-reasons" id="cq-reasons" hidden>${reasonLabels.map((label, i) => `<button class="chip" type="button" data-reason="${i}">${esc(label)}</button>`).join("")}</div>
+      <div class="hint rd" id="m-err" role="alert"></div>
+    </form>
+    ${events.length ? `<details class="cq-events"><summary>${bi("স্ট্যাটাসের ইতিহাস", "Status history")} · ${events.length}</summary><ul>${events.slice().reverse().map(e => `<li><strong>${esc(e.status)}</strong> · ${dmy(e.date)}${e.by ? " · " + esc(e.by) : ""}${e.remarks ? `<div class="mut">${esc(e.remarks)}</div>` : ""}</li>`).join("")}</ul></details>` : ""}
+    <div class="modal-actions"><button class="btn" type="button" id="m-x">${bi("বাতিল", "Cancel")}</button><button class="btn pri" type="submit" form="cq-status-form" id="m-ok">${bi("সেভ", "Save")}</button></div>`, (root, close) => {
+    const form = $("#cq-status-form", root), select = $("#m-st", root), date = $("#m-d", root);
+    const remarks = $("#m-r", root), reasons = $("#cq-reasons", root), error = $("#m-err", root);
+    const save = $("#m-ok", root), cancel = $("#m-x", root);
+    const showReasons = () => { reasons.hidden = select.value !== "Bounced"; };
+    showReasons(); select.onchange = showReasons;
+    $$("[data-reason]", reasons).forEach(btn => btn.onclick = () => {
+      const reason = reasonLabels[Number(btn.dataset.reason)];
+      if (!remarks.value.includes(reason)) remarks.value = [remarks.value.trim(), reason].filter(Boolean).join(" · ");
+      remarks.focus();
+    });
+    cancel.onclick = close;
+    form.onsubmit = async e => {
+      e.preventDefault();
+      if (save.disabled) return;
+      error.textContent = "";
+      save.disabled = cancel.disabled = true;
+      try {
+        const updated = await setStatus(c, select.value, date.value, remarks.value.trim());
+        toast(`✔ ${updated.code} · ${updated.no} → ${updated.status}`);
+        close();
+        after?.();
+      } catch (err) { error.textContent = err.message || String(err); }
+      finally { save.disabled = cancel.disabled = false; }
     };
   });
 }
 async function vStatus(v) {
-  v.innerHTML = head("চেক স্ট্যাটাস আপডেট") + `<div class="card tbar noprint"><div class="row">
-    <div style="flex:2 1 260px"><label class="f">খুঁজুন (A/C বা চেক নং — যেমন: pbl 12565)</label><input class="in big" id="s-q" autocomplete="off" placeholder="চেক নং / কোড…" autofocus></div>
-    <div class="fix" style="width:180px"><label class="f">স্ট্যাটাসের তারিখ (Quick বাটনে)</label><input class="in" type="date" id="s-d" value="${today()}"></div>
-    <div class="fix"><label class="f">দেখান</label><select class="in" id="s-f"><option value="Pending">শুধু Pending</option><option value="">সব</option></select></div></div></div>
-    <div id="s-list"></div>`;
-  const q = $("#s-q", v);
+  const filters = [
+    ["pending", bi("অপেক্ষমাণ", "Pending"), c => c.status === "Pending"],
+    ["older", bi("পুরনো অপেক্ষমাণ", "Older pending"), (c, t) => c.status === "Pending" && daysBetween(c.date, t) > (CFG.PENDING_ALERT_DAYS ?? 3)],
+    ["review", bi("ফেরত / স্থগিত", "Bounced / stopped"), c => c.status === "Bounced" || c.status === "Stopped"],
+    ["all", bi("সব চেক", "All cheques"), () => true]
+  ];
+  v.innerHTML = head("চেক স্ট্যাটাস আপডেট", `<a class="btn" href="#/cheques">${ico("list")} ${bi("চেক তালিকা", "Register")}</a>`) + `
+    <div class="card tbar cq-tools">
+      <div class="cq-status-fields">
+        <div><label class="f" for="s-q">${bi("চেক খুঁজুন", "Search cheques")}</label><input class="in" id="s-q" type="search" autocomplete="off" placeholder="${bi("চেক নং, A/C, ব্যাংক, মন্তব্য", "Cheque no, A/C, bank, remarks")}"></div>
+        <div><label class="f" for="s-d">${bi("স্ট্যাটাসের তারিখ", "Status date")}</label><input class="in" type="date" id="s-d" value="${today()}" max="${today()}" required></div>
+      </div>
+      <div class="cq-filters" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}">${filters.map(([id, label]) => `<button type="button" class="btn" data-cq-filter="${id}" aria-pressed="false"><span>${label}</span><strong class="num"></strong></button>`).join("")}</div>
+    </div>
+    <p id="s-info" class="cq-info mut sm" aria-live="polite"></p><div id="s-list" class="cq-list"></div>
+    <div class="cq-pager" id="s-pager" hidden><button class="btn" type="button" id="s-prev">‹ ${bi("আগের", "Previous")}</button><span class="mut sm" id="s-page"></span><button class="btn" type="button" id="s-next">${bi("পরের", "Next")} ›</button></div>`;
+  const q = $("#s-q", v), date = $("#s-d", v), list = $("#s-list", v), info = $("#s-info", v);
+  const pager = $("#s-pager", v), prev = $("#s-prev", v), next = $("#s-next", v);
+  const buttons = $$("[data-cq-filter]", v), pageSize = 40;
+  let mode = "pending", page = 0;
   const draw = () => {
-    const t = norm(q.value), f = $("#s-f", v).value;
-    let arr = S.cheques.filter(c => (!f || c.status === f) && (!t || norm(c.code + c.no + (c.party || "")).includes(t) || String(c.no) === t));
-    arr.sort((a, b) => f === "Pending" && !t ? a.date.localeCompare(b.date) : (b.at || "").localeCompare(a.at || ""));
-    const tot = arr.length; arr = arr.slice(0, 80); const T = today();
-    $("#s-list", v).innerHTML = tot ? `<div class="mut sm" style="margin-bottom:8px">${tot}${bi("টি চেক", " cheques")} ${tot > 80 ? bi("(প্রথম ৮০টি)", "(first 80)") : ""}</div><div class="card flush"><div class="tw cards"><table><thead><tr><th>তারিখ</th><th>A/C · চেক</th><th class="r">টাকা</th><th>বিবরণ</th><th>স্ট্যাটাস</th><th></th></tr></thead><tbody>${arr.map(c => { const d = daysBetween(c.date, T); return `<tr><td>${dmy(c.date)}${c.status === "Pending" && d > (CFG.PENDING_ALERT_DAYS ?? 3) ? `<div class="rd sm b">${d} ${bi("দিন", "days")}</div>` : ""}</td><td><div class="c1"><b>${esc(c.code)}</b> · ${c.no}</div></td><td class="r num">${money(c.amount)}</td><td class="mut sm">${esc(c.purpose.split(" (")[0])}${c.party || c.remarks ? " · " + esc(c.party || c.remarks) : ""}</td><td><span class="stc">${stTag(c.status)}${pendTag(c)}${c.sdate && c.status !== "Pending" ? `<span class="mut sm stc-d">${dmy(c.sdate)}</span>` : ""}</span></td>
-      <td class="r" data-l="" style="white-space:nowrap"><button class="btn ok sm" data-q="Cleared" data-id="${c.id}" ${c.status === "Cleared" ? "disabled" : ""}>✓ Cleared</button> <button class="btn bad sm" data-q="Bounced" data-id="${c.id}" ${c.status === "Bounced" ? "disabled" : ""}>✗ Bounced</button> <button class="btn sm" data-m="${c.id}">${ico("more")}</button></td></tr>`; }).join("")}</tbody></table></div></div>` : `<div class="card empty">${S.cheques.length ? "কোনো চেক পাওয়া যায়নি" : "এখনো কোনো চেক এন্ট্রি হয়নি"}</div>`;
-    $$("[data-q]", v).forEach(b => b.onclick = async () => { const c = S.cheques.find(x => x.id === b.dataset.id); b.disabled = true; try { await setStatus(c, b.dataset.q, $("#s-d", v).value, ""); toast(`✔ ${c.code} · ${c.no} → ${c.status}`); draw(); } catch (e) { toast(e.message, "err"); b.disabled = false; } });
-    $$("[data-m]", v).forEach(b => b.onclick = () => statusModal(S.cheques.find(x => x.id === b.dataset.m), draw));
+    if (!list.isConnected) return;
+    const t = today(), accounts = accMap(), base = S.cheques.filter(chequeMatcher(q.value, accounts));
+    const groups = filters.map(([id, , match], i) => {
+      const rows = base.filter(c => match(c, t));
+      buttons[i].setAttribute("aria-pressed", id === mode);
+      $("strong", buttons[i]).textContent = rows.length;
+      return rows;
+    });
+    const rows = groups[filters.findIndex(([id]) => id === mode)];
+    rows.sort((a, b) => (mode === "pending" || mode === "older") ? a.date.localeCompare(b.date) || a.no - b.no : (b.sdate || b.date).localeCompare(a.sdate || a.date) || b.no - a.no);
+    const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+    page = Math.min(page, pages - 1);
+    const start = page * pageSize, end = Math.min(start + pageSize, rows.length);
+    info.textContent = rows.length ? bi(`${rows.length}টির মধ্যে ${start + 1}–${end} · ৳ ${money(sumAmt(rows))}`, `${start + 1}–${end} of ${rows.length} · ৳ ${money(sumAmt(rows))}`) : bi("কোনো চেক মেলেনি", "No matching cheques");
+    pager.hidden = pages <= 1;
+    prev.disabled = page === 0;
+    next.disabled = page + 1 >= pages;
+    $("#s-page", pager).textContent = `${page + 1} / ${pages}`;
+    list.innerHTML = rows.slice(start, end).map(c => {
+      const ref = `${esc(c.code)} · ${c.no}`, age = daysBetween(c.date, t);
+      return `<article class="card cq-item"><div class="cq-ref">
+        <button type="button" class="cq-link" data-cq-open="${esc(c.id)}">${ref}</button>
+        <div class="mut sm">${dmy(c.date)}${accounts[c.code]?.holder ? " · " + esc(accounts[c.code].holder) : ""}</div>
+        <div class="cq-purpose sm">${esc(c.purpose.split(" (")[0])}${c.party || c.remarks ? " · " + esc(c.party || c.remarks) : ""}</div>
+        </div><div class="cq-value"><strong class="num">৳ ${money(c.amount)}</strong>
+        <div class="cq-state">${stTag(c.status)}${pendTag(c)}${c.status === "Pending" && age > (CFG.PENDING_ALERT_DAYS ?? 3) ? `<span class="am sm">${bi(`${age} দিন`, `${age} days`)}</span>` : ""}${c.sdate ? `<span class="mut sm">${dmy(c.sdate)}</span>` : ""}</div></div>
+        <div class="cq-actions">${c.status === "Pending" ? `<button class="btn ok" type="button" data-cq-clear="${esc(c.id)}">${bi("ক্লিয়ার করুন", "Mark cleared")}</button>` : ""}<button class="btn" type="button" data-cq-status="${esc(c.id)}">${bi("স্ট্যাটাস বদলান", "Update status")}</button></div></article>`;
+    }).join("");
   };
-  q.addEventListener("input", draw); $("#s-f", v).onchange = draw; draw();
+  const resetPage = () => { page = 0; draw(); };
+  buttons.forEach(btn => btn.onclick = () => { mode = btn.dataset.cqFilter; resetPage(); });
+  q.oninput = resetPage;
+  const changePage = delta => { page += delta; draw(); info.scrollIntoView({ block: "nearest" }); };
+  prev.onclick = () => changePage(-1);
+  next.onclick = () => changePage(1);
+  list.onclick = e => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const c = S.cheques.find(row => row.id === (btn.dataset.cqOpen || btn.dataset.cqStatus || btn.dataset.cqClear));
+    if (!c) return;
+    if (btn.dataset.cqOpen) { chequeModal(c, draw); return; }
+    if (date.reportValidity()) statusModal(c, draw, date.value, btn.dataset.cqClear ? "Cleared" : c.status);
+  };
+  draw();
 }
 
 /* ---------- export helpers ---------- */
@@ -1085,20 +1230,22 @@ async function photoThumb(path, maxW = 520) {
 }
 async function exportChequesXlsx(rows, filename, btn) {
   if (!rows.length) return toast(bi("ডাটা নেই", "No data"), "err");
+  if (btn?.disabled) return;
+  if (btn) btn.disabled = true;
   const lbl = btn && btn.innerHTML; const prog = t => { if (btn) btn.innerHTML = t; };
   try { prog("⏳ …"); await loadScript("vendor/exceljs.min.js");
     const wb = new ExcelJS.Workbook(); wb.creator = "Nabiad"; const ws = wb.addWorksheet("Cheques", { views: [{ state: "frozen", ySplit: 1 }] });
     const head = [...CHQ_HEAD, "Photo"], widths = [12, 12, 28, 12, 14, 26, 12, 18, 12, 11, 12, 26, 12, 34];
     ws.columns = head.map((h, i) => ({ header: h, key: "c" + i, width: widths[i] }));
     const hr = ws.getRow(1); hr.height = 22; hr.eachCell(c => { c.font = { bold: true, color: { argb: "FFFFFFFF" } }; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4F46E5" } }; c.alignment = { vertical: "middle" }; });
-    rows.forEach(c => { const r = ws.addRow(chqRow(c)); r.alignment = { vertical: "middle", wrapText: true }; r.getCell(5).numFmt = "#,##0"; });
+    rows.forEach(c => { const r = ws.addRow(chqRow(c)); r.alignment = { vertical: "middle", wrapText: true }; r.getCell(5).numFmt = "#,##0.##"; });
     const withPh = rows.map((c, i) => [c, i]).filter(([c]) => c.photo); let done = 0;
     const work = async ([c, i]) => { try { const t = await photoThumb(c.photo), w = 230, h = Math.round(t.h * w / t.w), id = wb.addImage({ base64: t.b64, extension: "jpeg" }); ws.getRow(i + 2).height = Math.max(20, h * 0.75 + 4); ws.addImage(id, { tl: { col: head.length - 1, row: i + 1 + 0.04 }, ext: { width: w, height: h } }); } catch { ws.getCell(i + 2, head.length).value = bi("(ছবি আনা যায়নি)", "(photo unavailable)"); } prog(`⏳ ${++done}/${withPh.length}`); };
     const q = [...withPh]; await Promise.all(Array.from({ length: 4 }, async () => { while (q.length) await work(q.shift()); }));
     const buf = await wb.xlsx.writeBuffer(); dlBlob(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), filename);
     toast(bi(`✔ Excel তৈরি — ${rows.length}টি চেক, ${withPh.length}টি ছবিসহ`, `✔ Excel ready — ${rows.length} cheque(s), ${withPh.length} with photo`));
   } catch (e) { console.error(e); toast(bi("Excel তৈরি হয়নি: ", "Excel failed: ") + (e.message || e), "err"); }
-  finally { if (btn) btn.innerHTML = lbl; }
+  finally { if (btn) { btn.innerHTML = lbl; btn.disabled = false; } }
 }
 const chqRow = c => [dmy(c.date), c.code, (accMap()[c.code] || {}).holder || "", c.no, c.amount, c.purpose, c.taker || "", c.party || "", c.toac || "", c.status, c.sdate ? dmy(c.sdate) : "", c.remarks || "", c.by || ""];
 const CHQ_HEAD = ["Date", "A/C Code", "Holder", "Cheque No", "Amount", "Purpose", "Cash Taker", "Party", "To A/C", "Status", "Status Date", "Remarks", "Entered By"];
@@ -1106,8 +1253,8 @@ const CHQ_HEAD = ["Date", "A/C Code", "Holder", "Cheque No", "Amount", "Purpose"
 /* ---------- cheque list / enquiry ---------- */
 function chequeModal(c, after) {
   const admin = S.me.role === "admin"; const a = accMap()[c.code] || {};
-  modal(`<h2>${esc(c.code)} · ${c.no} ${stTag(c.status)}<button class="shclose" id="c-x" type="button">✕ ${bi("বন্ধ", "Close")}</button></h2>
-   <div class="grid g2" style="gap:8px;font-size:14px"><div><span class="mut sm">তারিখ</span><br>${dmy(c.date)}</div><div><span class="mut sm">টাকা</span><br><b class="num">৳ ${money(c.amount)}</b></div>
+  modal(`<h2><span class="cq-detail-ref">${esc(c.code)} · ${c.no}</span> ${stTag(c.status)}<button class="shclose" id="c-x" type="button">✕ ${bi("বন্ধ", "Close")}</button></h2>
+   <div class="grid g2 cq-detail" style="gap:8px;font-size:14px"><div><span class="mut sm">তারিখ</span><br>${dmy(c.date)}</div><div><span class="mut sm">টাকা</span><br><b class="num">৳ ${money(c.amount)}</b></div>
    <div><span class="mut sm">A/C</span><br>${esc(a.holder || "")}<div class="mut sm">${esc(a.bank || "")}</div></div><div><span class="mut sm">খাত</span><br>${esc(c.purpose)}</div>
    ${c.taker ? `<div><span class="mut sm">কে তুলেছে</span><br>${esc(c.taker)}</div>` : ""}${c.toac ? `<div><span class="mut sm">To A/C</span><br>${esc(c.toac)}</div>` : ""}${c.party ? `<div><span class="mut sm">পার্টি</span><br>${esc(c.party)}</div>` : ""}${c.remarks ? `<div><span class="mut sm">মন্তব্য</span><br>${esc(c.remarks)}</div>` : ""}
    <div><span class="mut sm">এন্ট্রি</span><br>${esc(c.by || "")} <span class="mut sm">${c.at ? new Date(c.at).toLocaleString("en-GB") : ""}</span></div></div>
@@ -1127,51 +1274,90 @@ function chequeModal(c, after) {
 }
 function editChequeModal(c, after) {
   modal(`<h2>এডিট: ${esc(c.code)} · ${c.no}</h2><div class="grid" style="gap:10px">
-   <div class="row"><div><label class="f">তারিখ</label><input class="in" type="date" id="x-d" value="${c.date}"></div><div><label class="f">A/C Code</label><select class="in" id="x-c">${S.accounts.map(a => `<option ${a.code === c.code ? "selected" : ""}>${esc(a.code)}</option>`).join("")}</select></div></div>
-   <div class="row"><div><label class="f">চেক নং</label><input class="in" id="x-n" value="${c.no}"></div><div><label class="f">টাকা</label><input class="in" id="x-a" value="${c.amount}"></div></div>
-   <div><label class="f">খাত</label><select class="in" id="x-p">${allPurposes(true).map(p => `<option ${pKey(p) === pKey(c.purpose) ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></div>
-   <div class="row"><div><label class="f">কে তুলেছে</label><input class="in" id="x-t" value="${esc(c.taker || "")}"></div><div><label class="f">To A/C</label><input class="in" id="x-o" value="${esc(c.toac || "")}"></div></div>
-   <div class="row"><div><label class="f">পার্টি</label><input class="in" id="x-y" value="${esc(c.party || "")}"></div><div><label class="f">মন্তব্য</label><input class="in" id="x-r" value="${esc(c.remarks || "")}"></div></div>
-   <div class="modal-actions"><button class="btn pri" id="x-ok">সেভ</button><button class="btn" id="x-x">বাতিল</button></div></div>`, (root, close) => {
-    $("#x-x", root).onclick = close; $("#x-ok", root).onclick = async () => {
-      try { await API.updateCheque(c.id, { date: $("#x-d", root).value, code: $("#x-c", root).value, no: parseInt($("#x-n", root).value), amount: num($("#x-a", root).value), purpose: $("#x-p", root).value, taker: $("#x-t", root).value.trim(), toac: $("#x-o", root).value.trim(), party: $("#x-y", root).value.trim(), remarks: $("#x-r", root).value.trim() }); await reload(); close(); after && after(); toast("আপডেট হয়েছে"); } catch (e) { toast(e.message, "err"); }
+   <div class="cq-edit-row"><div><label class="f" for="x-d">তারিখ</label><input class="in" type="date" id="x-d" value="${c.date}"></div><div><label class="f" for="x-c">A/C Code</label><select class="in" id="x-c">${S.accounts.map(a => `<option ${a.code === c.code ? "selected" : ""}>${esc(a.code)}</option>`).join("")}</select></div></div>
+   <div class="cq-edit-row"><div><label class="f" for="x-n">চেক নং</label><input class="in" id="x-n" inputmode="numeric" value="${c.no}"></div><div><label class="f" for="x-a">টাকা</label><input class="in" id="x-a" inputmode="decimal" value="${c.amount}"></div></div>
+   <div><label class="f" for="x-p">খাত</label><select class="in" id="x-p">${allPurposes(true).map(p => `<option ${pKey(p) === pKey(c.purpose) ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></div>
+   <div class="cq-edit-row"><div><label class="f" for="x-t">কে তুলেছে</label><input class="in" id="x-t" value="${esc(c.taker || "")}"></div><div><label class="f" for="x-o">To A/C</label><input class="in" id="x-o" value="${esc(c.toac || "")}"></div></div>
+   <div class="cq-edit-row"><div><label class="f" for="x-y">পার্টি</label><input class="in" id="x-y" value="${esc(c.party || "")}"></div><div><label class="f" for="x-r">মন্তব্য</label><input class="in" id="x-r" value="${esc(c.remarks || "")}"></div></div>
+   <div class="hint rd" id="x-err" role="alert"></div></div><div class="modal-actions"><button class="btn" id="x-x">${bi("বাতিল", "Cancel")}</button><button class="btn pri" id="x-ok">${bi("সেভ", "Save")}</button></div>`, (root, close) => {
+    const get = id => $("#x-" + id, root), save = get("ok"), cancel = get("x"), error = get("err");
+    cancel.onclick = close;
+    save.onclick = async () => {
+      if (save.disabled) return;
+      const date = get("d").value, code = get("c").value, no = chequeNumber(get("n").value);
+      const purpose = get("p").value, kind = purposeKey(purpose), rawAmount = get("a").value.trim();
+      const amount = kind === "cancel" && !rawAmount ? 0 : chequeAmount(rawAmount);
+      const taker = get("t").value.trim(), toac = get("o").value.trim();
+      const fail = (field, message) => { error.textContent = message; get(field).focus(); };
+      if (!validChequeDate(date)) return fail("d", bi("সঠিক তারিখ দিন।", "Enter a valid cheque date."));
+      if (!code) return fail("c", bi("A/C Code বাছুন।", "Choose an A/C code."));
+      if (!no) return fail("n", bi("সঠিক চেক নম্বর দিন।", "Enter a valid cheque number."));
+      if (S.cheques.some(other => other.id !== c.id && other.code === code && other.no === no)) return fail("n", bi("এই চেক আগেই এন্ট্রি আছে।", "This cheque is already registered."));
+      if (!(amount === c.amount && purpose === c.purpose)) {
+        if (kind === "cancel" && amount !== 0) return fail("a", bi("বাতিল পাতার অঙ্ক ০ দিন।", "Use a zero amount for a cancelled leaf."));
+        if (kind !== "cancel" && !(amount > 0)) return fail("a", bi("সঠিক টাকার অঙ্ক দিন।", "Enter a valid amount greater than zero."));
+      }
+      if (kind === "cash" && !taker && purpose !== c.purpose) return fail("t", bi("কে তুলেছে লিখুন।", "Enter who withdrew the cash."));
+      if (kind === "own" && (!toac || code === toac) && (purpose !== c.purpose || code !== c.code || toac !== (c.toac || ""))) return fail("o", bi("ভিন্ন একটি To A/C দিন।", "Enter a different receiving A/C."));
+      error.textContent = "";
+      save.disabled = cancel.disabled = true;
+      try {
+        const fields = { date, code, no, amount, purpose, taker, toac, party: get("y").value.trim(), remarks: get("r").value.trim() };
+        await API.updateCheque(c.id, fields);
+        derive(Object.assign(S.cheques.find(row => row.id === c.id) || c, fields)); saveCache(); refreshBadges();
+        close(); after?.(); toast(bi("আপডেট হয়েছে", "Cheque updated"));
+      } catch (err) { error.textContent = err.message || String(err); }
+      finally { save.disabled = cancel.disabled = false; }
     };
   });
 }
 async function vCheques(v) {
-  const F = { q: "", code: "", status: "", purpose: "", taker: "", page: 0 }, PF = pbInit("all"), PS = 100, PBO = { all: true };
+  const F = { q: "", code: "", status: "", purpose: "", page: 0 }, PF = pbInit("all"), PS = 100, PBO = { all: true };
   v.innerHTML = head("চেক তালিকা ও এনকোয়ারি", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>`) + `<div class="card tbar noprint">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
-   <div style="flex:2 1 220px"><label class="f">খুঁজুন (কোড, চেক নং, পার্টি, মন্তব্য, টাকা)</label><input class="in" id="k-q" placeholder="যেকোনো কিছু লিখুন…"></div>
-   <div style="flex:1 1 220px"><label class="f">A/C</label><select class="in" id="k-c"><option value="">সব</option>${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)}${a.holder ? " · " + esc(a.holder) : ""}${a.bank ? " · " + esc(a.bank) : ""}</option>`).join("")}</select></div>
-   <div><label class="f">স্ট্যাটাস</label><select class="in" id="k-s"></select></div>
-   <div><label class="f">খাত</label><select class="in" id="k-u"><option value="">সব</option>${allPurposes(true).map(p => `<option value="${esc(p)}">${esc(p.split(" (")[0])}</option>`).join("")}</select></div></div></div>
+   <div style="flex:2 1 220px"><label class="f" for="k-q">${bi("চেক খুঁজুন", "Search cheques")}</label><input class="in" id="k-q" type="search" placeholder="${bi("চেক নং, A/C, ব্যাংক, মন্তব্য, টাকা", "Cheque no, A/C, bank, remarks, amount")}"></div>
+   <div style="flex:1 1 220px"><label class="f" for="k-c">A/C</label><select class="in" id="k-c"><option value="">সব</option>${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)}${a.holder ? " · " + esc(a.holder) : ""}${a.bank ? " · " + esc(a.bank) : ""}</option>`).join("")}</select></div>
+   <div><label class="f" for="k-s">স্ট্যাটাস</label><select class="in" id="k-s"></select></div>
+   <div><label class="f" for="k-u">খাত</label><select class="in" id="k-u"><option value="">সব</option>${allPurposes(true).map(p => `<option value="${esc(p)}">${esc(p.split(" (")[0])}</option>`).join("")}</select></div></div></div>
    <div id="k-sum" class="ksum"></div><div class="card flush"><div id="k-tab"></div></div><div id="k-pg" class="row noprint" style="margin-top:10px;justify-content:center"></div>`;
-  const filt = (skipSt) => { const t = norm(F.q), raw = F.q.trim(), [pa, pb] = pbRange(PF); return S.cheques.filter(c => c.date >= pa && c.date <= pb && (!F.code || c.code === F.code) && (skipSt || !F.status || c.status === F.status) && (!F.purpose || pKey(c.purpose) === pKey(F.purpose)) && (!t || norm(c.code + c.no + (c.party || "") + (c.remarks || "") + (c.taker || "") + (c.toac || "")).includes(t) || String(c.amount) === raw.replace(/,/g, ""))).sort((a, b) => b.date.localeCompare(a.date) || b.no - a.no); };
-  /* v6.58: status filter = the statuses this project actually works with (Pending / Cleared / Bounced / Cancelled) + a live count each;
-     Returned-Cash / Stopped appear only if some cheque really has them (they stay available in "Set status"). */
-  const stOpts = () => { const base = filt(true), n = {}; base.forEach(c => n[c.status] = (n[c.status] || 0) + 1);
-    const list = ["Pending", "Cleared", "Bounced", "Cancelled", ...["Returned-Cash", "Stopped"].filter(x => n[x] || F.status === x)], sel = $("#k-s", v);
-    sel.innerHTML = `<option value="">${bi("সব", "All")} (${base.length})</option>` + list.map(x => `<option value="${x}" ${F.status === x ? "selected" : ""}>${x} (${n[x] || 0})</option>`).join(""); sel.value = F.status; };
+  const filt = () => {
+    const [from, to] = pbRange(PF), matches = chequeMatcher(F.q, accMap());
+    return S.cheques.filter(c => c.date >= from && c.date <= to && (!F.code || c.code === F.code) && (!F.purpose || pKey(c.purpose) === pKey(F.purpose)) && matches(c));
+  };
+  const withStatus = rows => F.status ? rows.filter(c => c.status === F.status) : rows;
+  const sorted = rows => rows.sort((a, b) => b.date.localeCompare(a.date) || b.no - a.no);
+  const stOpts = base => {
+    const counts = {};
+    base.forEach(c => { counts[c.status] = (counts[c.status] || 0) + 1; });
+    const sel = $("#k-s", v);
+    sel.innerHTML = `<option value="">${bi("সব", "All")} (${base.length})</option>` + STATUSES.map(status => `<option value="${status}">${status} (${counts[status] || 0})</option>`).join("");
+    sel.value = F.status;
+  };
   const draw = () => {
-    stOpts();
-    const arr = filt(), pages = Math.max(1, Math.ceil(arr.length / PS)); F.page = Math.min(F.page, pages - 1); const part = arr.slice(F.page * PS, F.page * PS + PS), live = arr.filter(isLive);
-    const kc = (l, n, a, cls = "") => `<div class="kc ${cls}"><span>${l}</span><div class="kv"><b>${n}</b>${a != null ? `<small class="num">৳ ${money0(a)}</small>` : ""}</div></div>`;
-    $("#k-sum", v).innerHTML = kc(bi("মোট চেক", "Cheques"), arr.length, null) + kc(bi("কার্যকর মোট", "Live total"), live.length, sumAmt(live), "main") + ["Pending", "Cleared", "Bounced", "Cancelled"].map(s => { const x = arr.filter(c => c.status === s); return x.length ? kc(stTag(s), x.length, sumAmt(x), "st-" + s.toLowerCase()) : ""; }).join("");
-    $("#k-tab", v).innerHTML = part.length ? `<div class="tw cards"><table><thead><tr><th>তারিখ</th><th>A/C · চেক</th><th>হোল্ডার</th><th class="r">টাকা</th><th>খাত / বিবরণ</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${part.map(c => `<tr data-id="${c.id}" style="cursor:pointer"><td>${dmy(c.date)}</td><td><b>${esc(c.code)}</b> · ${c.no}${chqIcons(c)}</td><td class="mut sm">${esc((accMap()[c.code] || {}).holder || "")}</td><td class="r num">${money(c.amount)}</td><td>${esc(c.purpose.split(" (")[0])}<div class="mut sm">${esc([c.taker, c.party, c.toac && "→ " + c.toac, c.remarks].filter(Boolean).join(" · "))}</div></td><td><span class="stc">${stTag(c.status)}${pendTag(c)}${c.sdate && c.status !== "Pending" ? `<span class="mut sm stc-d">${dmy(c.sdate)}</span>` : ""}</span></td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">কিছু পাওয়া যায়নি</div>`;
+    if (!$("#k-tab", v)) return;
+    const accounts = accMap(), base = filt(); stOpts(base);
+    const arr = sorted(withStatus(base)), pages = Math.max(1, Math.ceil(arr.length / PS)); F.page = Math.min(F.page, pages - 1); const part = arr.slice(F.page * PS, F.page * PS + PS), live = arr.filter(isLive);
+    const kc = (l, n, a, cls = "") => `<div class="kc ${cls}"><span>${l}</span><div class="kv"><b>${n}</b>${a != null ? `<small class="num">৳ ${money(a)}</small>` : ""}</div></div>`;
+    $("#k-sum", v).innerHTML = kc(bi("মোট চেক", "Cheques"), arr.length, null) + kc(bi("কার্যকর মোট", "Live total"), live.length, sumAmt(live), "main") + STATUSES.map(s => { const x = arr.filter(c => c.status === s); return x.length ? kc(stTag(s), x.length, sumAmt(x), "st-" + s.toLowerCase()) : ""; }).join("");
+    $("#k-tab", v).innerHTML = part.length ? `<div class="tw cards"><table><thead><tr><th>তারিখ</th><th>A/C · চেক</th><th>হোল্ডার</th><th class="r">টাকা</th><th>খাত / বিবরণ</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${part.map(c => `<tr><td>${dmy(c.date)}</td><td><button type="button" class="cq-link" data-register-id="${esc(c.id)}">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}</td><td class="mut sm">${esc(accounts[c.code]?.holder || "")}</td><td class="r num">${money(c.amount)}</td><td>${esc(c.purpose.split(" (")[0])}<div class="mut sm">${esc([c.taker, c.party, c.toac && "→ " + c.toac, c.remarks].filter(Boolean).join(" · "))}</div></td><td><span class="stc">${stTag(c.status)}${pendTag(c)}${c.sdate && c.status !== "Pending" ? `<span class="mut sm stc-d">${dmy(c.sdate)}</span>` : ""}</span></td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">কিছু পাওয়া যায়নি</div>`;
     $("#k-pg", v).innerHTML = pages > 1 ? `<button class="btn sm fix" id="pv" ${F.page ? "" : "disabled"}>‹ আগের</button><span class="mut fix">পাতা ${F.page + 1} / ${pages}</span><button class="btn sm fix" id="nx" ${F.page < pages - 1 ? "" : "disabled"}>পরের ›</button>` : "";
     $("#pv", v) && ($("#pv", v).onclick = () => { F.page--; draw(); }); $("#nx", v) && ($("#nx", v).onclick = () => { F.page++; draw(); });
-    $$("tr[data-id]", v).forEach(r => r.onclick = () => chequeModal(S.cheques.find(c => c.id === r.dataset.id), draw));
+
+  };
+  $("#k-tab", v).onclick = event => {
+    const id = event.target.closest("[data-register-id]")?.dataset.registerId;
+    const row = S.cheques.find(c => c.id === id);
+    if (row) chequeModal(row, draw);
   };
   const bind = (id, k) => { const el = $("#" + id, v); el.addEventListener("input", () => { F[k] = el.value; F.page = 0; draw(); }); };
   const pre = sessionStorage.getItem("nabiad_chq_ac"); if (pre) { sessionStorage.removeItem("nabiad_chq_ac"); F.code = pre; $("#k-c", v).value = pre; }
   pbBind(v, "k", PF, () => { F.page = 0; draw(); }, PBO); bind("k-q", "q"); bind("k-c", "code"); bind("k-s", "status"); bind("k-u", "purpose");
-  $("#k-x", v).onclick = () => exportChequesXlsx(filt(), `Cheques_${PF.m === "all" ? today() : pbRange(PF).join("_to_")}.xlsx`, $("#k-x", v));
+  $("#k-x", v).onclick = () => exportChequesXlsx(sorted(withStatus(filt())), `Cheques_${PF.m === "all" ? today() : pbRange(PF).join("_to_")}.xlsx`, $("#k-x", v));
   $("#k-p", v).onclick = () => {
-    const arr = filt().sort((x, y) => x.date.localeCompare(y.date) || x.code.localeCompare(y.code)), live = arr.filter(isLive), am = accMap(); if (!arr.length) return toast("ডাটা নেই", "err");
+    const arr = withStatus(filt()).sort((x, y) => x.date.localeCompare(y.date) || x.code.localeCompare(y.code)), live = arr.filter(isLive), am = accMap(); if (!arr.length) return toast("ডাটা নেই", "err");
     const [pa, pb] = pbRange(PF), f = PF.m === "all" ? arr[0].date : pa, t = PF.m === "all" ? arr[arr.length - 1].date : pb, flt = [F.code, F.status, F.purpose && F.purpose.split(" (")[0], F.q && `"${esc(F.q)}"`].filter(Boolean).join(" · ");
     printSheet(repSheet("k-sheet", "Cheque List · চেক তালিকা" + (flt ? " · " + flt : ""), f, t,
-      repKpi([[`Cheques · live`, `${live.length} <small>/ ${arr.length}</small>`, "k1"], ["Live Amount", "৳ " + money0(sumAmt(live)), "k3"], ["Pending", `${arr.filter(c => c.status === "Pending").length} · ৳ ${money0(sumAmt(arr.filter(c => c.status === "Pending")))}`, ""], ["Cleared", `${arr.filter(c => c.status === "Cleared").length} · ৳ ${money0(sumAmt(arr.filter(c => c.status === "Cleared")))}`, ""]]),
-      repOne(repBox(`Cheques (${arr.length})`, ["~Date", "~A/C · Cheque", "~Holder", "Amount", "~Purpose / Detail", "Status"], arr.map(c => `<tr><td class="cd">${dmy(c.date)}</td><td><b>${esc(c.code)}</b> #${esc(c.no)}</td><td>${esc((am[c.code] || {}).holder || "")}</td><td class="r num b">${money0(c.amount)}</td><td>${esc(c.purpose.split(" (")[0])}${c.party || c.taker || c.remarks ? `<div class="mut" style="font-size:10px">${esc([c.party, c.taker, c.remarks].filter(Boolean).join(" · "))}</div>` : ""}</td><td class="r">${esc(c.status)}</td></tr>`).join(""), `<tr class="tot"><td colspan="3">TOTAL (live)</td><td class="r num">${money0(sumAmt(live))}</td><td colspan="2"></td></tr>`))), `Cheque_List_${f}_${t}`);
+      repKpi([[`Cheques · live`, `${live.length} <small>/ ${arr.length}</small>`, "k1"], ["Live Amount", "৳ " + money(sumAmt(live)), "k3"], ["Pending", `${arr.filter(c => c.status === "Pending").length} · ৳ ${money(sumAmt(arr.filter(c => c.status === "Pending")))}`, ""], ["Cleared", `${arr.filter(c => c.status === "Cleared").length} · ৳ ${money(sumAmt(arr.filter(c => c.status === "Cleared")))}`, ""]]),
+      repOne(repBox(`Cheques (${arr.length})`, ["~Date", "~A/C · Cheque", "~Holder", "Amount", "~Purpose / Detail", "Status"], arr.map(c => `<tr><td class="cd">${dmy(c.date)}</td><td><b>${esc(c.code)}</b> #${esc(c.no)}</td><td>${esc((am[c.code] || {}).holder || "")}</td><td class="r num b">${money(c.amount)}</td><td>${esc(c.purpose.split(" (")[0])}${c.party || c.taker || c.remarks ? `<div class="mut" style="font-size:10px">${esc([c.party, c.taker, c.remarks].filter(Boolean).join(" · "))}</div>` : ""}</td><td class="r">${esc(c.status)}</td></tr>`).join(""), `<tr class="tot"><td colspan="3">TOTAL (live)</td><td class="r num">${money(sumAmt(live))}</td><td colspan="2"></td></tr>`))), `Cheque_List_${f}_${t}`);
   };
   draw();
 }
@@ -3671,53 +3857,83 @@ try { navigator.serviceWorker && navigator.serviceWorker.addEventListener("messa
 async function readSheetFile(file) { await loadScript("vendor/xlsx.min.js"); const wb = XLSX.read(await file.arrayBuffer(), { type: "array" }); const ws = wb.Sheets[wb.SheetNames[0]]; return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" }); }
 function toIsoDate(v) {
   if (v === "" || v == null) return "";
-  if (typeof v === "number") { if (v < 20000 || v > 80000) return ""; return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10); }
-  const s = String(v).trim(); let m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/), y, mo, d;
-  if (m) { y = m[1]; mo = +m[2]; d = +m[3]; } else if ((m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/))) { d = +m[1]; mo = +m[2]; y = m[3].length === 2 ? "20" + m[3] : m[3]; } else return "";
-  if (mo < 1 || mo > 12 || d < 1 || d > 31) return ""; return `${y}-${pad(mo)}-${pad(d)}`;
+  if (typeof v === "number") { if (!Number.isFinite(v) || v < 20000 || v > 80000) return ""; return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10); }
+  const s = chequeDigits(v); let m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})(?:$|[T ]\d)/), y, mo, d;
+  if (m) { y = m[1]; mo = +m[2]; d = +m[3]; } else if ((m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4}|\d{2})(?:$|[T ]\d)/))) { d = +m[1]; mo = +m[2]; y = m[3].length === 2 ? "20" + m[3] : m[3]; } else return "";
+  const date = `${y}-${pad(mo)}-${pad(d)}`;
+  return validChequeDate(date) ? date : "";
 }
-const colOf = (head, names) => { const hs = head.map(h => norm(h)); for (const n of names) { const i = hs.indexOf(norm(n)); if (i >= 0) return i; } return -1; };
+const colOf = (head, names) => { const hs = head.map(chequeSearchKey); for (const n of names) { const i = hs.indexOf(chequeSearchKey(n)); if (i >= 0) return i; } return -1; };
 const findAcc = v => { const k = norm(v); if (!k) return null; return S.accounts.find(a => norm(a.code) === k) || S.accounts.find(a => a.acno && norm(a.acno) === k) || null; };
 const findPurpose = v => { const k = String(v || "").split(" (")[0].trim().toLowerCase(); if (!k) return null; return allPurposes(true).find(p => p.split(" (")[0].trim().toLowerCase() === k) || null; };
 
 function chequeImportModal(after) {
   const CH = ["Date", "A/C Code", "Cheque No", "Amount", "Purpose", "Cash Taker", "To A/C", "Remarks"];
-  let rows = [];
   modal(`<h2>📥 ${bi("Excel থেকে চেক ইম্পোর্ট", "Import cheques from Excel")}</h2>
-    <div class="mut sm" style="margin-bottom:10px">${bi("একসাথে অনেক চেক পোস্ট করুন। আগে টেমপ্লেট নামিয়ে পূরণ করুন, তারপর ফাইল বাছুন। শুধু সঠিক সারি ইম্পোর্ট হয়; ভুল সারির কারণ দেখানো হয়।", "Post many cheques at once. Download the template, fill it, then choose the file. Only valid rows are imported; problems are listed per row.")}</div>
-    <div class="row"><button class="btn" id="ci-t">${ico("dl")} ${bi("টেমপ্লেট", "Template")}</button><label class="btn pri" for="ci-f">${ico("plus")} ${bi("ফাইল বাছুন", "Choose file")}</label><input type="file" id="ci-f" accept=".xlsx,.xls,.csv" hidden></div>
-    <div id="ci-out" style="margin-top:12px"></div>
+    <div class="row"><button class="btn" id="ci-t">${ico("dl")} ${bi("টেমপ্লেট", "Template")}</button><button class="btn pri" type="button" id="ci-pick">${ico("plus")} ${bi("ফাইল বাছুন", "Choose file")}</button><input type="file" id="ci-f" accept=".xlsx,.xls,.csv" hidden></div>
+    <div id="ci-out" style="margin-top:12px"></div><p id="ci-msg" class="hint" role="status"></p>
     <div class="modal-actions"><button class="btn pri hide" id="ci-go">${ico("save")} <span id="ci-gl"></span></button><button class="btn" id="ci-x">${bi("বন্ধ", "Close")}</button></div>`, (root, close) => {
+    const file = $("#ci-f", root), out = $("#ci-out", root), pick = $("#ci-pick", root);
+    pick.onclick = () => file.click();
+    const go = $("#ci-go", root), label = $("#ci-gl", root), message = $("#ci-msg", root);
+    let readId = 0;
     $("#ci-x", root).onclick = close;
     $("#ci-t", root).onclick = () => exportXlsx({ Cheques: [CH, [today(), (S.accounts[0] || {}).code || "PBL-483", 1234567, 50000, "Supplier Payment", "", "", "bill 101"], [today(), (S.accounts[0] || {}).code || "PBL-483", 1234568, 0, "Cancelled/Spoiled", "", "", ""]], Notes: [["Purpose must match one of the purposes in the app (see Manage on Cheque Posting). Date: dd-mm-yyyy or yyyy-mm-dd. Cash Taker / To A/C only for cash withdrawal / own transfer rows."]] }, "Cheque_Import_Template.xlsx");
-    $("#ci-f", root).onchange = async e => {
-      const f = e.target.files[0]; e.target.value = ""; if (!f) return; const out = $("#ci-out", root); out.innerHTML = `<div class="mut">${bi("পড়া হচ্ছে…", "Reading…")}</div>`;
-      let aoa; try { aoa = await readSheetFile(f); } catch (er) { return out.innerHTML = `<div class="alert rd">${esc(er.message || er)}</div>`; }
-      const hi = aoa.findIndex(r => r.some(c => norm(c) === "chequeno" || norm(c) === "chqno")); if (hi < 0) return out.innerHTML = `<div class="alert rd">${bi("হেডার সারি পাওয়া যায়নি — টেমপ্লেটের কলাম নাম ব্যবহার করুন (Date, A/C Code, Cheque No, Amount, Purpose…)", "Header row not found — use the template column names")}</div>`;
+    file.onchange = async () => {
+      const f = file.files[0]; file.value = ""; if (!f) return;
+      const id = ++readId;
+      go.classList.add("hide"); go.onclick = null;
+      message.textContent = "";
+      out.innerHTML = `<div class="mut">${bi("পড়া হচ্ছে…", "Reading…")}</div>`;
+      let aoa;
+      try { aoa = await readSheetFile(f); }
+      catch (er) {
+        if (id === readId && out.isConnected) out.innerHTML = `<div class="alert rd">${esc(er.message || er)}</div>`;
+        return;
+      }
+      if (id !== readId || !out.isConnected) return;
+      const hi = aoa.findIndex(r => r.some(c => ["chequeno", "chqno", "chequenumber"].includes(chequeSearchKey(c)))); if (hi < 0) return out.innerHTML = `<div class="alert rd">${bi("হেডার সারি পাওয়া যায়নি। টেমপ্লেটের কলাম নাম ব্যবহার করুন।", "Header row not found. Use the template column names.")}</div>`;
       const H = aoa[hi], c = { d: colOf(H, ["Date", "Cheque Date", "তারিখ"]), a: colOf(H, ["A/C Code", "AC Code", "Code", "Account"]), n: colOf(H, ["Cheque No", "Chq No", "Cheque Number"]), m: colOf(H, ["Amount", "Taka", "টাকা"]), p: colOf(H, ["Purpose", "খাত"]), t: colOf(H, ["Cash Taker", "Taker"]), o: colOf(H, ["To A/C", "To AC"]), r: colOf(H, ["Remarks", "Note", "মন্তব্য"]) };
       if (c.a < 0 || c.n < 0 || c.m < 0 || c.p < 0 || c.d < 0) return out.innerHTML = `<div class="alert rd">${bi("Date, A/C Code, Cheque No, Amount, Purpose কলাম লাগবে", "Columns Date, A/C Code, Cheque No, Amount, Purpose are required")}</div>`;
-      const seen = new Set(); rows = [];
+      const existing = new Set(S.cheques.map(row => `${row.code}|${row.no}`)), seen = new Set(), rows = [];
       aoa.slice(hi + 1).forEach((r, i) => {
         if (r.every(x => x === "")) return; const line = hi + i + 2, errs = [];
         const date = toIsoDate(r[c.d]); if (!date) errs.push(bi("তারিখ ঠিক নয়", "bad date"));
         const acc = findAcc(r[c.a]); if (!acc) errs.push(bi("A/C Code নেই", "unknown A/C"));
-        const noS = String(r[c.n]).replace(/\D/g, ""), no = parseInt(noS); if (!no || String(r[c.n]).trim() !== String(no) && !/^\d+(\.0+)?$/.test(String(r[c.n]).trim())) errs.push(bi("চেক নং ঠিক নয়", "bad cheque no"));
-        const amount = num(r[c.m]); const purpose = findPurpose(r[c.p]); if (!purpose) errs.push(bi("খাত মেলেনি", "purpose not found")); const k = purpose ? purposeKey(purpose) : "";
-        if (purpose && k !== "cancel" && !(amount > 0)) errs.push(bi("টাকা দিন", "amount required")); if (amount < 0) errs.push(bi("টাকা ঋণাত্মক", "negative amount"));
+        const no = chequeNumber(r[c.n]); if (!no) errs.push(bi("চেক নং ঠিক নয়", "invalid cheque number"));
+        const value = chequeDigits(r[c.m]), amount = chequeAmount(value);
+        const purpose = findPurpose(r[c.p]); if (!purpose) errs.push(bi("খাত মেলেনি", "purpose not found"));
+        const k = purpose ? purposeKey(purpose) : "";
+        if (k === "cancel" ? value && amount !== 0 : !(amount > 0)) errs.push(bi("টাকার অঙ্ক ঠিক নয়", "invalid amount"));
         const taker = c.t >= 0 ? String(r[c.t]).trim() : "", toac = c.o >= 0 ? String(r[c.o]).trim() : "", rem = c.r >= 0 ? String(r[c.r]).trim() : "";
+        if (k === "cash" && !taker) errs.push(bi("কে তুলেছে লিখুন", "Cash Taker required"));
         let toAcc = null; if (k === "own") { toAcc = findAcc(toac); if (!toAcc) errs.push(bi("To A/C দিন (নিজ অ্যাকাউন্ট)", "To A/C required")); else if (acc && toAcc.code === acc.code) errs.push(bi("From ও To একই", "From = To")); }
-        if (acc && no) { const key = acc.code + "|" + no; if (S.cheques.some(x => x.code === acc.code && x.no === no)) errs.push(bi("আগেই এন্ট্রি আছে", "already exists")); else if (seen.has(key)) errs.push(bi("ফাইলে দুইবার", "duplicate in file")); seen.add(key); }
-        rows.push({ line, date, code: acc && acc.code, no, amount: k === "cancel" ? 0 : amount, purpose, taker: k === "cash" ? taker : "", toac: k === "own" && toAcc ? toAcc.code : "", remarks: rem, errs });
+        if (acc && no) {
+          const key = acc.code + "|" + no;
+          if (existing.has(key)) errs.push(bi("আগেই এন্ট্রি আছে", "already exists"));
+          else if (seen.has(key)) errs.push(bi("ফাইলে দুইবার", "duplicate in file"));
+          if (!errs.length) seen.add(key);
+        }
+        rows.push({ raw: [r[c.d], r[c.a], r[c.n], r[c.m], r[c.p], taker, toac, rem], line, date, code: acc && acc.code, no, amount: k === "cancel" ? 0 : amount, purpose, taker: k === "cash" ? taker : "", toac: k === "own" && toAcc ? toAcc.code : "", remarks: rem, errs });
       });
       const ok = rows.filter(x => !x.errs.length), bad = rows.length - ok.length;
       out.innerHTML = `<div class="row" style="gap:8px"><span class="tag ok">✓ ${ok.length} ${bi("ঠিক", "valid")}</span><span class="tag ${bad ? "au-delete" : ""}">${bad ? "✗ " + bad : "—"} ${bi("সমস্যা", "problems")}</span>${bad ? `<button class="btn sm" id="ci-eb">${ico("dl")} ${bi("ভুল সারি Excel", "Problem rows")}</button>` : ""}</div>
-        <div class="tw" style="max-height:300px;overflow:auto;margin-top:8px"><table><thead><tr><th>#</th><th>${bi("তারিখ", "Date")}</th><th>A/C</th><th>${bi("চেক নং", "Chq no")}</th><th class="r">${bi("টাকা", "Amount")}</th><th>${bi("খাত", "Purpose")}</th><th></th></tr></thead><tbody>${rows.slice(0, 300).map(x => `<tr class="${x.errs.length ? "dim" : ""}"><td class="mut">${x.line}</td><td>${x.date ? dmy(x.date) : "—"}</td><td>${esc(x.code || "—")}</td><td>${x.no || "—"}</td><td class="r num">${money(x.amount)}</td><td>${esc((x.purpose || "—").split(" (")[0])}</td><td>${x.errs.length ? `<span class="rd xs">${esc(x.errs.join(", "))}</span>` : `<span class="gr">✓</span>`}</td></tr>`).join("")}</tbody></table></div>${rows.length > 300 ? `<div class="mut xs">${bi("প্রথম ৩০০টি দেখানো হয়েছে", "First 300 shown")}</div>` : ""}`;
-      const go = $("#ci-go", root); go.classList.toggle("hide", !ok.length); $("#ci-gl", root).textContent = bi(`${ok.length}টি ইম্পোর্ট করুন`, `Import ${ok.length}`);
-      if ($("#ci-eb", root)) $("#ci-eb", root).onclick = () => exportXlsx({ Problems: [["Line", ...CH, "Problem"], ...rows.filter(x => x.errs.length).map(x => [x.line, x.date, x.code, x.no, x.amount, x.purpose, x.taker, x.toac, x.remarks, x.errs.join("; ")])] }, "Cheque_Import_Problems.xlsx");
+        <div class="tw" style="max-height:300px;overflow:auto;margin-top:8px"><table><thead><tr><th>#</th><th>${bi("তারিখ", "Date")}</th><th>A/C</th><th>${bi("চেক নং", "Chq no")}</th><th class="r">${bi("টাকা", "Amount")}</th><th>${bi("খাত", "Purpose")}</th><th></th></tr></thead><tbody>${rows.slice(0, 300).map(x => `<tr class="${x.errs.length ? "dim" : ""}"><td class="mut">${x.line}</td><td>${x.date ? dmy(x.date) : "—"}</td><td>${esc(x.code || "—")}</td><td>${x.no || "—"}</td><td class="r num">${Number.isFinite(x.amount) ? money(x.amount) : "—"}</td><td>${esc((x.purpose || "—").split(" (")[0])}</td><td>${x.errs.length ? `<span class="rd xs">${esc(x.errs.join(", "))}</span>` : `<span class="gr">✓</span>`}</td></tr>`).join("")}</tbody></table></div>${rows.length > 300 ? `<div class="mut xs">${bi("প্রথম ৩০০টি দেখানো হয়েছে", "First 300 shown")}</div>` : ""}`;
+      go.classList.toggle("hide", !ok.length); label.textContent = bi(`${ok.length}টি ইম্পোর্ট করুন`, `Import ${ok.length}`);
+      const problemRows = () => exportXlsx({ Problems: [["Line", ...CH, "Problem"], ...rows.filter(x => x.errs.length).map(x => [x.line, ...x.raw, x.errs.join("; ")])] }, "Cheque_Import_Problems.xlsx");
+      if ($("#ci-eb", root)) $("#ci-eb", root).onclick = problemRows;
       go.onclick = async () => {
-        if (!ask(bi(`${ok.length}টি চেক পোস্ট করবেন?`, `Post ${ok.length} cheques?`))) return; go.disabled = true; let n = 0, fail = 0;
-        for (const x of ok) { try { const row = await API.addCheque({ id: crypto.randomUUID(), date: x.date, code: x.code, no: x.no, amount: x.amount, purpose: x.purpose, taker: x.taker, party: "", toac: x.toac, remarks: x.remarks }); S.cheques.push(derive(row)); n++; } catch (er) { fail++; x.errs.push(er.message || "error"); } $("#ci-gl", root).textContent = `${n + fail}/${ok.length}…`; }
-        saveCache(); toast(bi(`✔ ${n}টি চেক পোস্ট হয়েছে${fail ? `, ${fail}টি হয়নি` : ""}`, `✔ ${n} cheques posted${fail ? `, ${fail} failed` : ""}`), fail ? "err" : "ok"); close(); after && after();
+        if (!ask(bi(`${ok.length}টি চেক পোস্ট করবেন?`, `Post ${ok.length} cheques?`))) return;
+        file.disabled = pick.disabled = go.disabled = true;
+        let n = 0, fail = 0;
+        for (const x of ok) { try { const row = await API.addCheque({ id: crypto.randomUUID(), date: x.date, code: x.code, no: x.no, amount: x.amount, purpose: x.purpose, taker: x.taker, party: "", toac: x.toac, remarks: x.remarks }); S.cheques.push(derive(row)); n++; } catch (er) { fail++; x.errs.push(er.message || "error"); } label.textContent = `${n + fail}/${ok.length}…`; }
+        saveCache(); refreshBadges(); after?.();
+        file.disabled = pick.disabled = go.disabled = false; go.classList.add("hide");
+        message.textContent = bi(`${n}টি পোস্ট হয়েছে${fail ? `, ${fail}টি হয়নি` : ""}।`, `${n} posted${fail ? `, ${fail} failed` : ""}.`);
+        if (fail && out.isConnected) {
+          if (!$("#ci-eb", out)) out.insertAdjacentHTML("afterbegin", `<button class="btn sm" id="ci-eb">${ico("dl")} ${bi("ভুল সারি Excel", "Problem rows")}</button>`);
+          $("#ci-eb", out).onclick = problemRows;
+        }
       };
     };
   });

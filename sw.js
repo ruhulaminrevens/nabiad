@@ -1,6 +1,6 @@
 /* Nabiad service worker: network-first (revalidated) for app files, cache-first for vendor libraries */
-const C = "nabiad-v6.80-inv2";
-const CORE = ["./", "index.html", "style.css?v=6.80-inv2", "app.js?v=6.80-inv2", "inv.js?v=6.80-inv2", "inv.css?v=6.80-inv2", "cashbook.js?v=6.80-inv2", "cashbook.css?v=6.80-inv2", "config.js?v=6.80-inv2", "i18n.js?v=6.80-inv2", "vendor/supabase.js", "icon.svg", "icon-192.png", "manifest.json"];
+const C = "nabiad-v6.80-chq1";
+const CORE = ["./", "index.html", "style.css?v=6.80-chq1", "app.js?v=6.80-chq1", "inv.js?v=6.80-chq1", "inv.css?v=6.80-chq1", "cashbook.js?v=6.80-chq1", "cashbook.css?v=6.80-chq1", "config.js?v=6.80-chq1", "i18n.js?v=6.80-chq1", "vendor/supabase.js", "icon.svg", "icon-192.png", "manifest.json"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(C).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", e => {
