@@ -231,6 +231,7 @@ tr.tot td{font-weight:800;background:linear-gradient(90deg,#fff7d6,#fff2c2)!impo
 #toasts{position:fixed;right:18px;bottom:18px;z-index:80;display:flex;flex-direction:column;gap:8px}
 .toast{display:flex;align-items:center;gap:10px;background:var(--surface);color:var(--txt);padding:11px 14px 11px 12px;border-radius:12px;box-shadow:var(--sh2);font-size:13.5px;font-weight:500;max-width:400px;animation:slideIn .3s var(--ease);border:1px solid var(--line);border-left:4px solid var(--gr)}
 .toast i{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--g-green);color:#fff;font-style:normal;font-size:13px;flex:none}
+.toast.info{border-left-color:var(--pri)} .toast.info i{background:var(--pri)}
 .toast.err{border-left-color:var(--rd)} .toast.err i{background:var(--g-red)}
 .toast.out{animation:slideOut .25s var(--ease) forwards}
 @keyframes slideIn{from{transform:translateX(30px);opacity:0}} @keyframes slideOut{to{transform:translateX(30px);opacity:0}}
@@ -2008,9 +2009,6 @@ body:has(#modal-root .mback) { overflow: hidden; }
 .bc-context #c-msg:not([hidden]) { display: grid; flex: 1 1 250px; gap: 6px; min-width: 0; }
 .bc-context #c-linked { max-width: 100%; margin-inline-start: auto; }
 .bc-controls .bc-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
-.bc-state { min-height: 30px; max-width: 100%; white-space: normal; text-align: center; }
-.bc-state[data-state="final"] { color: var(--gr); background: var(--gr-soft); }
-.bc-state:is([data-state="draft"], [data-state="queued"]) { color: var(--am); background: var(--am-soft); }
 .bc-workspace { display: grid; gap: 14px; min-width: 0; }
 .bc-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .bc-summary .bc-kpi {
@@ -2038,21 +2036,35 @@ body:has(#modal-root .mback) { overflow: hidden; }
 .bc-table .mvdot { cursor: inherit; }
 .bc-table .cell[aria-invalid="true"] { border-color: var(--rd); }
 .bc-workspace [hidden], .bc-controls [hidden] { display: none !important; }
-.bc-register .cbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+html:has(.bc-register .cbar) { --bc-save-bottom: 12px; scroll-padding-bottom: calc(var(--bc-save-bottom) + 84px); }
+html:has(.bc-register .cbar) #toasts { pointer-events: none; }
+.bc-register .cbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  position: sticky;
+  bottom: var(--bc-save-bottom);
+  z-index: 12;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--sh);
+}
 .bc-register .cbar .btn { min-width: 0; white-space: normal; }
 .bc-register .cbar > #c-save:only-of-type { grid-column: 1 / -1; }
-.bc-register #c-auto { grid-column: 1 / -1; }
-.bc-register :is(#c-err, #c-auto):empty { display: none; }
+.bc-register #c-err:empty { display: none; }
 @media (min-width: 901px) {
   .bc-register .cbar { grid-template-columns: repeat(2, minmax(0, 180px)) minmax(0, 1fr); }
   .bc-register .cbar > #c-save:only-of-type { grid-column: 1; }
-  .bc-register #c-auto { grid-column: 3; grid-row: 1; justify-self: end; align-self: center; }
 }
 @media (max-width: 900px) {
   .bc-controls > .srch { flex-basis: 100%; }
   .bc-controls > .bc-filters, .bc-context #c-linked { margin-inline-start: 0; }
   .bc-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .bc-register .cbar { position: static; padding: 12px 0 0; }
+  .bc-register .cbar { margin-inline: -4px; }
+  html:has(.bc-register .cbar) { --bc-save-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  html:has(.bc-register .cbar) #toasts { bottom: calc(var(--bc-save-bottom) + 88px); }
+  html:has(.bc-register) #toasts { align-items: flex-end; pointer-events: none; }
   .bc-table #ct tbody tr[data-i] td.acc-c { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 8px; }
   .bc-table #ct tbody tr[data-i] td.acc-c > b { grid-column: 1; grid-row: 1; }
   .bc-table #ct tbody tr[data-i] td.acc-c > .mvdot { grid-column: 1; grid-row: 2; }
