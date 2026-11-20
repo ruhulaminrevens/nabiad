@@ -113,8 +113,8 @@ Object.assign(DemoAPI, {
     }
     return demoStore.inv;
   },
-  ivGuard(dates, staffOk = true) {
-    const r = S.me.role; if (r === "boss" || (!staffOk && r !== "admin")) throw new Error("row-level security");
+  ivGuard(dates, staffOk = true, action = "edit") {
+    if (!(staffOk ? moduleCan("inventory", action) : S.me.role === "admin")) throw writeDenied();
     const L = demoStore.inv.locks.map(x => x.month); if (dates.some(d => d && L.includes(ivMon(d)))) throw new Error("month_locked");
   },
   async ovdAll() {
@@ -137,8 +137,8 @@ Object.assign(DemoAPI, {
   },
   async invOrderSave(o) {
     const s = await this.ivStore(), old = o.id ? s.orders.find(x => x.id === o.id) : null;
-    this.ivGuard([o.date, old?.date]);
-    if (old && S.me.role === "staff" && old.status === "cancel") throw new Error("policy");
+    this.ivGuard([o.date, old?.date], true, old ? "edit" : "entry");
+    if (old && S.me.role !== "admin" && old.status === "cancel") throw new Error("policy");
     const row = ivCalc({ ch: o.ch, date: o.date, party: o.party || null, party_id: o.party_id || null, location: o.location || null, asm: o.asm || null, transport: o.transport || null, vehicle: o.vehicle || null, rent: o.rent === "" || o.rent == null ? null : +o.rent, lines: JSON.parse(JSON.stringify(o.lines)), free: o.free || null, remarks: o.remarks || null, status: o.status, delivery_date: o.delivery_date || null });
     const key = r => `${r.ch === "nir" ? "Niramoy" : "Order"} ${r.date} · ${r.party || r.transport || ""} · ${r.value} (${r.status})`;
     if (old) { this.aud("inv_orders", "update", key(row), { ...old }, { ...old, ...row }); Object.assign(old, row, { updated_at: new Date().toISOString() }); this.save(); return { ...old }; }
@@ -146,17 +146,17 @@ Object.assign(DemoAPI, {
   },
   async invOrderStatus(ids, status, dd) {
     const s = await this.ivStore(), out = [];
-    for (const id of ids) { const o = s.orders.find(x => x.id === id); if (!o) continue; this.ivGuard([o.date]); if (S.me.role === "staff" && o.status === "cancel") continue; const before = { ...o }; o.status = status; o.delivery_date = status === "ok" ? (dd || today()) : null; ivCalc(o); this.aud("inv_orders", "update", `Order ${o.date} · ${o.party || ""} (${status})`, before, { ...o }); out.push({ ...o }); }
+    for (const id of ids) { const o = s.orders.find(x => x.id === id); if (!o) continue; this.ivGuard([o.date]); if (S.me.role !== "admin" && o.status === "cancel") continue; const before = { ...o }; o.status = status; o.delivery_date = status === "ok" ? (dd || today()) : null; ivCalc(o); this.aud("inv_orders", "update", `Order ${o.date} · ${o.party || ""} (${status})`, before, { ...o }); out.push({ ...o }); }
     this.save(); return out;
   },
   async invLinkParty(name, loc, pid) { const s = await this.ivStore(); this.ivGuard([], false); const out = []; s.orders.forEach(o => { if (o.ch === "dist" && o.party === name && !o.party_id && (o.location || null) === (loc || null) && !s.locks.some(l => l.month === ivMon(o.date))) { o.party_id = pid; out.push({ ...o }); } }); this.save(); return out; },
   async invOrderDelete(id) { const s = await this.ivStore(), o = s.orders.find(x => x.id === id); this.ivGuard([o?.date], false); s.orders = s.orders.filter(x => x.id !== id); this.aud("inv_orders", "delete", `Order ${o.date} · ${o.party || o.transport || ""}`, o, null); this.save(); },
-  async invDemandSave(ch, month, lines) { const s = await this.ivStore(); this.ivGuard([month]); const d = s.demand.find(x => x.ch === ch && x.month === month); if (d) d.lines = lines; else s.demand.push({ ch, month, lines }); this.aud("inv_demand", d ? "update" : "insert", `Demand ${ch} ${month}`, null, { ch, month, lines }); this.save(); },
+  async invDemandSave(ch, month, lines) { const s = await this.ivStore(); const d = s.demand.find(x => x.ch === ch && x.month === month); this.ivGuard([month], true, d ? "edit" : "entry"); if (d) d.lines = lines; else s.demand.push({ ch, month, lines }); this.aud("inv_demand", d ? "update" : "insert", `Demand ${ch} ${month}`, null, { ch, month, lines }); this.save(); },
   async rmProductSave(p) { const s = await this.ivStore(); this.ivGuard([], false); Object.assign(s.rmp.find(x => x.code === p.code), { name: p.name, bag_kg: +p.bag_kg, opening_date: p.opening_date, opening_bag: +p.opening_bag || 0 }); this.save(); },
   async rmDailySave(r) { await this.rmDailySaveMany([r]); },
   async rmDailySaveMany(rows) {
     const s = await this.ivStore();
-    this.ivGuard(rows.map(r => r.date));
+    for (const row of rows) this.ivGuard([row.date], true, s.rmd.some(d => d.date === row.date && d.product === row.product) ? "edit" : "entry");
     for (const row of rows) {
       const old = s.rmd.find(x => x.date === row.date && x.product === row.product);
       this.aud("rm_daily", old ? "update" : "insert", "RM " + row.product + " " + row.date, old ? { ...old } : null, row);
@@ -239,7 +239,7 @@ const rmStockAt = (code, d) => { const r = rmLedgerRows(code, "", d); return r.c
 function rmPatch(d, code, r, x, m, removed = false) { INV.rmd = INV.rmd.filter(z => !(String(z.date).slice(0, 10) === d && z.product === code)); if (!removed) INV.rmd.push({ date: d, product: code, ready_bag: r, delivery_bag: x, remarks: m || null }); }
 
 /* ---------- shared UI pieces ---------- */
-const ivCan = () => ({ admin: S.me.role === "admin", edit: S.me.role !== "boss" });
+const ivCan = () => ({ admin: S.me.role === "admin", entry: moduleCan("inventory", "entry"), edit: moduleCan("inventory", "edit"), write: moduleOpen("inventory") });
 const ivDl = (id, vals) => `<datalist id="${id}">${[...new Set(vals.filter(Boolean))].sort().map(x => `<option value="${esc(x)}">`).join("")}</datalist>`;
 const ivTile = (c, ic, lab, val, sub) => `<div class="kc iv-k magic-card" style="--kc:${c}"><span>${ico(ic)} ${lab}</span><div class="kv"><b class="num">${val}</b></div>${sub ? `<small class="mut">${sub}</small>` : ""}</div>`;
 const ivSeg = (id, opts, cur) => `<div class="pbm iv-seg" id="${id}">${opts.map(([k, l]) => `<button type="button" class="chip ${k === cur ? "on" : ""}" aria-pressed="${k === cur}" data-k="${esc(k)}">${esc(l)}</button>`).join("")}</div>`;
@@ -261,8 +261,8 @@ const ivEmpty = t => `<div class="empty iv-empty">${t}</div>`;
 /* order / trip form (both channels) */
 function ivOrderModal(ch, o, done) {
   const C = ivCan(), isNew = !o.id, cur = o.id ? { ...JSON.parse(JSON.stringify(o)), party: ivPname(o) } : { ch, date: today(), status: ch === "nir" ? "ok" : "pending", lines: {}, party: ch === "nir" ? "Niramoy Traders" : "", location: ch === "nir" ? "Naogaon" : "" };
-  const staffLock = !isNew && S.me.role === "staff" && o.status === "cancel";
-  const ro = !C.edit || staffLock || ivLocked(cur.date), used = Object.keys(cur.lines);
+  const staffLock = !isNew && !C.admin && o.status === "cancel";
+  const ro = !(isNew ? C.entry : C.edit) || staffLock || ivLocked(cur.date), used = Object.keys(cur.lines);
   const items = ivItemsFor(ch, used), rateOf = it => ch === "nir" ? it.rate_nir : it.rate_dist;
   const past = INV.orders.filter(x => x.ch === ch);
   const F2 = { q: "", only: !isNew }, invalid = new Set();
@@ -358,7 +358,7 @@ function ivItemsModal(done) {
 function ivDemandModal(ch, month, done) {
   const cur = { ...ivDemandOf(ch, month) };
   const items = ivItemsFor(ch, Object.keys(cur));
-  const readonly = !ivCan().edit || ivLocked(month);
+  const readonly = !(INV.demand.some(d => d.ch === ch && d.month === month) ? ivCan().edit : ivCan().entry) || ivLocked(month);
   modal(`<h2>${bi("মাসের Demand", "Monthly demand")} · ${ivMonName(month)} · ${bi(...IV_CH[ch])}</h2>${ivLockNote(month)}
     <label class="f" for="dm-find">${bi("পণ্য খুঁজুন", "Find item")}</label>
     <input id="dm-find" class="in" type="search" autocomplete="off">
@@ -485,7 +485,7 @@ async function ivOrdersPage(v, ch) {
     const T = { list: [nir ? bi("ট্রিপ", "Trips") : bi("অর্ডার", "Orders"), list.length], item: [bi("আইটেম অনুযায়ী", "By item"), Object.keys(ivItemTotals(list)).length], party: [bi("পার্টি অনুযায়ী", "By party"), new Set(list.map(o => o.party)).size], asm: [bi("ASM অনুযায়ী", "By ASM"), new Set(list.map(o => o.asm)).size], tr: [bi("ট্রান্সপোর্ট অনুযায়ী", "By transport"), new Set(list.map(o => o.transport)).size] }[F.tab];
     $(`#${K}-h`, v).textContent = T[0] + (F.m === "all" ? "" : ` · ${dcRangeLabel(f, t)}`); $(`#${K}-cnt`, v).textContent = T[1];
     out.innerHTML = F.tab === "item" ? byItem(list) : F.tab === "party" ? byKey(list, "party", bi("পার্টি", "Party")) : F.tab === "asm" ? byKey(list, "asm", "ASM / RSM") : F.tab === "tr" ? byKey(list, "transport", bi("ট্রান্সপোর্ট", "Transport"))
-      : list.length ? table(list) : ivEmpty(F.q || F.st || F.asm ? bi("ফিল্টারে কিছু মেলেনি", "Nothing matches the filters") : bi("এই সময়ে কোনো রেকর্ড নেই", "No records in this period") + (C.edit ? `<div style="margin-top:10px"><button class="btn pri" id="${K}-new2">${ico("plus")} ${nir ? bi("নতুন ট্রিপ", "New trip") : bi("নতুন অর্ডার", "New order")}</button></div>` : ""));
+      : list.length ? table(list) : ivEmpty(F.q || F.st || F.asm ? bi("ফিল্টারে কিছু মেলেনি", "Nothing matches the filters") : bi("এই সময়ে কোনো রেকর্ড নেই", "No records in this period") + (C.entry ? `<div style="margin-top:10px"><button class="btn pri" id="${K}-new2">${ico("plus")} ${nir ? bi("নতুন ট্রিপ", "New trip") : bi("নতুন অর্ডার", "New order")}</button></div>` : ""));
     labelTables(out);
     $$("[data-ed]", out).forEach(b => b.onclick = () => ivOrderModal(ch, INV.orders.find(o => o.id === b.dataset.ed), draw));
     $$("[data-sel]", out).forEach(c => c.onchange = () => { c.checked ? F.sel.add(c.dataset.sel) : F.sel.delete(c.dataset.sel); bulkBar(); });
@@ -519,7 +519,7 @@ function ivEntry(box, ch, changed) {
   const rateOf = it => nir ? it.rate_nir : it.rate_dist;
   box.innerHTML = `<div class="card tbar dcx-bar"><div class="dcx-date">${dateNav(K, date)}</div><div class="dcx-stats" id="${K}-kpi"></div></div>
    <div class="dcx-split iv-split">
-    ${C.edit ? `<div class="card dcx-entry iv-ent"><div class="dcx-et"><h3>${ico("plus")} ${nir ? bi("নতুন ট্রিপ", "New trip") : bi("নতুন অর্ডার", "New order")}</h3></div>
+    ${C.entry ? `<div class="card dcx-entry iv-ent"><div class="dcx-et"><h3>${ico("plus")} ${nir ? bi("নতুন ট্রিপ", "New trip") : bi("নতুন অর্ডার", "New order")}</h3></div>
      <div class="iv-eg ${nir ? "nir" : "dist"}">
       ${nir ? `<div class="g-tr"><label class="f">${bi("ট্রান্সপোর্ট", "Transport")} *</label><input class="in big" id="${K}-tr" list="${K}-dtr" autocomplete="off"></div>
        <div class="g-vh"><label class="f">${bi("গাড়ির নম্বর", "Vehicle no.")}</label><input class="in" id="${K}-vh" list="${K}-dvh" autocomplete="off"></div>
@@ -561,7 +561,7 @@ function ivEntry(box, ch, changed) {
     return `<div class="dcx-info"><span class="tg v">${ico("users")} ${esc(p.asm || bi("ASM নেই", "No ASM"))}</span>${p.district ? `<span class="tg">${ico("map")} ${esc(p.district)}</span>` : ""}${open.length ? `<span class="tg w">${bi("খোলা অর্ডার", "Open orders")} ${open.length} · ${ivQ(ivSum(open, o => o.total_qty))} ctn</span>` : ""}<span class="tg">${bi("এই মাসে ডেলিভারি", "Delivered this month")} ৳ ${money0(dl)}</span><span class="tg">${bi("কালেকশন", "Collected")} ৳ ${money0(cv)}</span>${last ? `<span class="mut xs">${bi("শেষ অর্ডার", "Last order")} ${dmy(last)}</span>` : ""}</div>`;
   }
   async function bootPickers() {
-    if (!C.edit) return;
+    if (!C.entry) return;
     if (!nir) {
       let parties = []; try { parties = await dpLoad(); } catch { }
       ivCols(ivMon(date), ivMonEnd(ivMon(date))).then(() => party && ($b("ph").innerHTML = partyInfo(party))).catch(() => { });
@@ -603,7 +603,7 @@ function ivEntry(box, ch, changed) {
   }
   function clear(all) { cart = []; err(""); if (iPick) iPick.set(null); else if (iIn) iIn.value = ""; if (qIn) qIn.value = ""; if ($b("rm")) $b("rm").value = ""; if (all || !nir) { if (pPick) pPick.set(null); party = null; if (pIn) { pIn.value = ""; aIn.value = ""; tIn.value = ""; $b("ph").innerHTML = ""; } } if (nir && all) { tIn.value = ""; vIn.value = ""; rIn.value = ""; } st = nir ? "ok" : "pending"; stBar(); drawCart(); (nir ? tIn : pIn)?.focus(); }
   async function save() {
-    if (busy || !C.edit) return; err("");
+    if (busy || !C.entry) return; err("");
     if ((iIn.value.trim() || qIn.value.trim()) && addLine() !== true) return;
     const d = $b("d").value; if (!d) return err(bi("তারিখ দিন", "Enter the date"));
     if (ivLocked(d)) return err(ivErr(new Error("month_locked")));
@@ -643,7 +643,7 @@ function ivEntry(box, ch, changed) {
         <div class="iv-ot2">${Object.entries(o.lines).map(([k, l]) => `<span>${esc(ivItemName(k))} <b>${ivQ(l.q)}</b></span>`).join("")}${o.remarks ? `<span class="mut">${esc(o.remarks)}</span>` : ""}</div></div>
         <div class="iv-ov"><b class="num">${ivQ(o.total_qty)}</b><small class="num">৳ ${money0(o.value)}</small></div>
         <div class="iv-oa">${ivSt(o.status)}${o.status === "ok" && o.delivery_date && o.delivery_date !== o.date ? `<small class="mut">${dmy(o.delivery_date)}</small>` : ""}${["pending", "today"].includes(o.status) ? `<small class="iv-age ${ivDays(o.date, today()) > 7 ? "late" : ""}">${ivDays(o.date, today())} ${bi("দিন", "d")}</small>` : ""}</div>
-        <div class="iv-ob">${canSt(o) && o.status !== "ok" ? `<button class="btn sm pri" data-ok="${o.id}" title="Delivered">${ico("check")}</button>` : ""}${!nir && C.edit ? `<button class="btn sm" data-col="${o.id}" title="${bi("কালেকশন যোগ", "Add collection")}">৳</button>` : ""}<button class="btn sm" data-ed="${o.id}" title="${bi("খুলুন", "Open")}">${ico("edit")}</button></div></div>`).join("")}</div>`
+        <div class="iv-ob">${canSt(o) && o.status !== "ok" ? `<button class="btn sm pri" data-ok="${o.id}" title="Delivered">${ico("check")}</button>` : ""}${!nir && moduleCan("collection", "entry") ? `<button class="btn sm" data-col="${o.id}" title="${bi("কালেকশন যোগ", "Add collection")}">৳</button>` : ""}<button class="btn sm" data-ed="${o.id}" title="${bi("খুলুন", "Open")}">${ico("edit")}</button></div></div>`).join("")}</div>`
       : `<div class="empty">${showOpen ? bi("কোনো খোলা অর্ডার নেই ✓", "No open orders ✓") : bi("এই তারিখে কিছু নেই", "Nothing on this date")}</div>`;
     $$("[data-sl]", box).forEach(c => c.onchange = () => { c.checked ? sel.add(c.dataset.sl) : sel.delete(c.dataset.sl); selbar(); });
     $$("[data-ok]", box).forEach(b => b.onclick = async () => { b.disabled = true; try { ivPut(await ivSetStatus([b.dataset.ok], "ok", today())); toast(bi("✔ Delivered", "✔ Delivered")); draw(); changed && changed(); } catch (e) { toast(ivErr(e), "err"); b.disabled = false; } });
@@ -836,7 +836,7 @@ async function vInvRm(v) {
     const ps = INV.rmp.filter(p => p.active !== false), Ls = ps.map(p => rmLedgerRows(p.code, f, t));
     const dates = [...new Set(Ls.flatMap(L => L.rows.map(x => x.date)))].sort();
     const ckg = Ls.reduce((s, L, i) => s + (L.open + ivSum(L.rows, x => x.ready) - ivSum(L.rows, x => x.del)) * ps[i].bag_kg, 0);
-    const qf = C.edit ? `<div class="card iv-rmq noprint"><div class="dcx-et"><h3>${ico("plus")} ${bi("দৈনিক স্টক এন্ট্রি", "Daily stock entry")}</h3></div>
+    const qf = C.write ? `<div class="card iv-rmq noprint"><div class="dcx-et"><h3>${ico("plus")} ${bi("দৈনিক স্টক এন্ট্রি", "Daily stock entry")}</h3></div>
       <div class="iv-rq"><div><label class="f">${bi("তারিখ", "Date")}</label><input class="in big" type="date" id="rq-d" value="${today() >= f && today() <= t ? today() : t}" max="${today()}"></div>${ps.map(p => `<div class="iv-rqp"><b>${esc(p.name)}</b><div class="iv-rq2"><div><label class="f">Ready (bag)</label><input class="in big num rqi" data-c="${p.code}" data-k="r" inputmode="decimal" autocomplete="off"></div><div><label class="f">Delivery (bag)</label><input class="in big num rqi" data-c="${p.code}" data-k="x" inputmode="decimal" autocomplete="off"></div></div><small class="mut" data-sk="${p.code}"></small></div>`).join("")}<div class="wide"><label class="f">${bi("মন্তব্য", "Remarks")}</label><input class="in big rqi" id="rq-m" autocomplete="off"></div><div class="bt"><button class="btn pri big" id="rq-s">${ico("check")} ${bi("সেভ", "Save")}</button></div></div><div class="hint rd iv-err" id="rq-e"></div></div>` : "";
     return qf + `<div class="iv-rm2">${ps.map(p => card(p.code, f, t)).join("")}</div><div class="iv-ckg">${bi("মোট স্টক (দুটো মিলিয়ে)", "Total stock (both)")}: <b class="num">${ivQ(ckg)} kg</b></div>
       <div class="card flush"><div class="ch"><h3>${bi("দৈনিক হিসাব", "Daily")}</h3><span class="tag">${dates.length}</span></div>${dates.length ? `<div class="tw"><table class="iv-rmt"><thead><tr><th rowspan="2">${bi("তারিখ", "Date")}</th>${ps.map(p => `<th colspan="3" class="c">${esc(p.name)} (bag)</th>`).join("")}</tr><tr>${ps.map(() => `<th class="r">Ready</th><th class="r">Delivery</th><th class="r">${bi("স্টক", "Stock")}</th>`).join("")}</tr></thead><tbody>${dates.map(d => `<tr><td class="nw">${dmy(d)}</td>${Ls.map(L => { const x = L.rows.find(r => r.date === d); return x ? `<td class="r num">${x.ready || ""}</td><td class="r num">${x.del || ""}</td><td class="r num b ${x.stock < 0 ? "iv-neg" : ""}">${ivQ(x.stock)}</td>` : `<td></td><td></td><td></td>`; }).join("")}</tr>`).join("")}</tbody></table></div>` : ivEmpty(bi("এই সময়ে কোনো এন্ট্রি নেই", "No entries in this period"))}</div>`;
@@ -845,7 +845,7 @@ async function vInvRm(v) {
     const L = rmLedgerRows(code, f, t), p = L.p;
     const amount = bags => `<b class="num">${ivQ(bags)} <small>bag</small></b><small class="mut num">${kg(p, bags)} kg</small>`;
     const qty = (key, label) => `<div><label class="f" for="rf-${key}">${label}</label><input class="in num" type="number" min="0" step="0.01" inputmode="decimal" id="rf-${key}"></div>`;
-    const form = C.edit ? `<section class="card iv-stock-entry noprint" aria-labelledby="rf-title">
+    const form = C.write ? `<section class="card iv-stock-entry noprint" aria-labelledby="rf-title">
       <h3 id="rf-title">${ico("plus")} ${bi("স্টক এন্ট্রি", "Stock entry")}</h3>
       <div class="iv-stock-fields"><div class="iv-stock-date"><label class="f" for="rf-d">${bi("তারিখ", "Date")}</label><input class="in" type="date" id="rf-d" value="${t > today() ? today() : t}" max="${today()}"></div>
       ${qty("r", bi("প্রস্তুত (ব্যাগ)", "Ready (bags)"))}${qty("x", bi("ডেলিভারি (ব্যাগ)", "Delivery (bags)"))}
@@ -866,7 +866,7 @@ async function vInvRm(v) {
     $("#rm-lk", v).innerHTML = F.m === "month" ? ivLockNote(f) : "";
     out.innerHTML = F.tab === "all" ? combined(f, t) : product(F.tab, f, t);
     labelTables(out);
-    if (F.tab !== "all" && C.edit) {
+    if (F.tab !== "all" && C.write) {
       const code = F.tab, fill = () => { const d = $("#rf-d", out).value, x = INV.rmd.find(r => String(r.date).slice(0, 10) === d && r.product === code); $("#rf-r", out).value = x ? +x.ready_bag || "" : ""; $("#rf-x", out).value = x ? +x.delivery_bag || "" : ""; $("#rf-m", out).value = x?.remarks || ""; $("#rf-h", out).textContent = x ? bi("এই তারিখের এন্ট্রি আছে — সেভ করলে বদলে যাবে", "An entry exists for this date — saving will replace it") : ""; $("#rf-e", out).textContent = ivLocked(d) ? ivErr(new Error("month_locked")) : ""; };
       $("#rf-d", out).onchange = fill; fill();
       $$("[data-rd]", out).forEach(b => b.onclick = () => { $("#rf-d", out).value = b.dataset.rd; fill(); $("#rf-r", out).focus(); });
@@ -875,6 +875,7 @@ async function vInvRm(v) {
         if (!d || d > today()) return e(bi("সঠিক তারিখ দিন", "Enter a valid date up to today")); if (ivLocked(d)) return e(ivErr(new Error("month_locked"))); if (!$("#rf-r", out).validity.valid || !$("#rf-x", out).validity.valid || !Number.isFinite(r) || !Number.isFinite(x) || r < 0 || x < 0) return e(bi("শূন্য বা বেশি, সর্বোচ্চ দুই ঘর দশমিক দিন", "Enter non-negative amounts with up to two decimals"));
         const ex = INV.rmd.find(z => String(z.date).slice(0, 10) === d && z.product === code);
         const remarks = $("#rf-m", out).value.trim();
+        if (!(ex ? C.edit : C.entry)) return e(writeDenied().message);
         const button = $("#rf-s", out);
         button.disabled = true;
         try {
@@ -884,7 +885,7 @@ async function vInvRm(v) {
         } catch (z) { e(ivErr(z)); } finally { button.disabled = false; }
       };
     }
-    if (F.tab === "all" && C.edit && $("#rq-s", out)) {
+    if (F.tab === "all" && C.write && $("#rq-s", out)) {
       const ps = INV.rmp.filter(p => p.active !== false), ins = $$(".rqi", out);
       const fill = () => { const d = $("#rq-d", out).value; ps.forEach(p => { const x = INV.rmd.find(r => String(r.date).slice(0, 10) === d && r.product === p.code); $(`[data-c="${p.code}"][data-k="r"]`, out).value = x ? +x.ready_bag || "" : ""; $(`[data-c="${p.code}"][data-k="x"]`, out).value = x ? +x.delivery_bag || "" : ""; const sb = rmStockAt(p.code, addDays(d, -1)); $(`[data-sk="${p.code}"]`, out).textContent = bi(`আগের দিনের স্টক ${ivQ(sb)} bag`, `Stock the day before ${ivQ(sb)} bag`) + (x ? bi(" · এই তারিখের এন্ট্রি আছে", " · this date has an entry") : ""); }); const x0 = INV.rmd.find(r => String(r.date).slice(0, 10) === d && r.remarks); $("#rq-m", out).defaultValue = $("#rq-m", out).value = x0?.remarks || ""; $("#rq-e", out).textContent = ivLocked(d) ? ivErr(new Error("month_locked")) : ""; };
       $("#rq-d", out).onchange = fill; fill();
@@ -901,6 +902,7 @@ async function vInvRm(v) {
           if (!ex && !ready && !delivery) continue;
           const remarks = m !== originalNote ? m : ex?.remarks || "";
           if (ex && ready === +ex.ready_bag && delivery === +ex.delivery_bag && remarks === (ex.remarks || "")) continue;
+          if (!(ex ? C.edit : C.entry)) return e(writeDenied().message);
           rows.push({ date: d, product: p.code, ready_bag: ready, delivery_bag: delivery, remarks });
         }
         if (!rows.length) return e(bi("কোনো পরিমাণ বা নোট পরিবর্তন হয়নি", "No quantities or remarks changed"));

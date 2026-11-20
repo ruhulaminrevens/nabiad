@@ -305,7 +305,7 @@ async function vCashBook(v) {
     }
     await Promise.all([cbLearn(), cbLedLoad()]);
     if (id !== drawId || !body.isConnected) return;
-    const final = ex?.status === "final", admin = S.me.role === "admin", locked = (final && !admin) || S.me.role === "boss";
+    const final = ex?.status === "final", admin = S.me.role === "admin", locked = final ? !moduleCan("cash", "edit", false) : !moduleCan("cash", "entry") && !(ex && moduleCan("cash", "edit", false));
     let local = null; try { local = JSON.parse(localStorage.getItem(CB_DRAFT(date)) || "null"); } catch { }
     let src = ex, fromLocal = false;
     if (!final && local && (!ex || new Date(local.updated_at) > new Date(ex.updated_at))) { src = local; fromLocal = true; }
@@ -317,7 +317,7 @@ async function vCashBook(v) {
     let pend = null; try { if (!final) pend = (await API.cbRange(addDays(date, -60), addDays(date, -1))).filter(r => r.status !== "final" && (!pB || r.date > pB.date)).pop() || null; } catch { }
     if (id !== drawId || !body.isConnected) return;
     const msgs = [];
-    if (final) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 " + bi("এই তারিখের ক্যাশ খাতা ফাইনাল সেভ হয়েছে।", "This date's Cash Book is final.") : "⚠ " + bi("ফাইনাল সেভ করা আছে — Admin হিসেবে বদলাতে পারবেন।", "Saved as final — you can edit it as Admin.")} <span class="mut sm">${esc(ex.entered_by || "")}</span></div>`);
+    if (final) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 " + bi("এই তারিখের ক্যাশ খাতা ফাইনাল সেভ হয়েছে।", "This date's Cash Book is final.") : "⚠ " + bi("ফাইনাল সেভ আছে। সেভ করলে পরিবর্তন কার্যকর হবে।", "This day is final. Saving will apply your changes.")} <span class="mut sm">${esc(ex.entered_by || "")}</span></div>`);
     else if (src) msgs.push(`<div class="alert vi">📝 <span>${bi("ড্রাফট লোড হয়েছে", "Draft loaded")}${fromLocal ? bi(" (এই ডিভাইস)", " (this device)") : ""} — ${esc(src.entered_by || S.me.name)} · ${new Date(src.updated_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>${!locked ? `<button class="btn sm" id="cb-dd" style="margin-left:auto">${bi("ড্রাফট বাদ দিন", "Discard draft")}</button>` : ""}</div>`);
     if (po != null && !final) msgs.push(`<div class="mut sm">🔗 ${bi("Opening নিজে এসেছে", "Opening is automatic")}: <b>${dmy(pdate)}</b> ${psrc === "book" ? bi("-এর ক্যাশ খাতার হাতে ক্যাশ থেকে", "cash in hand of the Cash Book") : bi("-এর ক্যাশ চেকার রেকর্ড থেকে", "cash in hand of the Cash Checker record")}${workGap(pdate, date) ? ` · <b class="am">${bi(`মাঝে ${workGap(pdate, date)} কর্মদিবসের রেকর্ড নেই`, `${workGap(pdate, date)} working day(s) without a record in between`)}</b>` : ""}</div>`);
     if (po == null && !final) msgs.push(`<div class="mut sm">${admin ? bi("এটা প্রথম রেকর্ড — শুরুর Cash in Hand একবারই লিখুন। এরপর প্রতিদিন নিজে আসবে।", "This is the first record — enter the starting Cash in Hand once. After that it carries over automatically.") : bi("শুরুর Opening এখনো বসানো হয়নি — Admin কে বসাতে বলুন।", "The starting Opening has not been set yet — ask the Admin to set it.")}</div>`);
@@ -479,7 +479,7 @@ async function vCashBook(v) {
         const exp = row.opening_cash + row.total_receipt - row.total_payment, d = row.cash_in_hand - exp;
         if (Math.abs(d) > 0.5 && !ask(bi(`হিসাব মেলেনি!\nOpening ${money0(row.opening_cash)} + Receipt ${money0(row.total_receipt)} − Payment ${money0(row.total_payment)} = ${money0(exp)}\nহাতে ক্যাশ লেখা ${money0(row.cash_in_hand)} → পার্থক্য ${cbSigned(d)}\n\nতবুও ফাইনাল সেভ করবেন?`, `Does not tally!\nOpening ${money0(row.opening_cash)} + Receipt ${money0(row.total_receipt)} − Payment ${money0(row.total_payment)} = ${money0(exp)}\nCash in hand entered ${money0(row.cash_in_hand)} → difference ${cbSigned(d)}\n\nSave as final anyway?`))) return;
         if (noCat && !ask(bi(`${noCat}টি লাইনের খাত বাছা হয়নি — Cash Checker-এ Others ধরা হবে। তবুও সেভ করবেন?`, `${noCat} line(s) have no category — the Cash Checker will count them as Others. Save anyway?`))) return;
-        if (!ask(bi(`${dmy(date)} — ক্যাশ খাতা ফাইনাল সেভ\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nহাতে ক্যাশ ৳ ${money0(row.cash_in_hand)}${S.me.role !== "admin" ? "\n\nসেভের পর আর বদলানো যাবে না (শুধু Admin পারবে)।" : ""}`, `${dmy(date)} — Cash Book final save\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nCash in hand ৳ ${money0(row.cash_in_hand)}${S.me.role !== "admin" ? "\n\nAfter saving it cannot be changed (only an Admin can)." : ""}`))) return;
+        if (!ask(bi(`${dmy(date)} — ক্যাশ খাতা ফাইনাল সেভ\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nহাতে ক্যাশ ৳ ${money0(row.cash_in_hand)}${!moduleCan("cash", "edit", false) ? "\n\nফাইনাল সেভের পর সম্পাদনার অনুমতি লাগবে।" : ""}`, `${dmy(date)} — Cash Book final save\nReceipt ৳ ${money0(row.total_receipt)} · Payment ৳ ${money0(row.total_payment)}\nCash in hand ৳ ${money0(row.cash_in_hand)}${!moduleCan("cash", "edit", false) ? "\n\nEditing after final save requires Edit access." : ""}`))) return;
       }
       const buttons = $$("#cb-save, #cb-draft", body);
       flushDraft();
