@@ -1007,24 +1007,44 @@ async function setStatus(c, status, date, remarks) {
 }
 async function vEntry(v) {
   const st = { purpose: null, photo: null };
+  let activityMode = "today", activityLimit = 12;
   v.innerHTML = head("চেক পোস্টিং", `<button class="btn" id="e-imp">${ico("dl")} <span>${bi("Excel ইম্পোর্ট", "Excel import")}</span></button><a class="btn" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a>`, "tc") + `
   <div class="split cq-posting">
-   <div class="card efc">
+   <section class="card efc" aria-labelledby="e-title">
+    <h2 class="cp-title" id="e-title">${bi("নতুন চেক এন্ট্রি", "New cheque entry")}</h2>
     <div class="fgrid ef">
-     <div class="s4 daterow"><div class="dr-d"><label class="f" for="e-date">চেকের তারিখ</label><input class="in big" type="date" id="e-date" value="${today()}"></div><div class="dr-p"><label class="f">চেকের ছবি <span class="mut">(ঐচ্ছিক)</span></label><div class="photo-in"><label class="btn big" for="e-ph-c" title="${bi("ক্যামেরায় ছবি তুলুন", "Take a photo with the camera")}">${ico("cam")} <span class="lbl">তুলুন</span></label><label class="btn big" for="e-ph" title="${bi("গ্যালারি থেকে বাছুন", "Choose from the gallery")}">${ico("img")} <span class="lbl">বাছুন</span></label><input type="file" id="e-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="e-ph" accept="image/*" hidden><img id="e-phv" class="hide" alt=""><button class="btn sm ghost hide" id="e-phx" title="ছবি বাদ">✕</button></div></div></div>
-     <div class="s4"><label class="f" for="e-ac">A/C Code</label><div><input class="in big" id="e-ac" autocomplete="off" placeholder="PBL-483" autofocus></div><div class="hint" id="e-achint"></div></div>
-     <div class="s2"><label class="f" for="e-no">চেক নং</label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off"><div class="hint" id="e-nohint"></div><div id="e-ocrw" class="hide noprint" style="margin-top:4px"><button type="button" class="btn sm" id="e-ocr">🔍 ${bi("ছবি থেকে পড়ুন", "Read from photo")}</button><div id="e-ocro" style="margin-top:4px"></div></div></div>
-     <div class="s2"><label class="f" for="e-amt">টাকা</label><input class="in big num" id="e-amt" inputmode="decimal" autocomplete="off"><div class="hint num" id="e-amthint"></div></div>
-     <div class="s4"><label class="f">খাত</label><div class="chips" id="e-purp"></div></div>
+     <div class="s2"><label class="f" for="e-ac">A/C Code</label><div><input class="in big" id="e-ac" autocomplete="off" placeholder="${bi("কোড বা নাম", "Code or name")}" aria-describedby="e-achint"></div><div class="hint cp-hint" id="e-achint"></div></div>
+     <div class="s2"><label class="f" for="e-date">চেকের তারিখ</label><input class="in big" type="date" id="e-date" value="${today()}"></div>
+     <div class="s2"><label class="f" for="e-no">চেক নং</label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off" aria-describedby="e-nohint"><div class="hint cp-hint" id="e-nohint"></div></div>
+     <div class="s2"><label class="f" for="e-amt">টাকা</label><input class="in big num" id="e-amt" inputmode="decimal" autocomplete="off" aria-describedby="e-amthint"><div class="hint num cp-hint" id="e-amthint"></div></div>
+     <div class="s4 cp-purpose"><div class="cp-section-head"><span class="f" id="e-purpose-label">${bi("খাত", "Purpose")}</span><div class="cp-purpose-tools">
+       <button class="btn sm" type="button" id="e-padd">${ico("plus")} ${bi("নতুন খাত", "Add purpose")}</button>
+       ${S.me.role === "admin" ? `<button class="btn sm" type="button" id="e-pmg">${bi("খাত পরিচালনা", "Manage purposes")}</button>` : ""}
+     </div></div><div class="chips" id="e-purp" role="group" aria-labelledby="e-purpose-label"></div></div>
      <div class="s4" id="x-cash" style="display:none"><label class="f">${bi("কে তুলেছে *", "Withdrawn by *")}</label><input type="hidden" id="e-taker"><div class="chips takers" id="e-takers">${TAKERS.map(t => `<button class="chip" type="button" data-t="${esc(t)}" aria-pressed="false">${esc(t)}</button>`).join("")}</div></div>
      <div class="s4" id="x-own" style="display:none"><label class="f" for="e-toac">কোন A/C তে জমা * <span class="mut">(${bi("শুধু রেকর্ড", "record only")})</span></label><div><input class="in" id="e-toac" autocomplete="off" placeholder="${bi("যে অ্যাকাউন্টে টাকা গেছে — কোড বা নাম টাইপ করুন", "Receiving account — type code or name")}"></div></div>
      <div class="s4 cbm" id="e-cashlink" style="display:none"></div>
      <div class="s4"><label class="f" for="e-rem">${bi("মন্তব্য", "Remarks")}</label><input class="in" id="e-rem" autocomplete="off" list="dl-rem" placeholder="যেমন: সাপ্লায়ারের নাম — বিলের বিবরণ"></div>
+     <details class="s4 cp-attachment" id="e-attach"><summary>${ico("cam")} <span>${bi("চেকের ছবি", "Cheque photo")}</span> <span class="mut sm" id="e-photo-state">${bi("ঐচ্ছিক", "Optional")}</span></summary>
+       <div class="photo-in"><button type="button" class="btn" id="e-camera">${ico("cam")} ${bi("ক্যামেরা", "Camera")}</button><button type="button" class="btn" id="e-gallery">${ico("img")} ${bi("গ্যালারি", "Gallery")}</button>
+       <input type="file" id="e-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="e-ph" accept="image/*" hidden><img id="e-phv" class="hide" alt="${bi("চেকের ছবির প্রিভিউ", "Cheque photo preview")}"><button type="button" class="btn sm ghost hide" id="e-phx" aria-label="${bi("ছবি বাদ দিন", "Remove photo")}">✕</button></div>
+       <div id="e-ocrw" class="hide noprint"><button type="button" class="btn sm" id="e-ocr">${ico("search")} ${bi("ছবি থেকে পড়ুন", "Read from photo")}</button><div id="e-ocro"></div></div>
+     </details>
      <div class="s4" id="e-sum" style="display:none"></div>
     </div>${datalist("dl-rem", [...S.cheques.map(c => c.remarks), ...S.cheques.map(c => c.party)])}
-    <div class="fbar"><div class="fb2 entry-actions"><button class="btn pri lg" id="e-save">${ico("save")} সেভ করুন</button><button class="btn lg" id="e-clear">পরিষ্কার</button></div><div class="hint rd" id="e-err" role="alert"></div><div class="sp"></div><label class="keep"><input type="checkbox" id="keep" checked> A/C ও খাত ধরে রাখুন</label></div>
-   </div>
-   <div class="card flush"><div class="ch"><h3>আজকের এন্ট্রি</h3><span class="tag" id="e-cnt"></span><a class="btn sm" href="#/cheques">${bi("চেক তালিকা", "Register")}</a></div><div id="e-list"></div></div>
+    <div class="fbar cp-footer">
+      <div class="hint rd" id="e-err" role="alert"></div>
+      <label class="keep"><input type="checkbox" id="keep" checked> ${bi("পরের এন্ট্রিতে A/C ও খাত ধরে রাখুন", "Keep A/C and purpose for next entry")}</label>
+      <div class="entry-actions"><button type="button" class="btn lg" id="e-clear">${bi("পরিষ্কার", "Clear")}</button><button type="button" class="btn pri lg" id="e-save">${ico("save")} ${bi("সেভ", "Save")}</button></div>
+    </div>
+   </section>
+   <section class="card flush cp-activity" aria-labelledby="e-activity-title">
+     <div class="ch"><h3 id="e-activity-title">${bi("চেক এন্ট্রি", "Cheque activity")}</h3><a class="btn sm" href="#/cheques">${bi("চেক রেজিস্টার", "Register")}</a></div>
+     <div class="cp-activity-controls"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false">${bi("চেকের তারিখে", "By cheque date")}</button></div>
+     <div class="cp-activity-stats"><div><span>${bi("এন্ট্রি", "Entries")}</span><strong id="e-cnt" class="num">0</strong></div><div><span>${bi("কার্যকর মোট", "Live amount")}</span><strong id="e-total" class="num">৳ 0</strong></div></div></div>
+     <div id="e-list"></div>
+     <button type="button" class="btn sm cp-more" id="e-more" hidden>${bi("আরও দেখুন", "Show more")}</button>
+   </section>
   </div>`;
   const posting = $(".cq-posting", v), importButton = $("#e-imp", v);
   const $e = id => $("#" + id, posting);
@@ -1034,7 +1054,9 @@ async function vEntry(v) {
     sum();
   });
   const toac = suggest($e("e-toac"), () => acItems(true).filter(i => i.value !== ac.get()?.value), () => sum());
-  const clearPhoto = photoPicker(v, st, { inp: "e-ph", cam: "e-ph-c", img: "e-phv", x: "e-phx" }, () => { $e("e-ocrw").classList.toggle("hide", !st.photo); $e("e-ocro").innerHTML = ""; });
+  const clearPhoto = photoPicker(v, st, { inp: "e-ph", cam: "e-ph-c", img: "e-phv", x: "e-phx" }, () => { $e("e-ocrw").classList.toggle("hide", !st.photo); $e("e-ocro").innerHTML = ""; $e("e-photo-state").textContent = st.photo ? bi("ছবি যুক্ত হয়েছে", "Attached") : bi("ঐচ্ছিক", "Optional"); });
+  $e("e-camera").onclick = () => $e("e-ph-c").click();
+  $e("e-gallery").onclick = () => $e("e-ph").click();
   $e("e-ocr").onclick = () => runOcr(st, $e("e-ocro"), val => { $e("e-no").value = val; $e("e-no").dispatchEvent(new Event("input")); }, val => { $e("e-amt").value = val; $e("e-amt").dispatchEvent(new Event("input")); });
   const purpKey = () => st.purpose ? purposeKey(st.purpose) : "";
   let clTok = 0, clT = 0;
@@ -1042,9 +1064,9 @@ async function vEntry(v) {
   $$("#e-takers .chip", v).forEach(c => c.onclick = () => { setTaker($e("e-taker").value === c.dataset.t ? "" : c.dataset.t); $e("e-err").textContent = ""; if (!matchMedia("(pointer:coarse)").matches) $e("e-rem").focus(); });
   function drawPurp() {
     if (!posting.isConnected) return;
-    $e("e-purp").innerHTML = allPurposes().map(p => `<button class="chip" type="button" data-p="${esc(p)}" aria-pressed="false">${esc(p.split(" (")[0])}</button>`).join("") + `<button class="chip add" type="button" id="e-padd" title="${bi("নতুন খাত যোগ করুন", "Add a new purpose")}">＋ নতুন</button>` + (S.me.role === "admin" ? `<button class="chip add" type="button" id="e-pmg" title="${LANG === "en" ? "Edit / delete purposes" : "খাত এডিট / মুছুন"}">⚙ ${LANG === "en" ? "Manage" : "ম্যানেজ"}</button>` : "");
+    $e("e-purp").innerHTML = allPurposes().map(p => `<button class="chip" type="button" data-p="${esc(p)}" aria-pressed="false">${esc(p.split(" (")[0])}</button>`).join("");
     if ($e("e-pmg")) $e("e-pmg").onclick = () => purposeManage(() => { if (st.purpose && !allPurposes().includes(st.purpose)) st.purpose = ""; drawPurp(); });
-    $$(".chip[data-p]", v).forEach(c => c.onclick = () => { st.purpose = c.dataset.p; applyPurpose(); if (purpKey() === "cash") $e("x-cash").scrollIntoView({ block: "nearest" }); else if (purpKey() === "own") $e("e-toac").focus(); else $e("e-rem").focus(); });
+    $$(".chip[data-p]", v).forEach(c => c.onclick = () => { st.purpose = c.dataset.p; $e("e-err").textContent = ""; applyPurpose(); if (purpKey() === "cash") $e("x-cash").scrollIntoView({ block: "nearest" }); else if (purpKey() === "own") $e("e-toac").focus(); else if (!matchMedia("(pointer:coarse)").matches) $e("e-rem").focus(); });
     $e("e-padd").onclick = () => askText("নতুন খাত (Purpose)", "খাতের নাম লিখুন (যেমন: Salary)", "", async n => {
       if (allPurposes(true).some(p => p.split(" (")[0].trim().toLowerCase() === n.split(" (")[0].trim().toLowerCase())) throw new Error("এই খাত আগেই আছে");
       await API.purposeAdd(n); PURP_X = [...allPurposes(), n]; if (!DEMO) localStorage.setItem("nb_purp_v2", JSON.stringify(PURP_X));
@@ -1084,20 +1106,41 @@ async function vEntry(v) {
   ["e-no", "e-amt"].forEach(i => $e(i).addEventListener("input", sum));
   $e("e-ac").addEventListener("picked", () => $e("e-no").select() || $e("e-no").focus());
   $e("e-no").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $e("e-amt").focus(); } });
-  $e("e-amt").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (st.purpose) save(); else $e("e-err").textContent = "খাত বাছুন"; } });
+  $e("e-amt").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (st.purpose) save(); else choosePurpose(); } });
   $$("#e-taker,#e-rem", v).forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); save(); } }));
   $e("e-toac").addEventListener("picked", () => $e("e-rem").focus());
-  $e("e-date").addEventListener("change", () => { clearTimeout(clT); clT = setTimeout(cashLink, 100); });
+  $e("e-date").addEventListener("change", () => { clearTimeout(clT); clT = setTimeout(cashLink, 100); if (activityMode === "date") resetActivity("date"); });
   function clearAll(full) {
+    $e("e-err").textContent = "";
+    $e("e-attach").open = false;
     if (full || !$("#keep", v).checked) { ac.set(null); st.purpose = null; setTaker(""); $e("e-achint").textContent = ""; $e("e-nohint").textContent = ""; }
     toac.set(null); $e("e-no").value = ac.get() ? nextNo(ac.get().value) : ""; $e("e-amt").value = ""; $e("e-rem").value = ""; clearPhoto(); applyPurpose();
   }
   function list() {
     if (!posting.isConnected) return;
-    const t = today(), arr = S.cheques.filter(c => (c.at && iso(new Date(c.at)) === t) || c.date === t).sort((a, b) => (b.at || "").localeCompare(a.at || ""));
+    const t = today(), date = $e("e-date").value;
+    const arr = S.cheques.filter(c => activityMode === "date" ? c.date === date : (c.at ? iso(new Date(c.at)) : c.date) === t).sort((a, b) => (b.at || "").localeCompare(a.at || ""));
     $e("e-cnt").textContent = arr.length;
-    $e("e-list").innerHTML = arr.length ? `<div class="tw cards" style="max-height:66vh"><table><thead><tr><th>A/C · চেক</th><th class="r">টাকা</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${arr.map(c => `<tr><td><div class="c1"><button type="button" class="cq-link" data-recent="${esc(c.id)}">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc(c.purpose.split(" (")[0])}${c.party ? " · " + esc(c.party) : ""}</div></div></td><td class="r num">${money(c.amount)}</td><td>${stTag(c.status)}${pendTag(c)}</td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">আজ এখনো কোনো এন্ট্রি নেই</div>`;
+    $e("e-total").textContent = "৳ " + money(sumAmt(arr.filter(isLive)));
+    $e("e-more").hidden = arr.length <= activityLimit;
+    $e("e-list").innerHTML = arr.length ? `<div class="tw cards"><table><thead><tr><th>A/C · চেক</th><th class="r">টাকা</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${arr.slice(0, activityLimit).map(c => `<tr><td><div class="c1"><button type="button" class="cq-link" data-recent="${esc(c.id)}">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc(c.purpose.split(" (")[0])}${c.party ? " · " + esc(c.party) : ""}</div></div></td><td class="r num">${money(c.amount)}</td><td>${stTag(c.status)}${pendTag(c)}</td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">${activityMode === "date" ? bi("এই চেকের তারিখে কোনো এন্ট্রি নেই", "No entries for the selected cheque date") : bi("আজ এখনো কোনো চেক পোস্ট হয়নি", "No cheques posted today")}</div>`;
   }
+  function choosePurpose() {
+    $e("e-err").textContent = bi("খাত বাছুন", "Choose a purpose.");
+    $e("e-purp").querySelector("button")?.focus();
+  }
+  function resetActivity(mode) {
+    activityMode = mode; activityLimit = 12;
+    for (const [id, key] of [["e-today", "today"], ["e-bydate", "date"]]) {
+      const btn = $e(id);
+      btn.classList.toggle("on", mode === key);
+      btn.setAttribute("aria-pressed", String(mode === key));
+    }
+    list();
+  }
+  $e("e-today").onclick = () => resetActivity("today");
+  $e("e-bydate").onclick = () => resetActivity("date");
+  $e("e-more").onclick = () => { activityLimit += 12; list(); };
   $e("e-list").onclick = event => {
     const row = S.cheques.find(c => c.id === event.target.closest("[data-recent]")?.dataset.recent);
     if (row) chequeModal(row, list);
@@ -1108,7 +1151,7 @@ async function vEntry(v) {
     const code = ac.get()?.value, no = chequeNumber($e("e-no").value), amount = chequeAmount($e("e-amt").value), date = $e("e-date").value, k = purpKey();
     if (!code) return err.textContent = "A/C Code বাছুন", $e("e-ac").focus();
     if (!no) return err.textContent = bi("সঠিক চেক নম্বর দিন।", "Enter a valid cheque number."), $e("e-no").focus();
-    if (!st.purpose) return err.textContent = "খাত বাছুন";
+    if (!st.purpose) return choosePurpose();
     if (!validChequeDate(date)) return err.textContent = bi("সঠিক তারিখ দিন।", "Enter a valid cheque date."), $e("e-date").focus();
     if (k !== "cancel" && !(amount > 0)) return err.textContent = bi("সঠিক টাকার অঙ্ক দিন।", "Enter a valid amount greater than zero."), $e("e-amt").focus();
     if (k === "cancel" && $e("e-amt").value.trim() && amount !== 0) return err.textContent = bi("বাতিল পাতার অঙ্ক ০ দিন।", "Use a zero amount for a cancelled leaf."), $e("e-amt").focus();
@@ -1121,7 +1164,9 @@ async function vEntry(v) {
     if (amount >= 1000000 && !ask(bi(`৳ ${money(amount)} — অঙ্ক ঠিক আছে?`, `৳ ${money(amount)} — is the amount right?`))) return;
     const fields = { date, code, no, amount: k === "cancel" ? 0 : amount, purpose: st.purpose, taker: k === "cash" ? $e("e-taker").value : "", party: "", toac: k === "own" ? toac.get().value : "", remarks: $e("e-rem").value.trim() };
     const saveButton = $e("e-save"), clearButton = $e("e-clear");
+    const saveLabel = saveButton.innerHTML;
     busy = true; saveButton.disabled = clearButton.disabled = true;
+    saveButton.textContent = bi("সেভ হচ্ছে…", "Saving…");
     try {
       const id = crypto.randomUUID(); let photo = null, warn = "";
       if (st.photo) {
@@ -1134,9 +1179,9 @@ async function vEntry(v) {
       if (warn) toast(warn.slice(3), /হয়নি/.test(warn) ? "err" : "ok"); toast(row.pending ? `✔ অফলাইনে জমা হয়েছে: ${code} · ${no} · ৳ ${money(row.amount)} — নেট এলে সিঙ্ক হবে` : `✔ সেভ হয়েছে: ${code} · ${no} · ৳ ${money(row.amount)}`);
       if (!posting.isConnected) return;
       clearAll(false); list();
-      const n = $e("e-no"); n.focus(); n.select();
+      const next = $e(ac.get() ? "e-no" : "e-ac"); next.focus(); next.select();
     } catch (e) { err.textContent = e.message || String(e); toast(e.message || String(e), "err"); }
-    finally { busy = false; saveButton.disabled = clearButton.disabled = false; }
+    finally { busy = false; saveButton.disabled = clearButton.disabled = false; saveButton.innerHTML = saveLabel; }
   }
   $e("e-save").onclick = save; $e("e-clear").onclick = () => { clearAll(true); $e("e-ac").focus(); };
   list();

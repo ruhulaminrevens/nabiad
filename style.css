@@ -1943,3 +1943,40 @@ body:has(#modal-root .mback) { overflow: hidden; }
   .bk-stat { padding:8px; }
   .bk-search { grid-template-columns:1fr; }
 }
+
+/* Cheque Posting */
+.cq-posting > section { min-width: 0; }
+.cq-posting .cp-title { margin: 0 0 14px; font-size: 1rem; }
+.cq-posting .fgrid.ef { align-items: start; }
+.cq-posting .fgrid.ef > * { min-width: 0; }
+.cq-posting #e-date { width: 100%; min-width: 0; }
+.cq-posting .cp-hint:empty { display: none; }
+.cp-purpose, .cp-attachment { padding-block: 10px; border-top: 1px solid var(--line); }
+.cp-section-head, .cp-purpose-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cp-section-head { justify-content: space-between; margin-bottom: 7px; }
+.cp-section-head .f { margin: 0; }
+.cp-purpose-tools .btn { padding-inline: 8px; }
+.cp-attachment { border-bottom: 1px solid var(--line); }
+.cp-attachment summary { cursor: pointer; font-weight: 650; padding-block: 4px; }
+.cp-attachment summary:focus-visible { outline: 2px solid var(--pri); outline-offset: 3px; }
+.cp-attachment summary svg { width: 16px; height: 16px; vertical-align: middle; margin-inline: 4px; }
+.cp-attachment summary .mut { font-weight: 500; margin-inline-start: 5px; }
+.cp-attachment .photo-in, .cp-attachment #e-ocrw, .cp-attachment #e-ocro:not(:empty) { margin-top: 8px; }
+.cq-posting .cp-footer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(15rem, 42%); align-items: center; gap: 8px 12px; }
+.cp-footer .entry-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cp-footer #e-err { grid-column: 1 / -1; margin: 0; }
+.cp-footer .keep { justify-self: start; min-width: 0; white-space: normal; }
+.cp-activity-controls { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.cp-activity-stats { display: grid; grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); gap: 8px; margin-top: 10px; }
+.cp-activity-stats > div { display: grid; min-width: 0; gap: 3px; padding: 8px 10px; border-radius: 9px; background: var(--surface2); overflow-wrap: anywhere; }
+.cp-activity-stats span { font-size: .78rem; color: var(--mut); }
+.cp-activity-stats strong { font-size: 1rem; }
+.cp-more { margin: 8px 14px 12px; }
+.cp-more[hidden] { display: none; }
+@media (max-width: 900px) {
+  .cq-posting .cp-footer { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 390px) {
+  .cp-purpose-tools .btn { min-height: 34px; white-space: normal; }
+  .cq-posting .fgrid.ef .in.big { padding-inline: 7px; }
+}
