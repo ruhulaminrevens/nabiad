@@ -323,7 +323,7 @@ const SbAPI = {
     if (!u) { const c = readCache(); if (!navigator.onLine && c?.me) return c.me; return null; }
     const { data: p, error } = await sb.from("profiles").select("*").eq("id", u.id).maybeSingle();
     if (error && isNetErr(error)) { const c = readCache(); if (c?.me?.id === u.id) return c.me; }
-    if (error || !p || !p.active) return null; return { id: u.id, email: p.email, name: p.name, role: p.role, edit_days: p.edit_days || 0 };
+    if (error || !p || !p.active) return null; return { id: u.id, email: p.email, name: p.name, role: p.role, edit_days: p.edit_days || 0, module_access: p.module_access ?? null };
   },
   async login(email, pw) { const { error } = await sb.auth.signInWithPassword({ email, password: pw }); if (error) throw error; return this.session(); },
   async logout() { try { localStorage.removeItem("nabiad_locked"); } catch { } await sb.auth.signOut(); },
@@ -401,6 +401,7 @@ const SbAPI = {
   async deleteMark(id) { const { data, error } = await sb.from("leaf_marks").delete().eq("id", id).select("id"); if (error) throw error; if (!data || !data.length) throw new Error("admin_only"); },
   async deleteBook(id) { const { error } = await sb.from("books").delete().eq("id", id); if (error) throw /in_use/.test(error.message || "") ? new Error(bi("এই বইয়ের পাতায় চেক এন্ট্রি আছে — মুছা যাবে না। স্ট্যাটাস Finished বা Lost দিন", "This book has cheque entries — it cannot be deleted. Set the status to Finished or Lost instead.")) : error; },
   async dataKey() { const { data, error } = await sb.from("app_secrets").select("v").eq("k", "data_key").maybeSingle(); if (error || !data) throw new Error("ডাটা কী পাওয়া যায়নি"); return data.v; },
+  async setModuleAccess(id, config) { const { error } = await sb.rpc("admin_set_module_access", {target_id:id, config}); if (error) throw error; },
   async users() { const { data, error } = await sb.from("profiles").select("*").order("role"); if (error) throw error; return data; },
   async updateProfile(id, p) { const { error } = await sb.from("profiles").update(p).eq("id", id); if (error) throw error; },
   async createUser(email, password, name, role) { const { data, error } = await sb.rpc("admin_create_user", { p_email: email, p_password: password, p_name: name, p_role: role }); if (error) throw userErr(error); return data; },
@@ -433,7 +434,12 @@ const DemoAPI = {
     if (!demoStore.accounts) demoStore.accounts = S.demoAccounts;
   },
   save() { localStorage.setItem(DEMO_KEY, JSON.stringify(demoStore)); },
-  async session() { const s = sessionStorage.getItem("nabiad_demo_user"); return s ? JSON.parse(s) : null; },
+  async session() {
+    const s = sessionStorage.getItem("nabiad_demo_user");
+    if (!s) return null;
+    const user = JSON.parse(s), saved = (demoStore?.users || []).find(u => u.id === user.id);
+    return saved ? (saved.active ? { ...user, ...saved } : null) : user;
+  },
   async login(role, name) { const u = { id: "demo-" + role, email: role + "@demo", name, role }; sessionStorage.setItem("nabiad_demo_user", JSON.stringify(u)); return u; },
   async logout() { try { localStorage.removeItem("nabiad_locked"); } catch { } sessionStorage.removeItem("nabiad_demo_user"); },
   async loadAll() {
@@ -475,6 +481,7 @@ const DemoAPI = {
   async resolveMark(id, note) { const m = demoStore.marks.find(x => x.id === id); Object.assign(m, { resolved: true, rnote: note || null, rby: S.me.name, rat: new Date().toISOString() }); this.save(); },
   async reopenMark(id) { const m = demoStore.marks.find(x => x.id === id); Object.assign(m, { resolved: false, rnote: null, rby: null, rat: null }); this.save(); },
   async deleteMark(id) { demoStore.marks = demoStore.marks.filter(x => x.id !== id); this.save(); },
+  async setModuleAccess(id, config) { const user = (demoStore.users || []).find(u => u.id === id); if (S.me.role !== "admin" || !user || user.role === "admin") throw writeDenied(); user.module_access = config; this.save(); },
   async users() { return [{ id: S.me?.id || "1", email: "admin@demo", name: "Admin", role: "admin", active: true }, ...(demoStore.users || [])]; },
   async updateProfile() { },
   async createUser(email, password, name, role) { if (demoStore.users?.some(u => u.email === email)) throw userErr({ message: "email_exists" }); (demoStore.users ||= []).push({ id: "d" + Date.now(), email, name: name || email.split("@")[0], role, active: true }); this.aud("users", "insert", email, null, { role, event: "user_created" }); this.save(); },
@@ -748,7 +755,15 @@ const ROUTES = {
 };
 const SECS = { top: "", main: "চেক", bank: "ব্যাংক", cash: "ক্যাশ", dist: "ডিস্ট্রিবিউশন কালেকশন", more: "অন্যান্য" };
 const roleKey = () => ({ admin: "a", staff: "s", boss: "b" }[S.me.role]);
-const allowed = () => Object.keys(ROUTES).filter(k => ROUTES[k].roles.includes(roleKey()));
+const WRITE_ROUTES = {
+  entry: () => moduleCan("cheque", "entry"),
+  status: () => moduleCan("cheque", "edit"),
+  closing: () => moduleOpen("bank"),
+  cash: () => moduleOpen("cash"),
+  cashchk: () => moduleOpen("cash"),
+  dcol: () => moduleOpen("collection")
+};
+const allowed = () => Object.keys(ROUTES).filter(k => WRITE_ROUTES[k] ? WRITE_ROUTES[k]() : ROUTES[k].roles.includes(roleKey()));
 let cleanup = null;
 const getTheme = () => document.documentElement.dataset.theme || "light";
 function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("nabiad_theme", t); } catch { } $$(".th-ic").forEach(e => e.innerHTML = ico(t === "dark" ? "sun" : "moon")); }
@@ -764,7 +779,12 @@ function shell() {
   GR.forEach(([g, lab, ic, col]) => { const ks = inGroup(g); if (!ks.length) return; const n = ks.reduce((a, k) => a + (bd[k] || 0), 0);
     nav += `<div class="ng" data-g="${g}" data-ks="${ks.join(",")}" style="--gc:${col}"><button type="button" class="ng-h" aria-expanded="false" title="${esc(lab)}"><span class="gi">${ico(ic)}</span><span class="gl">${lab}</span><span class="gb badge" ${n ? "" : "hidden"}>${n || ""}</span><span class="chv">${ico("chev")}</span></button><div class="ng-b"><div class="ng-bi">${ks.map(link).join("")}</div></div></div>`; });
   const ut = UTIL.filter(k => keys.includes(k)), navFix = ut.length ? `<div class="nsep"></div>` + ut.map(link).join("") : "";
-  const TABS = (S.me.role === "boss" ? [["reports", "main", "চেক"], ["crep", "bank", "ব্যাংক"], ["cashsum", "cash", "ক্যাশ"], ["dsum", "dist", "কালেকশন"]] : [["entry", "main", "চেক"], ["closing", "bank", "ব্যাংক"], ["cash", "cash", "ক্যাশ"], ["dcol", "dist", "কালেকশন"]]).filter(t => keys.includes(t[0]));
+  const TABS = [
+    [["entry", "status", "cheques"], "main", "চেক"],
+    [["closing", "crep"], "bank", "ব্যাংক"],
+    [["cash", "cashsum"], "cash", "ক্যাশ"],
+    [["dcol", "dsum"], "dist", "কালেকশন"]
+  ].map(([pages, sec, label]) => [pages.find(k => keys.includes(k)), sec, label]).filter(([k]) => k);
   const mob = TABS.map(t => t[0]);
   $("#app").innerHTML = `<div class="shell">
     <aside class="side"><div class="brand"><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div><b>NABIAD</b><span>Smart Finance Suite</span></div><button class="sbtog" id="sbtog" type="button">${ico("chev")}</button></div>
@@ -993,6 +1013,7 @@ function chequeMatcher(query, accounts) {
 }
 const statusWrites = new Set();
 async function setStatus(c, status, date, remarks) {
+  if (!moduleCan("cheque", "edit")) throw writeDenied();
   if (!validChequeDate(date) || date > today()) throw new Error(bi("আজকের বা আগের একটি তারিখ দিন।", "Choose today or an earlier date."));
   if (!STATUSES.includes(status)) throw new Error(bi("স্ট্যাটাস বাছুন।", "Choose a status."));
   if (statusWrites.has(c.id)) throw new Error(bi("স্ট্যাটাস সেভ হচ্ছে।", "A status update is in progress."));
@@ -1007,8 +1028,12 @@ async function setStatus(c, status, date, remarks) {
 }
 async function vEntry(v) {
   const st = { purpose: null, photo: null };
-  let activityMode = "today", activityLimit = 12;
-  v.innerHTML = head("চেক পোস্টিং", `<a class="btn" href="#/books">${ico("book")} ${bi("চেক বই", "Cheque Book")}</a><a class="btn" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a><a class="btn" href="#/cheques">${ico("list")} ${bi("রেজিস্টার", "Register")}</a>`, "tc cp-header") + `
+  const activityPageSize = 12;
+  let activityMode = "today", activityStatus = "", activityLimit = activityPageSize;
+  const dateLabel = bi("চেকের তারিখ", "Cheque date");
+  const postedLabel = bi("পোস্ট করা হয়েছে", "Posted");
+  const activitySearchLabel = bi("এই তালিকায় চেক খুঁজুন", "Search this activity");
+  v.innerHTML = head("চেক পোস্টিং", `<a class="btn" href="#/books">${ico("book")} ${bi("চেক বই", "Cheque Book")}</a>${moduleCan("cheque", "edit") ? `<a class="btn" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a>` : ""}<a class="btn" href="#/cheques">${ico("list")} ${bi("রেজিস্টার", "Register")}</a>`, "tc cp-header") + `
   <div class="split cq-posting">
    <section class="card efc" aria-labelledby="e-title">
     <h2 class="cp-title" id="e-title">${bi("নতুন চেক এন্ট্রি", "New cheque entry")}</h2>
@@ -1040,10 +1065,21 @@ async function vEntry(v) {
    </section>
    <section class="card flush cp-activity" aria-labelledby="e-activity-title">
      <div class="ch"><h3 id="e-activity-title">${bi("চেক এন্ট্রি", "Cheque activity")}</h3></div>
-     <div class="cp-activity-controls"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false">${bi("চেকের তারিখে", "By cheque date")}</button></div>
-     <div class="cp-activity-stats"><div><span>${bi("এন্ট্রি", "Entries")}</span><strong id="e-cnt" class="num">0</strong></div><div><span>${bi("কার্যকর মোট", "Live amount")}</span><strong id="e-total" class="num">৳ 0</strong></div></div></div>
+     <div class="cp-activity-controls">
+       <div class="cp-period"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true" aria-controls="e-list">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false" aria-controls="e-list">${bi("চেকের তারিখে", "By cheque date")}</button></div>
+       <time id="e-period" class="mut sm num"></time><input class="in" type="date" id="e-activity-date" aria-label="${dateLabel}" hidden></div>
+       <dl class="cp-activity-stats">
+         <div><dt>${bi("এন্ট্রি", "Entries")}</dt><dd id="e-cnt" class="num"></dd></div>
+         <div><dt>${bi("কার্যকর মোট", "Live amount")}</dt><dd id="e-total" class="num"></dd></div>
+         <div><dt>${bi("অপেক্ষমাণ অঙ্ক", "Pending amount")}</dt><dd id="e-pending-total" class="num"></dd></div>
+       </dl>
+       <div id="e-review-tools">
+         <label class="cp-search"><span aria-hidden="true">${ico("search")}</span><input class="in" type="search" id="e-find" aria-label="${activitySearchLabel}" placeholder="${bi("চেক নং, A/C, ব্যাংক বা অঙ্ক", "Cheque no, A/C, bank or amount")}" autocomplete="off"></label>
+         <div class="chips cp-status-chips" id="e-activity-filters" role="group" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}"></div>
+       </div>
+     </div>
      <div id="e-list"></div>
-     <button type="button" class="btn sm cp-more" id="e-more" hidden>${bi("আরও দেখুন", "Show more")}</button>
+     <div class="cp-activity-footer"><span class="mut sm" id="e-visible" role="status"></span><button type="button" class="btn sm cp-more" id="e-more" aria-controls="e-list" hidden>${bi("আরও দেখুন", "Show more")}</button></div>
    </section>
   </div>`;
   const posting = $(".cq-posting", v);
@@ -1108,28 +1144,78 @@ async function vEntry(v) {
   $e("e-amt").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (st.purpose) save(); else choosePurpose(); } });
   $$("#e-taker,#e-rem", v).forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); save(); } }));
   $e("e-toac").addEventListener("picked", () => $e("e-rem").focus());
-  $e("e-date").addEventListener("change", () => { clearTimeout(clT); clT = setTimeout(cashLink, 100); if (activityMode === "date") resetActivity("date"); });
+  $e("e-date").addEventListener("change", () => { clearTimeout(clT); clT = setTimeout(cashLink, 100); });
   function clearAll(full) {
     $e("e-err").textContent = "";
     $e("e-attach").open = false;
     if (full || !$("#keep", v).checked) { ac.set(null); st.purpose = null; setTaker(""); $e("e-achint").textContent = ""; $e("e-nohint").textContent = ""; }
     toac.set(null); $e("e-no").value = ac.get() ? nextNo(ac.get().value) : ""; $e("e-amt").value = ""; $e("e-rem").value = ""; clearPhoto(); applyPurpose();
   }
+  let renderedActivity = "", renderedFilters = "";
   function list() {
     if (!posting.isConnected) return;
-    const t = today(), date = $e("e-date").value;
-    const arr = S.cheques.filter(c => activityMode === "date" ? c.date === date : (c.at ? iso(new Date(c.at)) : c.date) === t).sort((a, b) => (b.at || "").localeCompare(a.at || ""));
-    $e("e-cnt").textContent = arr.length;
-    $e("e-total").textContent = "৳ " + money(sumAmt(arr.filter(isLive)));
-    $e("e-more").hidden = arr.length <= activityLimit;
-    $e("e-list").innerHTML = arr.length ? `<div class="tw cards"><table><thead><tr><th>A/C · চেক</th><th class="r">টাকা</th><th>স্ট্যাটাস</th><th>কে</th></tr></thead><tbody>${arr.slice(0, activityLimit).map(c => `<tr><td><div class="c1"><button type="button" class="cq-link" data-recent="${esc(c.id)}">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc(c.purpose.split(" (")[0])}${c.party ? " · " + esc(c.party) : ""}</div></div></td><td class="r num">${money(c.amount)}</td><td>${stTag(c.status)}${pendTag(c)}</td><td class="mut sm">${esc(c.by || "")}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">${activityMode === "date" ? bi("এই চেকের তারিখে কোনো এন্ট্রি নেই", "No entries for the selected cheque date") : bi("আজ এখনো কোনো চেক পোস্ট হয়নি", "No cheques posted today")}</div>`;
+    const t = today(), byDate = activityMode === "date", date = $e("e-activity-date").value;
+    const counts = new Map(), matches = chequeMatcher($e("e-find").value, accMap());
+    const records = [];
+    let liveTotal = 0, pendingTotal = 0;
+    for (const c of S.cheques) {
+      if (byDate && c.date !== date) continue;
+      const at = Date.parse(c.at);
+      const posted = Number.isFinite(at) ? iso(new Date(at)) : "";
+      if (!byDate && posted !== t) continue;
+      if (isLive(c)) liveTotal += c.amount;
+      if (c.status === "Pending") pendingTotal += c.amount;
+      counts.set(c.status, (counts.get(c.status) || 0) + 1);
+      records.push({c, at, posted});
+    }
+    const filtered = records.filter(({c}) => (!activityStatus || c.status === activityStatus) && matches(c));
+    filtered.sort((a, b) => (b.at || 0) - (a.at || 0) || b.c.no - a.c.no);
+    const visible = filtered.slice(0, activityLimit);
+    $e("e-period").dateTime = t;
+    $e("e-period").textContent = dmy(t);
+    $e("e-cnt").textContent = records.length;
+    $e("e-total").textContent = "৳ " + money(liveTotal);
+    $e("e-pending-total").textContent = "৳ " + money(pendingTotal);
+    const toolsVisible = records.length > 0 || !!activityStatus || $e("e-find").value !== "";
+    $e("e-review-tools").hidden = !toolsVisible;
+    const filters = [["", records.length], ...STATUSES.filter(status => counts.has(status) || status === activityStatus).map(status => [status, counts.get(status) || 0])];
+    const filtersHtml = filters.map(([status, count]) => `<button class="chip${status === activityStatus ? " on" : ""}" type="button" data-activity-status="${status}" aria-pressed="${status === activityStatus}" aria-controls="e-list">${status ? esc(status) : bi("সব", "All")} <span class="cp-count num">${count}</span></button>`).join("");
+    if (filtersHtml !== renderedFilters) {
+      const previous = $e("e-activity-filters").contains(document.activeElement) ? document.activeElement.dataset.activityStatus : null;
+      $e("e-activity-filters").innerHTML = renderedFilters = filtersHtml;
+      if (previous != null) $$("[data-activity-status]", posting).find(btn => btn.dataset.activityStatus === previous)?.focus();
+    }
+    $e("e-more").hidden = visible.length >= filtered.length;
+    const countText = records.length ? bi(`${filtered.length}টির মধ্যে ${visible.length}টি দেখানো হয়েছে`, `Showing ${visible.length} of ${filtered.length} matches`) : "";
+    if ($e("e-visible").textContent !== countText) $e("e-visible").textContent = countText;
+    const html = visible.length ? `<div class="tw cards cp-activity-table"><table><thead><tr><th scope="col">A/C · ${bi("চেক", "Cheque")}</th><th scope="col" class="r">${bi("অঙ্ক", "Amount")}</th><th scope="col">${bi("স্ট্যাটাস", "Status")}</th><th scope="col">${bi("তারিখ ও অপারেটর", "Date & operator")}</th></tr></thead><tbody>
+      ${visible.map(({c, posted}) => `<tr><td data-l=""><button type="button" class="cq-link" data-recent="${esc(c.id)}">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc([c.purpose?.split(" (")[0], c.party].filter(Boolean).join(" · "))}</div></td>
+        <td class="r num"><strong>৳ ${money(c.amount)}</strong></td>
+        <td><div class="stc">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}</div></td>
+        <td><div class="cp-row-date mut sm"><span>${byDate ? postedLabel : dateLabel} ${dmy(byDate ? posted : c.date) || "—"}</span><span>${esc(c.by || "—")}</span></div></td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty cp-empty"><strong>${records.length ? bi("ফিল্টারে কোনো চেক মেলেনি", "No cheques match these filters") : byDate ? bi("এই তারিখে কোনো চেক নেই", "No cheques for this date") : bi("আজ কোনো চেক পোস্ট হয়নি", "No cheques posted today")}</strong>${records.length ? `<button class="btn sm" type="button" id="e-reset-activity">${bi("ফিল্টার মুছুন", "Clear filters")}</button>` : ""}</div>`;
+    if (html !== renderedActivity) {
+      const listEl = $e("e-list"), focused = listEl.contains(document.activeElement) ? document.activeElement : null;
+      listEl.innerHTML = renderedActivity = html;
+      if (focused?.dataset.recent) {
+        ($$("[data-recent]", listEl).find(btn => btn.dataset.recent === focused.dataset.recent) || $e("e-find")).focus({preventScroll: true});
+      }
+    }
   }
   function choosePurpose() {
     $e("e-err").textContent = bi("খাত বাছুন", "Choose a purpose.");
     $e("e-purp").querySelector("button")?.focus();
   }
   function resetActivity(mode) {
-    activityMode = mode; activityLimit = 12;
+    activityMode = mode;
+    $e("e-period").hidden = mode === "date";
+    const activityDate = $e("e-activity-date");
+    activityDate.hidden = mode !== "date";
+    if (mode === "date" && !activityDate.value) {
+      const postingDate = $e("e-date").value;
+      activityDate.value = validChequeDate(postingDate) ? postingDate : today();
+    }
+    resetActivityFilters();
     for (const [id, key] of [["e-today", "today"], ["e-bydate", "date"]]) {
       const btn = $e(id);
       btn.classList.toggle("on", mode === key);
@@ -1137,11 +1223,36 @@ async function vEntry(v) {
     }
     list();
   }
+  function resetActivityFilters() {
+    activityStatus = "";
+    activityLimit = activityPageSize;
+    $e("e-find").value = "";
+  }
   $e("e-today").onclick = () => resetActivity("today");
   $e("e-bydate").onclick = () => resetActivity("date");
-  $e("e-more").onclick = () => { activityLimit += 12; list(); };
+  $e("e-activity-date").onchange = () => {
+    if (!validChequeDate($e("e-activity-date").value)) $e("e-activity-date").value = today();
+    resetActivity("date");
+  };
+  $e("e-find").oninput = () => { activityLimit = activityPageSize; list(); };
+  $e("e-activity-filters").onclick = event => {
+    const btn = event.target.closest("[data-activity-status]");
+    if (!btn) return;
+    activityStatus = btn.dataset.activityStatus;
+    activityLimit = activityPageSize;
+    list();
+  };
+  $e("e-more").onclick = () => {
+    const previous = activityLimit;
+    activityLimit += activityPageSize;
+    list();
+    $$("[data-recent]", $e("e-list"))[previous]?.focus();
+  };
   $e("e-list").onclick = event => {
-    const row = S.cheques.find(c => c.id === event.target.closest("[data-recent]")?.dataset.recent);
+    const btn = event.target.closest("button");
+    if (!btn) return;
+    if (btn.id === "e-reset-activity") { resetActivityFilters(); list(); $e("e-find").focus(); return; }
+    const row = S.cheques.find(c => c.id === btn.dataset.recent);
     if (row) chequeModal(row, list);
   };
   let busy = false;
@@ -1245,59 +1356,83 @@ async function vStatus(v) {
     ["review", bi("ফেরত / স্থগিত", "Bounced / stopped"), c => c.status === "Bounced" || c.status === "Stopped"],
     ["all", bi("সব চেক", "All cheques"), () => true]
   ];
+  const alertDays = CFG.PENDING_ALERT_DAYS ?? 3;
   v.innerHTML = head("চেক স্ট্যাটাস আপডেট", `<a class="btn" href="#/cheques">${ico("list")} ${bi("চেক তালিকা", "Register")}</a>`) + `
-    <div class="card tbar cq-tools">
-      <div class="cq-status-fields">
+    <section class="card cq-tools cq-workspace" aria-label="${bi("চেক স্ট্যাটাস তালিকা", "Cheque status queue")}">
+      <div class="cq-filters" role="group" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}">${filters.map(([id, label]) => `<button type="button" class="btn" data-cq-filter="${id}" aria-pressed="false" aria-controls="s-list"><span>${label}</span><strong class="num"></strong><small class="num"></small></button>`).join("")}</div>
+      <div class="cq-queue-controls">
         <div><label class="f" for="s-q">${bi("চেক খুঁজুন", "Search cheques")}</label><input class="in" id="s-q" type="search" autocomplete="off" placeholder="${bi("চেক নং, A/C, ব্যাংক, মন্তব্য", "Cheque no, A/C, bank, remarks")}"></div>
-        <div><label class="f" for="s-d">${bi("স্ট্যাটাসের তারিখ", "Status date")}</label><input class="in" type="date" id="s-d" value="${today()}" max="${today()}" required></div>
+        <div><label class="f" for="s-sort">${bi("সাজানোর ক্রম", "Sort by")}</label><select class="in" id="s-sort"><option value="">${bi("তালিকার ডিফল্ট ক্রম", "Queue default")}</option><option value="old">${bi("পুরনো চেক আগে", "Oldest cheque first")}</option><option value="new">${bi("নতুন চেক আগে", "Newest cheque first")}</option><option value="amount">${bi("বেশি অঙ্ক আগে", "Highest amount first")}</option></select></div>
       </div>
-      <div class="cq-filters" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}">${filters.map(([id, label]) => `<button type="button" class="btn" data-cq-filter="${id}" aria-pressed="false"><span>${label}</span><strong class="num"></strong></button>`).join("")}</div>
+    </section>
+    <div class="cq-queue-head">
+      <div><h2 class="cq-queue-title" id="s-title"></h2><p id="s-info" class="cq-info mut sm" role="status"></p></div>
+      <div class="cq-action-date"><label class="f" for="s-d">${bi("আপডেটের তারিখ", "Update date")}</label><input class="in" type="date" id="s-d" value="${today()}" max="${today()}" required></div>
     </div>
-    <p id="s-info" class="cq-info mut sm" aria-live="polite"></p><div id="s-list" class="cq-list"></div>
+    <div id="s-list" class="cq-list" role="region" aria-labelledby="s-title"></div>
     <div class="cq-pager" id="s-pager" hidden><button class="btn" type="button" id="s-prev">‹ ${bi("আগের", "Previous")}</button><span class="mut sm" id="s-page"></span><button class="btn" type="button" id="s-next">${bi("পরের", "Next")} ›</button></div>`;
   const q = $("#s-q", v), date = $("#s-d", v), list = $("#s-list", v), info = $("#s-info", v);
   const pager = $("#s-pager", v), prev = $("#s-prev", v), next = $("#s-next", v);
+  const sort = $("#s-sort", v), title = $("#s-title", v);
   const buttons = $$("[data-cq-filter]", v), pageSize = 40;
   let mode = "pending", page = 0;
   const draw = () => {
     if (!list.isConnected) return;
-    const t = today(), accounts = accMap(), base = S.cheques.filter(chequeMatcher(q.value, accounts));
-    const groups = filters.map(([id, , match], i) => {
-      const rows = base.filter(c => match(c, t));
-      buttons[i].setAttribute("aria-pressed", id === mode);
-      $("strong", buttons[i]).textContent = rows.length;
-      return rows;
+    const t = today(), accounts = accMap(), matches = chequeMatcher(q.value, accounts), queue = [];
+    const current = filters.find(([id]) => id === mode);
+    const totals = filters.map(() => ({count: 0, amount: 0}));
+    for (const c of S.cheques) {
+      if (!matches(c)) continue;
+      for (const [i, [id, , match]] of filters.entries()) {
+        if (!match(c, t)) continue;
+        totals[i].count++;
+        totals[i].amount += c.amount;
+        if (id === mode) queue.push(c);
+      }
+    }
+    buttons.forEach((btn, i) => {
+      btn.setAttribute("aria-pressed", String(btn.dataset.cqFilter === mode));
+      $("strong", btn).textContent = totals[i].count;
+      $("small", btn).textContent = "৳ " + money(totals[i].amount);
     });
-    const rows = groups[filters.findIndex(([id]) => id === mode)];
-    rows.sort((a, b) => (mode === "pending" || mode === "older") ? a.date.localeCompare(b.date) || a.no - b.no : (b.sdate || b.date).localeCompare(a.sdate || a.date) || b.no - a.no);
-    const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+    const order = sort.value;
+    queue.sort((a, b) => {
+      if (order === "amount") return b.amount - a.amount || b.date.localeCompare(a.date);
+      if (order === "old" || (!order && (mode === "pending" || mode === "older"))) return a.date.localeCompare(b.date) || a.no - b.no;
+      if (order === "new") return b.date.localeCompare(a.date) || b.no - a.no;
+      return (b.sdate || b.date).localeCompare(a.sdate || a.date) || b.no - a.no;
+    });
+    const pages = Math.max(1, Math.ceil(queue.length / pageSize));
     page = Math.min(page, pages - 1);
-    const start = page * pageSize, end = Math.min(start + pageSize, rows.length);
-    info.textContent = rows.length ? bi(`${rows.length}টির মধ্যে ${start + 1}–${end} · ৳ ${money(sumAmt(rows))}`, `${start + 1}–${end} of ${rows.length} · ৳ ${money(sumAmt(rows))}`) : bi("কোনো চেক মেলেনি", "No matching cheques");
+    const start = page * pageSize, end = Math.min(start + pageSize, queue.length);
+    title.textContent = current[1];
+    info.textContent = queue.length ? bi(`${queue.length}টির মধ্যে ${start + 1}–${end} · চেকের মোট অঙ্ক ৳ ${money(sumAmt(queue))}`, `${start + 1}–${end} of ${queue.length} · Face value ৳ ${money(sumAmt(queue))}`) : bi("০ চেক", "0 cheques");
     pager.hidden = pages <= 1;
     prev.disabled = page === 0;
     next.disabled = page + 1 >= pages;
     $("#s-page", pager).textContent = `${page + 1} / ${pages}`;
-    list.innerHTML = rows.slice(start, end).map(c => {
+    list.innerHTML = queue.length ? queue.slice(start, end).map(c => {
       const ref = `${esc(c.code)} · ${c.no}`, age = daysBetween(c.date, t);
-      return `<article class="card cq-item"><div class="cq-ref">
+      return `<article class="card cq-item" ${c.status === "Pending" && age > alertDays ? 'data-priority="older"' : c.status === "Bounced" || c.status === "Stopped" ? 'data-priority="review"' : ""}><div class="cq-ref">
         <button type="button" class="cq-link" data-cq-open="${esc(c.id)}">${ref}</button>
-        <div class="mut sm">${dmy(c.date)}${accounts[c.code]?.holder ? " · " + esc(accounts[c.code].holder) : ""}</div>
+        <div class="mut sm">${esc([accounts[c.code]?.holder, accounts[c.code]?.bank].filter(Boolean).join(" · "))}</div>
+        <div class="mut sm">${bi("চেকের তারিখ", "Cheque date")} ${dmy(c.date)}</div>
         <div class="cq-purpose sm">${esc(c.purpose.split(" (")[0])}${c.party || c.remarks ? " · " + esc(c.party || c.remarks) : ""}</div>
         </div><div class="cq-value"><strong class="num">৳ ${money(c.amount)}</strong>
-        <div class="cq-state">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}${c.status === "Pending" && age > (CFG.PENDING_ALERT_DAYS ?? 3) ? `<span class="am sm">${bi(`${age} দিন`, `${age} days`)}</span>` : ""}${c.sdate ? `<span class="mut sm">${dmy(c.sdate)}</span>` : ""}</div></div>
+        <div class="cq-state">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}${c.status === "Pending" && age > alertDays ? `<span class="cq-aged">${bi(`${age} দিন অপেক্ষমাণ`, `Pending ${age} days`)}</span>` : ""}${c.sdate ? `<span class="mut sm">${bi("স্ট্যাটাসের তারিখ", "Status date")} ${dmy(c.sdate)}</span>` : ""}</div></div>
         <div class="cq-actions">${c.status === "Pending" ? `<button class="btn ok" type="button" data-cq-clear="${esc(c.id)}">${bi("ক্লিয়ার করুন", "Mark cleared")}</button>` : ""}<button class="btn" type="button" data-cq-status="${esc(c.id)}">${bi("স্ট্যাটাস বদলান", "Update status")}</button></div></article>`;
-    }).join("");
+    }).join("") : `<div class="card empty cp-empty"><strong>${q.value.trim() ? bi("সার্চে কোনো চেক মেলেনি", "No cheques match your search") : bi("এই তালিকায় কোনো চেক নেই", "No cheques in this queue")}</strong>${q.value.trim() ? `<button type="button" class="btn sm" id="s-reset-q">${bi("সার্চ মুছুন", "Clear search")}</button>` : ""}</div>`;
   };
   const resetPage = () => { page = 0; draw(); };
   buttons.forEach(btn => btn.onclick = () => { mode = btn.dataset.cqFilter; resetPage(); });
-  q.oninput = resetPage;
+  q.oninput = sort.onchange = resetPage;
   const changePage = delta => { page += delta; draw(); info.scrollIntoView({ block: "nearest" }); };
   prev.onclick = () => changePage(-1);
   next.onclick = () => changePage(1);
   list.onclick = e => {
     const btn = e.target.closest("button");
     if (!btn) return;
+    if (btn.id === "s-reset-q") { q.value = ""; resetPage(); q.focus(); return; }
     const c = S.cheques.find(row => row.id === (btn.dataset.cqOpen || btn.dataset.cqStatus || btn.dataset.cqClear));
     if (!c) return;
     if (btn.dataset.cqOpen) { chequeModal(c, draw); return; }
@@ -1354,7 +1489,7 @@ function chequeModal(c, after) {
    ${(S.reminders || []).filter(r => r.cheque_id === c.id && !r.done).map(r => `<div class="alert vi" style="margin-top:10px">⏰ <span>${esc(r.title)} — ${new Date(remDue(r)).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span></div>`).join("")}
    <h3 style="margin:16px 0 8px;font-size:13px;color:var(--mut)">স্ট্যাটাস ইতিহাস</h3>
    ${c.events.length ? c.events.map(e => `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">${stTag(e.status)} <span>${dmy(e.date)}</span> <span class="mut sm">${esc(e.by || "")} ${esc(e.remarks || "")}</span>${admin ? `<button class="btn ghost sm evdel" style="margin-left:auto" data-de="${e.id}" type="button" title="${bi("এই স্ট্যাটাস এন্ট্রি মুছুন", "Delete this status entry")}" aria-label="${bi("স্ট্যাটাস এন্ট্রি মুছুন", "Delete status entry")}">${ico("x")}</button>` : ""}</div>`).join("") : `<div class="mut sm">কোনো আপডেট নেই (ডিফল্ট: ${c.status})</div>`}
-   <div class="modal-actions">${S.me.role !== "boss" ? `<button class="btn pri" id="c-st">স্ট্যাটাস দিন</button>` : ""}<button class="btn" id="c-rm">${ico("bell")} রিমাইন্ডার</button>${admin || (S.me.role === "staff" && (!c.photo || canEditChq(c))) ? `<button class="btn" id="c-ap">${ico("cam")} ${c.photo ? "ছবি বদলান" : "ছবি যোগ"}</button>` : ""}${admin ? `<button class="btn" id="c-ed">✎ এডিট</button><button class="btn bad" id="c-dl">🗑 ${bi("চেক মুছুন", "Delete cheque")}</button>` : canEditChq(c) ? `<button class="btn" id="c-ed">✎ এডিট</button>` : ""}</div>${!admin && canEditChq(c) ? `<div class="mut xs" style="margin-top:8px">⏳ ${LANG === "en" ? "You can edit this entry for another " : "এই এন্ট্রি আরও এডিট করতে পারবেন: "}${leftTxt(chqEditLeft(c))}</div>` : ""}`, (root, close) => {
+   <div class="modal-actions">${moduleCan("cheque", "edit") ? `<button class="btn pri" id="c-st">স্ট্যাটাস দিন</button>` : ""}<button class="btn" id="c-rm">${ico("bell")} রিমাইন্ডার</button>${moduleCan("cheque", "edit", S.me.role === "staff" && (!c.photo || canEditChq(c))) ? `<button class="btn" id="c-ap">${ico("cam")} ${c.photo ? "ছবি বদলান" : "ছবি যোগ"}</button>` : ""}${admin ? `<button class="btn" id="c-ed">✎ এডিট</button><button class="btn bad" id="c-dl">🗑 ${bi("চেক মুছুন", "Delete cheque")}</button>` : canEditChq(c) ? `<button class="btn" id="c-ed">✎ এডিট</button>` : ""}</div>${!admin && S.me.module_access == null && canEditChq(c) ? `<div class="mut xs" style="margin-top:8px">⏳ ${LANG === "en" ? "You can edit this entry for another " : "এই এন্ট্রি আরও এডিট করতে পারবেন: "}${leftTxt(chqEditLeft(c))}</div>` : ""}`, (root, close) => {
     $("#c-x", root).onclick = close; showPhoto($("#c-ph", root), c);
     $("#c-rm", root).onclick = () => { close(); reminderModal(null, { title: bi(`চেক ${c.code} · ${c.no} পাস হয়েছে কি না দেখুন`, `Check whether cheque ${c.code} · ${c.no} has cleared`), note: `৳ ${money(c.amount)}${c.party ? " · " + c.party : ""} · ${bi("চেকের তারিখ", "Cheque date")} ${dmy(c.date)}`, due: (() => { const d = new Date(addDays(c.date < today() ? today() : c.date, 3) + "T10:00"); return d; })(), kind: "cheque", cheque_id: c.id, for_role: "all" }, after); };
     $("#c-ap", root) && ($("#c-ap", root).onclick = () => { close(); addPhotoModal(c, after); });
@@ -1409,8 +1544,8 @@ function editChequeModal(c, after) {
   });
 }
 async function vCheques(v) {
-  const F = { q: "", code: "", status: "", purpose: "", verification: "", page: 0 }, PF = pbInit("all"), PS = 100, PBO = { all: true };
-  v.innerHTML = head("চেক তালিকা ও এনকোয়ারি", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>${S.me.role !== "boss" ? `<button class="btn" id="k-verify">${ico("check")} ${bi("স্টেটমেন্ট যাচাই", "Verify statement")}</button>` : ""}`) + `<div class="card tbar noprint">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
+  const F = { q: "", code: "", status: "", purpose: "", verification: "", page: 0 }, PF = pbInit("month"), PS = 100, PBO = { all: true };
+  v.innerHTML = head("চেক তালিকা ও এনকোয়ারি", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>${S.me.role !== "boss" && moduleCan("cheque", "edit") ? `<button class="btn" id="k-verify">${ico("check")} ${bi("স্টেটমেন্ট যাচাই", "Verify statement")}</button>` : ""}`) + `<div class="card tbar noprint">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
    <div style="flex:2 1 220px"><label class="f" for="k-q">${bi("চেক খুঁজুন", "Search cheques")}</label><input class="in" id="k-q" type="search" placeholder="${bi("চেক নং, A/C, ব্যাংক, মন্তব্য, টাকা", "Cheque no, A/C, bank, remarks, amount")}"></div>
    <div style="flex:1 1 220px"><label class="f" for="k-c">A/C</label><select class="in" id="k-c"><option value="">সব</option>${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)}${a.holder ? " · " + esc(a.holder) : ""}${a.bank ? " · " + esc(a.bank) : ""}</option>`).join("")}</select></div>
    <div><label class="f" for="k-s">স্ট্যাটাস</label><select class="in" id="k-s"></select></div>
@@ -1501,39 +1636,82 @@ const Draft = {
 async function vClosing(v) {
   const t = today(); let date = S.lastBal && S.lastBal < t ? stepDay(S.lastBal, 1) : t;
   if (date > t) date = t;
-  v.innerHTML = head("ব্যাংক ক্লোজিং", `<span id="c-info" class="cinfo"></span>`) + `<div class="card tbar navcard">${dateNav("c", date)}
-   ${searchBox("c-q", "A/C খুঁজুন — কোড, হোল্ডার, ব্যাংক, A/C নং…", `<select class="in fix" id="c-f"><option value="">সব অ্যাকাউন্ট</option><option value="chg">শুধু আপডেট করা</option><option value="same">শুধু অপরিবর্তিত</option><option value="mv">আজ লেনদেন আছে</option></select>`)}
-   <div id="c-msg" style="margin-top:10px"></div></div>
-   <div class="card"><div id="c-body"><div class="empty">লোড হচ্ছে…</div></div></div>`;
-  const body = $("#c-body", v); let autoT = null;
-  async function draw() {
-    date = $("#c-d", v).value; if (!date) return;
-    body.innerHTML = `<div class="empty">লোড হচ্ছে…</div>`;
+  const searchLabel = bi("ব্যাংক অ্যাকাউন্ট খুঁজুন", "Search bank accounts");
+  v.innerHTML = head("ব্যাংক ক্লোজিং", `<span id="c-info" class="tag bc-state" role="status"></span>`) + `<div class="card tbar navcard bc-controls">${dateNav("c", date)}
+    ${searchBox("c-q", bi("কোড, হোল্ডার, ব্যাংক, A/C নং…", "Code, holder, bank, A/C no…"))}
+    <div id="c-msg" role="status" hidden></div></div>
+    <div id="c-body" class="bc-workspace"><div class="card empty">${bi("লোড হচ্ছে…", "Loading…")}</div></div>`;
+  const body = $("#c-body", v), query = $("#c-q", v), info = $("#c-info", v), msg = $("#c-msg", v);
+  query.setAttribute("aria-label", searchLabel);
+  $("#c-d", v).setAttribute("aria-label", bi("ক্লোজিংয়ের তারিখ", "Closing date"));
+  const dateControls = ["#c-p", "#c-d", "#c-n"].map(s => $(s, v));
+  let autoT, pendingDraft, revision = 0, saving = false, review = "all";
+  function flushDraft() {
+    clearTimeout(autoT);
+    if (!pendingDraft) return;
+    Draft.saveLocal(pendingDraft.date, pendingDraft.rows);
+    pendingDraft = null;
+  }
+  async function draw(saved = false) {
+    if (saving) return;
+    const date = $("#c-d", v).value;
+    if (!date) return;
+    flushDraft();
+    const id = ++revision, current = () => id === revision && body.isConnected;
+    delete info.dataset.state;
+    query.oninput = null;
+    msg.hidden = true;
+    info.textContent = bi("লোড হচ্ছে…", "Loading…");
+    body.innerHTML = `<div class="card empty">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
     let prev, ex;
     try { if (!navigator.onLine && !DEMO) throw new Error("offline"); [prev, ex] = await Promise.all([API.prevBalances(date), API.balancesOn(date)]); ex = { ...ex, ...pendingBal(date) }; }
     catch (e) {
-      if (!isNetErr(e) && e.message !== "offline") throw e;
+      if (!current()) return;
+      if (!isNetErr(e) && e.message !== "offline") {
+        info.textContent = bi("লোড হয়নি", "Unavailable");
+        body.innerHTML = `<div class="card"><div class="alert rd">${bi("ব্যালেন্স লোড হয়নি।", "Could not load balances.")} ${esc(e.message || "")}</div><button class="btn" id="c-retry">${bi("আবার চেষ্টা করুন", "Retry")}</button></div>`;
+        $("#c-retry", body).onclick = () => draw();
+        return;
+      }
       const pds = pendingBalDates().filter(x => x < date).sort(), pd = pds.pop();
       prev = pd && (!S.snap || pd > S.snap.date) ? { date: pd, map: pendingBal(pd) } : S.snap && S.snap.date < date ? { date: S.snap.date, map: S.snap.map } : { date: null, map: {} };
       ex = pendingBal(date);
-      if (!prev.date) { body.innerHTML = `<div class="alert am">ইন্টারনেট নেই এবং আগের দিনের ব্যালেন্স এই ডিভাইসে জমা নেই। একবার অনলাইনে ক্লোজিং পাতা খুললে পরে অফলাইনেও চলবে।</div>`; return; }
+      if (!prev.date) { info.textContent = bi("অফলাইন", "Offline"); body.innerHTML = `<div class="alert am">ইন্টারনেট নেই এবং আগের দিনের ব্যালেন্স এই ডিভাইসে জমা নেই। একবার অনলাইনে ক্লোজিং পাতা খুললে পরে অফলাইনেও চলবে।</div>`; return; }
     }
-    const accs = S.accounts.filter(a => a.daily && (a.status === "Active" || ex[a.code])).sort((a, b) => a.sort - b.sort);
-    const has = Object.values(ex).some(r => r.total != null); const locked = has && (S.me.role !== "admin" || Object.values(ex).some(r => r.pending));
+    if (!current()) return;
+    const has = Object.values(ex).some(r => r.total != null);
+    const canEdit = moduleCan("bank", "edit", false), canEntry = moduleCan("bank", "entry");
+    const accs = S.accounts.filter(a => a.daily && (a.status === "Active" || ex[a.code]) && (!has || canEntry || ex[a.code]?.total != null)).sort((a, b) => a.sort - b.sort);
+    const locked = has ? !canEdit || Object.values(ex).some(r => r.pending) : !canEntry;
     const draft = has ? null : await Draft.get(date); const dr = draft?.rows || {};
     /* Debit/Withdraw ← Cash Checker "Total Bank" · Credit/Deposit ← approved Collection + Cash Checker "Bank" (per A/C, this date) */
     const [ce, colRows] = await Promise.all([cashEff(date), API.dcolRange(date, date).catch(() => null)]);
+    if (!current()) return;
     const srcOk = ce.ok && colRows !== null, aDr = cashAccSum(ce.src, "bank_in"), aCb = cashAccSum(ce.src, "bank_out"), aCc = {};
     (colRows || []).forEach(r => { if (r.date === date && r.status === "approved" && r.account) aCc[r.account] = (aCc[r.account] || 0) + (+r.amount || 0); });
     const gap = prev.date ? workGap(prev.date, date) : 0;
+    const queued = Object.values(ex).some(r => r.pending);
+    info.dataset.state = queued ? "draft" : has ? "final" : draft ? "draft" : "open";
+    info.textContent = queued ? bi("সিঙ্ক বাকি", "Pending sync") : has ? bi("ফাইনাল", "Final") : draft ? bi("ড্রাফট", "Draft") : bi("সেভ হয়নি", "Not saved");
     const msgs = [];
-    if (has) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 এই তারিখের ব্যালেন্স ফাইনাল সেভ হয়েছে। বদলাতে Admin কে বলুন।" : "⚠ এই তারিখ আগেই ফাইনাল সেভ আছে — সেভ করলে Admin হিসেবে নতুন মান বসবে।"}</div>`);
-    else if (prev.date) msgs.push(`<div class="mut sm">আগের ডাটা: <b>${dmy(prev.date)}</b>${gap ? ` <b class="am">(${bi("মাঝে " + gap + " কর্মদিবসের ডাটা নেই", gap + " working days of data missing in between")})</b>` : ""} · ${bi("আগের দিনের ক্লোজিং নিজে থেকে বসানো আছে — শুধু যেগুলো বদলেছে সেগুলো লিখুন।", "Previous day's closing is pre-filled — only edit what changed.")}</div>`);
-    if (draft) msgs.push(`<div class="alert vi">📝 <span>ড্রাফট লোড হয়েছে — ${esc(draft.by || "")} · ${new Date(draft.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}${draft.local ? " (এই ডিভাইস)" : ""}</span><button class="btn sm" id="c-dd" style="margin-left:auto">ড্রাফট বাদ দিন</button></div>`);
+    if (saved) msgs.push(`<div class="alert gr bc-notice"><span>${queued ? bi("এই ডিভাইসে সেভ হয়েছে", "Saved on this device") : bi("ক্লোজিং সেভ হয়েছে", "Closing saved")}</span>${queued ? "" : `<a class="btn sm" href="#/crep" data-go="crep">${ico("img")} ${bi("ব্যালেন্স স্ন্যাপশট", "Balance Snapshot")}</a>`}</div>`);
+    if (has && !queued) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 এই তারিখের ব্যালেন্স ফাইনাল সেভ হয়েছে। বদলাতে Admin কে বলুন।" : "⚠ এই তারিখ ফাইনাল সেভ আছে। সেভ করলে নতুন মান বসবে।"}</div>`);
+    if (!has && prev.date) msgs.push(`<div class="mut sm">আগের ডাটা: <b>${dmy(prev.date)}</b>${gap ? ` <b class="am">(${bi("মাঝে " + gap + " কর্মদিবসের ডাটা নেই", gap + " working days of data missing in between")})</b>` : ""}</div>`);
+    if (draft && !locked) msgs.push(`<div class="alert vi">📝 <span>ড্রাফট লোড হয়েছে — ${esc(draft.by || "")} · ${new Date(draft.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}${draft.local ? " (এই ডিভাইস)" : ""}</span><button class="btn sm" id="c-dd" style="margin-left:auto">ড্রাফট বাদ দিন</button></div>`);
     if (isFri(date) && !has) msgs.push(`<div class="alert am">শুক্রবার — সাধারণত ব্যাংক বন্ধ থাকে। দরকার না হলে "পরের ›" চাপুন।</div>`);
-    if (!srcOk) msgs.push(`<div class="alert am">⚠ ${bi("Cash Checker / কালেকশনের ডাটা আনা যায়নি (ইন্টারনেট নেই?) — Debit/Credit-এর auto অংশ ০ ধরা হয়েছে, Diff ভুল দেখাতে পারে।", "Could not load Cash Checker / Collection data (offline?) — the auto part of Debit/Credit is taken as 0, Diff may be wrong.")}</div>`);
-    $("#c-msg", v).innerHTML = msgs.join("");
-    $("#c-dd", v) && ($("#c-dd", v).onclick = async () => { if (!ask("এই তারিখের ড্রাফট মুছে আগের দিনের ক্লোজিং থেকে নতুন করে শুরু করবেন?")) return; await Draft.drop(date); draw(); });
+    if (!srcOk) msgs.push(`<div class="alert am">⚠ ${bi("লিংক করা ডাটা পুরোপুরি লোড হয়নি। ফাইনাল সেভের আগে হিসাব মতে ব্যালেন্স যাচাই করুন।", "Some linked data could not load. Review the expected balance before finalizing.")}</div>`);
+    msg.innerHTML = msgs.join("");
+    msg.hidden = !msgs.length;
+    const discard = $("#c-dd", msg);
+    if (discard) discard.onclick = async () => {
+      if (saving || !ask("এই তারিখের ড্রাফট মুছে আগের দিনের ক্লোজিং থেকে নতুন করে শুরু করবেন?")) return;
+      setBusy(true);
+      pendingDraft = null;
+      clearTimeout(autoT);
+      await Draft.drop(date);
+      setBusy(false);
+      if (current()) draw();
+    };
     const rows = accs.map(a => {
       const p = prev.map[a.code] || {}, e = ex[a.code] || {}, d = dr[a.code] || {};
       const src = has ? e : d;
@@ -1543,87 +1721,171 @@ async function vClosing(v) {
     const B = a => brandOf(a);
     const mapped = new Set(accs.map(a => a.code)), lost = (m, skip) => Object.entries(m).filter(([c]) => !mapped.has(c) && !(skip && skip(c))).reduce((q, [, x]) => q + x, 0);
     const lostDr = lost(aDr), lostCb = lost(aCb), lostCc = lost(aCc, c => String(c).trim().toLowerCase() === "cash");
-    const nAuto = rows.filter(r => r.adr || r.acc || r.acb).length, tD = Object.values(aDr).reduce((q, x) => q + x, 0), tCb = Object.values(aCb).reduce((q, x) => q + x, 0), tCc = Object.values(aCc).reduce((q, x) => q + x, 0);
-    const stTxt = ce.state === "final" ? bi("ফাইনাল", "final") : ce.state === "draft" ? bi("ড্রাফট", "draft") : bi("এন্ট্রি নেই", "no entry");
-    const linkBox = `<div class="clink"><div class="cl-h"><b>🔗 ${bi("অটো লিংক", "Auto link")}</b><span class="mut xs">${bi("এই তারিখের ডাটা থেকে নিজে আসে", "pulled from this date's data")}</span><span class="sp"></span><a class="btn sm" href="#/cashchk" data-go="cashchk">${bi("ক্যাশ চেকার", "Cash Checker")}</a><a class="btn sm" href="#/dcol" data-go="dcol">${bi("কালেকশন", "Collection")}</a></div>
-      <div class="cl-g"><span class="c-dr"><em>${bi("ক্যাশ চেকার", "Cash Checker")} (${stTxt}) · Receipt › Bank</em> <b class="num">৳ ${money0(tD)}</b> <i>→ Debit / Withdraw</i></span><span class="c-cr"><em>${bi("কালেকশন (Approved)", "Collection (approved)")}</em> <b class="num">৳ ${money0(tCc)}</b> <i>→ Credit / Deposit</i></span><span class="c-cr"><em>${bi("ক্যাশ চেকার", "Cash Checker")} · Bank</em> <b class="num">৳ ${money0(tCb)}</b> <i>→ Credit / Deposit</i></span></div>
-      ${lostDr || lostCb || lostCc ? `<div class="cl-w">⚠ ${bi("এই A/C-গুলো ডেইলি ক্লোজিং তালিকায় নেই বা A/C বাছা হয়নি, তাই এখানে ধরা হয়নি", "Not counted here — A/C is not in the daily-closing list or not selected")}: ${[lostDr ? `Receipt › Bank ৳ ${money0(lostDr)}` : "", lostCb ? `Bank ৳ ${money0(lostCb)}` : "", lostCc ? `${bi("কালেকশন", "Collection")} ৳ ${money0(lostCc)}` : ""].filter(Boolean).join(" · ")}</div>` : ""}</div>`;
+    const linkedTotal = field => rows.reduce((sum, row) => sum + row[field], 0);
+    const amount = (ok, field) => ok ? "৳ " + money(linkedTotal(field)) : "—";
+    const stTxt = !ce.ok ? (ce.src ? bi("এই ডিভাইসের ড্রাফট", "Local draft") : bi("ডাটা পাওয়া যায়নি", "Unavailable")) : ce.state === "final" ? bi("ফাইনাল", "Final") : ce.state === "draft" ? bi("ড্রাফট", "Draft") : bi("এন্ট্রি নেই", "No entry");
+    const linkBox = `<div class="clink"><div class="cl-h"><b>${bi("লিংক করা লেনদেন", "Linked transactions")}</b><span class="sp"></span><a class="btn sm" href="#/cashchk" data-go="cashchk">${bi("ক্যাশ চেকার", "Cash Checker")}</a><a class="btn sm" href="#/dcol" data-go="dcol">${bi("কালেকশন", "Collection")}</a></div>
+      <div class="cl-g"><span class="c-dr"><em>${bi("ক্যাশ চেকার", "Cash Checker")} · ${stTxt}</em> <b class="num">${amount(ce.ok || ce.src, "adr")}</b> <i>${bi("ডেবিট", "Debit")}</i></span><span class="c-cr"><em>${bi("অনুমোদিত কালেকশন", "Approved Collection")}</em> <b class="num">${amount(colRows !== null, "acc")}</b> <i>${bi("ক্রেডিট", "Credit")}</i></span><span class="c-cr"><em>${bi("ক্যাশ চেকার", "Cash Checker")}</em> <b class="num">${amount(ce.ok || ce.src, "acb")}</b> <i>${bi("ক্রেডিট", "Credit")}</i></span></div>
+      ${lostDr || lostCb || lostCc ? `<div class="cl-w">${bi("দৈনিক ক্লোজিংয়ের A/C-তে লিংক হয়নি", "Unlinked to a daily-closing account")} · ${[lostDr ? `Cash Checker debit ৳ ${money(lostDr)}` : "", lostCb ? `Cash Checker credit ৳ ${money(lostCb)}` : "", lostCc ? `Collection ৳ ${money(lostCc)}` : ""].filter(Boolean).join(" · ")}</div>` : ""}</div>`;
+    const tiles = [[4, bi("মোট ক্লোজিং", "Closing total")], [3, bi("হিসাব মতে", "Expected balance")], [5, bi("ব্লক / লিয়েন", "Blocked / lien")], [6, bi("ব্যবহারযোগ্য", "Usable balance")]];
+    const reviews = [["all", bi("সব A/C", "All accounts")], ["mv", bi("লেনদেন", "Activity")], ["diff", bi("অমিল", "Differences")], ["remarks", bi("মন্তব্য বাকি", "Remarks needed")]];
     const autoDr = r => r.adr ? `<span><em>${bi("ক্যাশ চেকার", "Cash Checker")}</em> <b class="num">${money(r.adr)}</b></span>` : `<span class="mut">—</span>`;
     const autoCr = r => (r.acc || r.acb) ? `${r.acc ? `<span><em>${bi("কালেকশন", "Collection")}</em> <b class="num">${money(r.acc)}</b></span>` : ""}${r.acb ? `<span><em>${bi("ক্যাশ জমা", "Cash dep.")}</em> <b class="num">${money(r.acb)}</b></span>` : ""}` : `<span class="mut">—</span>`;
-    body.innerHTML = `${linkBox}<div class="tw cards closing" style="max-height:72vh"><table id="ct"><thead><tr><th>#</th><th>A/C</th><th class="r">আগের ক্লোজিং</th><th class="r c-dr">${bi("ডেবিট / উত্তোলন", "Debit / Withdraw")}</th><th class="r c-cr">${bi("ক্রেডিট / জমা", "Credit / Deposit")}</th><th class="r">হিসাব মতে</th><th class="r c-bk">ব্যাংক ক্লোজিং</th><th class="r">BLOCK</th><th class="r">USABLE</th><th class="r">Diff</th><th>মন্তব্য</th></tr></thead><tbody>
-    ${rows.map((r, i) => { const b = B(r.a), mv = r.adr || r.acc || r.acb; return `<tr data-i="${i}" class="${mv ? "mv" : ""}"><td class="mut">${i + 1}</td><td class="acc-c" style="--b1:${b.c1}"><b>${esc(r.code)}</b>${mv ? ` <span class="mvdot" title="${bi("ক্যাশ চেকার / কালেকশনে লেনদেন আছে — যাচাই করুন", "Cash Checker / Collection has activity — please verify")}">●</span>` : ""}<div class="mut sm">${esc(r.holder)}</div></td><td class="r num">${money(r.prevT)}</td>
-     <td class="c-dr"><div class="au">${autoDr(r)}</div><input class="cell od" value="${fmtIn(r.od || "")}" inputmode="decimal" placeholder="${bi("+ অন্য", "+ other")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
-     <td class="c-cr"><div class="au">${autoCr(r)}</div><input class="cell odp" value="${fmtIn(r.odp || "")}" inputmode="decimal" placeholder="${bi("+ অন্য", "+ other")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
-     <td class="r num exp"></td><td class="c-bk"><input class="cell tot" value="${r.total == null ? "" : fmtIn(r.total)}" data-dirty="${r.total == null ? "" : "1"}" inputmode="decimal" ${locked ? "disabled" : ""}></td><td><input class="cell blk" value="${fmtIn(r.block || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
-     <td class="r num usa b"></td><td class="r num dif"></td><td><input class="cell t rem" value="${esc(r.remark)}" ${locked ? "disabled" : ""}></td></tr>`; }).join("")}
+    body.innerHTML = `<div class="bc-summary" aria-label="${bi("দিনের মোট", "Daily totals")}">${tiles.map(([i, label]) => `<div class="card bc-kpi" data-kpi="${i}"><span>${label}</span><strong class="num"></strong></div>`).join("")}</div>
+    <section class="card bc-register" aria-label="${bi("অ্যাকাউন্ট পর্যালোচনা", "Account review")}">
+    ${linkBox}
+    <div class="bc-review"><div class="bc-filters" role="group" aria-label="${bi("অ্যাকাউন্ট ফিল্টার", "Account filters")}">${reviews.map(([key, label]) => `<button type="button" class="btn sm" data-review="${key}" aria-pressed="${key === review}">${label} <span class="bc-count"></span></button>`).join("")}</div><span class="mut sm" id="c-shown" role="status"></span></div>
+    <div id="c-empty" class="empty" hidden>${bi("এই ফিল্টারে কোনো অ্যাকাউন্ট নেই", "No accounts match these filters")}</div>
+    <div class="tw cards closing bc-table"><table id="ct"><thead><tr><th>#</th><th>A/C</th><th class="r">আগের ক্লোজিং</th><th class="r c-dr">${bi("ডেবিট / উত্তোলন", "Debit / Withdraw")}</th><th class="r c-cr">${bi("ক্রেডিট / জমা", "Credit / Deposit")}</th><th class="r">হিসাব মতে</th><th class="r c-bk">ব্যাংক ক্লোজিং</th><th class="r">BLOCK</th><th class="r">USABLE</th><th class="r">Diff</th><th>মন্তব্য</th></tr></thead><tbody>
+    ${rows.map((r, i) => { const b = B(r.a); return `<tr data-i="${i}" ><td class="mut">${i + 1}</td><td class="acc-c" style="--b1:${b.c1}"><b>${esc(r.code)}</b> <span class="mvdot" aria-label="${bi("লেনদেন", "Activity")}" hidden>●</span><div class="mut sm">${esc(r.holder)}</div></td><td class="r num">${money(r.prevT)}</td>
+     <td class="c-dr"><div class="au">${autoDr(r)}</div><input class="cell od" aria-label="${esc(r.code)} · ${bi("অতিরিক্ত ডেবিট", "Additional debit")}" value="${fmtIn(r.od || "")}" inputmode="decimal" placeholder="${bi("অতিরিক্ত", "Extra")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
+     <td class="c-cr"><div class="au">${autoCr(r)}</div><input class="cell odp" aria-label="${esc(r.code)} · ${bi("অতিরিক্ত ক্রেডিট", "Additional credit")}" value="${fmtIn(r.odp || "")}" inputmode="decimal" placeholder="${bi("অতিরিক্ত", "Extra")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
+     <td class="r num exp"></td><td class="c-bk"><input class="cell tot" aria-label="${esc(r.code)} · ${bi("ব্যাংক ক্লোজিং", "Bank closing")}" value="${r.total == null ? "" : fmtIn(r.total)}" data-dirty="${r.total == null ? "" : "1"}" inputmode="decimal" ${locked ? "disabled" : ""}></td><td><input class="cell blk" aria-label="${esc(r.code)} · ${bi("ব্লক", "Blocked amount")}" value="${fmtIn(r.block || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
+     <td class="r num usa b"></td><td class="r num dif"></td><td><input class="cell t rem" aria-label="${esc(r.code)} · ${bi("মন্তব্য", "Remarks")}" value="${esc(r.remark)}" ${locked ? "disabled" : ""}></td></tr>`; }).join("")}
     <tr class="tot"><td></td><td>মোট <span class="mut sm" id="T-n"></span></td><td class="r num" id="T0"></td><td class="r num c-dr" id="T1"></td><td class="r num c-cr" id="T2"></td><td class="r num" id="T3"></td><td class="r num c-bk t-bank" id="T4"></td><td class="r num" id="T5"></td><td class="r num t-usa" id="T6"></td><td class="r num t-diff" id="T7"></td><td></td></tr></tbody></table></div>
-    ${locked ? "" : `<div class="cbar entry-actions"><button class="btn lg fix" id="c-draft">${ico("edit")} ড্রাফট সেভ</button><button class="btn pri lg fix" id="c-save">${ico("save")} <span class="bl">ফাইনাল সেভ<small>${date === today() ? "আজকের" : dmy(date)}</small></span></button><div class="hint" id="c-err"></div><div class="sp"></div><span class="mut sm" id="c-auto"></span></div>`}
-    <div class="legend"><span><i class="lg-chg"></i>নীল = আপডেট করা</span><span><i class="lg-same"></i>কালো = আগের দিনের মতোই</span><span><i class="lg-mv"></i>${bi("ক্যাশ চেকার / কালেকশনে লেনদেন আছে", "Cash Checker / Collection activity")}</span><span><i class="lg-dr"></i>Debit</span><span><i class="lg-cr"></i>Credit</span></div>
-    <div class="mut sm" style="margin-top:6px">${bi("হিসাব মতে = আগের ক্লোজিং − Debit/Withdraw + Credit/Deposit। প্রতিটি ঘরের উপরের লাইন ক্যাশ চেকার ও কালেকশন থেকে নিজে আসে; নিচের ঘরে শুধু বাড়তি/অন্য লেনদেন লিখুন। ফাইনাল সেভের পর Staff আর বদলাতে পারবে না। মাঝপথে থামতে \"ড্রাফট সেভ\" চাপুন — এই ডিভাইসে নিজে থেকেও জমা হয়। Diff ≠ 0 হলে মন্তব্য বাধ্যতামূলক।", "Expected = Previous closing − Debit/Withdraw + Credit/Deposit. The top line of each cell comes from Cash Checker and Collection automatically; type only extra/other transactions in the box below. After final save Staff cannot edit. Use \"Save draft\" to pause — it also auto-saves on this device. A remark is required when Diff ≠ 0.")}</div>`;
-    $$("[data-go]", body).forEach(a => a.onclick = () => { const k = a.dataset.go; if (k === "cashchk") sessionStorage.setItem("nabiad_cash_date", date); });
+    ${locked || !rows.length ? "" : `<div class="cbar entry-actions">${has ? "" : `<button class="btn lg fix" id="c-draft">${ico("edit")} ড্রাফট সেভ</button>`}<button class="btn pri lg fix" id="c-save">${ico("save")} <span class="bl">ফাইনাল সেভ<small>${date === today() ? "আজকের" : dmy(date)}</small></span></button><div class="hint" id="c-err" role="alert"></div><span class="mut sm" id="c-auto" role="status"></span></div>`}
+    </section>`;
+    [...$$("[data-go]", body), ...$$("[data-go]", msg)].forEach(a => a.onclick = () => {
+      const key = {cashchk: "nabiad_cash_date", dcol: "nabiad_dc_date", crep: "nabiad_crep_date"}[a.dataset.go];
+      if (key) sessionStorage.setItem(key, date);
+    });
     const trs = $$("#ct tbody tr[data-i]", body);
-    const calc = () => {
-      const T = Array(8).fill(0); let nChg = 0, nMv = 0;
-      trs.forEach(tr => {
-        const r = rows[+tr.dataset.i]; const od = num($(".od", tr).value), odp = num($(".odp", tr).value), ti = $(".tot", tr), blkI = $(".blk", tr), blk = num(blkI.value);
+    const reviewButtons = $$("[data-review]", body);
+    const stats = $$("[data-kpi]", body);
+    const cells = trs.map(tr => ({
+      tr, r: rows[+tr.dataset.i], odI: $(".od", tr), odpI: $(".odp", tr), ti: $(".tot", tr),
+      blkI: $(".blk", tr), remI: $(".rem", tr), eff: $$(".eff", tr), expO: $(".exp", tr),
+      usaO: $(".usa", tr), difO: $(".dif", tr), dot: $(".mvdot", tr)
+    }));
+    const accountKeys = rows.map(({a}) => [a.code, a.holder, a.bank, a.branch, a.acno, a.type].map(chequeSearchKey));
+    const needsRemark = r => r._chg && !r._rem;
+    const filter = (keepFocus = false) => {
+      const q = chequeSearchKey(query.value);
+      let visible = 0;
+      cells.forEach(({tr, r}, i) => {
+        const ok = (!q || accountKeys[i].some(key => key.includes(q))) &&
+          (review === "all" || (review === "diff" && r._chg) || (review === "remarks" && needsRemark(r)) || (review === "mv" && r._mv));
+        const show = ok || (keepFocus && tr.contains(document.activeElement));
+        tr.style.display = show ? "" : "none";
+        if (show) visible++;
+      });
+      $("#c-shown", body).textContent = bi(`${rows.length}টির মধ্যে ${visible}টি`, `${visible} of ${rows.length} accounts`);
+      $("#c-empty", body).hidden = visible > 0;
+      reviewButtons.forEach(btn => btn.setAttribute("aria-pressed", btn.dataset.review === review));
+    };
+    const setBusy = busy => {
+      saving = busy;
+      [...dateControls, ...$$("#c-draft, #c-save, #ct input", body), ...(discard ? [discard] : [])].forEach(el => { el.disabled = busy || (locked && el.matches("#ct input")); });
+    };
+    const calc = (keepFocus = false) => {
+      const T = Array(8).fill(0), counts = {all: rows.length, mv: 0, diff: 0, remarks: 0};
+      cells.forEach(({tr, r, odI, odpI, ti, blkI, remI, eff, expO, usaO, difO, dot}) => {
+        const od = num(odI.value), odp = num(odpI.value), blk = num(blkI.value);
         const dr = r.adr + od, cr = r.acc + r.acb + odp, exp = r.prevT - dr + cr;
         if (!ti.dataset.dirty && document.activeElement !== ti) ti.value = fmtIn(exp);
-        const tot = ti.value.trim() === "" ? exp : num(ti.value), diff = tot - exp, usa = tot - blk;
-        const chg = !same(tot, exp) || (has && !same(tot, r.prevT) && !same(tot, exp));
+        const tot = !ti.dataset.dirty || ti.value.trim() === "" ? exp : num(ti.value);
+        const diff = tot - exp, usa = tot - blk, chg = Math.abs(diff) > 0.001;
+        const mv = !!(r.adr || r.acc || r.acb || od || odp);
         ti.classList.toggle("chg", chg); blkI.classList.toggle("chg", !same(blk, r.prevB));
-        $(".od", tr).classList.toggle("chg", od !== 0); $(".odp", tr).classList.toggle("chg", odp !== 0);
-        const e1 = $$(".eff", tr); e1[0].textContent = r.adr && od ? "= " + money(dr) : ""; e1[1].textContent = (r.acc || r.acb) && odp ? "= " + money(cr) : "";
-        tr.classList.toggle("chgrow", chg); if (chg) nChg++; if (r.adr || r.acc || r.acb) nMv++;
-        $(".exp", tr).textContent = money(exp); $(".usa", tr).textContent = money(usa); const d = $(".dif", tr); d.textContent = diff ? money(diff) : "0"; d.className = "r num dif " + (Math.abs(diff) > 0.001 ? "diffx" : "diff0");
-        [r.prevT, dr, cr, exp, tot, blk, usa, diff].forEach((x, i) => T[i] += x);
-        Object.assign(r, { _od: od, _odp: odp, _tot: tot, _blk: blk, _diff: diff, _exp: exp, _rem: $(".rem", tr).value.trim(), _chg: chg, _dirty: !!ti.dataset.dirty });
+        odI.classList.toggle("chg", od !== 0); odpI.classList.toggle("chg", odp !== 0);
+        eff[0].textContent = r.adr && od ? "= " + money(dr) : "";
+        eff[1].textContent = (r.acc || r.acb) && odp ? "= " + money(cr) : "";
+        tr.classList.toggle("chgrow", chg);
+        dot.hidden = !mv;
+        expO.textContent = money(exp);
+        usaO.textContent = money(usa);
+        difO.textContent = chg ? money(diff) : "0";
+        difO.className = "r num dif " + (chg ? "diffx" : "diff0");
+        [r.prevT, dr, cr, exp, tot, blk, usa, diff].forEach((n, i) => T[i] += n);
+        Object.assign(r, { _od: od, _odp: odp, _tot: tot, _blk: blk, _rem: remI.value.trim(), _chg: chg, _mv: mv, _dirty: !!ti.dataset.dirty });
+        remI.required = chg && !locked;
+        remI.setAttribute("aria-invalid", String(needsRemark(r) && !locked));
+        counts.mv += Number(mv);
+        counts.diff += Number(chg);
+        counts.remarks += Number(needsRemark(r));
       });
-      T.forEach((x, i) => $("#T" + i, body).textContent = money0(x));
+      T.forEach((n, i) => $("#T" + i, body).textContent = money(n));
+      stats.forEach(el => $("strong", el).textContent = "৳ " + money(T[Number(el.dataset.kpi)]));
       $("#T-n", body).textContent = `(${rows.length})`;
-      $("#c-info", v).innerHTML = rows.length ? `<span class="tag t-chg">আপডেট করা ${nChg}</span><span class="tag">অপরিবর্তিত ${rows.length - nChg}</span>${nMv ? `<span class="tag t-mv">লেনদেন ${nMv}</span>` : ""}` : "";
-      filter();
-    };
-    const filter = () => {
-      const q = norm($("#c-q", v).value), f = $("#c-f", v).value;
-      trs.forEach(tr => { const r = rows[+tr.dataset.i]; const ok = (!q || accHay(r.a).includes(q)) && (!f || (f === "chg" && r._chg) || (f === "same" && !r._chg) || (f === "mv" && (r.adr || r.acc || r.acb))); tr.style.display = ok ? "" : "none"; });
+      reviewButtons.forEach(btn => $(".bc-count", btn).textContent = counts[btn.dataset.review]);
+      filter(keepFocus);
     };
     const collect = () => Object.fromEntries(rows.map(r => [r.code, { od: r._od || 0, odp: r._odp || 0, tot: r._dirty ? r._tot : null, blk: r._blk || 0, rem: r._rem || "" }]));
-    const autosave = () => { if (locked) return; clearTimeout(autoT); autoT = setTimeout(() => { Draft.saveLocal(date, collect()); const a = $("#c-auto", body); if (a) a.textContent = "✓ এই ডিভাইসে অটো-সেভ " + new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); }, 700); };
-    $$("#ct input", body).forEach(i => i.addEventListener("input", () => { if (i.classList.contains("tot")) i.dataset.dirty = i.value.trim() === "" ? "" : "1"; calc(); autosave(); }));
+    const autosave = () => {
+      if (has || saving) return;
+      pendingDraft = {date, rows: collect()};
+      clearTimeout(autoT);
+      autoT = setTimeout(() => {
+        flushDraft();
+        if (!current()) return;
+        info.textContent = bi("ড্রাফট", "Draft");
+        info.dataset.state = "draft";
+        $("#c-auto", body).textContent = bi("ডিভাইসে ড্রাফট সেভ হয়েছে", "Draft saved on this device");
+      }, 700);
+    };
+    $$("#ct input", body).forEach(input => input.addEventListener("input", () => {
+      if (input.classList.contains("tot")) input.dataset.dirty = input.value.trim() === "" ? "" : "1";
+      calc(true);
+      autosave();
+    }));
+    $$("#ct .rem", body).forEach(input => input.addEventListener("blur", () => filter()));
     $$("#ct input.cell:not(.rem)", body).forEach(inp => {
       inp.addEventListener("focus", () => inp.select());
       inp.addEventListener("blur", () => { if (inp.value.trim() !== "") inp.value = fmtIn(num(inp.value)); calc(); });
       inp.addEventListener("keydown", e => { if (e.key !== "Enter") return; e.preventDefault(); let tr = inp.closest("tr").nextElementSibling; while (tr && tr.style.display === "none") tr = tr.nextElementSibling; const cls = [...inp.classList].find(c => ["od", "odp", "tot", "blk"].includes(c)); const nx = tr && $("." + cls, tr); if (nx) nx.focus(); });
     });
-    $("#c-q", v).oninput = filter; $("#c-f", v).onchange = filter;
+    query.oninput = () => filter();
+    reviewButtons.forEach(btn => btn.onclick = () => { review = btn.dataset.review; filter(); });
     calc();
-    if (locked) return;
-    $("#c-draft", body).onclick = async () => {
-      calc(); const b = $("#c-draft", body); b.disabled = true;
-      try { await Draft.save(date, collect()); toast("✔ ড্রাফট সেভ হয়েছে — পরে যেকোনো ডিভাইস থেকে চালিয়ে যেতে পারবেন"); }
+    if (locked || !rows.length) return;
+    const saveDraft = $("#c-draft", body);
+    if (saveDraft) saveDraft.onclick = async () => {
+      if (saving) return;
+      calc(); flushDraft(); setBusy(true);
+      try {
+        await Draft.save(date, collect());
+        if (current()) {
+          if (!has) { info.textContent = bi("ড্রাফট", "Draft"); info.dataset.state = "draft"; }
+          toast("✔ ড্রাফট সেভ হয়েছে — পরে যেকোনো ডিভাইস থেকে চালিয়ে যেতে পারবেন");
+        }
+      }
       catch (e) { toast(isNetErr(e) ? "ইন্টারনেট নেই — ড্রাফট শুধু এই ডিভাইসে জমা আছে" : "সার্ভারে ড্রাফট সেভ হয়নি (এই ডিভাইসে জমা আছে): " + (e.message || e), "err"); }
-      finally { b.disabled = false; }
+      finally { setBusy(false); }
     };
     $("#c-save", body).onclick = async () => {
+      if (saving) return;
       calc(); const err = $("#c-err", body); err.className = "hint rd"; err.textContent = "";
-      const bad = rows.filter(r => Math.abs(r._diff) > 0.001 && !r._rem);
-      if (bad.length) { err.textContent = `Diff আছে কিন্তু মন্তব্য নেই: ${bad.map(r => r.code).join(", ")}`; $("#c-q", v).value = ""; $("#c-f", v).value = ""; filter(); trs[rows.indexOf(bad[0])].scrollIntoView({ block: "center" }); $(".rem", trs[rows.indexOf(bad[0])]).focus(); return; }
-      const tot = rows.reduce((s, r) => s + r._tot, 0), blk = rows.reduce((s, r) => s + r._blk, 0), nChg = rows.filter(r => r._chg).length;
-      if (!ask(bi(`${dmy(date)} — ফাইনাল সেভ\nমোট ক্লোজিং ৳ ${money0(tot)}, Block ${money0(blk)}, Usable ${money0(tot - blk)}\n${nChg}টি অ্যাকাউন্ট আপডেট, ${rows.length - nChg}টি আগের মতো।${S.me.role !== "admin" ? "\n\nসেভের পর আর বদলানো যাবে না (শুধু Admin পারবে)।" : ""}`, `${dmy(date)} — final save\nTotal closing ৳ ${money0(tot)}, Block ${money0(blk)}, Usable ${money0(tot - blk)}\n${nChg} account(s) updated, ${rows.length - nChg} unchanged.${S.me.role !== "admin" ? "\n\nAfter saving it cannot be changed (only an Admin can)." : ""}`))) return;
-      $("#c-save", body).disabled = true;
+      const bad = rows.filter(needsRemark);
+      if (bad.length) {
+        err.textContent = bi(`অমিলের মন্তব্য দিন · ${bad.map(r => r.code).join(", ")}`, `Add remarks for differences · ${bad.map(r => r.code).join(", ")}`);
+        query.value = ""; review = "remarks"; filter();
+        const rem = cells[rows.indexOf(bad[0])].remI;
+        rem.scrollIntoView({block: "center"}); rem.focus();
+        return;
+      }
+      const tot = rows.reduce((sum, r) => sum + r._tot, 0), blk = rows.reduce((sum, r) => sum + r._blk, 0);
+      const nDiff = rows.filter(r => r._chg).length;
+      if (!ask(bi(`${dmy(date)} · ফাইনাল সেভ\nক্লোজিং ৳ ${money(tot)} · ব্লক ৳ ${money(blk)} · ব্যবহারযোগ্য ৳ ${money(tot - blk)}\nঅমিল: ${nDiff} / ${rows.length}${!canEdit ? "\nফাইনাল সেভের পর সম্পাদনার অনুমতি লাগবে।" : ""}`, `${dmy(date)} · Final save\nClosing ৳ ${money(tot)} · Blocked ৳ ${money(blk)} · Usable ৳ ${money(tot - blk)}\nDifferences: ${nDiff} / ${rows.length}${!canEdit ? "\nEditing after final save requires Edit access." : ""}`))) return;
+      flushDraft();
+      setBusy(true);
       try {
-        await API.saveBalances(date, rows.map(r => ({ code: r.code, total: r._tot, block: r._blk || null, remark: r._rem, od: r._od, odp: r._odp })), has && S.me.role === "admin");
-        if (navigator.onLine && !Outbox.count()) S.lastBal = await API.lastBalDate(); else if (!S.lastBal || date > S.lastBal) S.lastBal = date;
-        await Draft.drop(date); refreshBadges();
-        toast(Outbox.count() ? "✔ অফলাইনে জমা হয়েছে — নেট এলে সিঙ্ক হবে" : "✔ ব্যালেন্স ফাইনাল সেভ হয়েছে");
-        await draw();
-        $("#c-msg", v).insertAdjacentHTML("afterbegin", `<div class="alert gr" style="margin-bottom:8px">✔ <span>${dmy(date)} ক্লোজিং সেভ হয়েছে।</span><a class="btn sm pri" style="margin-left:auto" href="#/crep" onclick="sessionStorage.setItem('nabiad_crep_date','${date}')">${ico("img")} রিপোর্ট দেখুন</a></div>`);
-      } catch (e) { err.textContent = e.message || String(e); toast(e.message || String(e), "err"); $("#c-save", body).disabled = false; }
+        await API.saveBalances(date, rows.map(r => ({ code: r.code, total: r._tot, block: r._blk || null, remark: r._rem, od: r._od, odp: r._odp })), has && canEdit);
+      } catch (e) {
+        err.textContent = e.message || String(e);
+        if (current()) toast(e.message || String(e), "err");
+        setBusy(false);
+        return;
+      }
+      if (!S.lastBal || date > S.lastBal) S.lastBal = date;
+      await Draft.drop(date);
+      refreshBadges();
+      setBusy(false);
+      if (current()) await draw(true);
     };
   }
-  bindDateNav(v, "c", draw);
+  bindDateNav(v, "c", () => { review = "all"; return draw(); });
   await draw();
-  return () => clearTimeout(autoT);
+  return () => { ++revision; flushDraft(); };
 }
 
 /* ---------- closing report + account history ---------- */
@@ -2319,107 +2581,279 @@ function bookImportModal(after) {
     };
   });
 }
-async function vAccounts(v) {
-  const admin = S.me.role === "admin", sel = new Set(); const F = { q: "", b: "", h: "", st: "Active", miss: "" };
-  const banks = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort(), holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort();
+async function vAccounts(v, F = { q: "", b: "", h: "", st: "Active", miss: "", view: "grid" }, sel = new Set()) {
+  const admin = S.me.role === "admin";
+  const compare = new Intl.Collator(LANG === "bn" ? "bn-BD" : "en", { sensitivity: "base", numeric: true }).compare;
+  const bankName = a => String(a.bank || "").trim();
+  const views = [["grid", "grid", bi("গ্রিড", "Grid")], ["list", "list", bi("তালিকা", "List")]];
+  const selected = (value, active) => value === active ? " selected" : "";
+  const banks = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort(compare), holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort(compare);
+  if (!banks.includes(F.b)) F.b = "";
+  if (!holders.includes(F.h)) F.h = "";
   v.innerHTML = head("অ্যাকাউন্ট খুঁজুন", admin ? `<button class="btn" id="ad-imp">${ico("cam")} ছবি ইমপোর্ট</button><button class="btn pri" id="ad-add">${ico("plus")} নতুন অ্যাকাউন্ট</button>` : "") + `<div class="card tbar noprint">
     ${searchBox("ad-q", "কোড, নাম, ব্যাংক, শাখা, A/C বা Routing নং — যেমন: 483, pubali")}
-    <div class="aufl" style="margin-top:8px"><select class="in" id="ad-b"><option value="">সব ব্যাংক</option>${banks.map(b => `<option>${esc(b)}</option>`).join("")}</select><select class="in" id="ad-h"><option value="">সব হোল্ডার</option>${holders.map(b => `<option>${esc(b)}</option>`).join("")}</select><select class="in" id="ad-s"><option value="Active">Active</option><option value="">সব</option><option value="Closed">Closed</option></select></div>
+    <div class="ad-filters">
+      <select class="in" id="ad-b" aria-label="${bi("ব্যাংক", "Bank")}"><option value="">সব ব্যাংক</option>${banks.map(b => `<option${selected(b, F.b)}>${esc(b)}</option>`).join("")}</select>
+      <select class="in" id="ad-h" aria-label="${bi("অ্যাকাউন্ট হোল্ডার", "Account holder")}"><option value="">সব হোল্ডার</option>${holders.map(h => `<option${selected(h, F.h)}>${esc(h)}</option>`).join("")}</select>
+      <select class="in" id="ad-s" aria-label="${bi("অ্যাকাউন্টের অবস্থা", "Account status")}"><option value="Active"${selected("Active", F.st)}>Active</option><option value=""${selected("", F.st)}>সব</option><option value="Closed"${selected("Closed", F.st)}>Closed</option></select>
+      <div class="ad-view" role="group" aria-label="${bi("অ্যাকাউন্ট দেখার ধরন", "Account view")}">${views.map(([key, icon, label]) => `<button type="button" class="btn" data-ad-view="${key}" aria-controls="ad-out" aria-pressed="${F.view === key}"><span aria-hidden="true">${ico(icon)}</span>${label}</button>`).join("")}</div>
+    </div>
     <div class="mchips" id="ad-m"></div></div>
-   <div class="mut sm" id="ad-n" style="margin-bottom:8px"></div><div class="acc-grid" id="ad-out"></div><div id="ad-selbar" class="selbar hide"></div>`;
+   <div class="ad-results"><span class="mut sm" id="ad-n" role="status"></span><button type="button" class="lnkb" id="ad-all">${bi("দেখানো সব নির্বাচন", "Select all shown")}</button></div>
+   <div id="ad-out"></div><div id="ad-selbar" class="selbar hide"></div>`;
+  const out = $("#ad-out", v), query = $("#ad-q", v), selectAll = $("#ad-all", v);
+  query.value = F.q;
+  query.setAttribute("aria-label", bi("অ্যাকাউন্ট খুঁজুন", "Search accounts"));
+  const refresh = () => { if (out.isConnected) vAccounts(v, F, sel); };
   const base = () => S.accounts.filter(a => (!F.b || a.bank === F.b) && (!F.h || a.holder === F.h) && (!F.st || a.status === F.st));
   const mf = { mfs: a => isMFS(a), inc: a => !isMFS(a) && accMissing(a).length > 0, ok: a => !isMFS(a) && !accMissing(a).length, acno: a => accMissing(a).some(m => m.k === "acno"), routing: a => accMissing(a).some(m => m.k === "routing"), branch: a => accMissing(a).some(m => m.k === "branch"), type: a => accMissing(a).some(m => m.k === "type"), nophoto: a => !isMFS(a) && !a.book_photo };
   const selbar = () => { const el = $("#ad-selbar", v); if (!sel.size) return el.classList.add("hide"); el.classList.remove("hide"); el.innerHTML = `<b>${sel.size}</b> <span>টি নির্বাচিত</span><button class="btn sm pri" id="sb-sh">${ico("share")} শেয়ার</button><button class="btn sm" id="sb-cp">${ico("copy")} কপি</button><button class="btn sm ghost" id="sb-x">✕</button>`;
     const list = () => S.accounts.filter(a => sel.has(a.code)); $("#sb-sh", el).onclick = () => shareAccounts(list()); $("#sb-cp", el).onclick = () => copyText(accText(list()), "✔ নির্বাচিত অ্যাকাউন্টের তথ্য কপি হয়েছে"); $("#sb-x", el).onclick = () => { sel.clear(); draw(); }; };
   const draw = () => {
-    const q = norm(F.q), b0 = base(), cnt = k => b0.filter(mf[k]).length;
+    const q = chequeSearchKey(F.q), b0 = base(), cnt = k => b0.filter(mf[k]).length;
     $("#ad-m", v).innerHTML = [["", "সব", b0.length], ["inc", "⚠ তথ্য অসম্পূর্ণ", cnt("inc")], ["ok", "✓ সম্পূর্ণ", cnt("ok")], ["acno", "A/C নং নেই", cnt("acno")], ["routing", "Routing নেই", cnt("routing")], ["branch", "শাখা নেই", cnt("branch")], ["type", "ধরন নেই", cnt("type")], ["nophoto", "📷 ছবি নেই", cnt("nophoto")], ["mfs", "📱 মোবাইল ব্যাংকিং", cnt("mfs")]].filter(([k, , n]) => !k || n || F.miss === k).map(([k, l, n]) => `<span class="chip ${F.miss === k ? "on" : ""} ${k && k !== "ok" ? "warn" : ""}" data-mf="${k}"><span>${l}</span> <b>${n}</b></span>`).join("");
     $$("#ad-m [data-mf]", v).forEach(c => c.onclick = () => { F.miss = c.dataset.mf; draw(); });
-    const arr = b0.filter(a => (!F.miss || mf[F.miss](a)) && (!q || norm([a.code, a.holder, a.bank, a.branch, a.acno, a.type, a.routing, a.swift].join(" ")).includes(q))).sort((x, y) => (x.sort || 0) - (y.sort || 0));
-    $("#ad-n", v).innerHTML = `<b>${arr.length}</b>টি অ্যাকাউন্ট${arr.length ? ` · <a href="#" id="ad-all">সব নির্বাচন</a>` : ""}`;
-    $("#ad-out", v).innerHTML = arr.map(a => { const n = S.cheques.filter(c => c.code === a.code).length, br = brandOf(a), miss = accMissing(a), pct = accPct(a); return `<div class="card acc ${sel.has(a.code) ? "picked" : ""}" style="--b1:${br.c1};--b2:${br.c2}"><div class="hd"><label class="pick" title="নির্বাচন"><input type="checkbox" data-sel="${esc(a.code)}" ${sel.has(a.code) ? "checked" : ""}><i></i></label><span class="blogo">${esc(br.s)}</span><span class="code">${esc(a.code)}</span>${a.status !== "Active" ? `<span class="tag cl">${esc(a.status)}</span>` : ""}<span style="flex:1"></span><span class="hacts">${a.book_photo ? `<button class="btn sm ghost" data-ph="${esc(a.code)}" title="Cheque ছবি">${ico("img")}</button>` : ""}<button class="btn sm ghost" data-sh="${esc(a.code)}" title="শেয়ার">${ico("share")}</button>${admin ? `<button class="btn sm ghost" data-e="${esc(a.code)}" title="এডিট">${ico("edit")}</button>` : ""}</span></div><div class="bd">
-      <div class="b">${esc(a.holder || "")}${a.type ? ` <span class="tag typ">${esc(a.type)}</span>` : ""}</div><div class="bk">${esc(a.bank || "")}${a.branch ? " · " + esc(a.branch) : ""}</div>
+    const arr = b0.filter(a => (!F.miss || mf[F.miss](a)) && (!q || chequeSearchKey([a.code, a.holder, a.bank, a.branch, a.acno, a.type, a.routing, a.swift].join(" ")).includes(q)));
+    const listView = F.view === "list", byBank = new Map(), chequeCounts = new Map();
+    if (listView) {
+      for (const account of arr) {
+        const name = bankName(account);
+        const key = name.toLowerCase();
+        if (!byBank.has(key)) byBank.set(key, { name, accounts: [] });
+        byBank.get(key).accounts.push(account);
+      }
+    } else arr.sort((a, b) => (a.sort || 0) - (b.sort || 0));
+    for (const c of S.cheques) chequeCounts.set(c.code, (chequeCounts.get(c.code) || 0) + 1);
+    $("#ad-n", v).textContent = listView && arr.length
+      ? bi(`${arr.length}টি অ্যাকাউন্ট · ${byBank.size}টি গ্রুপ · নাম অনুযায়ী A–Z`, `${arr.length} accounts · ${byBank.size} groups · Bank name A–Z`)
+      : bi(`${arr.length}টি অ্যাকাউন্ট`, `${arr.length} accounts`);
+    selectAll.hidden = !arr.length;
+    const renderAccount = a => {
+      const n = chequeCounts.get(a.code) || 0, br = brandOf(a), miss = accMissing(a), pct = accPct(a);
+      return `<div class="card acc ${sel.has(a.code) ? "picked" : ""}" style="--b1:${br.c1};--b2:${br.c2}"><div class="hd"><label class="pick" title="নির্বাচন"><input type="checkbox" aria-label="${bi("নির্বাচন", "Select")} ${esc(a.code)}" data-sel="${esc(a.code)}" ${sel.has(a.code) ? "checked" : ""}><i></i></label><span class="blogo">${esc(br.s)}</span><span class="code">${esc(a.code)}</span>${a.status !== "Active" ? `<span class="tag cl">${esc(a.status)}</span>` : ""}<span style="flex:1"></span><span class="hacts">${a.book_photo ? `<button class="btn sm ghost" data-ph="${esc(a.code)}" title="Cheque ছবি">${ico("img")}</button>` : ""}<button class="btn sm ghost" data-sh="${esc(a.code)}" title="শেয়ার">${ico("share")}</button>${admin ? `<button class="btn sm ghost" data-e="${esc(a.code)}" title="এডিট">${ico("edit")}</button>` : ""}</span></div><div class="bd">
+      <div class="ad-id"><div class="b">${esc(a.holder || "")}${a.type ? ` <span class="tag typ">${esc(a.type)}</span>` : ""}</div><div class="bk">${esc(a.bank || "")}${a.branch ? " · " + esc(a.branch) : ""}</div></div><div class="ad-details">
       ${a.acno ? `<div class="no"><span>${esc(fmtAcno(a.acno))}</span><button class="btn sm ghost" data-cp="${esc(a.acno)}" title="কপি">${ico("copy")} কপি</button></div>` : isMFS(a) ? `<div class="nomiss" style="color:var(--mut,#8b93a7)">📱 মোবাইল ব্যাংকিং (শাখা/Routing/SWIFT প্রযোজ্য নয়)</div>` : `<div class="nomiss">A/C নং দেওয়া নেই</div>`}
       ${a.routing || a.swift ? `<div class="rt">${a.routing ? `<span>Routing <b>${esc(a.routing)}</b> <button class="lnkb" data-cp="${esc(a.routing)}">কপি</button></span>` : ""}${a.swift ? `<span>SWIFT <b>${esc(a.swift)}</b></span>` : ""}</div>` : ""}
-      ${miss.length ? `<div class="cmpl"><div class="bar"><i style="width:${pct}%"></i></div><div class="cmpl-t"><span class="am xs">${pct}% · <span>বাকি:</span> ${miss.map(m => `<span>${m.l}</span>`).join(", ")}</span>${admin ? `<button class="lnkb" data-e="${esc(a.code)}">পূরণ করুন</button>` : ""}</div></div>` : ""}
-      <div class="mut sm">${n ? `${n}টি চেক · <a href="#/cheques" data-go="${esc(a.code)}">দেখুন</a>` : "এখনো চেক নেই"}${a.daily ? " · দৈনিক ক্লোজিং" : ""}${a.note ? ` · <span title="${esc(a.note)}">📝 ${esc(a.note.slice(0, 30))}</span>` : ""}</div></div></div>`; }).join("") || `<div class="card empty" style="grid-column:1/-1">কিছু পাওয়া যায়নি</div>`;
+      </div><div class="ad-meta">${miss.length ? `<div class="cmpl"><div class="bar"><i style="width:${pct}%"></i></div><div class="cmpl-t"><span class="am xs">${pct}% · <span>বাকি:</span> ${miss.map(m => `<span>${m.l}</span>`).join(", ")}</span>${admin ? `<button class="lnkb" data-e="${esc(a.code)}">পূরণ করুন</button>` : ""}</div></div>` : ""}
+      <div class="mut sm">${n ? `${n}টি চেক · <a href="#/cheques" data-go="${esc(a.code)}">দেখুন</a>` : "এখনো চেক নেই"}${a.daily ? " · দৈনিক ক্লোজিং" : ""}${a.note ? ` · <span title="${esc(a.note)}">📝 ${esc(a.note.slice(0, 30))}</span>` : ""}</div></div></div></div></div>`;
+    };
+    const groups = [...byBank.values()].sort((a, b) => Number(!a.name) - Number(!b.name) || compare(a.name, b.name));
+    out.className = listView ? "ad-list" : "acc-grid ad-grid";
+    out.innerHTML = !arr.length ? `<div class="card empty ad-empty">${bi("ফিল্টারে কোনো অ্যাকাউন্ট মেলেনি", "No accounts match these filters")}</div>` :
+      listView ? groups.map(({name, accounts}) => `<section class="ad-bank"><h2>${esc(name || bi("ব্যাংকের নাম নেই", "Bank name missing"))} <span class="tag num" aria-label="${bi(`${accounts.length}টি অ্যাকাউন্ট`, `${accounts.length} accounts`)}">${accounts.length}</span></h2>${accounts.sort((a, b) => compare(a.code, b.code)).map(renderAccount).join("")}</section>`).join("") :
+      arr.map(renderAccount).join("");
     $$("[data-cp]", v).forEach(x => x.onclick = () => copyText(x.dataset.cp, "✔ কপি হয়েছে"));
-    $$("[data-e]", v).forEach(x => x.onclick = () => accountModal(S.accounts.find(a => a.code === x.dataset.e), () => vAccounts(v)));
+    $$("[data-e]", v).forEach(x => x.onclick = () => accountModal(S.accounts.find(a => a.code === x.dataset.e), refresh));
     $$("[data-ph]", v).forEach(x => x.onclick = () => viewBookPhoto(S.accounts.find(a => a.code === x.dataset.ph)));
     $$("[data-sh]", v).forEach(x => x.onclick = () => shareAccounts([S.accounts.find(a => a.code === x.dataset.sh)]));
     $$("[data-go]", v).forEach(x => x.onclick = () => sessionStorage.setItem("nabiad_chq_ac", x.dataset.go));
     $$("[data-sel]", v).forEach(x => x.onchange = () => { x.checked ? sel.add(x.dataset.sel) : sel.delete(x.dataset.sel); x.closest(".acc").classList.toggle("picked", x.checked); selbar(); });
-    $("#ad-all", v) && ($("#ad-all", v).onclick = e => { e.preventDefault(); arr.forEach(a => sel.add(a.code)); draw(); });
+    selectAll.onclick = () => { arr.forEach(a => sel.add(a.code)); draw(); };
     selbar();
   };
-  $("#ad-q", v).oninput = e => { F.q = e.target.value; draw(); }; $("#ad-b", v).onchange = e => { F.b = e.target.value; draw(); }; $("#ad-h", v).onchange = e => { F.h = e.target.value; draw(); }; $("#ad-s", v).onchange = e => { F.st = e.target.value; draw(); };
-  $("#ad-imp", v) && ($("#ad-imp", v).onclick = () => bookImportModal(() => vAccounts(v)));
-  $("#ad-add", v) && ($("#ad-add", v).onclick = () => accountModal(null, () => vAccounts(v)));
-  draw(); setTimeout(() => $("#ad-q", v)?.focus(), 50);
+  const viewButtons = $$("[data-ad-view]", v);
+  viewButtons.forEach(btn => btn.onclick = () => {
+    if (btn.dataset.adView === F.view) return;
+    F.view = btn.dataset.adView;
+    viewButtons.forEach(item => item.setAttribute("aria-pressed", String(item.dataset.adView === F.view)));
+    draw();
+  });
+  query.oninput = e => { F.q = e.target.value; draw(); }; $("#ad-b", v).onchange = e => { F.b = e.target.value; draw(); }; $("#ad-h", v).onchange = e => { F.h = e.target.value; draw(); }; $("#ad-s", v).onchange = e => { F.st = e.target.value; draw(); };
+  $("#ad-imp", v) && ($("#ad-imp", v).onclick = () => bookImportModal(refresh));
+  $("#ad-add", v) && ($("#ad-add", v).onclick = () => accountModal(null, refresh));
+  draw();
 }
+const MODULE_ACCESS = [
+  ["cheque", "চেক", "Cheque", "chq"],
+  ["bank", "ব্যাংক", "Bank", "bank"],
+  ["cash", "ক্যাশ", "Cash", "book"],
+  ["collection", "কালেকশন", "Collection", "coins"],
+  ["inventory", "ইনভেন্টরি", "Inventory", "grid"]
+];
+function moduleCan(key, action, fallback = S.me.role === "staff") {
+  if (S.me.role === "admin") return true;
+  return S.me.module_access == null ? fallback : S.me.module_access[key]?.[action] === true;
+}
+const moduleOpen = key => moduleCan(key, "entry") || moduleCan(key, "edit");
+const writeDenied = () => new Error(bi("এই কাজের জন্য আপনার অনুমতি নেই।", "You do not have permission for this action."));
+function moduleAccessModal(user, after) {
+  const entryLabel = bi("এন্ট্রি", "Entry"), editLabel = bi("এডিট", "Edit");
+  modal(`<h2>${bi("মডিউল অ্যাক্সেস", "Module access")} · ${esc(user.name || user.email || "")}</h2>
+    <div class="adm-mode"><label class="f" for="ma-mode">${bi("অনুমতির ধরন", "Access mode")}</label><select class="in" id="ma-mode"><option value="default">${bi("রোলের ডিফল্ট", "Role defaults")}</option><option value="custom">${bi("মডিউল বেছে দিন", "Custom module access")}</option></select></div>
+    <div id="ma-custom" hidden>
+      <div class="adm-actions"><button class="btn sm" type="button" id="ma-all">${bi("সব অনুমতি দিন", "Allow all")}</button><button class="btn sm" type="button" id="ma-none">${bi("সব বন্ধ করুন", "Clear all")}</button></div>
+      <div class="adm-access"><strong>${bi("মডিউল", "Module")}</strong><strong>${entryLabel}</strong><strong>${editLabel}</strong>
+      ${MODULE_ACCESS.map(([key, bn, en, icon]) => {
+        const name = bi(bn, en);
+        return `<span>${ico(icon)} ${name}</span>${["entry", "edit"].map(action => `<label><input type="checkbox" data-module="${key}" data-action="${action}" aria-label="${name} · ${action === "entry" ? entryLabel : editLabel}" ${user.module_access?.[key]?.[action] === true ? "checked" : ""}></label>`).join("")}`;
+      }).join("")}</div>
+    </div>
+    <p class="mut sm">${bi("রিপোর্ট দেখার অনুমতি রোল অনুযায়ী থাকে। ডিলিট, সেটআপ ও ব্যবহারকারী ব্যবস্থাপনা Admin-এর কাজ।", "Report visibility follows the role. Deletion, setup and user management remain Admin actions.")}</p>
+    <div id="ma-error" class="hint rd" role="alert"></div>
+    <div class="modal-actions"><button class="btn" type="button" id="ma-close">${bi("বাতিল", "Cancel")}</button><button class="btn pri" type="button" id="ma-save">${bi("সেভ", "Save")}</button></div>`, (root, close) => {
+    const mode = $("#ma-mode", root), custom = $("#ma-custom", root), controls = $$("[data-module][data-action]", root);
+    mode.value = user.module_access == null ? "default" : "custom";
+    const sync = () => { custom.hidden = mode.value !== "custom"; };
+    mode.onchange = sync; sync();
+    $("#ma-all", root).onclick = () => controls.forEach(c => { c.checked = true; });
+    $("#ma-none", root).onclick = () => controls.forEach(c => { c.checked = false; });
+    const cancel = $("#ma-close", root), save = $("#ma-save", root), err = $("#ma-error", root);
+    cancel.onclick = close;
+    save.onclick = async () => {
+      if (save.disabled) return;
+      let config = null;
+      if (mode.value === "custom") {
+        config = Object.fromEntries(MODULE_ACCESS.map(([key]) => [key, {entry:false, edit:false}]));
+        controls.forEach(c => { config[c.dataset.module][c.dataset.action] = c.checked; });
+      }
+      save.disabled = cancel.disabled = true;
+      err.textContent = "";
+      try {
+        await API.setModuleAccess(user.id, config);
+        close(); after(); toast(bi("অ্যাক্সেস সেভ হয়েছে", "Access saved"));
+      } catch (e) { err.textContent = e.message || String(e); }
+      finally { save.disabled = cancel.disabled = false; }
+    };
+  });
+}
+
 async function vAdmin(v) {
-  let tab = sessionStorage.getItem("nabiad_admin_tab") || "acc";
+  let tab = sessionStorage.getItem("nabiad_admin_tab") || "acc", setup = tab === "imp" ? "imp" : "health";
+  if (tab === "imp") tab = "help";
+  if (!["acc", "usr", "help"].includes(tab)) tab = "acc";
+  const accountFilters = { q:"", status:"Active", bank:"", daily:"", sort:"order" };
+  const userFilters = { q:"", role:"", status:"" };
+  let importing = false;
+  const metrics = rows => `<div class="adm-metrics">${rows.map(([name, value]) => `<div class="card"><span class="mut sm">${name}</span><strong class="num">${value}</strong></div>`).join("")}</div>`;
+  const all = bi("সব", "All");
   const draw = async () => {
     sessionStorage.setItem("nabiad_admin_tab", tab);
-    v.innerHTML = head("অ্যাডমিন প্যানেল") + `<div class="tabs ntabs">${[["acc", "🏦", "অ্যাকাউন্ট"], ["usr", "👥", "ব্যবহারকারী"], ["imp", "📥", "পুরনো ডাটা"], ["help", "🧰", "সেটআপ"]].map(([k, i, l]) => `<span class="chip ${k === tab ? "on" : ""}" data-t="${k}"><i class="te">${i}</i> <span>${l}</span></span>`).join("")}</div><div id="ad"></div>`;
-    $$("[data-t]", v).forEach(c => c.onclick = () => { tab = c.dataset.t; draw(); }); const out = $("#ad", v);
+    v.innerHTML = head("অ্যাডমিন প্যানেল") + `<div class="tabs ntabs adm-tabs" role="group" aria-label="${bi("অ্যাডমিন বিভাগ", "Admin sections")}">${[["acc", "bank", bi("অ্যাকাউন্ট", "Accounts")], ["usr", "users", bi("ব্যবহারকারী", "Users")], ["help", "sliders", bi("সেটআপ", "Setup")]].map(([id, icon, text]) => `<button type="button" class="chip ${id === tab ? "on" : ""}" data-admin-tab="${id}" aria-pressed="${id === tab}">${ico(icon)} ${text}</button>`).join("")}</div>
+      ${tab === "help" ? `<div class="adm-setup-switch chips" role="group" aria-label="${bi("সেটআপ বিভাগ", "Setup sections")}">${[["health", bi("সিস্টেম", "System status")], ["imp", bi("পুরনো ডাটা", "Old data")]].map(([id, label]) => `<button type="button" class="chip ${setup === id ? "on" : ""}" data-admin-setup="${id}" aria-pressed="${setup === id}">${label}</button>`).join("")}</div>` : ""}<div id="ad"></div>`;
+    $$("[data-admin-tab]", v).forEach(btn => btn.onclick = () => { tab = btn.dataset.adminTab; draw(); });
+    $$("[data-admin-setup]", v).forEach(btn => btn.onclick = () => { setup = btn.dataset.adminSetup; draw(); });
+    const out = $("#ad", v);
+    const refresh = () => { if (out.isConnected) return draw(); };
     if (tab === "acc") {
-      const F = { q: "", st: "Active" };
-      out.innerHTML = `<div class="card noprint" style="margin-bottom:12px"><div class="srch" style="margin-top:0"><label class="si">${ico("search")}<input class="in" id="aa-q" placeholder="কোড, হোল্ডার, ব্যাংক, A/C নং…" autocomplete="off" type="search"></label><select class="in fix" id="aa-s"><option value="Active">Active</option><option value="">সব</option><option value="Closed">Closed</option></select><button class="btn pri fix" id="ac-add">${ico("plus")} <span class="lbl2">নতুন</span></button></div></div><div class="mut sm" id="aa-n" style="margin-bottom:8px"></div><div class="card flush"><div class="alist" id="aa-out"></div></div>`;
+      const F = accountFilters;
+      const compare = new Intl.Collator(LANG === "bn" ? "bn" : "en", {numeric:true, sensitivity:"base"}).compare;
+      const banks = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort(compare);
+      out.innerHTML = metrics([[bi("সব অ্যাকাউন্ট", "All accounts"), S.accounts.length], [bi("সক্রিয়", "Active"), S.accounts.filter(a => a.status === "Active").length], [bi("সক্রিয় দৈনিক ক্লোজিং", "Active in daily closing"), S.accounts.filter(a => a.status === "Active" && a.daily).length], [bi("সক্রিয় · তথ্য অসম্পূর্ণ", "Active · incomplete"), S.accounts.filter(a => a.status === "Active" && !isMFS(a) && accMissing(a).length).length]]) +
+        `<div class="card adm-tools">
+          <div class="adm-toolbar">${searchBox("aa-q", bi("কোড, হোল্ডার, ব্যাংক, A/C বা Routing", "Code, holder, bank, A/C or routing"))}<button class="btn pri" id="ac-add">${ico("plus")} ${bi("নতুন অ্যাকাউন্ট", "New account")}</button></div>
+          <div class="adm-filters">
+            <label><span class="f">${bi("অবস্থা", "Status")}</span><select class="in" id="aa-s"><option value="">${all}</option><option>Active</option><option>Closed</option></select></label>
+            <label><span class="f">${bi("ব্যাংক", "Bank")}</span><select class="in" id="aa-bank"><option value="">${all}</option>${banks.map(bank => `<option value="${esc(bank)}">${esc(bank)}</option>`).join("")}</select></label>
+            <label><span class="f">${bi("রেকর্ডের ধরন", "Account scope")}</span><select class="in" id="aa-d"><option value="">${all}</option><option value="daily">${bi("দৈনিক ক্লোজিং", "Daily closing")}</option><option value="missing">${bi("অসম্পূর্ণ", "Incomplete")}</option></select></label>
+            <label><span class="f">${bi("সাজান", "Sort by")}</span><select class="in" id="aa-sort"><option value="order">${bi("এন্ট্রি ক্রম", "Account order")}</option><option value="bank">${bi("ব্যাংক A–Z", "Bank A–Z")}</option><option value="code">A/C A–Z</option></select></label>
+          </div></div><div class="mut sm adm-count" id="aa-n" role="status"></div><div class="card flush"><div id="aa-out"></div></div>`;
       const list = () => {
-        const q = norm(F.q), arr = S.accounts.filter(a => (!F.st || a.status === F.st) && (!q || accHay(a).includes(q))).sort((a, b) => (a.sort || 0) - (b.sort || 0));
-        $("#aa-n", out).innerHTML = `<b>${arr.length}</b>টি অ্যাকাউন্ট · <span>দৈনিক ক্লোজিং-এ</span> ${arr.filter(a => a.daily).length}`;
-        $("#aa-out", out).innerHTML = arr.map(a => { const b = brandOf(a); return `<div class="ar" style="--b1:${b.c1}"><span class="blg" style="background:${b.c1}">${esc(b.s)}</span><div class="acm"><div><b>${esc(a.code)}</b> <span class="mut sm">#${a.sort ?? ""}</span>${a.status !== "Active" ? ` <span class="tag cl">${esc(a.status)}</span>` : ""}${a.daily ? ` <span class="tag t-chg">দৈনিক</span>` : ""}</div><div class="sm">${esc(a.holder || "")}</div><div class="mut xs">${esc(a.bank || "")}${a.acno ? " · " + esc(a.acno) : ""}</div></div><button class="btn sm" data-a="${esc(a.code)}">${ico("edit")}</button></div>`; }).join("") || `<div class="empty">কিছু পাওয়া যায়নি</div>`;
-        $$("[data-a]", out).forEach(b => b.onclick = () => accountModal(S.accounts.find(x => x.code === b.dataset.a), draw));
+        const q = chequeSearchKey(F.q);
+        const arr = S.accounts.filter(a => {
+          if (F.status && a.status !== F.status || F.bank && a.bank !== F.bank) return false;
+          if (F.daily === "daily" && !a.daily || F.daily === "missing" && (isMFS(a) || !accMissing(a).length)) return false;
+          return !q || chequeSearchKey([a.code,a.holder,a.bank,a.acno,a.branch,a.routing].join(" ")).includes(q);
+        }).sort((a,b) => F.sort === "bank" ? compare(a.bank || "", b.bank || "") || compare(a.code,b.code)
+          : F.sort === "code" ? compare(a.code,b.code) : (a.sort || 0) - (b.sort || 0));
+        $("#aa-n", out).textContent = bi(`${arr.length}টি অ্যাকাউন্ট`, `${arr.length} accounts shown`);
+        $("#aa-out", out).innerHTML = arr.map(a => {
+          const brand = brandOf(a), missing = accMissing(a);
+          return `<div class="adm-account" style="--bank-color:${brand.c1}"><div class="adm-account-ref"><span class="adm-brand">${esc(brand.s)}</span><div><b>${esc(a.code)}</b><div>${esc(a.holder || "—")}</div></div></div>
+            <div class="adm-account-detail"><b>${esc(a.bank || "—")}</b><div class="mut sm">${esc([a.branch, a.acno && fmtAcno(a.acno)].filter(Boolean).join(" · "))}</div></div>
+            <div class="adm-actions"><span class="tag">${esc(a.status || "—")}</span>${a.daily ? `<span class="tag t-chg">${bi("দৈনিক", "Daily")}</span>` : ""}${missing.length ? `<span class="tag adm-attention">${bi(`${missing.length} তথ্য বাকি`, `${missing.length} missing`)}</span>` : ""}</div>
+            <button class="btn sm" type="button" data-a="${esc(a.code)}" aria-label="${bi("এডিট", "Edit")} ${esc(a.code)}">${ico("edit")} ${bi("এডিট", "Edit")}</button></div>`;
+        }).join("") || `<div class="empty">${bi("কোনো অ্যাকাউন্ট মেলেনি", "No accounts match")}</div>`;
+        $$("[data-a]", out).forEach(btn => btn.onclick = () => accountModal(S.accounts.find(a => a.code === btn.dataset.a), refresh));
       };
-      $("#aa-q", out).oninput = e => { F.q = e.target.value; list(); }; $("#aa-s", out).onchange = e => { F.st = e.target.value; list(); };
-      $("#ac-add", out).onclick = () => accountModal(null, draw); list();
+      for (const [id, key] of [["aa-q","q"],["aa-s","status"],["aa-bank","bank"],["aa-d","daily"],["aa-sort","sort"]]) {
+        const el = $("#" + id, out); el.value = F[key]; el.oninput = () => { F[key] = el.value; list(); };
+      }
+      $("#aa-q", out).setAttribute("aria-label", bi("অ্যাকাউন্ট খুঁজুন", "Search accounts"));
+      $("#ac-add", out).onclick = () => accountModal(null, refresh); list();
     } else if (tab === "usr") {
       out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
-      let us = [], secM = {}; try { us = await API.users(); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(e.message)}</div>`; return; }
-      try { (await API.userSec()).forEach(x => secM[x.user_id] = x); } catch { }
-      out.innerHTML = `<div class="row ubar"><div><b>${us.length} ${LANG === "en" ? "users" : "জন ব্যবহারকারী"}</b><div class="mut xs">${LANG === "en" ? "Create accounts, edit profiles, set roles and reset passwords here" : "এখান থেকেই অ্যাকাউন্ট খোলা, প্রোফাইল এডিট, Role দেওয়া ও পাসওয়ার্ড রিসেট"}</div></div><button class="btn pri" id="u-new">${ico("plus")} ${LANG === "en" ? "New user" : "নতুন ব্যবহারকারী"}</button></div>
-       <div class="ulist">${us.map(u => `<div class="card uc ${u.active ? "" : "off"}" data-u="${u.id}"><div class="uh">${avaEl(u.id, u.name, u.email)}<div class="ue"><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div></div>
+      let us, secM = {};
+      try {
+        const [users, security] = await Promise.all([API.users(), API.userSec().catch(() => [])]);
+        if (!out.isConnected) return;
+        us = users; security.forEach(x => secM[x.user_id] = x);
+      } catch (e) { if (out.isConnected) out.innerHTML = `<div class="alert rd">${esc(e.message)}</div>`; return; }
+      const accessReady = DEMO || us.some(u => Object.hasOwn(u, "module_access"));
+      const F = userFilters;
+      out.innerHTML = metrics([[bi("ব্যবহারকারী", "Users"), us.length], [bi("সক্রিয়", "Active"), us.filter(u => u.active).length], [bi("কাস্টম অ্যাক্সেস", "Custom access"), us.filter(u => u.role !== "admin" && u.module_access != null).length]]) +
+        `<div class="card adm-tools"><div class="adm-toolbar">${searchBox("u-find", bi("নাম বা ইমেইল", "Name or email"))}<button class="btn pri" id="u-new">${ico("plus")} ${bi("নতুন ব্যবহারকারী", "New user")}</button></div>
+          <div class="adm-actions"><select class="in" id="u-role" aria-label="${bi("রোল", "Role")}"><option value="">${bi("সব রোল", "All roles")}</option><option value="admin">Admin</option><option value="staff">Staff</option><option value="boss">Boss</option></select><select class="in" id="u-state" aria-label="${bi("অবস্থা", "Status")}"><option value="">${all}</option><option value="active">${bi("সক্রিয়", "Active")}</option><option value="inactive">${bi("নিষ্ক্রিয়", "Inactive")}</option></select></div></div>
+          ${accessReady ? "" : `<div class="alert am adm-count">${bi("মডিউল অ্যাক্সেস চালু করতে schema_module_access.sql প্রয়োগ করুন।", "Apply schema_module_access.sql to enable module access.")}</div>`}
+          <div class="mut sm adm-count" id="u-count" role="status"></div><div class="ulist" id="u-results"></div>`;
+      const list = () => {
+        const key = chequeSearchKey(F.q);
+        const users = us.filter(u => (!F.role || u.role === F.role) && (!F.status || u.active === (F.status === "active")) &&
+          (!key || chequeSearchKey([u.name,u.email].join(" ")).includes(key)));
+        $("#u-count", out).textContent = bi(`${users.length} জন ব্যবহারকারী`, `${users.length} users shown`);
+        $("#u-results", out).innerHTML = users.length ? `${users.map(u => `<div class="card uc ${u.active ? "" : "off"}" data-u="${u.id}"><div class="uh">${avaEl(u.id, u.name, u.email)}<div class="ue"><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div></div>
         <div class="row" style="gap:6px;margin-bottom:12px"><span class="pill">${esc(u.role)}</span><span class="tag ${u.active ? "ok" : "off"}">${u.active ? (LANG === "en" ? "Active" : "সক্রিয়") : (LANG === "en" ? "Inactive" : "নিষ্ক্রিয়")}</span>${secM[u.id]?.has_2fa ? `<span class="tag ok" title="2FA">🔐 2FA</span>` : ""}${secM[u.id]?.sessions ? `<span class="tag" title="${LANG === "en" ? "Signed-in devices" : "লগইন ডিভাইস"}">📱 ${secM[u.id].sessions}</span>` : ""}${u.role === "staff" ? `<span class="tag ${u.edit_days ? "ok" : "off"}" title="${LANG === "en" ? "Edit window for own entries" : "নিজের এন্ট্রি এডিটের সময়"}">✎ ${u.edit_days ? u.edit_days + (LANG === "en" ? " day" : " দিন") : (LANG === "en" ? "Edit off" : "এডিট বন্ধ")}</span>` : ""}${u.id === S.me.id ? `<span class="mut xs">${LANG === "en" ? "This is you" : "এটা আপনি"}</span>` : ""}</div>
-        <div class="row"><button class="btn pri sm fix" data-ed="${u.id}">✏️ ${LANG === "en" ? "Edit" : "এডিট"}</button><button class="btn sm fix" data-pw="${u.id}">🔑 ${LANG === "en" ? "Reset password" : "পাসওয়ার্ড রিসেট"}</button><button class="btn sm fix" data-sc="${u.id}">🛡 ${LANG === "en" ? "Security" : "সিকিউরিটি"}</button></div></div>`).join("")}</div>`;
-      $("#u-new", out).onclick = () => newUserModal(draw);
-      $$("[data-ed]", out).forEach(b => b.onclick = () => editUserModal(us.find(u => u.id === b.dataset.ed), draw));
-      $$("[data-sc]", out).forEach(b => b.onclick = () => userSecModal(us.find(u => u.id === b.dataset.sc), draw));
-      $$("[data-pw]", out).forEach(b => b.onclick = () => resetPwModal(us.find(u => u.id === b.dataset.pw)));
-    } else if (tab === "imp") {
+        <div class="adm-user-access mut sm">${u.role === "admin" ? bi("পূর্ণ অ্যাডমিন অ্যাক্সেস", "Full Admin access") : u.module_access == null ? bi("রোলের ডিফল্ট", "Role defaults") :
+          MODULE_ACCESS.filter(([key]) => u.module_access[key]?.entry || u.module_access[key]?.edit).map(([key,bn,en]) => esc(bi(bn,en) + " · " + [u.module_access[key].entry && bi("এন্ট্রি","Entry"),u.module_access[key].edit && bi("এডিট","Edit")].filter(Boolean).join(" + "))).join("<br>") || bi("এন্ট্রি ও এডিট বন্ধ", "Entry and edit disabled")}</div>
+        <div class="adm-user-actions"><button class="btn pri sm fix" data-ed="${u.id}">✏️ ${LANG === "en" ? "Edit" : "এডিট"}</button><button class="btn sm fix" data-pw="${u.id}">🔑 ${LANG === "en" ? "Reset password" : "পাসওয়ার্ড রিসেট"}</button><button class="btn sm fix" data-sc="${u.id}">🛡 ${LANG === "en" ? "Security" : "সিকিউরিটি"}</button>${accessReady && u.role !== "admin" ? `<button class="btn sm" data-ma="${esc(u.id)}">${ico("sliders")} ${bi("মডিউল অ্যাক্সেস", "Module access")}</button>` : ""}</div></div>`).join("")}` : `<div class="card empty">${bi("কোনো ব্যবহারকারী মেলেনি", "No users match")}</div>`;
+        $$("[data-ed]", out).forEach(b => b.onclick = () => editUserModal(us.find(u => u.id === b.dataset.ed), refresh));
+        $$("[data-sc]", out).forEach(b => b.onclick = () => userSecModal(us.find(u => u.id === b.dataset.sc), refresh));
+        $$("[data-pw]", out).forEach(b => b.onclick = () => resetPwModal(us.find(u => u.id === b.dataset.pw)));
+        $$("[data-ma]", out).forEach(b => b.onclick = () => moduleAccessModal(us.find(u => u.id === b.dataset.ma), refresh));
+      };
+      for (const [id,key] of [["u-find","q"],["u-role","role"],["u-state","status"]]) {
+        const el = $("#" + id, out); el.value = F[key]; el.oninput = () => { F[key] = el.value; list(); };
+      }
+      $("#u-find", out).setAttribute("aria-label", bi("ব্যবহারকারী খুঁজুন","Search users"));
+      $("#u-new", out).onclick = () => newUserModal(refresh);
+      list();
+    } else if (setup === "imp") {
       out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
-      let st = { n: 0, first: null, last: null }; try { st = await API.balanceStats(); } catch { }
+      let st = { n: null, first: null, last: null };
+      try { st = await API.balanceStats(); } catch { }
+      if (!out.isConnected) return;
       out.innerHTML = `<div class="card"><h3>📥 পুরনো ব্যাংক ব্যালেন্স ইতিহাস</h3>
-        <div class="grid g3" style="margin:12px 0"><div class="kv"><span>ডাটাবেসে রেকর্ড</span><b class="num">${money0(st.n)}</b></div><div class="kv"><span>সবচেয়ে পুরনো তারিখ</span><b>${st.first ? dmy(st.first) : "—"}</b></div><div class="kv"><span>সর্বশেষ তারিখ</span><b>${st.last ? dmy(st.last) : "—"}</b></div></div>
+        <div class="grid g3" style="margin:12px 0"><div class="kv"><span>ডাটাবেসে রেকর্ড</span><b class="num">${st.n == null ? "—" : money0(st.n)}</b></div><div class="kv"><span>সবচেয়ে পুরনো তারিখ</span><b>${st.first ? dmy(st.first) : "—"}</b></div><div class="kv"><span>সর্বশেষ তারিখ</span><b>${st.last ? dmy(st.last) : "—"}</b></div></div>
         ${DEMO ? `<div class="alert gr">${bi("DEMO মোডে পুরনো ডাটা আগে থেকেই লোড আছে।", "In DEMO mode the old data is already loaded.")}</div>` : `<div class="imopt"><div><b>২০২৬ ডাটা পুনরুদ্ধার</b><div class="mut xs">২০২৬-এর সব রেকর্ড + ২০২৬-এর ঠিক আগের শেষ দিনটি (ওটাই ১ জানুয়ারির Opening)</div></div><button class="btn pri" id="im-26">⬆ শুধু ২০২৬</button></div>
         <div class="imopt"><div><b>সম্পূর্ণ ইতিহাস</b><div class="mut xs">০২-০৯-২০২৩ (প্রথম দিন) থেকে ফাইলের শেষ তারিখ পর্যন্ত সব</div></div><button class="btn" id="im-all">⬆ সম্পূর্ণ import</button></div>`}
         <div class="bar" style="margin-top:12px"><i id="im-bar" style="width:0"></i></div><div class="hint" id="im-t"></div>
         <div class="mut xs" style="margin-top:8px">শুধু যে তারিখ+A/C ডাটাবেসে নেই সেগুলোই যোগ হয় — আপনার app-এ সেভ/এডিট করা কোনো ব্যালেন্স বদলায় না, ডুপ্লিকেটও হয় না।</div></div>`;
       const run = async (mode) => {
+        if (importing) return;
+        importing = true;
         const b26 = $("#im-26", out), ball = $("#im-all", out);
         try {
-          const all = await loadEncrypted("history.enc"); const anchor = all.map(r => r[0]).filter(d => d < "2026-01-01").sort().pop() || "2026-01-01";
-          const rows = mode === "26" ? all.filter(r => r[0] >= anchor) : all;
-          if (!ask(bi(`${money0(rows.length)}টি রেকর্ড (${dmy(rows.reduce((m, r) => r[0] < m ? r[0] : m, rows[0][0]))} থেকে) import করবেন? যেগুলো আগে থেকেই আছে সেগুলো বদলাবে না।`, `Import ${money0(rows.length)} record(s) (from ${dmy(rows.reduce((m, r) => r[0] < m ? r[0] : m, rows[0][0]))})? Existing records will not be changed.`))) return;
           b26.disabled = ball.disabled = true;
+          const all = await loadEncrypted("history.enc");
+          if (!out.isConnected) return; const anchor = all.map(r => r[0]).filter(d => d < "2026-01-01").sort().pop() || "2026-01-01";
+          const rows = mode === "26" ? all.filter(r => r[0] >= anchor) : all;
+          if (!rows.length) throw new Error(bi("ইমপোর্টের রেকর্ড নেই", "No records to import"));
+          if (!ask(bi(`${money0(rows.length)}টি রেকর্ড (${dmy(rows.reduce((m, r) => r[0] < m ? r[0] : m, rows[0][0]))} থেকে) import করবেন? যেগুলো আগে থেকেই আছে সেগুলো বদলাবে না।`, `Import ${money0(rows.length)} record(s) (from ${dmy(rows.reduce((m, r) => r[0] < m ? r[0] : m, rows[0][0]))})? Existing records will not be changed.`))) return;
           await API.importBalances(rows, (a, b) => { $("#im-bar", out).style.width = a / b * 100 + "%"; $("#im-t", out).textContent = `${a} / ${b}`; });
-          balCache.clear(); toast("✔ import সম্পূর্ণ"); S.lastBal = await API.lastBalDate(); draw();
-        } catch (e) { toast(e.message, "err"); b26 && (b26.disabled = ball.disabled = false); }
+          balCache.clear(); toast("✔ import সম্পূর্ণ"); S.lastBal = await API.lastBalDate(); refresh();
+        } catch (e) { toast(e.message, "err"); }
+        finally { importing = false; b26.disabled = ball.disabled = false; }
       };
       $("#im-26", out) && ($("#im-26", out).onclick = () => run("26")); $("#im-all", out) && ($("#im-all", out).onclick = () => run("all"));
     } else {
       out.innerHTML = `<div class="card empty">সিস্টেম পরীক্ষা হচ্ছে…</div>`;
       const chk = await API.health().catch(() => ({}));
+      if (!out.isConnected) return;
       const row = (ok, l, sub) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "✗"}</i><div><b>${l}</b>${sub ? `<div class="mut xs">${sub}</div>` : ""}</div></div>`;
       out.innerHTML = `<div class="grid g2"><div class="card"><h3>🩺 সিস্টেম অবস্থা</h3><div class="hcl">
         ${row(chk.db, "ডাটাবেস সংযোগ", DEMO ? bi("DEMO মোড", "DEMO mode") : "Supabase")}${row(chk.v2, "v2: ড্রাফট · রিমাইন্ডার · Audit · ছবি", chk.v2 ? "চালু" : "schema_v2.sql চালাতে হবে")}
         ${row(chk.v3, "v3: ক্যাশ · Backup · নিজের নাম", chk.v3 ? "চালু" : "schema_v3.sql চালাতে হবে")}${row(chk.v6, "v6: ডিস্ট্রিবিউশন কালেকশন", chk.v6 ? "চালু" : "schema_v6.sql চালাতে হবে")}${row(chk.backup, "রাত ১২টার Backup", chk.backupAt ? "শেষ: " + new Date(chk.backupAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "এখনো হয়নি")}
         ${row(location.protocol === "https:" || DEMO, "HTTPS", location.host)}${row(!!navigator.serviceWorker?.controller || DEMO, "অফলাইন মোড (PWA)", navigator.serviceWorker?.controller ? "চালু" : "রিলোড দিলে চালু হবে")}</div>
         <div class="mut xs" style="margin-top:10px">সংস্করণ v6 · ${esc(document.querySelector('script[src^="app.js"]')?.getAttribute("src")?.split("v=")[1] || "")}</div></div>
-       <div class="card"><h3>👮 কে কী পারে</h3><table class="perm"><thead><tr><th></th><th>Admin</th><th>Staff</th><th>Boss</th></tr></thead><tbody>
-        ${[["চেক / ক্লোজিং / ক্যাশ যোগ", 1, 1, 0], ["ফাইনাল সেভের পর বদলানো", 1, 0, 0], ["মুছে ফেলা", 1, 0, 0], ["রিপোর্ট দেখা", 1, 1, 1], ["Audit log", 1, 0, 1], ["Backup ও ব্যবহারকারী", 1, 0, 0]].map(([l, ...r]) => `<tr><td>${l}</td>${r.map(x => `<td class="c">${x ? `<b class="gr">✓</b>` : `<span class="mut">—</span>`}</td>`).join("")}</tr>`).join("")}</tbody></table>
-        <div class="mut xs" style="margin-top:8px">ভুল স্ট্যাটাস দিলে নতুন স্ট্যাটাস দিন — ইতিহাস থেকে যায়। এই নিয়ম ডাটাবেস (RLS) নিজেই আটকায়।</div></div>
+       <div class="card adm-system"><h3>${bi("অ্যাক্সেস ও অপারেশন", "Access and operations")}</h3>
+        <div class="hcl">
+          ${row(chk.modules, bi("মডিউল অ্যাক্সেস", "Module access"), chk.modules ? bi("ডাটাবেসে সক্রিয়", "Enabled in database") : "schema_module_access.sql")}
+          ${row(chk.inventory, bi("ইনভেন্টরি", "Inventory"), chk.inventory ? bi("সক্রিয়", "Active") : bi("স্ট্যাটাস পাওয়া যায়নি", "Unavailable"))}
+        </div>
+        <div class="adm-actions"><button type="button" class="btn" id="ad-go-users">${ico("users")} ${bi("ব্যবহারকারী ব্যবস্থাপনা", "Manage users")}</button><button type="button" class="btn" id="ad-go-history">${ico("book")} ${bi("পুরনো ডাটা", "Old data")}</button><button type="button" class="btn" id="ad-recheck">${bi("আবার পরীক্ষা", "Recheck status")}</button></div></div>
        <div class="card" style="grid-column:1/-1"><h3>⚡ দ্রুত লিংক</h3><div class="qlinks"><a href="#/audit">${ico("shield")} Audit ও Backup</a><a href="#/books">${ico("book")} চেক বই</a><a href="#/settings">${ico("gear")} সেটিংস</a><a href="https://supabase.com/dashboard/project/mtzxcwuojiajsanearsz" target="_blank" rel="noopener">${ico("bank")} Supabase ড্যাশবোর্ড ↗</a><a href="https://github.com/ruhulaminrevens/nabiad" target="_blank" rel="noopener">${ico("copyt")} GitHub কোড ↗</a></div></div></div>`;
+      $("#ad-go-users", out).onclick = () => { tab = "usr"; draw(); };
+      $("#ad-go-history", out).onclick = () => { setup = "imp"; draw(); };
+      $("#ad-recheck", out).onclick = refresh;
     }
   };
   await draw();
@@ -2427,12 +2861,12 @@ async function vAdmin(v) {
 Object.assign(SbAPI, {
   async health() {
     const t = async (tbl, col = "*") => { const { error } = await sb.from(tbl).select(col, { count: "exact", head: true }); return !error; };
-    const [db, v2, v3, v6] = await Promise.all([t("accounts", "code"), t("reminders", "id"), t("cash_records", "date"), t("dist_collections", "id")]);
+    const [db, v2, v3, v6, modules, inventory] = await Promise.all([t("accounts", "code"), t("reminders", "id"), t("cash_records", "date"), t("dist_collections", "id"), t("profiles", "module_access"), t("inv_orders", "id")]);
     let backupAt = null; try { backupAt = (await this.backups())[0]?.at || null; } catch { }
-    return { db, v2, v3, v6, backup: !!backupAt && Date.now() - new Date(backupAt) < 36 * 36e5, backupAt };
+    return { db, v2, v3, v6, modules, inventory, backup: !!backupAt && Date.now() - new Date(backupAt) < 36 * 36e5, backupAt };
   }
 });
-Object.assign(DemoAPI, { async health() { const b = (demoStore.backups || [])[0]; return { db: true, v2: true, v3: true, v6: true, backup: !!b, backupAt: b?.at }; } });
+Object.assign(DemoAPI, { async health() { const b = (demoStore.backups || [])[0]; return { db: true, v2: true, v3: true, v6: true, modules: true, inventory: true, backup: !!b, backupAt: b?.at }; } });
 
 /* ---------- "More" sheet: grouped tiles, ✕ / tap outside / swipe down / phone Back all close it ---------- */
 let moreClose = null;
@@ -2514,7 +2948,7 @@ async function compressImage(file, max = 1600, q = 0.72) {
 const photoPath = (id, code, no, date) => `${(date || today()).slice(0, 4)}/${norm(code)}_${no}_${id.slice(0, 8)}_${Date.now().toString(36)}.jpg`;
 /* v6.43 — who may edit a cheque: admin always; staff only own entries inside the per-user window (profiles.edit_days, 0 = off) */
 const chqEditLeft = c => { if (S.me.role === "admin") return Infinity; if (S.me.role !== "staff") return 0; const d = S.me.edit_days || 0; if (!d || !c.at) return 0; if (c.uid ? c.uid !== S.me.id : c.by !== S.me.name) return 0; return new Date(c.at).getTime() + d * 864e5 - Date.now(); };
-const canEditChq = c => chqEditLeft(c) > 0;
+const canEditChq = c => moduleCan("cheque", "edit", chqEditLeft(c) > 0);
 const leftTxt = ms => { const h = Math.floor(ms / 36e5); return h >= 24 ? Math.floor(h / 24) + (LANG === "en" ? "d " : " দিন ") + (h % 24) + (LANG === "en" ? "h" : " ঘণ্টা") : Math.max(1, h) + (LANG === "en" ? "h" : " ঘণ্টা"); };
 async function showPhoto(el, c) {
   if (!c.photo) return; el.innerHTML = `<div class="skel" style="height:120px"></div>`;
@@ -2676,7 +3110,9 @@ const AU_T = { cheques: "চেক", cheque_status: "স্ট্যাটাস
 const AU_A = { insert: ["যোগ", "gr"], update: ["বদল", "am"], delete: ["মুছে ফেলা", "rd"] };
 const AU_F = { chq_date: "তারিখ", code: "A/C", chq_no: "চেক নং", amount: "টাকা", purpose: "খাত", cash_taker: "কে তুলেছে", party: "পার্টি", to_ac: "To A/C", remarks: "মন্তব্য", new_status: "স্ট্যাটাস", status_date: "স্ট্যাটাস তারিখ", total: "ক্লোজিং", block: "Block", remark: "মন্তব্য", other_debit: "অন্য খরচ", other_deposit: "অন্য জমা", photo: "ছবি", holder: "হোল্ডার", bank: "ব্যাংক", acno: "A/C নং", status: "Status", role: "Role", active: "সক্রিয়", name: "নাম" };
 const AU_SKIP = new Set(["created_at", "user_id", "id", "updated_at", "entered_by", "cheque_id"]);
-const auV = x => x === null || x === undefined || x === "" ? "—" : typeof x === "number" || /^-?\d+(\.\d+)?$/.test(String(x)) && String(x).length > 3 ? money(x) : String(x);
+const AU_IDENTIFIERS = new Set(["chq_no", "acno", "leaf_no", "routing", "first_leaf", "last_leaf", "track_from", "phone", "ref"]);
+const auV = (value, key) => value == null || value === "" ? "—" : typeof value === "object" ? JSON.stringify(value) :
+  typeof value === "number" && !AU_IDENTIFIERS.has(key) ? money(value) : String(value);
 
 /* =================== v6: API extensions =================== */
 Object.assign(SbAPI, {
@@ -2965,17 +3401,26 @@ async function vReports(v) {
 
 /* =================== v6: CASH — daily record =================== */
 const CASH = {
-  receipt: [{ g: "Chawkbazar", items: [["cz_cos", "Cosmetics Parties"], ["cz_food", "Food Parties"], ["cz_cash", "Cash/Counter Sales"], ["cz_oth", "Others"]] }, { g: "", items: [["cz_chem", "Chemicals"], ["niramoy", "Niramoy"], ["dist", "Distribution"], ["suspense", "Suspense"], ["bank_in", "Bank"]] }],
+  receipt: [{ g: "Chawkbazar", items: [["cz_cos", "Cosmetics Parties"], ["cz_food", "Food Parties"], ["cz_oth", "Others"]] }, { g: "", items: [["cz_chem", "Chemicals"], ["niramoy", "Niramoy"], ["dist", "Distribution"], ["suspense", "Suspense"], ["bank_in", "Bank"]] }],
   payment: [{ g: "", items: [["bank_out", "Bank"], ["lc", "LC/CC/OD"], ["loans", "Loans/Bills/Etc."], ["supp", "Suppliers"], ["p_oth", "Others"]] }]
 };
+const cashCategory = k => k === "cz_cash" ? "cz_oth" : k;
+// Fold legacy daily totals on read without changing archived records.
+function cashItems(items = {}) {
+  if (!items?.cz_cash) return items || {};
+  const { cz_cash: counter, cz_oth: others, ...rest } = items;
+  const a = Math.round((+counter.a || 0) * 100) + Math.round((+others?.a || 0) * 100);
+  const notes = [...new Set([counter.n, others?.n].filter(Boolean))];
+  return { ...rest, cz_oth: { a: a / 100, ...(notes.length ? { n: notes.join(", ") } : {}) } };
+}
 const CASH_KEYS = t => CASH[t].flatMap(g => g.items.map(i => i[0]));
 /* Bank lines (Receipt › Bank = cash withdrawn, Payment › Bank = cash deposited) are transfers between cash and bank: kept per A/C for Bank Closing / Cheque Posting, but NOT part of Total Receipt / Total Payment / Closing */
 const CASH_MEMO = ["bank_in", "bank_out"];
 const CASH_SUM_KEYS = t => CASH_KEYS(t).filter(k => !CASH_MEMO.includes(k));
-const cashLabel = k => { for (const t of ["receipt", "payment"]) for (const g of CASH[t]) for (const [kk, l] of g.items) if (kk === k) return (g.g ? g.g + " · " : "") + l; return k; };
-const cashType = k => CASH_KEYS("receipt").includes(k) ? "receipt" : "payment";
+const cashLabel = k => { for (const t of ["receipt", "payment"]) for (const g of CASH[t]) for (const [kk, l] of g.items) if (kk === cashCategory(k)) return (g.g ? g.g + " · " : "") + l; return k; };
+const cashType = k => CASH_KEYS("receipt").includes(cashCategory(k)) ? "receipt" : "payment";
 function evalAmt(s) { s = String(s ?? "").replace(/[,৳\s]/g, ""); if (!s) return 0; if (!/^[-+]?\d*\.?\d+([+-]\d*\.?\d+)*$/.test(s)) return NaN; return s.match(/[+-]?\d*\.?\d+/g).reduce((a, b) => a + parseFloat(b), 0); }
-function cashTotals(items) { const sum = t => CASH_SUM_KEYS(t).reduce((s, k) => s + (+items?.[k]?.a || 0), 0); return { r: sum("receipt"), p: sum("payment") }; }
+function cashTotals(items) { items = cashItems(items); const sum = t => CASH_SUM_KEYS(t).reduce((s, k) => s + (+items?.[k]?.a || 0), 0); return { r: sum("receipt"), p: sum("payment") }; }
 const CASH_DRAFT = d => "nabiad_cash_draft_" + d;
 /* the Cash Entry record that counts for a date: final > newer local draft > saved draft */
 async function cashEff(date) {
@@ -2998,7 +3443,7 @@ async function vCash(v) {
     }
     let bk = null, bPrev = null; try { [bk, bPrev] = await Promise.all([API.cbOn(date), API.cbPrev(date)]); } catch { }
     try { const bm = await balancesOn(date); const am = accMap(); let tot = 0, n = 0; Object.entries(bm).forEach(([c, r]) => { if (am[c] && r.total != null) { tot += r.total; n++; } }); if (n) bankRef = tot; } catch { }
-    const final = ex?.status === "final", admin = S.me.role === "admin", locked = (final && !admin) || S.me.role === "boss";
+    const final = ex?.status === "final", admin = S.me.role === "admin", locked = final ? !moduleCan("cash", "edit", false) : !moduleCan("cash", "entry") && !(ex && moduleCan("cash", "edit", false));
     let local = null; try { local = JSON.parse(localStorage.getItem(CASH_DRAFT(date)) || "null"); } catch { }
     let src = ex; let fromLocal = false;
     if (!final && local && (!ex || new Date(local.updated_at) > new Date(ex.updated_at))) { src = local; fromLocal = true; }
@@ -3009,9 +3454,9 @@ async function vCash(v) {
     const oc = useStored ? (src ? +src.opening_cash || 0 : 0) : pOc, ob = useStored ? (src ? +src.opening_bank || 0 : 0) : pOb;
     const admin0 = S.me.role === "admin", oLocked = locked || (prev ? true : !admin0);
     let pendDraft = null; try { if (!final) pendDraft = (await API.cashRange(addDays(date, -60), addDays(date, -1))).filter(r => r.status !== "final" && (!prev || r.date > prev.date)).pop() || null; } catch { }
-    const items = src?.items || {};
+    const items = cashItems(src?.items);
     const msgs = [];
-    if (final) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 এই তারিখের ক্যাশ রেকর্ড ফাইনাল সেভ হয়েছে।" : "⚠ ফাইনাল সেভ করা আছে — Admin হিসেবে বদলাতে পারবেন।"} <span class="mut sm">${esc(ex.entered_by || "")}</span></div>`);
+    if (final) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 এই তারিখের ক্যাশ রেকর্ড ফাইনাল সেভ হয়েছে।" : "⚠ ফাইনাল সেভ আছে। সেভ করলে পরিবর্তন কার্যকর হবে।"} <span class="mut sm">${esc(ex.entered_by || "")}</span></div>`);
     else if (src && !src.fromBook) msgs.push(`<div class="alert vi">📝 <span>ড্রাফট লোড হয়েছে${fromLocal ? " (এই ডিভাইস)" : ""} — ${esc(src.entered_by || S.me.name)} · ${new Date(src.updated_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span>${!locked ? `<button class="btn sm" id="cs-dd" style="margin-left:auto">ড্রাফট বাদ দিন</button>` : ""}</div>`);
     if (src?.fromBook) msgs.push(`<div class="alert vi">📒 <span>${bi(`ক্যাশ খাতা (${dmy(date)}) থেকে অটো গ্রুপ করে ভরা হয়েছে — নিচের চেক দেখে সেভ করুন`, `Filled from the Cash Book (${dmy(date)}), grouped automatically — review the checks below, then save`)}</span></div>`);
     else if (bkG && !locked && !final) msgs.push(`<div class="alert vi">📒 <span>${bi("এই তারিখে ক্যাশ খাতার এন্ট্রি আছে", "A Cash Book entry exists for this date")}</span><button class="btn sm" id="cs-bfill" style="margin-left:auto">${bi("খাতা থেকে ভরুন", "Fill from Cash Book")}</button></div>`);
@@ -3168,7 +3613,7 @@ async function vCashRep(v) {
   let cur = null;
   async function draw() {
     const [f, t] = cashPeriod(F), out = $("#cr-out", v); out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
-    let rows; try { rows = (await API.cashRange(f, t)).filter(r => r.status === "final"); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(cashErr(e))}</div>`; return; }
+    let rows; try { rows = (await API.cashRange(f, t)).filter(r => r.status === "final").map(r => ({ ...r, items: cashItems(r.items) })); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(cashErr(e))}</div>`; return; }
     if (!rows.length) { out.innerHTML = `<div class="card empty">এই সময়ে কোনো ফাইনাল ক্যাশ রেকর্ড নেই</div>`; cur = null; return; }
     const cat = k => rows.reduce((s, r) => s + (+r.items?.[k]?.a || 0), 0), days = k => rows.filter(r => +r.items?.[k]?.a).length;
     const R = rows.reduce((s, r) => s + +r.total_receipt, 0), P = rows.reduce((s, r) => s + +r.total_payment, 0);
@@ -3187,36 +3632,174 @@ async function vCashRep(v) {
   await draw(); return unb;
 }
 
-/* =================== v6: Cash Register (every line of every day) =================== */
-async function vRegister(v) {
-  const F = { ...pbInit("month"), q: "", type: "", k: "" };
-  v.innerHTML = head("ক্যাশ রেজিস্টার", `<button class="btn" id="rg-x">${ico("dl")} Excel</button>`) + `<div class="card tbar noprint">${pbBar("rg", F)}<div class="row" style="margin-top:10px"><div style="flex:2 1 220px"><label class="f">খুঁজুন (নোট, খাত, অঙ্ক)</label><input class="in" id="rg-q" type="search" autocomplete="off"></div><div><label class="f">ধরন</label><select class="in" id="rg-t"><option value="">সব</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div><div><label class="f">খাত</label><select class="in" id="rg-k"><option value="">সব</option>${[...CASH_KEYS("receipt"), ...CASH_KEYS("payment")].map(k => `<option value="${k}">${esc(cashLabel(k))}</option>`).join("")}</select></div></div></div><div id="rg-sum" class="mut sm" style="margin-bottom:8px"></div><div class="card flush" id="rg-out"></div>`;
-  let lines = [], shown = [], diffs = [];
-  async function load() {
-    const [f, t] = cashPeriod(F); $("#rg-out", v).innerHTML = `<div class="empty">লোড হচ্ছে…</div>`;
-    try {
-      const [rows, allBooks] = await Promise.all([API.cashRange(f, t), API.cbRange(f, t).catch(() => [])]), cm = new Map(rows.map(r => [r.date, r]));
-      /* a Cash Book day is listed line by line only when it has lines and is not a draft sitting on top of a final Cash Checker record; otherwise the Checker rows are shown */
-      const books = allBooks.filter(b => ["r", "p"].some(tt => (b.lines?.[tt] || []).some(l => +l.a)) && !(cm.get(b.date)?.status === "final" && b.status !== "final")), bd = new Map(books.map(b => [b.date, b]));
-      diffs = [];
-      books.forEach(b => { const c = cm.get(b.date); if (!c || c.status !== "final" || b.status !== "final") return; const sum = tt => (b.lines?.[tt] || []).filter(l => !["bank_in", "bank_out"].includes(l.k)).reduce((q, l) => q + (+l.a || 0), 0), cs = tt => CASH_SUM_KEYS(tt).reduce((q, k) => q + (+c.items?.[k]?.a || 0), 0); if (Math.abs(sum("r") - cs("receipt")) > 0.5 || Math.abs(sum("p") - cs("payment")) > 0.5) diffs.push(b.date); });
-      const fromChk = rows.filter(r => !bd.has(r.date)).flatMap(r => Object.entries(r.items || {}).filter(([, it]) => it.a).map(([k, it]) => ({ date: r.date, k, type: cashType(k), a: +it.a, led: "", n: it.n || "", x: it.x || "", st: r.status, by: r.entered_by })));
-      /* a day that has a Cash Book is listed line by line with the real ledger name; older days (no book) keep their category rows */
-      const fromBook = books.flatMap(b => ["r", "p"].flatMap(tt => (b.lines?.[tt] || []).filter(l => +l.a).map(l => { const k = l.k && CASH_KEYS(tt === "r" ? "receipt" : "payment").includes(l.k) ? l.k : tt === "r" ? "cz_oth" : "p_oth"; return { date: b.date, k, type: tt === "r" ? "receipt" : "payment", a: +l.a, led: l.n || "", n: l.c ? "A/C " + l.c : "", x: l.x || "", st: b.status === "final" ? "final" : "draft", by: b.entered_by, book: 1 }; })));
-      lines = [...fromChk, ...fromBook].sort((a, b) => b.date.localeCompare(a.date));
+/* =================== Cash Register and local Tally preview =================== */
+async function cashTallyRows(file) {
+  if (file.size > 32 * 1024 * 1024) throw new Error(bi("ফাইলের সর্বোচ্চ আকার ৩২ MB।", "Choose a file up to 32 MB."));
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const encoding = bytes[0] === 255 && bytes[1] === 254 ? "utf-16le" : bytes[0] === 254 && bytes[1] === 255 ? "utf-16be" : "utf-8";
+  let records;
+  try { records = JSON.parse(new TextDecoder(encoding, {fatal: true}).decode(bytes))?.lvbody?.dspvchdetail; } catch { }
+  if (!Array.isArray(records) || !records.length) throw new Error(bi("Tally Cash Book JSON-এ voucher পাওয়া যায়নি।", "No voucher rows found in the Tally Cash Book JSON."));
+  const months = "jan feb mar apr may jun jul aug sep oct nov dec".split(" ");
+  return records.map((row, i) => {
+    const type = row?.dspvchtype === "Rcpt" ? "receipt" : row?.dspvchtype === "Pymt" ? "payment" : "";
+    const parts = /^(\d{1,2})-([a-z]{3})-(\d{2}|\d{4})$/i.exec(String(row?.dspvchdate ?? "").trim());
+    const month = parts ? months.indexOf(parts[2].toLowerCase()) + 1 : 0;
+    const date = month ? `${parts[3].length === 2 ? "20" + parts[3] : parts[3]}-${pad(month)}-${pad(Number(parts[1]))}` : "";
+    const amount = type === "receipt" ? -row?.dspvchdramt : row?.dspvchcramt;
+    const raw = type === "receipt" ? row?.dspvchdramt : row?.dspvchcramt;
+    const led = typeof row?.dspvchledaccount === "string" ? row.dspvchledaccount.trim() : "";
+    if (!type || !validChequeDate(date) || typeof raw !== "number" || !Number.isSafeInteger(Math.round(amount * 100)) || amount < 0 || !led) {
+      throw new Error(bi(`${i + 1} নম্বর voucher লাইনে অসমর্থিত তথ্য আছে।`, `Unsupported data in voucher row ${i + 1}.`));
     }
-    catch (e) { $("#rg-out", v).innerHTML = `<div class="alert rd" style="margin:12px">${esc(cashErr(e))}</div>`; return; }
-    draw();
+    // An expanded voucher still has one top-level total. Its child entries are not separate cash movements.
+    const ref = row.dspvchnumber?.dspvchnumber?.dspexplvchnumber;
+    return {date, type, a: amount, led, ref: typeof ref === "string" ? ref.trim() : "", source: "tally"};
+  });
+}
+async function vRegister(v) {
+  const F = { ...pbInit("month"), q: "", type: "", k: "" }, tallyPeriod = pbInit("month");
+  const categoryTotal = bi("খাতের মোট", "Category total");
+  const sources = { checker: bi("ক্যাশ চেকার", "Cash Checker"), book: bi("ক্যাশ খাতা", "Cash Book"), tally: "Tally" };
+  const all = bi("সব", "All");
+  v.innerHTML = head("ক্যাশ রেজিস্টার", `<button type="button" class="btn" id="rg-open">${ico("book")} ${bi("Tally JSON খুলুন", "Open Tally JSON")}</button><button type="button" class="btn" id="rg-x">${ico("dl")} Excel</button>`) +
+    `<div class="card tbar rg-tools noprint">
+       <input type="file" id="rg-file" accept=".json,application/json" hidden>
+       <div class="rg-source chips" id="rg-source" role="group" aria-label="${bi("রেকর্ডের উৎস", "Record source")}" hidden>
+         <button type="button" class="chip on" data-rg-source="app" aria-pressed="true">${bi("অ্যাপ রেকর্ড", "App records")}</button>
+         <button type="button" class="chip" data-rg-source="tally" aria-pressed="false">${bi("Tally প্রিভিউ", "Tally preview")}</button>
+       </div>
+       <div id="rg-file-info" class="mut sm" role="status"></div>
+       <div id="rg-file-error" class="rd sm" role="alert"></div>
+       <div id="rg-period">${pbBar("rg", F)}</div>
+       <div class="rg-filters">
+         <div><label class="f" for="rg-q">${bi("লেজার, voucher, নোট বা অঙ্ক", "Ledger, voucher, note or amount")}</label><input class="in" id="rg-q" type="search" autocomplete="off"></div>
+         <div><label class="f" for="rg-t">${bi("ধরন", "Type")}</label><select class="in" id="rg-t"><option value="">${all}</option><option value="receipt">Receipt</option><option value="payment">Payment</option></select></div>
+         <div id="rg-purpose"><label class="f" for="rg-k">${bi("খাত", "Purpose")}</label><select class="in" id="rg-k"><option value="">${all}</option>${[...CASH_KEYS("receipt"), ...CASH_KEYS("payment")].map(k => `<option value="${k}">${esc(cashLabel(k))}</option>`).join("")}</select></div>
+       </div>
+     </div>
+     <div id="rg-sum" class="rg-summary" role="status"></div>
+     <div id="rg-notice"></div>
+     <div class="card flush" id="rg-out"></div>
+     <div class="cq-pager rg-pager" id="rg-pager" hidden><button type="button" class="btn" id="rg-prev">${bi("আগের", "Previous")}</button><span class="mut sm" id="rg-page"></span><button type="button" class="btn" id="rg-next">${bi("পরের", "Next")}</button></div>`;
+  const g = id => $("#" + id, v), out = g("rg-out"), file = g("rg-file"), excel = g("rg-x");
+  let source = "app", page = 0, version = 0, ready = false, lines = [], shown = [], tally = [];
+  const pageSize = 75, currentPeriod = () => source === "app" ? F : tallyPeriod;
+  function showNotice(message) {
+    g("rg-notice").innerHTML = message ? `<div class="alert am">${esc(message)}</div>` : "";
   }
+  async function load() {
+    const versionAtStart = ++version, [f, t] = cashPeriod(currentPeriod());
+    const current = () => out.isConnected && versionAtStart === version;
+    page = 0; ready = false; shown = []; excel.disabled = true;
+    g("rg-sum").textContent = ""; g("rg-pager").hidden = true; showNotice("");
+    if (source === "tally") {
+      lines = tally.filter(r => r.date >= f && r.date <= t);
+    } else {
+      out.innerHTML = `<div class="empty">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
+      try {
+        const [rows, allBooks] = await Promise.all([API.cashRange(f, t).then(rows => rows.map(r => ({ ...r, items: cashItems(r.items) }))), API.cbRange(f, t).catch(() => null)]);
+        if (!current()) return;
+        const checkerDays = new Map(rows.map(r => [r.date, r]));
+        const books = (allBooks || []).filter(b => ["r", "p"].some(tt => (b.lines?.[tt] || []).some(l => +l.a)) && !(checkerDays.get(b.date)?.status === "final" && b.status !== "final"));
+        const bookDays = new Set(books.map(b => b.date));
+        const diffs = books.filter(b => {
+          const c = checkerDays.get(b.date);
+          if (c?.status !== "final" || b.status !== "final") return false;
+          return [["r", "receipt"], ["p", "payment"]].some(([side, type]) => {
+            const bookTotal = (b.lines?.[side] || []).filter(l => !CASH_MEMO.includes(l.k)).reduce((sum, l) => sum + (+l.a || 0), 0);
+            const checkerTotal = CASH_SUM_KEYS(type).reduce((sum, k) => sum + (+c.items?.[k]?.a || 0), 0);
+            return Math.abs(bookTotal - checkerTotal) > 0.5;
+          });
+        });
+        if (allBooks === null) showNotice(bi("Cash Book লোড হয়নি। আপাতত Cash Checker-এর খাতভিত্তিক মোট দেখানো হচ্ছে।", "Cash Book could not load. Showing Cash Checker category totals."));
+        else if (diffs.length) showNotice(bi("Cash Book ও Cash Checker-এর মোটে অমিল · ", "Cash Book and Cash Checker totals differ · ") + diffs.map(b => dmy(b.date)).join(", "));
+        const fromChecker = rows.filter(r => !bookDays.has(r.date)).flatMap(r => Object.entries(r.items || {}).filter(([, it]) => +it?.a).map(([k, it]) => ({
+          date: r.date, k, type: cashType(k), a: +it.a, led: "", n: it.n, x: it.x,
+          accounts: Array.isArray(it.accs) ? [...new Set(it.accs.filter(z => z?.c && +z.a).map(z => z.c))].join(", ") : "",
+          st: r.status, by: r.entered_by, source: "checker"
+        })));
+        const fromBook = books.flatMap(b => [["r", "receipt"], ["p", "payment"]].flatMap(([side, type]) => (b.lines?.[side] || []).filter(l => +l.a).map(l => ({
+          date: b.date, k: CASH_KEYS(type).includes(cashCategory(l.k)) ? cashCategory(l.k) : side === "r" ? "cz_oth" : "p_oth",
+          type, a: +l.a, led: l.n, ref: l.ref, n: l.note, x: l.x, accounts: l.c, st: b.status, by: b.entered_by, source: "book"
+        }))));
+        lines = [...fromChecker, ...fromBook];
+      } catch (e) {
+        if (current()) out.innerHTML = `<div class="alert rd">${esc(cashErr(e))}</div>`;
+        return;
+      }
+    }
+    lines.sort((a, b) => b.date.localeCompare(a.date));
+    ready = true; draw();
+  }
+  const resetPage = () => { page = 0; draw(); };
   function draw() {
-    const q = norm(F.q); shown = lines.filter(l => (!F.type || l.type === F.type) && (!F.k || l.k === F.k) && (!q || norm(l.led + cashLabel(l.k) + l.n + l.a + l.x).includes(q)));
-    const R = shown.filter(l => l.type === "receipt").reduce((s, l) => s + l.a, 0), P = shown.filter(l => l.type === "payment").reduce((s, l) => s + l.a, 0);
-    $("#rg-sum", v).innerHTML = `<b>${shown.length}</b>টি লাইন · <span class="gr">Receipt ৳ ${money0(R)}</span> · <span class="rd">Payment ৳ ${money0(P)}</span>${diffs.length ? ` <span class="am">⚠ ${bi("খাতা ও চেকার ফাইনাল, কিন্তু যোগফল মেলে না: ", "Book and Checker are both final but differ: ")}${diffs.map(dmy).join(", ")}</span>` : ""}`;
-    $("#rg-out", v).innerHTML = shown.length ? `<div class="tw cards"><table><thead><tr><th>তারিখ</th><th>ধরন</th><th>${bi("লেজার", "Ledger")}</th><th>খাত</th><th class="r">টাকা</th><th>নোট</th><th>অবস্থা</th></tr></thead><tbody>${shown.slice(0, 1500).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td><td>${l.led ? `<b>${esc(l.led)}</b>` : `<span class="mut">—</span>`}</td><td>${esc(cashLabel(l.k))}</td><td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money0(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td><td class="sm">${esc(l.n)}</td><td class="mut sm">${l.book ? bi("খাতা", "Book") + " · " : ""}${l.st === "final" ? "ফাইনাল" : "ড্রাফট"} · ${esc(l.by || "")}</td></tr>`).join("")}</tbody></table></div>${shown.length > 1500 ? `<div class="mut sm" style="padding:8px">${bi("প্রথম ১৫০০ লাইন দেখানো হচ্ছে — সময় ছোট করুন", "First 1500 lines shown — narrow the period")}</div>` : ""}` : `<div class="empty">কিছু পাওয়া যায়নি</div>`;
+    if (!ready || !out.isConnected) return;
+    const q = chequeSearchKey(F.q), isTally = source === "tally";
+    shown = lines.filter(l => (!F.type || l.type === F.type) && (isTally || !F.k || F.k === l.k) &&
+      (!q || chequeSearchKey([l.led, l.k && cashLabel(l.k), l.n, l.accounts, l.ref, l.a, l.x].join(" ")).includes(q)));
+    const sums = {receipt: 0, payment: 0};
+    for (const l of shown) sums[l.type] += Math.round(l.a * 100);
+    g("rg-sum").innerHTML = [[bi("লাইন", "Lines"), shown.length, ""], ["Receipt", "৳ " + money(sums.receipt / 100), "gr"], ["Payment", "৳ " + money(sums.payment / 100), "rd"]]
+      .map(([label, value, cls]) => `<div class="card"><span class="mut sm">${label}</span><strong class="${cls}">${value}</strong></div>`).join("");
+    const pages = Math.max(1, Math.ceil(shown.length / pageSize));
+    page = Math.min(page, pages - 1);
+    const first = page * pageSize;
+    g("rg-pager").hidden = pages === 1; g("rg-page").textContent = `${page + 1} / ${pages}`;
+    g("rg-prev").disabled = page === 0; g("rg-next").disabled = page + 1 === pages;
+    excel.disabled = !shown.length;
+    const ledger = bi("লেজার", "Ledger"), detail = bi("ভাউচার / নোট", "Voucher / note"), recordSource = bi("উৎস", "Source");
+    out.innerHTML = shown.length ? `<div class="tw cards"><table class="rg-table"><thead><tr><th>তারিখ</th><th>ধরন</th><th>${ledger}</th>${isTally ? "" : "<th>খাত</th>"}<th class="r">টাকা</th><th>${detail}</th><th>${recordSource}</th></tr></thead><tbody>
+      ${shown.slice(first, first + pageSize).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td>
+      <td>${l.led ? `<b>${esc(l.led)}</b>` : `<span class="mut">${l.source === "checker" ? categoryTotal : bi("নাম দেওয়া হয়নি", "Unnamed entry")}</span>`}</td>
+      ${isTally ? "" : `<td>${esc(cashLabel(l.k))}</td>`}<td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td>
+      <td class="sm">${[l.ref, l.accounts && "A/C " + l.accounts, l.n].filter(Boolean).map(x => `<div>${esc(x)}</div>`).join("") || "—"}</td>
+      <td class="mut sm">${sources[l.source]}${l.st ? ` · ${l.st === "final" ? bi("ফাইনাল", "Final") : bi("ড্রাফট", "Draft")}` : ""}${l.by ? " · " + esc(l.by) : ""}</td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty">${bi("এই ফিল্টারে কোনো লাইন নেই", "No lines match these filters")}</div>`;
   }
-  pbBind(v, "rg", F, load); $("#rg-q", v).oninput = e => { F.q = e.target.value; draw(); }; $("#rg-t", v).onchange = e => { F.type = e.target.value; draw(); }; $("#rg-k", v).onchange = e => { F.k = e.target.value; draw(); };
-  $("#rg-x", v).onclick = () => shown.length ? exportXlsx({ Register: [["Date", "Type", "Ledger", "Category", "Amount", "Expression", "Note", "Status", "By"], ...shown.map(l => [dmy(l.date), l.type, l.led || "", cashLabel(l.k), l.a, l.x, l.n, l.st, l.by || ""])] }, `Cash_Register_${today()}.xlsx`) : toast("ডাটা নেই", "err");
-  await load();
+  function setSource(next) {
+    source = next;
+    g("rg-period").innerHTML = pbBar("rg", currentPeriod());
+    g("rg-purpose").hidden = source === "tally";
+    for (const btn of $$("[data-rg-source]", v)) {
+      const active = btn.dataset.rgSource === source;
+      btn.classList.toggle("on", active); btn.setAttribute("aria-pressed", active);
+    }
+    pbBind(v, "rg", currentPeriod(), load); return load();
+  }
+  g("rg-open").onclick = () => file.click();
+  file.onchange = async () => {
+    const chosen = file.files[0], open = g("rg-open");
+    file.value = "";
+    if (!chosen || open.disabled) return;
+    open.disabled = true; g("rg-file-error").textContent = "";
+    try {
+      const records = await cashTallyRows(chosen);
+      if (!out.isConnected) return;
+      tally = records;
+      tallyPeriod.d = records.reduce((last, row) => row.date > last ? row.date : last, "");
+      tallyPeriod.m = "month";
+      tallyPeriod.f = records.reduce((first, row) => row.date < first ? row.date : first, tallyPeriod.d);
+      tallyPeriod.t = tallyPeriod.d;
+      g("rg-source").hidden = false;
+      g("rg-file-info").textContent = `${chosen.name} · ${bi("শুধু এই পেজে প্রিভিউ", "Read-only preview on this page")} · ${records.length.toLocaleString("en-IN")} ${bi("লাইন", "lines")}`;
+      await setSource("tally");
+    } catch (e) { if (out.isConnected) g("rg-file-error").textContent = e.message || String(e); }
+    finally { open.disabled = false; }
+  };
+  for (const btn of $$("[data-rg-source]", v)) btn.onclick = () => { if (source !== btn.dataset.rgSource) setSource(btn.dataset.rgSource); };
+  g("rg-q").oninput = e => { F.q = e.target.value; resetPage(); };
+  g("rg-t").onchange = e => { F.type = e.target.value; resetPage(); };
+  g("rg-k").onchange = e => { F.k = e.target.value; resetPage(); };
+  const changePage = delta => { page += delta; draw(); out.scrollIntoView({block: "start"}); };
+  g("rg-prev").onclick = () => changePage(-1); g("rg-next").onclick = () => changePage(1);
+  excel.onclick = () => {
+    const [from, to] = cashPeriod(currentPeriod());
+    if (shown.length) exportXlsx({ Register: [["Date", "Type", "Ledger", "Category", "Amount", "Expression", "Note", "Status", "By", "Voucher", "A/C", "Source"],
+      ...shown.map(l => [dmy(l.date), l.type, l.led || "", l.k ? cashLabel(l.k) : "", l.a, l.x || "", l.n || "", l.st || "", l.by || "", l.ref || "", l.accounts || "", sources[l.source]])] },
+      `Cash_Register_${source}_${from}_to_${to}.xlsx`);
+  };
+  await setSource("app");
 }
 
 /* =================== v6: reminders (photo + pick days + cheque link) =================== */
@@ -3364,75 +3947,143 @@ async function vSettings(v) {
 /* =================== v6.2: audit log =================== */
 AU_F.event = "ঘটনা"; AU_T.cash_records = "ক্যাশ"; AU_T.audit_log = "Audit log";
 const AU_IC = { insert: "plus", update: "edit", delete: "trash" };
-const auText = r => { const o = r.old || {}, n = r.new || {}; if (r.action === "update") return Object.keys({ ...o, ...n }).filter(k => !AU_SKIP.has(k) && JSON.stringify(o[k]) !== JSON.stringify(n[k])).map(k => `${AU_F[k] || k}: ${auV(o[k])} → ${auV(n[k])}`).join("; "); const x = r.action === "delete" ? o : n; return Object.entries(x).filter(([k, val]) => !AU_SKIP.has(k) && val !== null && val !== "").map(([k, val]) => `${AU_F[k] || k}: ${auV(val)}`).join("; "); };
-function auChips(r, all) {
-  const o = r.old || {}, n = r.new || {}, L = k => `<span class="au-k">${esc(AU_F[k] || k)}</span>`;
-  if (r.action === "update") { const ks = Object.keys({ ...o, ...n }).filter(k => !AU_SKIP.has(k) && JSON.stringify(o[k]) !== JSON.stringify(n[k])); return ks.map(k => `<span class="auc">${L(k)}<s>${esc(auV(o[k]))}</s><i>→</i><b>${esc(auV(n[k]))}</b></span>`).join("") || `<span class="mut xs">—</span>`; }
-  const x = r.action === "delete" ? o : n, es = Object.entries(x).filter(([k, val]) => !AU_SKIP.has(k) && val !== null && val !== "" && typeof val !== "object");
-  return es.slice(0, all ? 99 : 4).map(([k, val]) => `<span class="auc">${L(k)}<b>${esc(auV(val))}</b></span>`).join("") + (!all && es.length > 4 ? `<button class="btn sm ghost au-more">+${es.length - 4}</button>` : "");
+const AUDIT_ZONE = "Asia/Dhaka";
+const auditDate = value => new Intl.DateTimeFormat("en-CA", {timeZone:AUDIT_ZONE, year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(value));
+const auditStamp = (value, options = {dateStyle:"medium", timeStyle:"short"}) => value && Number.isFinite(new Date(value).getTime())
+  ? new Date(value).toLocaleString(LANG === "en" ? "en-GB" : "bn-BD", {...options,timeZone:AUDIT_ZONE}) : "—";
+const auditTable = tbl => Object.hasOwn(AU_T,tbl) ? tr(AU_T[tbl]) : String(tbl || "—");
+Object.assign(AU_T, {inv_orders:"Inventory order", inv_items:"Inventory item", inv_demand:"Inventory demand", rm_daily:"RM daily stock",
+  rm_products:"RM product", cashbook_days:"Cash Book", cashbook_ledgers:"Cash ledgers", leaf_marks:"Cheque leaf", cheque_statement_verifications:"Statement verification"});
+const auditActor = r => r.user_name || bi("সিস্টেম", "System");
+function auditFields(r) {
+  const old = r.old || {}, next = r.new || {}, changed = r.action === "update";
+  const entry = r.action === "delete" ? old : next;
+  return Object.keys(changed ? {...old,...next} : entry)
+    .filter(k => !AU_SKIP.has(k) && (changed ? JSON.stringify(old[k]) !== JSON.stringify(next[k]) : entry[k] != null && entry[k] !== ""))
+    .map(key => ({key, label:Object.hasOwn(AU_F,key) ? tr(AU_F[key]) : key, before:auV(old[key], key), after:auV(next[key], key)}));
 }
-async function vAudit(v) {
+const auText = r => auditFields(r).map(f => `${f.label}: ${r.action === "update" ? f.before + " → " + f.after : r.action === "delete" ? f.before : f.after}`).join("; ");
+function auChips(r) {
+  const fields = auditFields(r);
+  const short = x => x.length > 72 ? x.slice(0, 69) + "…" : x;
+  return fields.slice(0, 4).map(f => `<span class="auc"><span class="au-k">${esc(f.label)}</span>${r.action === "update" ? `<s>${esc(short(f.before))}</s><i>→</i>` : ""}<b>${esc(short(r.action === "delete" ? f.before : f.after))}</b></span>`).join("") +
+    (fields.length > 4 ? `<span class="mut sm">+${fields.length - 4}</span>` : "");
+}
+function auditDetails(r) {
+  const fields = auditFields(r);
+  modal(`<h2>${bi("পরিবর্তনের বিস্তারিত", "Change details")}</h2><div class="aim">${esc(auditTable(r.tbl))} · ${esc(auditActor(r))} · ${esc(auditStamp(r.at))}</div><p class="as-break">${esc(r.row_key || "—")}</p>
+    ${fields.length ? `<dl class="as-field-diff">${fields.map(f => `<div><dt>${esc(f.label)}</dt><dd>${r.action !== "insert" ? `<div><span class="mut xs">${bi("আগে", "Before")}</span><b>${esc(f.before)}</b></div>` : ""}${r.action !== "delete" ? `<div><span class="mut xs">${bi("পরে", "After")}</span><b>${esc(f.after)}</b></div>` : ""}</dd></div>`).join("")}</dl>` : `<div class="empty">${bi("ফিল্ড পরিবর্তন নেই", "No field changes recorded")}</div>`}
+    <div class="modal-actions"><button type="button" class="btn" id="au-detail-copy">${ico("copy")} ${bi("রেফারেন্স কপি", "Copy reference")}</button><button type="button" class="btn pri" id="au-detail-close">${bi("বন্ধ", "Close")}</button></div>`, (root, close) => {
+    $("#au-detail-close", root).onclick = close;
+    const copy = $("#au-detail-copy", root); copy.disabled = !r.row_key;
+    copy.onclick = () => copyText(String(r.row_key),bi("রেফারেন্স কপি হয়েছে","Reference copied"));
+  });
+}
+async function vAudit(v, options) {
   const admin = S.me.role === "admin", F = { ...pbInit("month"), tbl: "", act: "", who: "", q: "" };
+  F.d = auditDate(Date.now());
+  if (options?.deletions) { F.m = "custom"; F.t = auditDate(Date.now()); F.f = addDays(F.t,-6); F.act = "delete"; }
   v.innerHTML = head("Audit log", `<div class="dd"><button class="btn" id="au-dl">${ico("dl")} ডাউনলোড ▾</button><div class="ddm hide" id="au-menu"><button data-dl="xlsx">${ico("dl")} Excel (.xlsx)</button><button data-dl="csv">${ico("list")} CSV</button><button data-dl="print">${ico("print")} প্রিন্ট / PDF</button></div></div>${admin ? `<button class="btn rdo" id="au-clr">${ico("trash")} লগ পরিষ্কার</button>` : ""}`) + `
    <div class="card tbar noprint">${pbBar("au", F)}
-    <div class="srch"><label class="si">${ico("search")}<input class="in" id="au-q" placeholder="খুঁজুন — A/C, চেক নং, ইমেইল…" autocomplete="off" type="search"></label></div>
-    <div class="aufl"><select class="in" id="au-t"><option value="">সব জায়গা</option>${Object.entries({ ...AU_T, cash_records: "ক্যাশ" }).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select><select class="in" id="au-a"><option value="">সব কাজ</option>${Object.entries(AU_A).map(([k, l]) => `<option value="${k}">${l[0]}</option>`).join("")}</select><select class="in" id="au-w"><option value="">সবাই</option></select></div></div>
-   <div class="grid g4 au-k4" id="au-kpi"></div><div id="au-out" style="margin-top:12px"><div class="card empty">লোড হচ্ছে…</div></div>`;
-  let rows = [], shown = [], more = false;
-  const range = () => pbRange(F);
-  async function load(append) {
-    const [from, to] = range(); if (!append) $("#au-out", v).innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
-    try { const r = await API.audit({ tbl: F.tbl, act: F.act, from, to, offset: append ? rows.length : 0 }); rows = append ? rows.concat(r) : r; more = r.length >= 500; }
-    catch (e) { $("#au-out", v).innerHTML = `<div class="alert rd">${/relation|does not exist|schema cache|not find/i.test(e.message || "") ? "Audit log টেবিল নেই — Supabase-এ schema_v2.sql চালাতে হবে" : esc(e.message || e)}</div>`; return; }
-    const users = [...new Set(rows.map(r => r.user_name).filter(Boolean))].sort(); const ws = $("#au-w", v), cur = ws.value; ws.innerHTML = `<option value="">সবাই</option>` + users.map(u => `<option ${u === cur ? "selected" : ""}>${esc(u)}</option>`).join("");
-    draw();
+    <div class="srch"><label class="si">${ico("search")}<input class="in" id="au-q" placeholder="${bi("রেফারেন্স, ব্যবহারকারী বা ফিল্ডের মান", "Reference, user or field value")}" aria-label="${bi("লগ খুঁজুন", "Search audit log")}" autocomplete="off" type="search"></label></div>
+    <div class="aufl"><select class="in" id="au-t" aria-label="${bi("মডিউল", "Module")}"><option value="">সব জায়গা</option>${Object.entries({ ...AU_T, cash_records: "ক্যাশ" }).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select><select class="in" id="au-a" aria-label="${bi("কাজ", "Action")}"><option value="">সব কাজ</option>${Object.entries(AU_A).map(([k, l]) => `<option value="${k}">${l[0]}</option>`).join("")}</select><select class="in" id="au-w" aria-label="${bi("ব্যবহারকারী", "Actor")}"><option value="">সবাই</option></select></div></div>
+   <div class="as-metrics au-k4" id="au-kpi"></div><div class="as-result"><p class="mut sm" id="au-total" role="status"></p><button class="btn sm" type="button" id="au-reset">${bi("ফিল্টার রিসেট", "Reset filters")}</button></div><div id="au-out" style="margin-top:12px"><div class="card empty">লোড হচ্ছে…</div></div>`;
+  let rows = [], shown = [], more = false, busy = false, failed = false, revision = 0, cutoff;
+  const batch = 100, out = $("#au-out", v), range = () => pbRange(F);
+  async function load(append = false) {
+    if (append && busy) return;
+    const seq = ++revision, [from, to] = range();
+    if (!append) { rows = []; shown = []; more = false; cutoff = new Date().toISOString(); }
+    failed = false; busy = true; draw();
+    try {
+      const result = await API.audit({tbl:F.tbl, act:F.act, from, to, before:cutoff, offset:rows.length, limit:batch});
+      if (!out.isConnected || seq !== revision) return;
+      rows = rows.concat(result);
+      more = result.length === batch;
+      const users = [...new Set(rows.map(auditActor))].sort();
+      const ws = $("#au-w", v);
+      ws.innerHTML = `<option value="">${bi("সবাই", "Everyone")}</option>` + users.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join("");
+      if (!users.includes(F.who)) F.who = "";
+      ws.value = F.who;
+    } catch { if (out.isConnected && seq === revision) failed = true; }
+    finally { if (out.isConnected && seq === revision) { busy = false; draw(); } }
   }
   function draw() {
-    const q = norm(F.q); shown = rows.filter(r => (!F.who || r.user_name === F.who) && (!q || norm([r.user_name, r.row_key, r.tbl, JSON.stringify(r.new || r.old)].join(" ")).includes(q)));
-    const c = a => shown.filter(r => r.action === a).length, top = Object.entries(shown.reduce((m, r) => (m[r.user_name] = (m[r.user_name] || 0) + 1, m), {})).sort((a, b) => b[1] - a[1])[0];
-    $("#au-kpi", v).innerHTML = `<div class="kpi card k-vi"><div class="l">মোট পরিবর্তন</div><div class="v num">${shown.length}${more ? "+" : ""}</div><div class="s">${top ? `<span>সবচেয়ে বেশি:</span> ${esc(top[0])} (${top[1]})` : "—"}</div></div><div class="kpi card k-gr"><div class="l">যোগ</div><div class="v num">${c("insert")}</div></div><div class="kpi card k-am"><div class="l">বদল</div><div class="v num">${c("update")}</div></div><div class="kpi card k-rd"><div class="l">মুছে ফেলা</div><div class="v num">${c("delete")}</div></div>`;
-    if (!shown.length) { $("#au-out", v).innerHTML = `<div class="card empty">এই সময়ে কোনো পরিবর্তন নেই</div>`; return; }
+    const q = chequeSearchKey(F.q);
+    shown = rows.filter(r => (!F.who || auditActor(r) === F.who) && (!q ||
+      chequeSearchKey([auditActor(r), r.row_key, r.tbl, auditTable(r.tbl), JSON.stringify(r.old), JSON.stringify(r.new)].join(" ")).includes(q)));
+    const counts = {insert:0, update:0, delete:0};
+    shown.forEach(r => { if (Object.hasOwn(counts,r.action)) counts[r.action]++; });
+    const cards = [["",bi("মিলেছে", "Matching entries"),shown.length], ...Object.entries(AU_A).map(([key,[label,cls]]) => [key,tr(label),counts[key],cls])];
+    $("#au-kpi", v).innerHTML = cards.map(([key,label,count,cls]) => `<button type="button" class="card as-kpi ${cls || ""}" data-au-action="${key}" aria-pressed="${key === F.act}"><span>${esc(label)}</span><strong class="num">${count}</strong></button>`).join("");
+    $("#au-total", v).textContent = bi(`${rows.length}টি লোড হয়েছে · ${shown.length}টি মিলেছে · ঢাকা সময়`, `${rows.length} loaded · ${shown.length} match · Dhaka time`);
+    $("#au-dl", v).disabled = busy || !shown.length;
     let last = "", html = "";
-    shown.forEach((r, i) => { const d = r.at.slice(0, 10), ld = new Date(r.at); if (d !== last) { last = d; html += `<div class="au-day">${ld.toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</div>`; }
-      html += `<div class="aui a-${r.action}" data-i="${i}"><div class="aic">${ico(AU_IC[r.action] || "edit")}</div><div class="aib"><div class="ait"><span class="tag au-${r.action}">${(AU_A[r.action] || [r.action])[0]}</span><b>${esc(AU_T[r.tbl] || (r.tbl === "cash_records" ? "ক্যাশ" : r.tbl))}</b><span class="aik">${esc(r.row_key || "")}</span></div><div class="aim">${ico("clock").replace("<svg", '<svg width="12" height="12"')} ${ld.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · <b>${esc(r.user_name || "system")}</b></div><div class="aud">${auChips(r)}</div></div></div>`; });
-    $("#au-out", v).innerHTML = `<div class="card au-list">${html}</div>${more ? `<div class="row" style="justify-content:center;margin-top:10px"><button class="btn fix" id="au-more">আরও লোড করুন</button></div>` : ""}`;
-    $$(".au-more", v).forEach(b => b.onclick = e => { e.stopPropagation(); const r = shown[+b.closest(".aui").dataset.i]; b.closest(".aud").innerHTML = auChips(r, true); });
-    $("#au-more", v) && ($("#au-more", v).onclick = () => load(true));
+    shown.forEach((r, i) => {
+      const d = auditDate(r.at), action = Object.hasOwn(AU_A,r.action) ? r.action : "update";
+      if (d !== last) { last = d; html += `<div class="au-day">${auditStamp(r.at,{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>`; }
+      html += `<article class="aui a-${action}"><div class="aic">${ico(AU_IC[action])}</div><div class="aib"><div class="ait"><span class="tag au-${action}">${esc(tr((AU_A[action] || [action])[0]))}</span><b>${esc(auditTable(r.tbl))}</b><span class="aik">${esc(r.row_key || "")}</span></div>
+        <div class="aim">${esc(auditStamp(r.at,{hour:"2-digit",minute:"2-digit"}))} · <b>${esc(auditActor(r))}</b></div><div class="aud">${auChips(r)}</div>
+        <button class="btn sm" type="button" data-au-detail="${i}">${bi("বিস্তারিত", "Details")}</button></div></article>`;
+    });
+    const status = busy ? bi("লোড হচ্ছে…","Loading…") : failed ? bi("লগ লোড হয়নি","Audit entries could not be loaded") : bi("এই ফিল্টারে কোনো রেকর্ড মেলেনি","No entries match these filters");
+    out.innerHTML = html ? `<div class="card au-list">${html}</div>` : `<div class="card empty">${status}</div>`;
+    if (more || failed) out.insertAdjacentHTML("beforeend", `<div class="as-result"><span class="mut sm">${more ? bi("এই সময়ের আরও রেকর্ড আছে। এক্সপোর্টে লোড হওয়া রেকর্ড থাকবে।","More entries are available. Exports include loaded matches.") : status}</span><button class="btn" type="button" id="au-more" ${busy ? "disabled" : ""}>${failed ? bi("আবার চেষ্টা করুন","Retry") : bi("আরও লোড করুন","Load more")}</button></div>`);
+    $("#au-more", v)?.addEventListener("click", () => load(rows.length > 0));
   }
+  out.onclick = e => { const btn = e.target.closest("[data-au-detail]"); if (btn) auditDetails(shown[Number(btn.dataset.auDetail)]); };
+  $("#au-kpi", v).onclick = e => {
+    const btn = e.target.closest("[data-au-action]"); if (!btn) return;
+    F.act = btn.dataset.auAction; $("#au-a", v).value = F.act; load();
+  };
+  $("#au-reset", v).onclick = () => {
+    F.q = F.tbl = F.act = F.who = "";
+    for (const id of ["au-q","au-t","au-a","au-w"]) $("#" + id,v).value = "";
+    load();
+  };
   const fname = ext => `Audit_${range()[0]}_${range()[1]}.${ext}`;
   async function download(kind) {
     $("#au-menu", v).classList.add("hide"); if (!shown.length) return toast("ডাটা নেই", "err");
-    const H = ["Time", "User", "Where", "Action", "Item", "Changes", "Old (JSON)", "New (JSON)"], R = shown.map(r => [new Date(r.at).toLocaleString("en-GB"), r.user_name || "", AU_T[r.tbl] ? tr(AU_T[r.tbl]) : r.tbl, r.action, r.row_key || "", auText(r), r.old ? JSON.stringify(r.old) : "", r.new ? JSON.stringify(r.new) : ""]);
+    const H = ["Time", "User", "Where", "Action", "Item", "Changes", "Old (JSON)", "New (JSON)"], R = shown.map(r => [auditStamp(r.at), r.user_name || "", AU_T[r.tbl] ? tr(AU_T[r.tbl]) : r.tbl, r.action, r.row_key || "", auText(r), r.old ? JSON.stringify(r.old) : "", r.new ? JSON.stringify(r.new) : ""]);
     if (kind === "xlsx") return exportXlsx({ Audit: [H, ...R] }, fname("xlsx"));
-    if (kind === "csv") { const csv = "﻿" + [H, ...R].map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\r\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = fname("csv"); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); return; }
+    if (kind === "csv") { const csv = "﻿" + [H, ...R].map(r => r.map(x => `"${String(x).replace(/^(?=[\s\uFEFF]*[=+@-])/, "\u0027").replace(/"/g, '""')}"`).join(",")).join("\r\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = fname("csv"); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); return; }
     const [f0, t0] = range(), cnt = a => shown.filter(r => r.action === a).length;
-    const body = shown.map(r => `<tr><td>${esc(new Date(r.at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }))}</td><td>${esc(r.user_name || "")}</td><td>${esc(AU_T[r.tbl] ? tr(AU_T[r.tbl]) : (r.tbl === "cash_records" ? tr("ক্যাশ") : r.tbl))}</td><td>${esc((AU_A[r.action] || [r.action])[0])}</td><td>${esc(r.row_key || "")}</td><td>${esc(auText(r))}</td></tr>`).join("");
+    const body = shown.map(r => `<tr><td>${esc(auditStamp(r.at,{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}))}</td><td>${esc(r.user_name || "")}</td><td>${esc(AU_T[r.tbl] ? tr(AU_T[r.tbl]) : (r.tbl === "cash_records" ? tr("ক্যাশ") : r.tbl))}</td><td>${esc((AU_A[r.action] || [r.action])[0])}</td><td>${esc(r.row_key || "")}</td><td>${esc(auText(r))}</td></tr>`).join("");
     printSheet(repSheet("au-sheet", "Audit Log · পরিবর্তনের লগ", f0, t0, repKpi([["Changes", shown.length], ["Added", cnt("insert")], ["Edited", cnt("update")], ["Deleted", cnt("delete")]]), repOne(repBox("Change history", ["~Time", "~User", "~Where", "~Action", "~Item", "~Changes"], body)), more ? "Note: only the loaded records are included." : ""), fname("pdf").replace(/\.pdf$/, ""));
   }
   $("#au-dl", v).onclick = e => { e.stopPropagation(); $("#au-menu", v).classList.toggle("hide"); };
-  $$("#au-menu [data-dl]", v).forEach(b => b.onclick = () => download(b.dataset.dl));
+  $$("#au-menu [data-dl]", v).forEach(b => b.onclick = () => download(b.dataset.dl).catch(e => toast(e.message || String(e), "err")));
   const hideMenu = () => $("#au-menu", v)?.classList.add("hide"); document.addEventListener("click", hideMenu);
   $("#au-clr", v) && ($("#au-clr", v).onclick = () => clearAuditModal(() => load()));
-  pbBind(v, "au", F, load);
+  pbBind(v, "au", F, () => load());
   $("#au-t", v).onchange = e => { F.tbl = e.target.value; load(); }; $("#au-a", v).onchange = e => { F.act = e.target.value; load(); }; $("#au-w", v).onchange = e => { F.who = e.target.value; draw(); };
   $("#au-q", v).oninput = e => { F.q = e.target.value; draw(); };
-  await load();
-  return () => document.removeEventListener("click", hideMenu);
+  $("#au-a", v).value = F.act;
+  load();
+  return () => { ++revision; document.removeEventListener("click", hideMenu); };
 }
 function clearAuditModal(after) {
   modal(`<h2>🧹 Audit log পরিষ্কার</h2><p class="mut sm" style="margin-top:-6px">পুরনো লগ মুছে জায়গা খালি করুন। মোছার পরেও "কে কখন পরিষ্কার করেছে" তার একটা রেকর্ড থেকে যাবে।</p>
    <div class="grid" style="gap:8px">${[["90", bi("৯০ দিনের বেশি পুরনো", "Older than 90 days")], ["30", bi("৩০ দিনের বেশি পুরনো", "Older than 30 days")], ["7", bi("৭ দিনের বেশি পুরনো", "Older than 7 days")], ["all", bi("সব লগ", "All logs")]].map(([k, l], i) => `<label class="rad"><input type="radio" name="clr" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
-   <label class="rad" style="margin-top:12px"><input type="checkbox" id="clr-dl" checked><span>মোছার আগে Excel কপি ডাউনলোড করুন</span></label>
+   <label class="rad" style="margin-top:12px"><input type="checkbox" id="clr-dl" checked><span>মোছার আগে সম্পূর্ণ JSON আর্কাইভ ডাউনলোড করুন</span></label>
    <div id="clr-all" class="hide" style="margin-top:10px"><label class="f">নিশ্চিত করতে <b>CLEAR</b> লিখুন</label><input class="in" id="clr-t" autocomplete="off"></div>
    <div class="modal-actions"><button class="btn bad fix" id="clr-ok">${ico("trash")} পরিষ্কার করুন</button><button class="btn fix" id="clr-x">বাতিল</button></div>`, (root, close) => {
     $$("[name=clr]", root).forEach(r => r.onchange = () => $("#clr-all", root).classList.toggle("hide", $("[name=clr]:checked", root).value !== "all"));
     $("#clr-x", root).onclick = close;
     $("#clr-ok", root).onclick = async () => {
       const k = $("[name=clr]:checked", root).value; if (k === "all" && $("#clr-t", root).value.trim().toUpperCase() !== "CLEAR") return toast("CLEAR লিখুন", "err");
-      const before = k === "all" ? new Date(Date.now() + 60000).toISOString() : new Date(addDays(today(), -+k) + "T00:00:00").toISOString();
+      const before = k === "all" ? new Date().toISOString() : new Date(addDays(auditDate(Date.now()), -+k) + "T00:00:00+06:00").toISOString();
       const b = $("#clr-ok", root); b.disabled = true;
       try {
-        if ($("#clr-dl", root).checked) { const old = await API.audit({ from: "2000-01-01", to: k === "all" ? today() : addDays(today(), -+k - 1), limit: 20000 }); if (old.length) await exportXlsx({ Audit: [["Time", "User", "Where", "Action", "Item", "Changes"], ...old.map(r => [new Date(r.at).toLocaleString("en-GB"), r.user_name || "", r.tbl, r.action, r.row_key || "", auText(r)])] }, `Audit_archive_${today()}.xlsx`); }
+        if ($("#clr-dl", root).checked) {
+          const archive = [], batch = 500;
+          for (let offset = 0; ; offset += batch) {
+            const page = await API.audit({before, offset, limit:batch});
+            archive.push(...page);
+            if (page.length < batch) break;
+          }
+          if (archive.length) dlBlob(new Blob([JSON.stringify({before,entries:archive})], {type:"application/json"}), `Audit_archive_${today()}.json`);
+        }
         const n = await API.clearAudit(before); close(); toast(bi(`✔ ${n}টি পুরনো লগ মুছে ফেলা হয়েছে`, `✔ ${n} old log(s) deleted`)); after && after();
       } catch (e) { toast(/function|does not exist/i.test(e.message || "") ? "schema_v4.sql চালানো বাকি" : e.message, "err"); b.disabled = false; }
     };
@@ -3441,60 +4092,231 @@ function clearAuditModal(after) {
 
 /* =================== v6.2: audit & security shell =================== */
 async function vSecurity(v) {
-  const admin = S.me.role === "admin"; let tab = sessionStorage.getItem("nabiad_sec_tab") || "audit"; if (!admin && tab !== "audit") tab = "audit";
-  const tabs = [["audit", "📜", "Audit log"], ...(admin ? [["backup", "💾", "Backup"], ["sec", "🔐", "Security"]] : [])];
-  v.innerHTML = `<div class="tabs ntabs" style="margin-bottom:12px">${tabs.map(([k, i, l]) => `<span class="chip ${k === tab ? "on" : ""}" data-st="${k}"><i class="te">${i}</i> <span>${l}</span></span>`).join("")}</div><div id="sec-out"></div>`;
-  $$("[data-st]", v).forEach(c => c.onclick = () => { sessionStorage.setItem("nabiad_sec_tab", c.dataset.st); if (cleanup) { cleanup(); cleanup = null; } vSecurity(v).then(f => { cleanup = f || null; }); });
-  const out = $("#sec-out", v);
-  if (tab === "audit") return vAudit(out);
-  if (tab === "backup") return vBackup(out);
-  return vSec(out);
-}
-function nextMidnight() { const d = new Date(); d.setHours(24, 0, 0, 0); return d; }
-async function vBackup(out) {
-  out.innerHTML = head("Backup", `<button class="btn pri" id="bk-now">${ico("save")} এখনই Backup</button><button class="btn" id="bk-dl">${ico("dl")} পুরো ডাটা (Excel)</button>`) + `<div class="grid g4" id="bk-kpi"><div class="kpi card"><div class="skel"></div></div><div class="kpi card"><div class="skel"></div></div><div class="kpi card"><div class="skel"></div></div><div class="kpi card"><div class="skel"></div></div></div>
-   <div class="card flush" style="margin-top:12px" id="bk-list"><div class="empty">লোড হচ্ছে…</div></div>
-   <div class="card" style="margin-top:12px"><h3>ℹ️ Backup কীভাবে কাজ করে</h3><ul class="chk"><li>🕛 প্রতি রাত ১২টায় (বাংলাদেশ সময়) ডাটাবেস নিজে থেকে Backup নেয় — কাউকে কিছু করতে হয় না।</li><li>🗂 স্বয়ংক্রিয় Backup শেষ ১৪ দিনের রাখা হয়, হাতে নেওয়া Backup শেষ ১০টি।</li><li>⬇ যেকোনো Backup JSON বা Excel হিসেবে ডাউনলোড করে নিজের কম্পিউটার / Google Drive-এ রাখুন — মাসে অন্তত একবার।</li><li>♻ ডাটা ফেরত আনতে হলে Admin ডাউনলোড করা ফাইল দিয়ে Supabase-এ restore করতে পারে।</li></ul></div>`;
-  const toXlsx = async (d, name) => { const sheets = {}; for (const [t, rows] of Object.entries(d || {})) { if (!Array.isArray(rows) || !rows.length) continue; const keys = [...new Set(rows.flatMap(r => Object.keys(r)))]; sheets[t.slice(0, 31)] = [keys, ...rows.map(r => keys.map(k => r[k] !== null && typeof r[k] === "object" ? JSON.stringify(r[k]) : r[k]))]; } if (!Object.keys(sheets).length) return toast("ডাটা নেই", "err"); await exportXlsx(sheets, name); };
-  const list = async () => {
-    let rows; try { rows = await API.backups(); } catch (e) { $("#bk-list", out).innerHTML = `<div class="alert rd" style="margin:12px">${/relation|does not exist|schema cache|not find/i.test(e.message || "") ? "Backup টেবিল নেই — Supabase-এ schema_v3.sql চালাতে হবে" : esc(e.message)}</div>`; $("#bk-kpi", out).innerHTML = ""; return; }
-    const lastA = rows.find(r => r.kind === "auto"), lastM = rows.find(r => r.kind === "manual"), nm = nextMidnight(), ok = lastA && Date.now() - new Date(lastA.at) < 36 * 36e5;
-    $("#bk-kpi", out).innerHTML = `<div class="kpi card ${ok ? "k-gr" : "k-am"}"><div class="l">শেষ স্বয়ংক্রিয়</div><div class="v" style="font-size:17px">${lastA ? new Date(lastA.at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "এখনো হয়নি"}</div><div class="s">${lastA ? relTime(lastA.at) : "আজ রাতে প্রথমটি হবে"}</div></div>
-      <div class="kpi card k-vi"><div class="l">পরের Backup</div><div class="v" style="font-size:17px">${nm.toLocaleString("en-GB", { day: "2-digit", month: "short" })}, 12:00 AM</div><div class="s">${relTime(nm)}</div></div>
-      <div class="kpi card k-cy"><div class="l">মোট Backup</div><div class="v num">${rows.length}</div><div class="s"><span>স্বয়ংক্রিয়</span> ${rows.filter(r => r.kind === "auto").length} · <span>হাতে</span> ${rows.filter(r => r.kind === "manual").length}</div></div>
-      <div class="kpi card"><div class="l">শেষ হাতে-নেওয়া</div><div class="v" style="font-size:17px">${lastM ? new Date(lastM.at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</div><div class="s">${rows[0] ? `<span>রেকর্ড</span> ${money0(rows[0].size_rows)}` : ""}</div></div>`;
-    $("#bk-list", out).innerHTML = `<div class="ch"><h3>Backup তালিকা</h3><span class="tag">${rows.length}</span></div>` + (rows.length ? `<div class="bkl">${rows.map(r => `<div class="bkr"><div class="bki ${r.kind}">${ico(r.kind === "auto" ? "clock" : "save")}</div><div class="bkb"><b>${new Date(r.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</b><div class="mut xs"><span>${r.kind === "auto" ? "স্বয়ংক্রিয়" : "হাতে"}</span> · ${money0(r.size_rows)} <span>রেকর্ড</span> · ${relTime(r.at)}</div></div><div class="bka"><button class="btn sm" data-j="${r.id}" data-at="${r.at}" title="JSON">JSON</button><button class="btn sm" data-x="${r.id}" data-at="${r.at}" title="Excel">${ico("dl")} Excel</button>${r.kind === "manual" ? `<button class="btn sm ghost" data-del="${r.id}" title="মুছুন">${ico("trash")}</button>` : ""}</div></div>`).join("")}</div>` : `<div class="empty">এখনো কোনো Backup নেই — "এখনই Backup" চাপুন</div>`);
-    const fn = (at, ext) => `nabiad_backup_${at.slice(0, 16).replace(/[:T]/g, "-")}.${ext}`;
-    $$("[data-j]", out).forEach(b => b.onclick = async () => { b.disabled = true; try { const d = await API.backupData(+b.dataset.j || b.dataset.j); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(d)], { type: "application/json" })); a.download = fn(b.dataset.at, "json"); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); } catch (e) { toast(e.message, "err"); } b.disabled = false; });
-    $$("[data-x]", out).forEach(b => b.onclick = async () => { b.disabled = true; try { await toXlsx(await API.backupData(+b.dataset.x || b.dataset.x), fn(b.dataset.at, "xlsx")); } catch (e) { toast(e.message, "err"); } b.disabled = false; });
-    $$("[data-del]", out).forEach(b => b.onclick = async () => { if (!ask("এই হাতে-নেওয়া Backup মুছবেন?")) return; try { await API.deleteBackup(+b.dataset.del || b.dataset.del); toast("✔ মুছে ফেলা হয়েছে"); list(); } catch (e) { toast(/function|does not exist/i.test(e.message || "") ? "schema_v4.sql চালানো বাকি" : e.message, "err"); } });
+  const tabs = [["audit","list",bi("অডিট লগ","Audit log"),vAudit],
+    ...(S.me.role === "admin" ? [["backup","save","Backup",vBackup],["sec","shield","Security",vSec]] : [])];
+  const requested = sessionStorage.getItem("nabiad_sec_tab");
+  let tab = tabs.some(([key]) => key === requested) ? requested : "audit";
+  let childCleanup, epoch = 0;
+  v.innerHTML = `<div class="tabs ntabs adm-tabs as-tabs" role="group" aria-label="${bi("অডিট ও সিকিউরিটি বিভাগ","Audit and security sections")}">${tabs.map(([key, icon, label]) =>
+    `<button type="button" class="chip" data-security-tab="${key}" aria-controls="sec-out" aria-pressed="false">${ico(icon)} ${label}</button>`).join("")}</div><div id="sec-out"></div>`;
+  const panels = $("#sec-out", v), buttons = $$("[data-security-tab]", v);
+  const open = (key, options) => {
+    const visit = ++epoch;
+    childCleanup?.(); childCleanup = null;
+    tab = key;
+    sessionStorage.setItem("nabiad_sec_tab", tab);
+    buttons.forEach(btn => {
+      const active = btn.dataset.securityTab === tab;
+      btn.classList.toggle("on", active); btn.setAttribute("aria-pressed", active);
+    });
+    const panel = document.createElement("div");
+    panels.replaceChildren(panel);
+    Promise.resolve(tabs.find(([id]) => id === tab)[3](panel, options, open)).then(dispose => {
+      if (visit !== epoch || !panel.isConnected) { dispose?.(); return; }
+      childCleanup = dispose;
+    }).catch(() => {
+      if (panel.isConnected && visit === epoch) panel.innerHTML = `<div class="alert rd">${bi("এই বিভাগ লোড হয়নি","This section could not load")}</div>`;
+    });
   };
-  $("#bk-now", out).onclick = async () => { const b = $("#bk-now", out); b.disabled = true; try { await API.backupNow(); toast("✔ Backup নেওয়া হয়েছে"); await list(); } catch (e) { toast(e.message, "err"); } b.disabled = false; };
-  $("#bk-dl", out).onclick = async () => { const b = $("#bk-dl", out); b.disabled = true; toast("ডাটা আনা হচ্ছে… একটু সময় লাগবে"); try { await toXlsx(await API.dumpAll(), `Nabiad_Full_Data_${today()}.xlsx`); } catch (e) { toast(e.message, "err"); } b.disabled = false; };
-  await list();
+  buttons.forEach(btn => btn.onclick = () => { if (btn.dataset.securityTab !== tab) open(btn.dataset.securityTab); });
+  open(tab);
+  return () => { ++epoch; childCleanup?.(); };
 }
-async function vSec(out) {
-  out.innerHTML = head("Security") + `<div class="card empty">লোড হচ্ছে…</div>`;
-  const [logins, bks, recent] = await Promise.all([API.userLogins().catch(() => null), API.backups().catch(() => []), API.audit({ act: "delete", from: addDays(today(), -6), to: today() }).catch(() => [])]);
-  let us = logins; if (!us) { try { us = (await API.users()).map(u => ({ ...u, last_sign_in_at: null })); } catch { us = []; } }
-  const perm = "Notification" in window ? Notification.permission : "na", lastB = bks.find(b => b.kind === "auto"), noName = us.filter(u => !u.name || u.name === (u.email || "").split("@")[0]).length;
-  const checks = [[true, "ডাটাবেস নিরাপত্তা (RLS) চালু", "Staff শুধু যোগ করতে পারে; বদলানো ও মোছা শুধু Admin"], [true, "নতুন কেউ নিজে অ্যাকাউন্ট খুলতে পারে না", "শুধু Admin ব্যবহারকারী যোগ করে"], [location.protocol === "https:" || DEMO, "নিরাপদ সংযোগ (HTTPS)", location.host],
-    [!!lastB && Date.now() - new Date(lastB.at) < 36 * 36e5, "দৈনিক Backup", lastB ? relTime(lastB.at) : "এখনো স্বয়ংক্রিয় Backup হয়নি"], [true, "সব পরিবর্তনের রেকর্ড (Audit log)", "কে, কখন, আগে কী ছিল"], [true, "চেকের ছবি সুরক্ষিত", "লগইন ছাড়া দেখা যায় না"],
-    [perm === "granted", "এই ডিভাইসে নোটিফিকেশন", perm === "granted" ? "চালু" : "সেটিংস থেকে চালু করুন"], [!noName, "সব ব্যবহারকারীর নাম দেওয়া", noName ? `${noName} জনের নাম ঠিক করা বাকি` : "ঠিক আছে"]];
-  const score = Math.round(checks.filter(c => c[0]).length / checks.length * 100);
-  out.innerHTML = head("Security") + `<div class="grid g2">
-    <div class="card"><div class="secs"><div class="ring" style="--p:${score}"><b>${score}%</b></div><div><h3 style="margin:0">নিরাপত্তা স্কোর</h3><div class="mut sm">${checks.filter(c => c[0]).length} / ${checks.length} <span>ঠিক আছে</span></div></div></div>
-      <div class="hcl">${checks.map(([ok, l, s]) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "!"}</i><div><b>${l}</b><div class="mut xs">${esc(s)}</div></div></div>`).join("")}</div></div>
-    <div class="grid" style="gap:14px;align-content:start"><div class="card"><h3>💻 এই ডিভাইস</h3><div class="kv"><span>লগইন ইমেইল</span><b class="sm">${esc(S.me.email)}</b></div><div class="kv"><span>Role</span><b>${esc(S.me.role)}</b></div><div class="kv"><span>ডিভাইস</span><b class="sm">${esc((navigator.userAgentData?.platform || navigator.platform || "") + " · " + (/Mobi/.test(navigator.userAgent) ? "Mobile" : "Desktop"))}</b></div>
-       <div class="row" style="margin-top:12px"><button class="btn fix" id="sc-oth">${ico("out")} অন্য সব ডিভাইস থেকে লগআউট</button><a class="btn fix" href="#/settings">${ico("gear")} পাসওয়ার্ড বদলান</a></div><div class="mut xs" style="margin-top:6px">ফোন হারালে বা পাসওয়ার্ড অন্য কেউ জানলে আগে "অন্য সব ডিভাইস থেকে লগআউট" চাপুন, তারপর পাসওয়ার্ড বদলান।</div></div>
-      <div class="card"><h3>🗑 গত ৭ দিনে মুছে ফেলা</h3>${recent.length ? `<div class="mini">${recent.slice(0, 6).map(r => `<div class="mi"><div><b>${esc(AU_T[r.tbl] || r.tbl)} · ${esc(r.row_key || "")}</b><div class="mut xs">${esc(r.user_name || "")} · ${new Date(r.at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}</div></div></div>`).join("")}</div><a class="btn sm" style="margin-top:8px" href="#/audit" onclick="sessionStorage.setItem('nabiad_sec_tab','audit')">সব দেখুন →</a>` : `<div class="alert gr">✔ গত ৭ দিনে কিছু মোছা হয়নি</div>`}</div></div>
-    <div class="card flush" style="grid-column:1/-1"><div class="ch"><h3>👥 ব্যবহারকারী ও শেষ লগইন</h3><span class="tag">${us.length}</span><div class="sp" style="flex:1"></div><a class="sm" href="#/admin" onclick="sessionStorage.setItem('nabiad_admin_tab','usr')">বদলান →</a></div>
-      <div class="ulr">${us.map(u => `<div class="ur">${avaEl(u.id, u.name, u.email)}<div class="ub"><b>${esc(u.name || "—")}</b> <span class="pill sm">${esc(u.role)}</span>${u.active ? "" : ` <span class="tag cl">নিষ্ক্রিয়</span>`}<div class="mut xs">${esc(u.email)}</div></div><div class="ut"><span class="mut xs">শেষ লগইন</span><b class="sm">${u.last_sign_in_at ? relTime(u.last_sign_in_at) : "—"}</b></div></div>`).join("")}</div>
-      ${logins ? "" : `<div class="mut xs" style="padding:0 16px 12px">শেষ লগইনের সময় দেখাতে schema_v4.sql চালাতে হবে।</div>`}</div></div>`;
-  $("#sc-oth", out).onclick = async () => { if (!ask(bi("অন্য সব ডিভাইস থেকে লগআউট করবেন? (এই ডিভাইস লগইন থাকবে)", "Sign out all other devices? (This device stays signed in)"))) return; try { await API.signOutOthers(); toast(bi("✔ অন্য ডিভাইস থেকে লগআউট হয়েছে", "✔ Other devices signed out")); } catch (e) { toast(e.message, "err"); } };
+function securityMetrics(cards) {
+  return `<div class="as-metrics">${cards.map(([label,value,sub]) => `<div class="card as-kpi"><span>${label}</span><strong>${esc(value)}</strong>${sub ? `<small class="mut">${esc(sub)}</small>` : ""}</div>`).join("")}</div>`;
+}
+const asUnavailable = () => bi("পাওয়া যায়নি","Unavailable");
+function backupSheets(data) {
+  const sheets = {};
+  for (const [name, rows] of Object.entries(data || {})) {
+    if (!Array.isArray(rows) || !rows.length) continue;
+    const keys = [...new Set(rows.flatMap(row => Object.keys(row)))];
+    sheets[name] = [keys, ...rows.map(row => keys.map(key => row[key] != null && typeof row[key] === "object" ? JSON.stringify(row[key]) : row[key]))];
+  }
+  if (!Object.keys(sheets).length) throw new Error(bi("এক্সপোর্টের রেকর্ড নেই","No records to export"));
+  return sheets;
+}
+function backupDetails(r, data) {
+  const entries = Object.entries(data || {}).filter(([,rows]) => Array.isArray(rows));
+  const counts = entries.map(([name,rows]) => `<div class="kv"><span>${esc(auditTable(name))}</span><b class="num">${money0(rows.length)}</b></div>`).join("");
+  modal(`<h2>${bi("ব্যাকআপের বিস্তারিত","Snapshot details")}</h2><p class="mut sm">${esc(auditStamp(r.at))} · ${bi("ঢাকা সময়","Dhaka time")}</p>
+    ${counts || `<div class="empty">${bi("এই snapshot-এ টেবিল পাওয়া যায়নি","No tables found in this snapshot")}</div>`}
+    <div class="modal-actions"><button class="btn pri" type="button" id="backup-detail-close">${bi("বন্ধ","Close")}</button></div>`,
+    (root, close) => $("#backup-detail-close",root).onclick = close);
+}
+async function vBackup(out) {
+  out.innerHTML = head("Backup", `<button class="btn pri" type="button" id="bk-now">${ico("save")} ${bi("এখনই Backup","Backup now")}</button><button class="btn" type="button" id="bk-dl">${ico("dl")} ${bi("বর্তমান ডাটা (Excel)","Current data (Excel)")}</button>`) +
+    `<div id="bk-kpi"></div><div class="card flush" id="bk-archive">
+      <div class="ch"><h3>${bi("ব্যাকআপ তালিকা","Backup history")}</h3><span class="tag" id="bk-count" role="status"></span></div>
+      <div class="as-result as-toolbar"><div class="chips" role="group" aria-label="${bi("ব্যাকআপের ধরন","Backup type")}">${[["",bi("সব","All")],["auto",bi("স্বয়ংক্রিয়","Automatic")],["manual",bi("ম্যানুয়াল","Manual")],["other",bi("অন্যান্য","Other")]].map(([key,label]) => `<button type="button" class="chip" data-bk-kind="${key}" aria-pressed="false">${label}</button>`).join("")}</div>
+      <button type="button" class="btn sm" id="bk-refresh">${bi("রিফ্রেশ","Refresh")}</button></div>
+      <div id="bk-list"></div></div>`;
+  const g = id => $("#" + id,out), list = g("bk-list");
+  const kind = value => ({auto:bi("স্বয়ংক্রিয়","Automatic"),manual:bi("ম্যানুয়াল","Manual"),other:bi("অন্যান্য","Other")})[value] || bi("অন্যান্য","Other");
+  let rows = [], selected = "", busy = false;
+  const timestamp = row => row ? auditStamp(row.at) : "—";
+  function draw() {
+    const auto = rows.filter(r => r.kind === "auto"), manual = rows.filter(r => r.kind === "manual");
+    const fresh = auto[0] && Date.now() - Date.parse(auto[0].at) < 36 * 3600000;
+    g("bk-kpi").innerHTML = securityMetrics([
+      [bi("শেষ স্বয়ংক্রিয়","Latest automatic"),timestamp(auto[0]),auto[0] ? (fresh ? relTime(auto[0].at) : bi("৩৬ ঘণ্টা পেরিয়েছে","Older than 36 hours")) : bi("স্বয়ংক্রিয় snapshot পাওয়া যায়নি","No automatic snapshot found")],
+      [bi("শেষ ম্যানুয়াল","Latest manual"),timestamp(manual[0]),manual[0] ? bi("রেকর্ড ","Records ") + money0(manual[0].size_rows) : ""],
+      [bi("সংরক্ষিত snapshot","Stored snapshots"),String(rows.length),bi("স্বয়ংক্রিয় ","Automatic ") + auto.length + " · " + bi("ম্যানুয়াল ","Manual ") + manual.length + " · " + bi("অন্যান্য ","Other ") + (rows.length-auto.length-manual.length)],
+      [bi("নির্ধারিত সময়","Configured schedule"),bi("প্রতিদিন ০০:০০","Daily at 00:00"),bi("ঢাকা সময়","Dhaka time")]
+    ]);
+    const visible = rows.filter(r => !selected || (["auto","manual"].includes(r.kind) ? r.kind : "other") === selected);
+    g("bk-count").textContent = String(visible.length);
+    $$("[data-bk-kind]",out).forEach(btn => {
+      btn.classList.toggle("on",btn.dataset.bkKind === selected); btn.setAttribute("aria-pressed",btn.dataset.bkKind === selected);
+    });
+    list.innerHTML = visible.length ? visible.map(r => `<article class="bkr"><span class="bki ${r.kind === "auto" ? "auto" : "manual"}">${ico(r.kind === "auto" ? "clock" : "save")}</span>
+      <div class="bkb"><b>${esc(auditStamp(r.at))}</b><div class="mut sm">${kind(r.kind)} · ${bi("রেকর্ড","Records")} ${money0(r.size_rows)}</div></div>
+      <div class="bka"><button type="button" class="btn sm" data-backup="details" data-id="${esc(r.id)}">${bi("বিস্তারিত","Details")}</button><button type="button" class="btn sm" data-backup="json" data-id="${esc(r.id)}">JSON</button>
+      <button type="button" class="btn sm" data-backup="xlsx" data-id="${esc(r.id)}">Excel</button>
+      ${r.kind === "manual" ? `<button class="btn sm rdo" type="button" data-backup="remove" data-id="${esc(r.id)}" aria-label="${bi("ম্যানুয়াল ব্যাকআপ মুছুন","Delete manual backup")}">${ico("trash")}</button>` : ""}</div></article>`).join("") :
+      `<div class="empty">${bi("এই ধরনের কোনো snapshot নেই","No snapshots match this type")}</div>`;
+  }
+  async function refresh() {
+    if (busy) return;
+    busy = true; g("bk-refresh").disabled = true;
+    list.innerHTML = `<div class="empty">${bi("লোড হচ্ছে…","Loading…")}</div>`;
+    try {
+      const data = await API.backups();
+      if (!out.isConnected) return;
+      rows = [...data].sort((a,b) => Date.parse(b.at)-Date.parse(a.at)); draw();
+    } catch {
+      if (out.isConnected) {
+        g("bk-kpi").textContent = ""; g("bk-count").textContent = "";
+        list.innerHTML = `<div class="empty">${bi("ব্যাকআপ তালিকা লোড হয়নি। রিফ্রেশ করে আবার চেষ্টা করুন।","Backup history could not load. Refresh to retry.")}</div>`;
+      }
+    } finally { busy = false; g("bk-refresh").disabled = false; }
+  }
+  let backupAction = false;
+  async function runBackupAction(button, task) {
+    if (backupAction) return;
+    backupAction = true; button.disabled = true;
+    try { await task(); }
+    catch (e) { if (out.isConnected) toast(e.message || String(e),"err"); }
+    finally { backupAction = false; button.disabled = false; }
+  }
+  $$("[data-bk-kind]",out).forEach(btn => btn.onclick = () => { selected = btn.dataset.bkKind; if (!busy && g("bk-count").textContent) draw(); });
+  list.onclick = e => {
+    const btn = e.target.closest("[data-backup]"); if (!btn) return;
+    const r = rows.find(item => String(item.id) === btn.dataset.id), action = btn.dataset.backup;
+    if (!r) return;
+    runBackupAction(btn,async () => {
+      if (action === "remove") {
+        if (r.kind !== "manual" || !ask(bi("এই ম্যানুয়াল snapshot মুছবেন?","Delete this manual snapshot?"))) return;
+        await API.deleteBackup(r.id); if (out.isConnected) await refresh(); return;
+      }
+      const data = await API.backupData(r.id);
+      if (!out.isConnected) return;
+      if (!data || typeof data !== "object") throw new Error(bi("Snapshot পড়া যায়নি","Snapshot could not be read"));
+      const filename = `nabiad_backup_${r.at.slice(0,19).replace(/[:T]/g,"-")}_${r.id}`;
+      if (action === "details") backupDetails(r,data);
+      else if (action === "json") dlBlob(new Blob([JSON.stringify(data)],{type:"application/json"}),filename+".json");
+      else await exportXlsx(backupSheets(data),filename+".xlsx");
+    });
+  };
+  g("bk-refresh").onclick = refresh;
+  g("bk-now").onclick = () => runBackupAction(g("bk-now"),async () => {
+    await API.backupNow();
+    if (out.isConnected) { toast(bi("ব্যাকআপ নেওয়া হয়েছে","Backup created")); await refresh(); }
+  });
+  g("bk-dl").onclick = () => runBackupAction(g("bk-dl"),async () => {
+    const data = await API.dumpAll();
+    if (!out.isConnected) return;
+    const failed = Object.keys(data).filter(key => data[key]?.error);
+    const sheets = backupSheets(data);
+    if (failed.length) sheets["Export status"] = [["Table","Status"], ...failed.map(key => [key,"Unavailable"])];
+    await exportXlsx(sheets,`Nabiad_${failed.length ? "Partial" : "Full"}_Data_${today()}.xlsx`);
+    if (failed.length) toast(bi("আংশিক এক্সপোর্ট হয়েছে। বাদ পড়া টেবিল Export status-এ আছে।","Partial export. See the Export status sheet for unavailable tables."),"err");
+  });
+  await refresh();
+}
+async function vSec(out, _options, open) {
+  const F = {q:"", mode:""};
+  out.innerHTML = head("Security", `<button class="btn" type="button" id="sc-refresh">${bi("রিফ্রেশ","Refresh")}</button>`) +
+    `<div id="sc-overview"></div><div class="grid g2 as-panels"><div class="card" id="sc-devices"></div><div class="card" id="sc-recent"></div></div>
+      <section class="card flush" id="sc-directory"><div class="ch"><h3>${bi("ব্যবহারকারী ও সাইন-ইন","Users and sign-ins")}</h3><span id="sc-count" class="tag" role="status"></span></div>
+      <div class="as-result as-toolbar">${searchBox("sc-query",bi("নাম বা ইমেইল","Name or email"))}<select id="sc-mode" class="in" aria-label="${bi("ব্যবহারকারী ফিল্টার","User filter")}">
+      <option value="">${bi("সব ব্যবহারকারী","All users")}</option><option value="disabled">${bi("নিষ্ক্রিয়","Inactive")}</option><option value="mfa">${bi("সক্রিয় · 2FA বন্ধ","Active · 2FA off")}</option></select></div><div id="sc-users"></div></section>`;
+  const g = id => $("#" + id,out), unknown = asUnavailable();
+  let users = [], byId = new Map(), sessions = null, refreshing = false;
+  g("sc-query").setAttribute("aria-label",bi("ব্যবহারকারী খুঁজুন","Search users"));
+  function drawUsers() {
+    const q = chequeSearchKey(F.q);
+    const visible = users.filter(u => (!q || chequeSearchKey([u.name,u.email].join(" ")).includes(q)) &&
+      (F.mode === "disabled" ? !u.active : F.mode === "mfa" ? u.active && byId.get(u.id)?.has_2fa === false : true));
+    g("sc-count").textContent = String(visible.length);
+    g("sc-users").innerHTML = visible.length ? visible.map(u => {
+      const sec = byId.get(u.id);
+      return `<article class="ur"><div class="as-user-ref">${avaEl(u.id,u.name,u.email)}<div class="ub"><b>${esc(u.name || "—")}</b> <span class="pill">${esc(u.role)}</span><div class="mut xs">${esc(u.email || "")}</div></div></div>
+      <div class="as-user-state"><span class="tag">${u.active ? bi("সক্রিয়","Active") : bi("নিষ্ক্রিয়","Inactive")}</span><span class="tag">2FA · ${sec ? sec.has_2fa ? bi("চালু","On") : bi("বন্ধ","Off") : unknown}</span><span class="mut sm">${sec ? bi(`${sec.sessions} সেশন`,`${sec.sessions} sessions`) : ""}</span></div>
+      <div class="ut"><span class="mut xs">${bi("শেষ সাইন-ইন","Last sign-in")}</span><b class="sm">${esc(auditStamp(u.last_sign_in_at || sec?.last_sign_in_at))}</b></div>
+      ${u.id ? `<button type="button" class="btn sm" data-user-security="${esc(u.id)}">${bi("নিরাপত্তা","Manage security")}</button>` : ""}</article>`;
+    }).join("") : `<div class="empty">${bi("কোনো ব্যবহারকারী মেলেনি","No users match")}</div>`;
+  }
+  async function refresh() {
+    if (refreshing) return;
+    refreshing = true; const button = g("sc-refresh"); button.disabled = true;
+    const settled = await Promise.allSettled([API.userLogins(),API.userSec(),API.userSessions(S.me.id),API.backups(),API.audit({act:"delete",from:addDays(auditDate(Date.now()),-6),to:auditDate(Date.now()),limit:6})]);
+    refreshing = false; button.disabled = false;
+    if (!out.isConnected) return;
+    const [logins, sec, own, backups, recent] = settled.map(r => r.status === "fulfilled" ? r.value : null);
+    users = logins ?? [];
+    byId = new Map((sec || []).map(u => [u.user_id,u]));
+    sessions = own;
+    const enrolled = users.filter(u => u.active && byId.get(u.id)?.has_2fa).length;
+    const eligible = users.filter(u => u.active).length, known = users.filter(u => u.active && byId.has(u.id)).length;
+    const auto = backups?.find(r => r.kind === "auto");
+    g("sc-overview").innerHTML = securityMetrics([
+      [bi("সংযোগ","Connection"),location.protocol === "https:" ? "HTTPS" : (DEMO ? "Demo" : "HTTP"),location.host],
+      [bi("সক্রিয় অ্যাকাউন্টে 2FA","2FA on active accounts"),sec && logins && known===eligible ? `${enrolled} / ${eligible}` : unknown,""],
+      [bi("আপনার সেশন","Your sessions"),own ? String(own.length) : unknown,""],
+      [bi("শেষ স্বয়ংক্রিয় ব্যাকআপ","Latest automatic backup"),auto ? auditStamp(auto.at) : backups ? "—" : unknown,auto ? relTime(auto.at) : ""]
+    ]);
+    g("sc-devices").innerHTML = `<h3>${bi("আপনার সাইন-ইন সেশন","Your signed-in sessions")}</h3><p class="mut sm as-break">${esc(S.me.email || "")}</p>${own ? own.length ? own.map(row => `<div class="scrow"><div><b>${esc(uaName(row.user_agent))}</b> ${row.mine ? `<span class="tag ok">${bi("এই ডিভাইস","This device")}</span>` : ""}<div class="mut sm">${esc(auditStamp(row.last_seen))}</div></div>
+      ${!row.mine ? `<button type="button" class="btn sm" data-sc-device="${esc(row.id)}">${bi("লগআউট","Sign out")}</button>` : ""}</div>`).join("") : `<p class="mut sm">${bi("কোনো সক্রিয় সেশন নেই","No active sessions")}</p>` : `<p class="mut sm">${bi("সেশনের তথ্য লোড হয়নি","Session information could not load")}</p>`}
+      <div class="adm-actions"><button type="button" class="btn" id="sc-oth" ${own && !own.some(row => !row.mine) ? "disabled" : ""}>${bi("অন্য সব ডিভাইস থেকে লগআউট","Sign out other devices")}</button><a class="btn" href="#/settings">${bi("পাসওয়ার্ড ও 2FA","Password and 2FA")}</a></div>`;
+    g("sc-recent").innerHTML = `<h3>${bi("গত ৭ দিনের সাম্প্রতিক ডিলিট","Recent deletions · 7 days")}</h3>${recent ? recent.length ? recent.map(r => `<div class="scrow"><div class="as-break"><b>${esc(auditTable(r.tbl))} · ${esc(r.row_key || "—")}</b><div class="mut sm">${esc(auditActor(r))} · ${esc(auditStamp(r.at))}</div></div></div>`).join("") : `<p class="mut sm">${bi("এই সময়ে ডিলিট নেই","No deletions in this period")}</p>` : `<p class="mut sm">${bi("ডিলিটের রেকর্ড লোড হয়নি","Deletion activity could not load")}</p>`}
+      <button type="button" class="btn sm" id="sc-audit-link">${bi("অডিট লগে দেখুন","View in Audit Log")}</button>`;
+    g("sc-audit-link").onclick = () => open("audit",{deletions:true});
+    if (logins) drawUsers();
+    else { g("sc-count").textContent = ""; g("sc-users").innerHTML = `<div class="empty">${bi("ব্যবহারকারীর তালিকা লোড হয়নি","User sign-ins could not load")}</div>`; }
+  }
+  let revoking = false;
+  g("sc-devices").onclick = async e => {
+    const btn = e.target.closest("#sc-oth,[data-sc-device]");
+    if (!btn || revoking || !ask(btn.id === "sc-oth" ? bi("অন্য ডিভাইসগুলো লগআউট করবেন?","Sign out other devices?") : bi("এই সেশনটি বন্ধ করবেন?","Sign out this session?"))) return;
+    revoking = true; btn.disabled = true;
+    try {
+      if (btn.id === "sc-oth") await API.signOutOthers();
+      else if (sessions?.some(r => !r.mine && String(r.id) === btn.dataset.scDevice)) await API.revokeSessions(S.me.id,btn.dataset.scDevice);
+      if (out.isConnected) await refresh();
+    } catch (err) { toast(err.message || String(err),"err"); }
+    finally { revoking = false; btn.disabled = false; }
+  };
+  g("sc-users").onclick = e => {
+    const btn = e.target.closest("[data-user-security]"), user = btn && users.find(u => String(u.id) === btn.dataset.userSecurity);
+    if (user) userSecModal(user, () => { if (out.isConnected) refresh(); });
+  };
+  g("sc-query").oninput = e => { F.q = e.target.value; if (g("sc-count").textContent) drawUsers(); };
+  g("sc-mode").onchange = e => { F.mode = e.target.value; if (g("sc-count").textContent) drawUsers(); };
+  g("sc-refresh").onclick = refresh;
+  await refresh();
 }
 Object.assign(SbAPI, {
-  async audit(f) { const lim = f.limit || 500, off = f.offset || 0; let q = sb.from("audit_log").select("*").order("at", { ascending: false }).range(off, off + lim - 1); if (f.tbl) q = q.eq("tbl", f.tbl); if (f.act) q = q.eq("action", f.act); if (f.from) q = q.gte("at", new Date(f.from + "T00:00:00").toISOString()); if (f.to) q = q.lt("at", new Date(addDays(f.to, 1) + "T00:00:00").toISOString()); const { data, error } = await q; if (error) throw error; return data; },
+  async audit(f) {
+    const lim = f.limit || 500, off = f.offset || 0;
+    let q = sb.from("audit_log").select("*").order("at",{ascending:false}).order("id",{ascending:false}).range(off, off + lim - 1);
+    if (f.tbl) q = q.eq("tbl",f.tbl);
+    if (f.act) q = q.eq("action",f.act);
+    if (f.from) q = q.gte("at", f.from + "T00:00:00+06:00");
+    if (f.to) q = q.lt("at", addDays(f.to,1) + "T00:00:00+06:00");
+    if (f.before) q = q.lt("at", f.before);
+    const {data,error} = await q; if (error) throw error; return data;
+  },
   async clearAudit(before) { const { data, error } = await sb.rpc("clear_audit", { before }); if (error) throw error; return data; },
   async deleteBackup(id) { const { error } = await sb.rpc("delete_backup", { bid: id }); if (error) throw error; },
   async userLogins() { const { data, error } = await sb.rpc("user_logins"); if (error) throw error; return data; },
@@ -3515,7 +4337,15 @@ Object.assign(SbAPI, {
   async mfaFactor() { const { data } = await sb.auth.mfa.listFactors(); return (data?.totp || []).find(f => f.status === "verified") || null; },
 });
 Object.assign(DemoAPI, {
-  async audit(f) { const off = f.offset || 0, lim = f.limit || 500; return demoStore.audit.filter(r => (!f.tbl || r.tbl === f.tbl) && (!f.act || r.action === f.act) && (!f.from || r.at.slice(0, 10) >= f.from) && (!f.to || r.at.slice(0, 10) <= f.to)).slice(off, off + lim); },
+  async audit(f) {
+    const from = f.from ? Date.parse(f.from + "T00:00:00+06:00") : -Infinity;
+    const to = f.to ? Date.parse(addDays(f.to,1) + "T00:00:00+06:00") : Infinity;
+    const before = f.before ? Date.parse(f.before) : Infinity, off = f.offset || 0;
+    return demoStore.audit.filter(r => {
+      const at = Date.parse(r.at);
+      return (!f.tbl || r.tbl === f.tbl) && (!f.act || r.action === f.act) && at >= from && at < to && at < before;
+    }).sort((a,b) => Date.parse(b.at) - Date.parse(a.at) || Number(b.id) - Number(a.id)).slice(off, off + (f.limit || 500));
+  },
   async clearAudit(before) { const n = demoStore.audit.filter(r => r.at < before).length; demoStore.audit = demoStore.audit.filter(r => r.at >= before); this.aud("audit_log", "delete", `${n} rows cleared`, null, null); this.save(); return n; },
   async deleteBackup(id) { demoStore.backups = (demoStore.backups || []).filter(b => b.id !== id); this.save(); },
   async userLogins() { return [{ email: "admin@demo", name: S.me.name, role: "admin", active: true, last_sign_in_at: new Date().toISOString() }]; },
@@ -3623,12 +4453,13 @@ Object.assign(DemoAPI, {
   async dpartyRenameAsm(from, to) { await this.dparties(); demoStore.dparties.forEach(p => { if (p.asm === from) p.asm = to; }); this.save(); },
   async dcolParty(id, from, to) { await this.dparties(); return demoStore.dcols.filter(r => r.party_id === id && r.date >= from && r.date <= to).sort((a, b) => a.date.localeCompare(b.date)).map(dcRow); },
   async dcolRange(from, to) { await this.dparties(); return demoStore.dcols.filter(r => r.date >= from && r.date <= to).sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || "").localeCompare(b.created_at || "")).map(dcRow); },
-  async dcolAdd(c) { await this.dparties(); const row = { id: crypto.randomUUID(), date: c.date, party_id: c.party_id || null, party: c.party, asm: c.asm || "", account: c.account || "", amount: c.amount, remarks: c.remarks || "", status: "pending", entered_by: S.me.name, created_at: new Date().toISOString() }; demoStore.dcols.push(row); this.aud("dist_collections", "insert", `Collection ${row.date} · ${row.party} · ${row.amount}`, null, row); this.save(); return dcRow(row); },
-  async dcolUpdate(id, p) { await this.dparties(); const o = demoStore.dcols.find(x => x.id === id); this.aud("dist_collections", "update", `Collection ${o.date} · ${o.party} · ${o.amount}`, { ...o }, { ...o, ...p }); Object.assign(o, p); this.save(); },
+  async dcolAdd(c) { if (!moduleCan("collection", "entry")) throw writeDenied(); await this.dparties(); const row = { id: crypto.randomUUID(), date: c.date, party_id: c.party_id || null, party: c.party, asm: c.asm || "", account: c.account || "", amount: c.amount, remarks: c.remarks || "", status: "pending", entered_by: S.me.name, created_at: new Date().toISOString() }; demoStore.dcols.push(row); this.aud("dist_collections", "insert", `Collection ${row.date} · ${row.party} · ${row.amount}`, null, row); this.save(); return dcRow(row); },
+  async dcolUpdate(id, p) { await this.dparties(); const o = demoStore.dcols.find(x => x.id === id); if (!o || !dcCanEdit(o)) throw writeDenied(); this.aud("dist_collections", "update", `Collection ${o.date} · ${o.party} · ${o.amount}`, { ...o }, { ...o, ...p }); Object.assign(o, p); this.save(); },
   async dcolDelete(id) { await this.dparties(); const o = demoStore.dcols.find(x => x.id === id); o && this.aud("dist_collections", "delete", `Collection ${o.date} · ${o.party} · ${o.amount}`, o, null); demoStore.dcols = demoStore.dcols.filter(x => x.id !== id); this.save(); },
   async dcolStatus(ids, st, note) {
+    if (!moduleCan("collection", "edit")) throw writeDenied();
     await this.dparties(); let n = 0; const role = S.me.role;
-    demoStore.dcols.forEach(r => { if (!ids.includes(r.id)) return; if (role !== "admin" && !["pending"].includes(r.status)) return; if (role === "staff" && st === "pending") return; const o = { ...r }; r.status = st; r.decided_by = st === "pending" ? null : S.me.name; r.decided_at = st === "pending" ? null : new Date().toISOString(); r.decision_note = st === "pending" ? "" : (note || ""); this.aud("dist_collections", "update", `Collection ${r.date} · ${r.party} · ${r.amount}`, o, { ...r }); n++; });
+    demoStore.dcols.forEach(r => { if (!ids.includes(r.id)) return; if (role !== "admin" && !["pending"].includes(r.status)) return; if (role !== "admin" && st === "pending") return; const o = { ...r }; r.status = st; r.decided_by = st === "pending" ? null : S.me.name; r.decided_at = st === "pending" ? null : new Date().toISOString(); r.decision_note = st === "pending" ? "" : (note || ""); this.aud("dist_collections", "update", `Collection ${r.date} · ${r.party} · ${r.amount}`, o, { ...r }); n++; });
     this.save(); return n;
   }
 });
@@ -3660,9 +4491,9 @@ function askText(title, ph, def, cb) {
 const dcCan = (r, to) => {
   if (r.pending_sync || r.status === to) return false;
   if (S.me.role === "admin") return true;
-  return S.me.role === "staff" && to !== "pending" && ["pending"].includes(r.status);
+  return moduleCan("collection", "edit") && to !== "pending" && r.status === "pending";
 };
-const dcCanEdit = r => !r.pending_sync && (S.me.role === "admin" || (S.me.role === "staff" && r.status === "pending"));
+const dcCanEdit = r => !r.pending_sync && (S.me.role === "admin" || (moduleCan("collection", "edit") && r.status === "pending"));
 const dcBrand = code => { try { return brandOf({ code, bank: "" }).c1; } catch { return "#94a3b8"; } };
 const dcStTag = r => `<span class="dst ${r.status}">${DC_ST[r.status]}</span>${r.pending_sync ? ` <span class="dst pending" title="ইন্টারনেট এলে সেভ হবে">⏳ সিঙ্ক বাকি</span>` : ""}`;
 const dcGroup = (rows, kf) => { const m = new Map(); rows.forEach(r => { const k = kf(r) || "—"; const o = m.get(k) || { k, n: 0, amt: 0 }; o.n++; o.amt += r.amount; m.set(k, o); }); return [...m.values()].sort((a, b) => b.amt - a.amt); };
@@ -3743,7 +4574,7 @@ async function vDcol(v) {
   v.innerHTML = head("কালেকশন এন্ট্রি", `<a class="btn" href="#/dsum">${ico("clock")} সামারি</a><a class="btn" href="#/drep">${ico("chart")} রিপোর্ট</a>`) + `
    <div class="card tbar dcx-bar"><div class="dcx-date">${dateNav("dc", date)}</div><div class="dcx-stats" id="dc-kpi"></div></div>
    <div class="dcx-split">
-   <div class="card dcx-entry"><div class="dcx-et"><h3>${ico("plus")} নতুন এন্ট্রি</h3></div>
+   <div class="card dcx-entry" ${moduleCan("collection", "entry") ? "" : "hidden"}><div class="dcx-et"><h3>${ico("plus")} নতুন এন্ট্রি</h3></div>
     <div class="dcx-grid">
      <div class="dcx-p"><label class="f">পার্টি *</label><div><input class="in big" id="dc-pty" autocomplete="off" placeholder="পার্টির নাম লিখুন…"></div><div class="dcx-h" id="dc-ph"></div></div>
      <div class="dcx-a"><label class="f">ASM / Salesman</label><input class="in" id="dc-a" list="dc-dl-a" autocomplete="off" placeholder="অটো বসবে"></div>
@@ -3786,6 +4617,7 @@ async function vDcol(v) {
   $("#dc-clear", v).onclick = clearForm;
   function createParty(name) { dpartyModal({ name, asm: aIn.value, account: cIn.value }, saved => { if (!saved) return; parties = DPARTY; picker.set({ value: saved.name, label: saved.asm || "", sub: saved.account || "" }); fill(saved); mIn.focus(); }); }
   async function add() {
+    if (!moduleCan("collection", "entry")) return err(writeDenied().message);
     if (busy) return; err("");
     const typed = pIn.value.trim(); let party = picker.get() ? byName(picker.get().value) : byName(typed);
     if (!typed) return err("পার্টি বাছুন"), pIn.focus();
@@ -3840,7 +4672,7 @@ async function vDcol(v) {
   $("#dc-q", v).oninput = e => { F.q = e.target.value; draw(); };
   bindDateNav(v, "dc", load);
   window.__dcolRefresh = () => { if (CUR === "dcol" && !busy) load(); };
-  await load(); if (innerWidth > 800) pIn.focus();
+  await load(); if (innerWidth > 800 && moduleCan("collection", "entry")) pIn.focus();
   return () => { window.__dcolRefresh = null; };
 }
 
