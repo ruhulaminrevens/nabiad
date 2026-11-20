@@ -308,10 +308,10 @@ const isLive = c => !["Cancelled", "Bounced", "Stopped"].includes(c.status);
 
 /* ---------- data layer: Supabase ---------- */
 let sb = null;
-async function fetchAll(table, order = "id") {
+async function fetchAll(table, order = "id", columns = "*") {
   let out = [], from = 0; const step = 1000;
   for (;;) {
-    const { data, error } = await sb.from(table).select("*").order(order).range(from, from + step - 1);
+    const { data, error } = await sb.from(table).select(columns).order(order).range(from, from + step - 1);
     if (error) throw error; out = out.concat(data); if (data.length < step) break; from += step;
   }
   return out;
@@ -319,14 +319,18 @@ async function fetchAll(table, order = "id") {
 const SbAPI = {
   async init() { await loadScript("vendor/supabase.js"); sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY); },
   async session() {
+    if (!navigator.onLine) return readCache()?.me || null;
     const { data } = await sb.auth.getSession(); const u = data.session?.user;
-    if (!u) { const c = readCache(); if (!navigator.onLine && c?.me) return c.me; return null; }
+    if (!u) return null;
     const { data: p, error } = await sb.from("profiles").select("*").eq("id", u.id).maybeSingle();
     if (error && isNetErr(error)) { const c = readCache(); if (c?.me?.id === u.id) return c.me; }
     if (error || !p || !p.active) return null; return { id: u.id, email: p.email, name: p.name, role: p.role, edit_days: p.edit_days || 0, module_access: p.module_access ?? null };
   },
   async login(email, pw) { const { error } = await sb.auth.signInWithPassword({ email, password: pw }); if (error) throw error; return this.session(); },
-  async logout() { try { localStorage.removeItem("nabiad_locked"); } catch { } await sb.auth.signOut(); },
+  async logout() {
+    try { localStorage.removeItem(CACHE_KEY); localStorage.removeItem("nabiad_locked"); } catch { }
+    await sb.auth.signOut();
+  },
   async loadAll() {
     const [acc, ch, ev, bk, verifications] = await Promise.all([fetchAll("accounts", "sort"), fetchAll("cheques", "created_at"), fetchAll("cheque_status", "created_at"), fetchAll("books", "code"), fetchAll("cheque_statement_verifications", "cheque_id").catch(() => null)]);
     const verified = new Map((verifications || []).map(r => [r.cheque_id, r]));
@@ -506,7 +510,9 @@ const API = DEMO ? DemoAPI : SbAPI;
 
 /* local cache: app opens instantly with last known data, then refreshes in background */
 const CACHE_KEY = "nabiad_cache_v2";
-function saveCache() { if (DEMO) return; try { const old = readCache() || {}; localStorage.setItem(CACHE_KEY, JSON.stringify({ u: S.me?.id, me: S.me, t: Date.now(), accounts: S.accounts, books: S.books, marks: S.marks, cheques: S.cheques.filter(c => !c.pending), reminders: S.reminders, lastBal: S.lastBal, lastCash: S.lastCash, snap: S.snap || old.snap || null })); } catch { } }
+function saveCache() { if (DEMO) return; try { const old = readCache() || {}; localStorage.setItem(CACHE_KEY, JSON.stringify({ u: S.me?.id, me: S.me, t: Date.now(), accounts: S.accounts, books: S.books, marks: S.marks, cheques: S.cheques.filter(c => !c.pending), reminders: S.reminders, lastBal: S.lastBal, lastCash: S.lastCash, snap: S.snap || (old.u === S.me?.id ? old.snap : null) }));
+  window.dispatchEvent(new Event("pwa-state"));
+} catch { } }
 function readCache() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); } catch { return null; } }
 const isNetErr = e => !navigator.onLine || /fetch|network|load failed|timed? ?out|ERR_/i.test(String(e?.message || e || ""));
 
@@ -2718,7 +2724,7 @@ function moduleAccessModal(user, after) {
 }
 
 async function vAdmin(v) {
-  let tab = sessionStorage.getItem("nabiad_admin_tab") || "acc", setup = tab === "imp" ? "imp" : "health";
+  let tab = sessionStorage.getItem("nabiad_admin_tab") || "acc";
   if (tab === "imp") tab = "help";
   if (!["acc", "usr", "help"].includes(tab)) tab = "acc";
   const accountFilters = { q:"", status:"Active", bank:"", daily:"", sort:"order" };
@@ -2726,12 +2732,15 @@ async function vAdmin(v) {
   let importing = false;
   const metrics = rows => `<div class="adm-metrics">${rows.map(([name, value]) => `<div class="card"><span class="mut sm">${name}</span><strong class="num">${value}</strong></div>`).join("")}</div>`;
   const all = bi("সব", "All");
+  let setupEvents;
   const draw = async () => {
+    setupEvents?.abort();
+    setupEvents = new AbortController();
+    const setupSignal = setupEvents.signal;
     sessionStorage.setItem("nabiad_admin_tab", tab);
     v.innerHTML = head("অ্যাডমিন প্যানেল") + `<div class="tabs ntabs adm-tabs" role="group" aria-label="${bi("অ্যাডমিন বিভাগ", "Admin sections")}">${[["acc", "bank", bi("অ্যাকাউন্ট", "Accounts")], ["usr", "users", bi("ব্যবহারকারী", "Users")], ["help", "sliders", bi("সেটআপ", "Setup")]].map(([id, icon, text]) => `<button type="button" class="chip ${id === tab ? "on" : ""}" data-admin-tab="${id}" aria-pressed="${id === tab}">${ico(icon)} ${text}</button>`).join("")}</div>
-      ${tab === "help" ? `<div class="adm-setup-switch chips" role="group" aria-label="${bi("সেটআপ বিভাগ", "Setup sections")}">${[["health", bi("সিস্টেম", "System status")], ["imp", bi("পুরনো ডাটা", "Old data")]].map(([id, label]) => `<button type="button" class="chip ${setup === id ? "on" : ""}" data-admin-setup="${id}" aria-pressed="${setup === id}">${label}</button>`).join("")}</div>` : ""}<div id="ad"></div>`;
+      <div id="ad"></div>`;
     $$("[data-admin-tab]", v).forEach(btn => btn.onclick = () => { tab = btn.dataset.adminTab; draw(); });
-    $$("[data-admin-setup]", v).forEach(btn => btn.onclick = () => { setup = btn.dataset.adminSetup; draw(); });
     const out = $("#ad", v);
     const refresh = () => { if (out.isConnected) return draw(); };
     if (tab === "acc") {
@@ -2806,22 +2815,71 @@ async function vAdmin(v) {
       $("#u-find", out).setAttribute("aria-label", bi("ব্যবহারকারী খুঁজুন","Search users"));
       $("#u-new", out).onclick = () => newUserModal(refresh);
       list();
-    } else if (setup === "imp") {
-      out.innerHTML = `<div class="card empty">লোড হচ্ছে…</div>`;
-      let st = { n: null, first: null, last: null };
-      try { st = await API.balanceStats(); } catch { }
-      if (!out.isConnected) return;
-      out.innerHTML = `<div class="card"><h3>📥 পুরনো ব্যাংক ব্যালেন্স ইতিহাস</h3>
+    } else {
+      out.innerHTML = `<div class="adm-setup"><section class="card" id="ad-status" aria-labelledby="ad-status-title">
+        <div class="adm-setup-head"><h3 id="ad-status-title">🩺 ${bi("সিস্টেম অবস্থা","System status")}</h3><button type="button" class="btn sm" id="ad-recheck">${bi("আবার পরীক্ষা","Recheck status")}</button></div>
+        <div id="ad-offline"></div><div class="hcl" id="ad-health"></div>
+      </section><section class="card" id="ad-history" aria-labelledby="ad-history-title"></section>
+      <section class="card adm-setup-links"><h3>⚡ দ্রুত লিংক</h3><div class="qlinks"><a href="#/audit">${ico("shield")} Audit ও Backup</a><a href="#/books">${ico("book")} চেক বই</a><a href="#/settings">${ico("gear")} সেটিংস</a><a href="https://supabase.com/dashboard/project/mtzxcwuojiajsanearsz" target="_blank" rel="noopener">${ico("bank")} Supabase ড্যাশবোর্ড ↗</a><a href="https://github.com/ruhulaminrevens/nabiad" target="_blank" rel="noopener">${ico("copyt")} GitHub কোড ↗</a><button type="button" class="btn" id="ad-go-users">${ico("users")} ${bi("ব্যবহারকারী ব্যবস্থাপনা","Manage users")}</button></div></section></div>`;
+      if (!DEMO) {
+        $("#ad-history",out).insertAdjacentHTML("afterend", `<section class="card adm-setup-links"><h3>${bi("Tally ভাউচার ইতিহাস","Tally voucher history")}</h3>
+          <p class="mut sm">${bi("একবার import করলে Cash Register-এর Tally vouchers-এ সেভ করা ইতিহাস পাবেন।","Import once to view saved history under Cash Register → Tally vouchers.")}</p>
+          <button type="button" class="btn" id="ad-tally-import">${ico("book")} ${bi("Tally ইতিহাস ইমপোর্ট","Import Tally history")}</button>
+          <input type="file" hidden accept=".json,application/json" id="ad-tally-file"><p class="mut sm" role="status" id="ad-tally-result"></p></section>`);
+        const input = $("#ad-tally-file",out), button = $("#ad-tally-import",out), status = $("#ad-tally-result",out);
+        button.onclick = () => { if (navigator.onLine) input.click(); else toast(bi("ইন্টারনেট প্রয়োজন","Connect to the internet to import"),"err"); };
+        input.onchange = async () => {
+          const file = input.files[0]; input.value = ""; if (!file || button.disabled) return;
+          button.disabled = true; status.textContent = bi("ফাইল যাচাই হচ্ছে…","Checking file…");
+          try {
+            const count = await cashTallyImport(file);
+            status.textContent = count == null ? "" : bi(`${money0(count)}টি নতুন voucher যোগ হয়েছে।`,`${money0(count)} new vouchers added.`);
+          } catch (error) {
+            status.textContent = tallySchemaMissing(error) ? bi("schema_cash_tally.sql প্রয়োজন।","Apply schema_cash_tally.sql first.")
+              : /cash_tally_voucher_conflict/.test(error.message || "") ? bi("আগের voucher-এর সঙ্গে অমিল। কোনো voucher যোগ হয়নি।","An existing voucher has a different ledger or amount. Nothing was imported.")
+              : error.message || String(error);
+          } finally { button.disabled = false; }
+        };
+      }
+      $("#ad-go-users",out).onclick = () => { tab = "usr"; draw(); };
+      const history = $("#ad-history",out), health = $("#ad-health",out), offline = $("#ad-offline",out), recheck = $("#ad-recheck",out);
+      const row = (ok, l, sub) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "✗"}</i><div><b>${l}</b>${sub ? `<div class="mut xs">${sub}</div>` : ""}</div></div>`;
+      const renderOffline = () => paintOfflineStatus(offline,row);
+      const check = async () => {
+        recheck.disabled = true;
+        health.textContent = bi("পরীক্ষা হচ্ছে…","Checking…");
+        renderOffline();
+        const chk = navigator.onLine || DEMO ? await API.health().catch(() => ({})) : null;
+        if (!health.isConnected) return;
+        health.innerHTML = chk ? `
+          ${row(chk.db, "ডাটাবেস সংযোগ", DEMO ? bi("DEMO মোড", "DEMO mode") : "Supabase")}${row(chk.v2, "v2: ড্রাফট · রিমাইন্ডার · Audit · ছবি", chk.v2 ? "চালু" : "schema_v2.sql চালাতে হবে")}
+          ${row(chk.v3, "v3: ক্যাশ · Backup · নিজের নাম", chk.v3 ? "চালু" : "schema_v3.sql চালাতে হবে")}${row(chk.v6, "v6: ডিস্ট্রিবিউশন কালেকশন", chk.v6 ? "চালু" : "schema_v6.sql চালাতে হবে")}
+          ${row(chk.modules, bi("মডিউল অ্যাক্সেস","Module access"), chk.modules ? bi("ডাটাবেসে সক্রিয়","Enabled in database") : "schema_module_access.sql")}
+          ${row(chk.inventory,bi("ইনভেন্টরি","Inventory"),chk.inventory ? bi("সক্রিয়","Active") : bi("স্ট্যাটাস পাওয়া যায়নি","Unavailable"))}
+          ${row(chk.backup,"রাত ১২টার Backup",chk.backupAt ? esc(auditStamp(chk.backupAt)) : "এখনো হয়নি")}
+          ${row(window.isSecureContext,"HTTPS",esc(location.host))}` : `<p class="mut sm">${bi("সার্ভারের অবস্থা দেখতে ইন্টারনেট লাগবে।","Connect to the internet to check server status.")}</p>`;
+        health.insertAdjacentHTML("beforeend", `<span class="mut xs">${bi("সংস্করণ","Version")} · ${esc(RUN_V)}</span>`);
+        recheck.disabled = false;
+      };
+      for (const event of ["pwa-state","online","offline"]) window.addEventListener(event, renderOffline, {signal:setupSignal});
+      recheck.onclick = () => { if (navigator.onLine) preparePwa(true); check(); };
+      check();
+      history.innerHTML = `<h3 id="ad-history-title">📥 ${bi("পুরনো ব্যাংক ব্যালেন্স ইতিহাস","Old bank balance history")}</h3><p class="mut sm">${bi("লোড হচ্ছে…","Loading…")}</p>`;
+      const st = navigator.onLine || DEMO ? await API.balanceStats().catch(() => ({})) : {};
+      if (!history.isConnected) return;
+      history.innerHTML = `<h3 id="ad-history-title">📥 ${bi("পুরনো ব্যাংক ব্যালেন্স ইতিহাস","Old bank balance history")}</h3>
+        ${!navigator.onLine && !DEMO ? `<p class="mut sm">${bi("ইতিহাস দেখতে ও ইমপোর্ট করতে ইন্টারনেট লাগবে।","Connect to the internet to view and import history.")}</p>` : ""}
         <div class="grid g3" style="margin:12px 0"><div class="kv"><span>ডাটাবেসে রেকর্ড</span><b class="num">${st.n == null ? "—" : money0(st.n)}</b></div><div class="kv"><span>সবচেয়ে পুরনো তারিখ</span><b>${st.first ? dmy(st.first) : "—"}</b></div><div class="kv"><span>সর্বশেষ তারিখ</span><b>${st.last ? dmy(st.last) : "—"}</b></div></div>
         ${DEMO ? `<div class="alert gr">${bi("DEMO মোডে পুরনো ডাটা আগে থেকেই লোড আছে।", "In DEMO mode the old data is already loaded.")}</div>` : `<div class="imopt"><div><b>২০২৬ ডাটা পুনরুদ্ধার</b><div class="mut xs">২০২৬-এর সব রেকর্ড + ২০২৬-এর ঠিক আগের শেষ দিনটি (ওটাই ১ জানুয়ারির Opening)</div></div><button class="btn pri" id="im-26">⬆ শুধু ২০২৬</button></div>
         <div class="imopt"><div><b>সম্পূর্ণ ইতিহাস</b><div class="mut xs">০২-০৯-২০২৩ (প্রথম দিন) থেকে ফাইলের শেষ তারিখ পর্যন্ত সব</div></div><button class="btn" id="im-all">⬆ সম্পূর্ণ import</button></div>`}
         <div class="bar" style="margin-top:12px"><i id="im-bar" style="width:0"></i></div><div class="hint" id="im-t"></div>
-        <div class="mut xs" style="margin-top:8px">শুধু যে তারিখ+A/C ডাটাবেসে নেই সেগুলোই যোগ হয় — আপনার app-এ সেভ/এডিট করা কোনো ব্যালেন্স বদলায় না, ডুপ্লিকেটও হয় না।</div></div>`;
+        <div class="mut xs" style="margin-top:8px">শুধু যে তারিখ+A/C ডাটাবেসে নেই সেগুলোই যোগ হয় — আপনার app-এ সেভ/এডিট করা কোনো ব্যালেন্স বদলায় না, ডুপ্লিকেটও হয় না।</div>`;
       const run = async (mode) => {
         if (importing) return;
         importing = true;
         const b26 = $("#im-26", out), ball = $("#im-all", out);
         try {
+          if (!navigator.onLine) throw new Error(bi("ইমপোর্ট করতে ইন্টারনেট লাগবে।","Connect to the internet to import history."));
           b26.disabled = ball.disabled = true;
           const all = await loadEncrypted("history.enc");
           if (!out.isConnected) return; const anchor = all.map(r => r[0]).filter(d => d < "2026-01-01").sort().pop() || "2026-01-01";
@@ -2834,29 +2892,11 @@ async function vAdmin(v) {
         finally { importing = false; b26.disabled = ball.disabled = false; }
       };
       $("#im-26", out) && ($("#im-26", out).onclick = () => run("26")); $("#im-all", out) && ($("#im-all", out).onclick = () => run("all"));
-    } else {
-      out.innerHTML = `<div class="card empty">সিস্টেম পরীক্ষা হচ্ছে…</div>`;
-      const chk = await API.health().catch(() => ({}));
-      if (!out.isConnected) return;
-      const row = (ok, l, sub) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "✗"}</i><div><b>${l}</b>${sub ? `<div class="mut xs">${sub}</div>` : ""}</div></div>`;
-      out.innerHTML = `<div class="grid g2"><div class="card"><h3>🩺 সিস্টেম অবস্থা</h3><div class="hcl">
-        ${row(chk.db, "ডাটাবেস সংযোগ", DEMO ? bi("DEMO মোড", "DEMO mode") : "Supabase")}${row(chk.v2, "v2: ড্রাফট · রিমাইন্ডার · Audit · ছবি", chk.v2 ? "চালু" : "schema_v2.sql চালাতে হবে")}
-        ${row(chk.v3, "v3: ক্যাশ · Backup · নিজের নাম", chk.v3 ? "চালু" : "schema_v3.sql চালাতে হবে")}${row(chk.v6, "v6: ডিস্ট্রিবিউশন কালেকশন", chk.v6 ? "চালু" : "schema_v6.sql চালাতে হবে")}${row(chk.backup, "রাত ১২টার Backup", chk.backupAt ? "শেষ: " + new Date(chk.backupAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "এখনো হয়নি")}
-        ${row(location.protocol === "https:" || DEMO, "HTTPS", location.host)}${row(!!navigator.serviceWorker?.controller || DEMO, "অফলাইন মোড (PWA)", navigator.serviceWorker?.controller ? "চালু" : "রিলোড দিলে চালু হবে")}</div>
-        <div class="mut xs" style="margin-top:10px">সংস্করণ v6 · ${esc(document.querySelector('script[src^="app.js"]')?.getAttribute("src")?.split("v=")[1] || "")}</div></div>
-       <div class="card adm-system"><h3>${bi("অ্যাক্সেস ও অপারেশন", "Access and operations")}</h3>
-        <div class="hcl">
-          ${row(chk.modules, bi("মডিউল অ্যাক্সেস", "Module access"), chk.modules ? bi("ডাটাবেসে সক্রিয়", "Enabled in database") : "schema_module_access.sql")}
-          ${row(chk.inventory, bi("ইনভেন্টরি", "Inventory"), chk.inventory ? bi("সক্রিয়", "Active") : bi("স্ট্যাটাস পাওয়া যায়নি", "Unavailable"))}
-        </div>
-        <div class="adm-actions"><button type="button" class="btn" id="ad-go-users">${ico("users")} ${bi("ব্যবহারকারী ব্যবস্থাপনা", "Manage users")}</button><button type="button" class="btn" id="ad-go-history">${ico("book")} ${bi("পুরনো ডাটা", "Old data")}</button><button type="button" class="btn" id="ad-recheck">${bi("আবার পরীক্ষা", "Recheck status")}</button></div></div>
-       <div class="card" style="grid-column:1/-1"><h3>⚡ দ্রুত লিংক</h3><div class="qlinks"><a href="#/audit">${ico("shield")} Audit ও Backup</a><a href="#/books">${ico("book")} চেক বই</a><a href="#/settings">${ico("gear")} সেটিংস</a><a href="https://supabase.com/dashboard/project/mtzxcwuojiajsanearsz" target="_blank" rel="noopener">${ico("bank")} Supabase ড্যাশবোর্ড ↗</a><a href="https://github.com/ruhulaminrevens/nabiad" target="_blank" rel="noopener">${ico("copyt")} GitHub কোড ↗</a></div></div></div>`;
-      $("#ad-go-users", out).onclick = () => { tab = "usr"; draw(); };
-      $("#ad-go-history", out).onclick = () => { setup = "imp"; draw(); };
-      $("#ad-recheck", out).onclick = refresh;
+
     }
   };
   await draw();
+  return () => setupEvents?.abort();
 }
 Object.assign(SbAPI, {
   async health() {
@@ -3632,7 +3672,45 @@ async function vCashRep(v) {
   await draw(); return unb;
 }
 
-/* =================== Cash Register and local Tally preview =================== */
+/* =================== Cash Register and Tally vouchers =================== */
+Object.assign(SbAPI, {
+  async cashTallyRange(from, to) {
+    const records = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await sb.from("cash_tally_vouchers").select("date,type,ref,ledger,amount")
+        .gte("date", from).lte("date", to).order("date", {ascending:false}).order("type").order("ref").range(offset, offset + 999);
+      if (error) throw error;
+      records.push(...data.map(({date,type,ref,ledger,amount}) => ({date,type,ref,led:ledger,a:Number(amount),source:"tally"})));
+      if (data.length < 1000) return records;
+    }
+  },
+  async importCashTally(records) {
+    const vouchers = records.map(({date,type,ref,led,a}) => ({date,type,ref,led,a}));
+    const { data, error } = await sb.rpc("import_cash_tally", {vouchers});
+    if (error) throw error;
+    return data;
+  }
+});
+Object.assign(DemoAPI, {
+  async cashTallyRange(from, to) { return (demoStore.tally || []).filter(row => row.date >= from && row.date <= to); }
+});
+const tallyLedgerKey = name => String(name ?? "").trim().toLowerCase();
+function tallyPurpose(row, ledgers) {
+  const match = ledgers.get(tallyLedgerKey(row.led));
+  if (!match || match.active === false) return "";
+  const category = cashCategory(row.type === "receipt" ? match.cat_r : match.cat_p);
+  return CASH_KEYS(row.type).includes(category) ? category : "";
+}
+const tallySchemaMissing = error => ["42P01", "42883", "PGRST202", "PGRST205"].includes(error?.code);
+async function cashTallyImport(file) {
+  const records = await cashTallyRows(file);
+  const dates = records.map(r => r.date).sort();
+  if (!ask(bi(`${money0(records.length)}টি voucher import করবেন? ${dmy(dates[0])} থেকে ${dmy(dates.at(-1))}।`,
+    `Import ${money0(records.length)} vouchers from ${dmy(dates[0])} to ${dmy(dates.at(-1))}?`))) return null;
+  const count = await API.importCashTally(records);
+  await cbLedLoad(true);
+  return count;
+}
 async function cashTallyRows(file) {
   if (file.size > 32 * 1024 * 1024) throw new Error(bi("ফাইলের সর্বোচ্চ আকার ৩২ MB।", "Choose a file up to 32 MB."));
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -3641,6 +3719,7 @@ async function cashTallyRows(file) {
   try { records = JSON.parse(new TextDecoder(encoding, {fatal: true}).decode(bytes))?.lvbody?.dspvchdetail; } catch { }
   if (!Array.isArray(records) || !records.length) throw new Error(bi("Tally Cash Book JSON-এ voucher পাওয়া যায়নি।", "No voucher rows found in the Tally Cash Book JSON."));
   const months = "jan feb mar apr may jun jul aug sep oct nov dec".split(" ");
+  const keys = new Set();
   return records.map((row, i) => {
     const type = row?.dspvchtype === "Rcpt" ? "receipt" : row?.dspvchtype === "Pymt" ? "payment" : "";
     const parts = /^(\d{1,2})-([a-z]{3})-(\d{2}|\d{4})$/i.exec(String(row?.dspvchdate ?? "").trim());
@@ -3653,24 +3732,29 @@ async function cashTallyRows(file) {
       throw new Error(bi(`${i + 1} নম্বর voucher লাইনে অসমর্থিত তথ্য আছে।`, `Unsupported data in voucher row ${i + 1}.`));
     }
     // An expanded voucher still has one top-level total. Its child entries are not separate cash movements.
-    const ref = row.dspvchnumber?.dspvchnumber?.dspexplvchnumber;
-    return {date, type, a: amount, led, ref: typeof ref === "string" ? ref.trim() : "", source: "tally"};
+    const ref = String(row.dspvchnumber?.dspvchnumber?.dspexplvchnumber ?? "").trim();
+    const key = JSON.stringify([date,type,ref]);
+    if (!ref || ref.length > 160 || led.length > 300 || keys.has(key)) {
+      throw new Error(bi(`${i + 1} নম্বর লাইনে voucher no অনুপস্থিত, পুনরাবৃত্ত বা তথ্য বেশি দীর্ঘ।`,
+        `Voucher row ${i + 1} has a missing or repeated voucher number or an overlong field.`));
+    }
+    keys.add(key);
+    return {date, type, a: Math.round(amount * 100) / 100, led, ref, source: "tally"};
   });
 }
 async function vRegister(v) {
-  const F = { ...pbInit("month"), q: "", type: "", k: "" }, tallyPeriod = pbInit("month");
+  const F = { ...pbInit("month"), q: "", type: "", k: "" };
+  const canMap = ["admin","staff"].includes(S.me.role) && moduleOpen("cash");
+  const ungrouped = bi("খাত নির্ধারিত নয়","Unmapped");
   const categoryTotal = bi("খাতের মোট", "Category total");
   const sources = { checker: bi("ক্যাশ চেকার", "Cash Checker"), book: bi("ক্যাশ খাতা", "Cash Book"), tally: "Tally" };
   const all = bi("সব", "All");
-  v.innerHTML = head("ক্যাশ রেজিস্টার", `<button type="button" class="btn" id="rg-open">${ico("book")} ${bi("Tally JSON খুলুন", "Open Tally JSON")}</button><button type="button" class="btn" id="rg-x">${ico("dl")} Excel</button>`) +
+  v.innerHTML = head("ক্যাশ রেজিস্টার", `${canMap ? `<button type="button" class="btn" id="rg-map">${ico("sliders")} ${bi("লেজার খাত নির্ধারণ", "Ledger → Purpose/Group")}</button>` : ""}<button type="button" class="btn" id="rg-x">${ico("dl")} Excel</button>`) +
     `<div class="card tbar rg-tools noprint">
-       <input type="file" id="rg-file" accept=".json,application/json" hidden>
-       <div class="rg-source chips" id="rg-source" role="group" aria-label="${bi("রেকর্ডের উৎস", "Record source")}" hidden>
+       <div class="rg-source chips" id="rg-source" role="group" aria-label="${bi("রেকর্ডের উৎস", "Record source")}">
          <button type="button" class="chip on" data-rg-source="app" aria-pressed="true">${bi("অ্যাপ রেকর্ড", "App records")}</button>
-         <button type="button" class="chip" data-rg-source="tally" aria-pressed="false">${bi("Tally প্রিভিউ", "Tally preview")}</button>
+         <button type="button" class="chip" data-rg-source="tally" aria-pressed="false">${bi("Tally ভাউচার", "Tally vouchers")}</button>
        </div>
-       <div id="rg-file-info" class="mut sm" role="status"></div>
-       <div id="rg-file-error" class="rd sm" role="alert"></div>
        <div id="rg-period">${pbBar("rg", F)}</div>
        <div class="rg-filters">
          <div><label class="f" for="rg-q">${bi("লেজার, voucher, নোট বা অঙ্ক", "Ledger, voucher, note or amount")}</label><input class="in" id="rg-q" type="search" autocomplete="off"></div>
@@ -3682,21 +3766,32 @@ async function vRegister(v) {
      <div id="rg-notice"></div>
      <div class="card flush" id="rg-out"></div>
      <div class="cq-pager rg-pager" id="rg-pager" hidden><button type="button" class="btn" id="rg-prev">${bi("আগের", "Previous")}</button><span class="mut sm" id="rg-page"></span><button type="button" class="btn" id="rg-next">${bi("পরের", "Next")}</button></div>`;
-  const g = id => $("#" + id, v), out = g("rg-out"), file = g("rg-file"), excel = g("rg-x");
-  let source = "app", page = 0, version = 0, ready = false, lines = [], shown = [], tally = [];
-  const pageSize = 75, currentPeriod = () => source === "app" ? F : tallyPeriod;
+  const g = id => $("#" + id, v), out = g("rg-out"), excel = g("rg-x");
+  let source = "app", page = 0, version = 0, ready = false, lines = [], shown = [];
+  let ledgerMap = new Map();
+  const pageSize = 75;
   function showNotice(message) {
     g("rg-notice").innerHTML = message ? `<div class="alert am">${esc(message)}</div>` : "";
   }
   async function load() {
-    const versionAtStart = ++version, [f, t] = cashPeriod(currentPeriod());
+    const versionAtStart = ++version, [f, t] = cashPeriod(F);
     const current = () => out.isConnected && versionAtStart === version;
     page = 0; ready = false; shown = []; excel.disabled = true;
     g("rg-sum").textContent = ""; g("rg-pager").hidden = true; showNotice("");
+    out.innerHTML = `<div class="empty">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
     if (source === "tally") {
-      lines = tally.filter(r => r.date >= f && r.date <= t);
+      try {
+        const [rows, ledgers] = await Promise.all([API.cashTallyRange(f,t), cbLedLoad()]);
+        if (!current()) return;
+        ledgerMap = new Map(ledgers.list.map(row => [tallyLedgerKey(row.name),row]));
+        lines = rows;
+        if (ledgers.err) showNotice(bi("লেজারের খাত লোড হয়নি। আবার চেষ্টা করুন।","Ledger mappings could not load. Try again."));
+        else if (!rows.length) showNotice(bi("এই সময়ে Tally voucher নেই। Admin Panel → Setup থেকে ইতিহাস import করা যায়।","No Tally vouchers for this period. Import history from Admin Panel → Setup."));
+      } catch (error) {
+        if (current()) out.innerHTML = `<div class="alert rd">${esc(tallySchemaMissing(error) ? bi("Tally history এখনো চালু হয়নি।","Tally history is not configured yet.") : cashErr(error))}</div>`;
+        return;
+      }
     } else {
-      out.innerHTML = `<div class="empty">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
       try {
         const [rows, allBooks] = await Promise.all([API.cashRange(f, t).then(rows => rows.map(r => ({ ...r, items: cashItems(r.items) }))), API.cbRange(f, t).catch(() => null)]);
         if (!current()) return;
@@ -3736,7 +3831,8 @@ async function vRegister(v) {
   function draw() {
     if (!ready || !out.isConnected) return;
     const q = chequeSearchKey(F.q), isTally = source === "tally";
-    shown = lines.filter(l => (!F.type || l.type === F.type) && (isTally || !F.k || F.k === l.k) &&
+    const rows = isTally ? lines.map(row => ({...row,k:tallyPurpose(row,ledgerMap)})) : lines;
+    shown = rows.filter(l => (!F.type || l.type === F.type) && (!F.k || F.k === (l.k || "unmapped")) &&
       (!q || chequeSearchKey([l.led, l.k && cashLabel(l.k), l.n, l.accounts, l.ref, l.a, l.x].join(" ")).includes(q)));
     const sums = {receipt: 0, payment: 0};
     for (const l of shown) sums[l.type] += Math.round(l.a * 100);
@@ -3749,44 +3845,33 @@ async function vRegister(v) {
     g("rg-prev").disabled = page === 0; g("rg-next").disabled = page + 1 === pages;
     excel.disabled = !shown.length;
     const ledger = bi("লেজার", "Ledger"), detail = bi("ভাউচার / নোট", "Voucher / note"), recordSource = bi("উৎস", "Source");
-    out.innerHTML = shown.length ? `<div class="tw cards"><table class="rg-table"><thead><tr><th>তারিখ</th><th>ধরন</th><th>${ledger}</th>${isTally ? "" : "<th>খাত</th>"}<th class="r">টাকা</th><th>${detail}</th><th>${recordSource}</th></tr></thead><tbody>
+    out.innerHTML = shown.length ? `<div class="tw cards"><table class="rg-table"><thead><tr><th>তারিখ</th><th>ধরন</th><th>${ledger}</th><th>${bi("খাত","Purpose / Group")}</th><th class="r">টাকা</th><th>${detail}</th><th>${recordSource}</th></tr></thead><tbody>
       ${shown.slice(first, first + pageSize).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td>
       <td>${l.led ? `<b>${esc(l.led)}</b>` : `<span class="mut">${l.source === "checker" ? categoryTotal : bi("নাম দেওয়া হয়নি", "Unnamed entry")}</span>`}</td>
-      ${isTally ? "" : `<td>${esc(cashLabel(l.k))}</td>`}<td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td>
+      <td>${esc(l.k ? cashLabel(l.k) : ungrouped)}</td><td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td>
       <td class="sm">${[l.ref, l.accounts && "A/C " + l.accounts, l.n].filter(Boolean).map(x => `<div>${esc(x)}</div>`).join("") || "—"}</td>
       <td class="mut sm">${sources[l.source]}${l.st ? ` · ${l.st === "final" ? bi("ফাইনাল", "Final") : bi("ড্রাফট", "Draft")}` : ""}${l.by ? " · " + esc(l.by) : ""}</td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty">${bi("এই ফিল্টারে কোনো লাইন নেই", "No lines match these filters")}</div>`;
   }
   function setSource(next) {
     source = next;
-    g("rg-period").innerHTML = pbBar("rg", currentPeriod());
-    g("rg-purpose").hidden = source === "tally";
+    const purpose = g("rg-k"), option = purpose.querySelector('option[value="unmapped"]');
+    if (source === "tally" && !option) purpose.add(new Option(ungrouped, "unmapped"));
+    if (source === "app" && option) {
+      option.remove();
+      if (F.k === "unmapped") { F.k = ""; purpose.value = ""; }
+    }
     for (const btn of $$("[data-rg-source]", v)) {
       const active = btn.dataset.rgSource === source;
       btn.classList.toggle("on", active); btn.setAttribute("aria-pressed", active);
     }
-    pbBind(v, "rg", currentPeriod(), load); return load();
+    return load();
   }
-  g("rg-open").onclick = () => file.click();
-  file.onchange = async () => {
-    const chosen = file.files[0], open = g("rg-open");
-    file.value = "";
-    if (!chosen || open.disabled) return;
-    open.disabled = true; g("rg-file-error").textContent = "";
-    try {
-      const records = await cashTallyRows(chosen);
-      if (!out.isConnected) return;
-      tally = records;
-      tallyPeriod.d = records.reduce((last, row) => row.date > last ? row.date : last, "");
-      tallyPeriod.m = "month";
-      tallyPeriod.f = records.reduce((first, row) => row.date < first ? row.date : first, tallyPeriod.d);
-      tallyPeriod.t = tallyPeriod.d;
-      g("rg-source").hidden = false;
-      g("rg-file-info").textContent = `${chosen.name} · ${bi("শুধু এই পেজে প্রিভিউ", "Read-only preview on this page")} · ${records.length.toLocaleString("en-IN")} ${bi("লাইন", "lines")}`;
-      await setSource("tally");
-    } catch (e) { if (out.isConnected) g("rg-file-error").textContent = e.message || String(e); }
-    finally { open.disabled = false; }
-  };
+  if (canMap) g("rg-map").onclick = () => cbLedgerModal(() => {
+    if (!out.isConnected || source !== "tally") return;
+    ledgerMap = new Map((CBLED?.list || []).map(row => [tallyLedgerKey(row.name),row]));
+    resetPage();
+  }, {mappingOnly:true});
   for (const btn of $$("[data-rg-source]", v)) btn.onclick = () => { if (source !== btn.dataset.rgSource) setSource(btn.dataset.rgSource); };
   g("rg-q").oninput = e => { F.q = e.target.value; resetPage(); };
   g("rg-t").onchange = e => { F.type = e.target.value; resetPage(); };
@@ -3794,11 +3879,12 @@ async function vRegister(v) {
   const changePage = delta => { page += delta; draw(); out.scrollIntoView({block: "start"}); };
   g("rg-prev").onclick = () => changePage(-1); g("rg-next").onclick = () => changePage(1);
   excel.onclick = () => {
-    const [from, to] = cashPeriod(currentPeriod());
+    const [from, to] = cashPeriod(F);
     if (shown.length) exportXlsx({ Register: [["Date", "Type", "Ledger", "Category", "Amount", "Expression", "Note", "Status", "By", "Voucher", "A/C", "Source"],
-      ...shown.map(l => [dmy(l.date), l.type, l.led || "", l.k ? cashLabel(l.k) : "", l.a, l.x || "", l.n || "", l.st || "", l.by || "", l.ref || "", l.accounts || "", sources[l.source]])] },
+      ...shown.map(l => [dmy(l.date), l.type, l.led || "", l.k ? cashLabel(l.k) : l.source === "tally" ? ungrouped : "", l.a, l.x || "", l.n || "", l.st || "", l.by || "", l.ref || "", l.accounts || "", sources[l.source]])] },
       `Cash_Register_${source}_${from}_to_${to}.xlsx`);
   };
+  pbBind(v, "rg", F, load);
   await setSource("app");
 }
 
@@ -3955,24 +4041,67 @@ const auditTable = tbl => Object.hasOwn(AU_T,tbl) ? tr(AU_T[tbl]) : String(tbl |
 Object.assign(AU_T, {inv_orders:"Inventory order", inv_items:"Inventory item", inv_demand:"Inventory demand", rm_daily:"RM daily stock",
   rm_products:"RM product", cashbook_days:"Cash Book", cashbook_ledgers:"Cash ledgers", leaf_marks:"Cheque leaf", cheque_statement_verifications:"Statement verification"});
 const auditActor = r => r.user_name || bi("সিস্টেম", "System");
-function auditFields(r) {
+const auditOrderLabels = {
+  ch: ["চ্যানেল", "Channel"], rent: ["ভাড়া", "Rent"], lines: ["অর্ডার আইটেম", "Order items"],
+  value: ["অর্ডারের মূল্য", "Order value"], total_qty: ["মোট পরিমাণ", "Total quantity"],
+  vehicle: ["গাড়ি নম্বর", "Vehicle no."], transport: ["পরিবহন", "Transport"],
+  delivery_date: ["ডেলিভারির তারিখ", "Delivery date"], free: ["ফ্রি অফার", "Free offer"]
+};
+function auditOrderItems(value, catalog) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entries = Object.entries(value);
+  const isNumber = v => (typeof v === "number" || (typeof v === "string" && v.trim() !== "")) && Number.isFinite(Number(v));
+  if (!entries.every(([id,line]) => /^\d+$/.test(id) && line && isNumber(line.q) && isNumber(line.r))) return null;
+  return entries.map(([id,line]) => {
+    const item = catalog.get(id);
+    return {id, name:item?.name || bi("আইটেম #" + id, "Item #" + id), unit:item?.unit || "", qty:Number(line.q), rate:Number(line.r)};
+  });
+}
+function auditOrderText(items) {
+  return items.length ? items.map(i => `${i.name} · ${bi("পরিমাণ","Qty")} ${money(i.qty)} ${i.unit} × ৳${money(i.rate)} = ৳${money(i.qty * i.rate)}`).join(" | ") : bi("কোনো আইটেম নেই","No items");
+}
+function auditOrderDetail(items) {
+  if (!items.length) return `<b>${bi("কোনো আইটেম নেই","No items")}</b>`;
+  return `<ul class="as-order-items">${items.map(i => `<li><strong>${esc(i.name)}</strong> ${i.name.endsWith("#" + i.id) ? "" : `<small class="mut">#${esc(i.id)}</small>`}
+    <dl><div><dt>${bi("পরিমাণ","Quantity")}</dt><dd>${money(i.qty)} ${esc(i.unit)}</dd></div>
+    <div><dt>${bi("দর","Unit rate")}</dt><dd>৳${money(i.rate)}</dd></div>
+    <div><dt>${bi("মোট","Line amount")}</dt><dd>৳${money(i.qty * i.rate)}</dd></div></dl></li>`).join("")}</ul>`;
+}
+function auditValue(r, key, value) {
+  if (r.tbl === "inv_orders") {
+    if (key === "ch" && Object.hasOwn(IV_CH, value)) return bi(...IV_CH[value]);
+    if (key === "status" && Object.hasOwn(IV_ST, value)) return bi(IV_ST[value][0], IV_ST[value][1]);
+  }
+  return auV(value,key);
+}
+function auditFields(r, catalog) {
   const old = r.old || {}, next = r.new || {}, changed = r.action === "update";
   const entry = r.action === "delete" ? old : next;
   return Object.keys(changed ? {...old,...next} : entry)
     .filter(k => !AU_SKIP.has(k) && (changed ? JSON.stringify(old[k]) !== JSON.stringify(next[k]) : entry[k] != null && entry[k] !== ""))
-    .map(key => ({key, label:Object.hasOwn(AU_F,key) ? tr(AU_F[key]) : key, before:auV(old[key], key), after:auV(next[key], key)}));
+    .map(key => {
+      const order = r.tbl === "inv_orders", label = order && Object.hasOwn(auditOrderLabels,key)
+        ? bi(...auditOrderLabels[key]) : Object.hasOwn(AU_F,key) ? tr(AU_F[key]) : key;
+      const format = value => {
+        const items = order && key === "lines" ? auditOrderItems(value,catalog) : null;
+        const text = items ? auditOrderText(items) : auditValue(r,key,value);
+        return {text, items};
+      };
+      return {label, before:format(old[key]), after:format(next[key])};
+    });
 }
-const auText = r => auditFields(r).map(f => `${f.label}: ${r.action === "update" ? f.before + " → " + f.after : r.action === "delete" ? f.before : f.after}`).join("; ");
-function auChips(r) {
-  const fields = auditFields(r);
-  const short = x => x.length > 72 ? x.slice(0, 69) + "…" : x;
+const auText = (r, catalog) => auditFields(r,catalog).map(f => `${f.label}: ${r.action === "update" ? f.before.text + " → " + f.after.text : r.action === "delete" ? f.before.text : f.after.text}`).join("; ");
+function auChips(r, catalog) {
+  const fields = auditFields(r,catalog);
+  const short = ({text,items}) => items ? bi(`${items.length}টি আইটেম`, `${items.length} ${items.length === 1 ? "item" : "items"}`) : text.length > 72 ? text.slice(0, 69) + "…" : text;
   return fields.slice(0, 4).map(f => `<span class="auc"><span class="au-k">${esc(f.label)}</span>${r.action === "update" ? `<s>${esc(short(f.before))}</s><i>→</i>` : ""}<b>${esc(short(r.action === "delete" ? f.before : f.after))}</b></span>`).join("") +
     (fields.length > 4 ? `<span class="mut sm">+${fields.length - 4}</span>` : "");
 }
-function auditDetails(r) {
-  const fields = auditFields(r);
+function auditDetails(r, catalog) {
+  const fields = auditFields(r,catalog);
+  const detail = (label, value) => `<div><span class="mut xs">${label}</span>${value.items ? auditOrderDetail(value.items) : `<b>${esc(value.text)}</b>`}</div>`;
   modal(`<h2>${bi("পরিবর্তনের বিস্তারিত", "Change details")}</h2><div class="aim">${esc(auditTable(r.tbl))} · ${esc(auditActor(r))} · ${esc(auditStamp(r.at))}</div><p class="as-break">${esc(r.row_key || "—")}</p>
-    ${fields.length ? `<dl class="as-field-diff">${fields.map(f => `<div><dt>${esc(f.label)}</dt><dd>${r.action !== "insert" ? `<div><span class="mut xs">${bi("আগে", "Before")}</span><b>${esc(f.before)}</b></div>` : ""}${r.action !== "delete" ? `<div><span class="mut xs">${bi("পরে", "After")}</span><b>${esc(f.after)}</b></div>` : ""}</dd></div>`).join("")}</dl>` : `<div class="empty">${bi("ফিল্ড পরিবর্তন নেই", "No field changes recorded")}</div>`}
+    ${fields.length ? `<dl class="as-field-diff">${fields.map(f => `<div><dt>${esc(f.label)}</dt><dd>${r.action !== "insert" ? detail(bi("আগে", "Before"),f.before) : ""}${r.action !== "delete" ? detail(bi("পরে", "After"),f.after) : ""}</dd></div>`).join("")}</dl>` : `<div class="empty">${bi("ফিল্ড পরিবর্তন নেই", "No field changes recorded")}</div>`}
     <div class="modal-actions"><button type="button" class="btn" id="au-detail-copy">${ico("copy")} ${bi("রেফারেন্স কপি", "Copy reference")}</button><button type="button" class="btn pri" id="au-detail-close">${bi("বন্ধ", "Close")}</button></div>`, (root, close) => {
     $("#au-detail-close", root).onclick = close;
     const copy = $("#au-detail-copy", root); copy.disabled = !r.row_key;
@@ -3990,6 +4119,14 @@ async function vAudit(v, options) {
    <div class="as-metrics au-k4" id="au-kpi"></div><div class="as-result"><p class="mut sm" id="au-total" role="status"></p><button class="btn sm" type="button" id="au-reset">${bi("ফিল্টার রিসেট", "Reset filters")}</button></div><div id="au-out" style="margin-top:12px"><div class="card empty">লোড হচ্ছে…</div></div>`;
   let rows = [], shown = [], more = false, busy = false, failed = false, revision = 0, cutoff;
   const batch = 100, out = $("#au-out", v), range = () => pbRange(F);
+  let catalog = new Map(), catalogRequest;
+  function loadCatalog() {
+    if (catalogRequest) return;
+    catalogRequest = API.auditItemCatalog().then(items => {
+      catalog = new Map(items.map(item => [String(item.id),item]));
+      if (out.isConnected) draw();
+    }).catch(() => {});
+  }
   async function load(append = false) {
     if (append && busy) return;
     const seq = ++revision, [from, to] = range();
@@ -3999,6 +4136,7 @@ async function vAudit(v, options) {
       const result = await API.audit({tbl:F.tbl, act:F.act, from, to, before:cutoff, offset:rows.length, limit:batch});
       if (!out.isConnected || seq !== revision) return;
       rows = rows.concat(result);
+      if (result.some(r => r.tbl === "inv_orders")) loadCatalog();
       more = result.length === batch;
       const users = [...new Set(rows.map(auditActor))].sort();
       const ws = $("#au-w", v);
@@ -4011,7 +4149,7 @@ async function vAudit(v, options) {
   function draw() {
     const q = chequeSearchKey(F.q);
     shown = rows.filter(r => (!F.who || auditActor(r) === F.who) && (!q ||
-      chequeSearchKey([auditActor(r), r.row_key, r.tbl, auditTable(r.tbl), JSON.stringify(r.old), JSON.stringify(r.new)].join(" ")).includes(q)));
+      chequeSearchKey([auditActor(r), r.row_key, r.tbl, auditTable(r.tbl), JSON.stringify(r.old), JSON.stringify(r.new), r.tbl === "inv_orders" ? auText(r,catalog) : ""].join(" ")).includes(q)));
     const counts = {insert:0, update:0, delete:0};
     shown.forEach(r => { if (Object.hasOwn(counts,r.action)) counts[r.action]++; });
     const cards = [["",bi("মিলেছে", "Matching entries"),shown.length], ...Object.entries(AU_A).map(([key,[label,cls]]) => [key,tr(label),counts[key],cls])];
@@ -4023,7 +4161,7 @@ async function vAudit(v, options) {
       const d = auditDate(r.at), action = Object.hasOwn(AU_A,r.action) ? r.action : "update";
       if (d !== last) { last = d; html += `<div class="au-day">${auditStamp(r.at,{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>`; }
       html += `<article class="aui a-${action}"><div class="aic">${ico(AU_IC[action])}</div><div class="aib"><div class="ait"><span class="tag au-${action}">${esc(tr((AU_A[action] || [action])[0]))}</span><b>${esc(auditTable(r.tbl))}</b><span class="aik">${esc(r.row_key || "")}</span></div>
-        <div class="aim">${esc(auditStamp(r.at,{hour:"2-digit",minute:"2-digit"}))} · <b>${esc(auditActor(r))}</b></div><div class="aud">${auChips(r)}</div>
+        <div class="aim">${esc(auditStamp(r.at,{hour:"2-digit",minute:"2-digit"}))} · <b>${esc(auditActor(r))}</b></div><div class="aud">${auChips(r,catalog)}</div>
         <button class="btn sm" type="button" data-au-detail="${i}">${bi("বিস্তারিত", "Details")}</button></div></article>`;
     });
     const status = busy ? bi("লোড হচ্ছে…","Loading…") : failed ? bi("লগ লোড হয়নি","Audit entries could not be loaded") : bi("এই ফিল্টারে কোনো রেকর্ড মেলেনি","No entries match these filters");
@@ -4031,7 +4169,7 @@ async function vAudit(v, options) {
     if (more || failed) out.insertAdjacentHTML("beforeend", `<div class="as-result"><span class="mut sm">${more ? bi("এই সময়ের আরও রেকর্ড আছে। এক্সপোর্টে লোড হওয়া রেকর্ড থাকবে।","More entries are available. Exports include loaded matches.") : status}</span><button class="btn" type="button" id="au-more" ${busy ? "disabled" : ""}>${failed ? bi("আবার চেষ্টা করুন","Retry") : bi("আরও লোড করুন","Load more")}</button></div>`);
     $("#au-more", v)?.addEventListener("click", () => load(rows.length > 0));
   }
-  out.onclick = e => { const btn = e.target.closest("[data-au-detail]"); if (btn) auditDetails(shown[Number(btn.dataset.auDetail)]); };
+  out.onclick = e => { const btn = e.target.closest("[data-au-detail]"); if (btn) auditDetails(shown[Number(btn.dataset.auDetail)],catalog); };
   $("#au-kpi", v).onclick = e => {
     const btn = e.target.closest("[data-au-action]"); if (!btn) return;
     F.act = btn.dataset.auAction; $("#au-a", v).value = F.act; load();
@@ -4044,11 +4182,11 @@ async function vAudit(v, options) {
   const fname = ext => `Audit_${range()[0]}_${range()[1]}.${ext}`;
   async function download(kind) {
     $("#au-menu", v).classList.add("hide"); if (!shown.length) return toast("ডাটা নেই", "err");
-    const H = ["Time", "User", "Where", "Action", "Item", "Changes", "Old (JSON)", "New (JSON)"], R = shown.map(r => [auditStamp(r.at), r.user_name || "", AU_T[r.tbl] ? tr(AU_T[r.tbl]) : r.tbl, r.action, r.row_key || "", auText(r), r.old ? JSON.stringify(r.old) : "", r.new ? JSON.stringify(r.new) : ""]);
+    const H = ["Time", "User", "Where", "Action", "Item", "Changes", "Old (JSON)", "New (JSON)"], R = shown.map(r => [auditStamp(r.at), r.user_name || "", AU_T[r.tbl] ? tr(AU_T[r.tbl]) : r.tbl, r.action, r.row_key || "", auText(r,catalog), r.old ? JSON.stringify(r.old) : "", r.new ? JSON.stringify(r.new) : ""]);
     if (kind === "xlsx") return exportXlsx({ Audit: [H, ...R] }, fname("xlsx"));
     if (kind === "csv") { const csv = "﻿" + [H, ...R].map(r => r.map(x => `"${String(x).replace(/^(?=[\s\uFEFF]*[=+@-])/, "\u0027").replace(/"/g, '""')}"`).join(",")).join("\r\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = fname("csv"); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); return; }
     const [f0, t0] = range(), cnt = a => shown.filter(r => r.action === a).length;
-    const body = shown.map(r => `<tr><td>${esc(auditStamp(r.at,{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}))}</td><td>${esc(r.user_name || "")}</td><td>${esc(AU_T[r.tbl] ? tr(AU_T[r.tbl]) : (r.tbl === "cash_records" ? tr("ক্যাশ") : r.tbl))}</td><td>${esc((AU_A[r.action] || [r.action])[0])}</td><td>${esc(r.row_key || "")}</td><td>${esc(auText(r))}</td></tr>`).join("");
+    const body = shown.map(r => `<tr><td>${esc(auditStamp(r.at,{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}))}</td><td>${esc(r.user_name || "")}</td><td>${esc(AU_T[r.tbl] ? tr(AU_T[r.tbl]) : (r.tbl === "cash_records" ? tr("ক্যাশ") : r.tbl))}</td><td>${esc((AU_A[r.action] || [r.action])[0])}</td><td>${esc(r.row_key || "")}</td><td>${esc(auText(r,catalog))}</td></tr>`).join("");
     printSheet(repSheet("au-sheet", "Audit Log · পরিবর্তনের লগ", f0, t0, repKpi([["Changes", shown.length], ["Added", cnt("insert")], ["Edited", cnt("update")], ["Deleted", cnt("delete")]]), repOne(repBox("Change history", ["~Time", "~User", "~Where", "~Action", "~Item", "~Changes"], body)), more ? "Note: only the loaded records are included." : ""), fname("pdf").replace(/\.pdf$/, ""));
   }
   $("#au-dl", v).onclick = e => { e.stopPropagation(); $("#au-menu", v).classList.toggle("hide"); };
@@ -4276,7 +4414,7 @@ async function vSec(out, _options, open) {
       [bi("আপনার সেশন","Your sessions"),own ? String(own.length) : unknown,""],
       [bi("শেষ স্বয়ংক্রিয় ব্যাকআপ","Latest automatic backup"),auto ? auditStamp(auto.at) : backups ? "—" : unknown,auto ? relTime(auto.at) : ""]
     ]);
-    g("sc-devices").innerHTML = `<h3>${bi("আপনার সাইন-ইন সেশন","Your signed-in sessions")}</h3><p class="mut sm as-break">${esc(S.me.email || "")}</p>${own ? own.length ? own.map(row => `<div class="scrow"><div><b>${esc(uaName(row.user_agent))}</b> ${row.mine ? `<span class="tag ok">${bi("এই ডিভাইস","This device")}</span>` : ""}<div class="mut sm">${esc(auditStamp(row.last_seen))}</div></div>
+    g("sc-devices").innerHTML = `<h3>${bi("আপনার সাইন-ইন সেশন","Your signed-in sessions")}</h3><p class="mut sm as-break">${esc(S.me.email || "")}</p>${own ? own.length ? own.map(row => `<div class="scrow">${sessionDevice(row)}
       ${!row.mine ? `<button type="button" class="btn sm" data-sc-device="${esc(row.id)}">${bi("লগআউট","Sign out")}</button>` : ""}</div>`).join("") : `<p class="mut sm">${bi("কোনো সক্রিয় সেশন নেই","No active sessions")}</p>` : `<p class="mut sm">${bi("সেশনের তথ্য লোড হয়নি","Session information could not load")}</p>`}
       <div class="adm-actions"><button type="button" class="btn" id="sc-oth" ${own && !own.some(row => !row.mine) ? "disabled" : ""}>${bi("অন্য সব ডিভাইস থেকে লগআউট","Sign out other devices")}</button><a class="btn" href="#/settings">${bi("পাসওয়ার্ড ও 2FA","Password and 2FA")}</a></div>`;
     g("sc-recent").innerHTML = `<h3>${bi("গত ৭ দিনের সাম্প্রতিক ডিলিট","Recent deletions · 7 days")}</h3>${recent ? recent.length ? recent.map(r => `<div class="scrow"><div class="as-break"><b>${esc(auditTable(r.tbl))} · ${esc(r.row_key || "—")}</b><div class="mut sm">${esc(auditActor(r))} · ${esc(auditStamp(r.at))}</div></div></div>`).join("") : `<p class="mut sm">${bi("এই সময়ে ডিলিট নেই","No deletions in this period")}</p>` : `<p class="mut sm">${bi("ডিলিটের রেকর্ড লোড হয়নি","Deletion activity could not load")}</p>`}
@@ -4307,6 +4445,7 @@ async function vSec(out, _options, open) {
   await refresh();
 }
 Object.assign(SbAPI, {
+  async auditItemCatalog() { return fetchAll("inv_items", "id", "id,name,unit"); },
   async audit(f) {
     const lim = f.limit || 500, off = f.offset || 0;
     let q = sb.from("audit_log").select("*").order("at",{ascending:false}).order("id",{ascending:false}).range(off, off + lim - 1);
@@ -4350,6 +4489,7 @@ Object.assign(DemoAPI, {
   async deleteBackup(id) { demoStore.backups = (demoStore.backups || []).filter(b => b.id !== id); this.save(); },
   async userLogins() { return [{ email: "admin@demo", name: S.me.name, role: "admin", active: true, last_sign_in_at: new Date().toISOString() }]; },
   async verifyPassword() { return true; }, async userSec() { return []; },
+  async auditItemCatalog() { return (await this.ivStore()).items; },
   async userSessions() { return [{ id: "d1", created_at: new Date().toISOString(), last_seen: new Date().toISOString(), user_agent: navigator.userAgent, ip: "demo", aal: "aal1", mine: true }]; },
   async revokeSessions() { return 0; }, async reset2fa() { }, async setUserEmail(id, e) { const u = (demoStore.users || []).find(x => x.id === id); if (u) { u.email = e; this.save(); } }, async deleteUser(id) { demoStore.users = (demoStore.users || []).filter(x => x.id !== id); this.save(); },
   async userActivity() { return []; }, async pushMine() { return null; }, async pushOn() {}, async pushOff() {}, async pushSummary() {}, async pushTest() { return { ok: 0 }; }, async mfaNeeded() { return false; }, async mfaFactor() { return null; },
@@ -4910,6 +5050,64 @@ async function vDparty(v) {
 
 /* ---------- auto update: every open app notices a new release within minutes ---------- */
 const RUN_V = document.querySelector('script[src^="app.js"]')?.getAttribute("src")?.split("v=")[1] || "";
+const pwa = {phase:"checking", pending:null};
+function pwaStatus(phase) {
+  pwa.phase = phase;
+  window.dispatchEvent(new Event("pwa-state"));
+}
+function verifyOfflineShell(worker, repair) {
+  return new Promise(resolve => {
+    const channel = new MessageChannel();
+    const finish = (ready = false) => { clearTimeout(timer); channel.port1.close(); resolve(ready); };
+    const timer = setTimeout(finish, repair ? 12000 : 1800);
+    channel.port1.onmessage = ({data}) => finish(data?.version === RUN_V && data.ready === true);
+    try { worker.postMessage({type:"nabiad-offline-status", repair}, [channel.port2]); }
+    catch { finish(); }
+  });
+}
+function preparePwa(retry = false) {
+  if (!navigator.serviceWorker || !window.isSecureContext) return pwaStatus("unsupported");
+  if (pwa.pending) return pwa.pending;
+  const sw = navigator.serviceWorker;
+  pwa.pending = (async () => {
+    try {
+      pwaStatus("checking");
+      const reg = navigator.onLine ? await sw.register("sw.js", {updateViaCache:"none"}) : await sw.getRegistration();
+      if (retry && reg && navigator.onLine) await reg.update().catch(() => {});
+      const installing = reg?.installing;
+      if (installing) installing.addEventListener("statechange", () => {
+        if (["activated","redundant"].includes(installing.state)) {
+          Promise.resolve(pwa.pending).then(() => preparePwa());
+        }
+      });
+      if (sw.controller && await verifyOfflineShell(sw.controller, retry && navigator.onLine)) return pwaStatus("ready");
+      pwaStatus(installing && installing.state !== "redundant" ? "installing" : "unavailable");
+    } catch {
+      pwaStatus("unavailable");
+    }
+  })().finally(() => { pwa.pending = null; });
+  return pwa.pending;
+}
+function paintOfflineStatus(target, row) {
+  const cached = S.me?.id && readCache()?.u === S.me.id;
+  const state = pwa.phase === "ready" && !cached ? "data" : pwa.phase;
+  const messages = {
+    ready: bi("অ্যাপ ও সর্বশেষ সিঙ্কের ডাটা এই ডিভাইসে প্রস্তুত।","App and last synced data are ready on this device."),
+    data: bi("অফলাইন অ্যাপ প্রস্তুত। ডাটা রাখতে অনলাইনে সিঙ্ক করুন।","App cached. Sync online to keep a copy of your data."),
+    installing: bi("অফলাইনের জন্য অ্যাপ প্রস্তুত হচ্ছে…","Preparing the app for offline use…"),
+    checking: bi("অফলাইন ক্যাশ পরীক্ষা হচ্ছে…","Checking the offline cache…"),
+    unsupported: bi("এই ব্রাউজারে HTTPS বা service worker পাওয়া যাচ্ছে না।","HTTPS or service worker support is unavailable in this browser."),
+    unavailable: navigator.onLine ? bi("অফলাইন ক্যাশ প্রস্তুত হয়নি। আবার পরীক্ষা করুন।","Offline cache is not ready. Recheck status.")
+      : bi("এই ডিভাইসের অফলাইন ক্যাশ যাচাই করতে ইন্টারনেট লাগবে।","Connect to the internet to check this device’s offline cache.")
+  };
+  target.innerHTML = row(state === "ready",bi("অফলাইন মোড (PWA)","Offline mode (PWA)"),messages[state]);
+}
+navigator.serviceWorker?.addEventListener("controllerchange", () => {
+  Promise.resolve(pwa.pending).then(() => preparePwa());
+});
+window.addEventListener("online", () => preparePwa());
+preparePwa();
+
 let updReady = "", updBusy = false, DIRTY = false;
 document.addEventListener("input", e => { if (e.target.closest?.("#view, .modal")) DIRTY = true; }, true);
 async function checkUpdate() {
@@ -5108,7 +5306,23 @@ async function mfaEnrollModal(done) {
     $("#mf-ok", root).onclick = go; $("#mf-c", root).onkeydown = e => { if (e.key === "Enter") go(); };
   });
 }
-const uaName = ua => { ua = ua || ""; const b = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser"; const o = /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Mac OS/.test(ua) ? "Mac" : /Linux/.test(ua) ? "Linux" : ""; return b + (o ? " · " + o : ""); };
+function sessionDevice(row) {
+  const ua = row.user_agent || "";
+  const browser = /Edg(?:A|iOS)?\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera"
+    : /SamsungBrowser\//.test(ua) ? "Samsung Internet" : /(?:Firefox|FxiOS)\//.test(ua) ? "Firefox"
+    : /(?:Chrome|CriOS)\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "";
+  const model = ua.match(/Android [^;)]*;\s*([^;)]+?)(?:\s+Build\/[^;)]*)?(?=[;)])/)?.[1]?.trim();
+  const device = /Android/.test(ua) ? (model && !/^(?:K|wv|[a-z]{2}(?:-[A-Z]{2})?)$/.test(model) ? model : "Android")
+    : /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Windows/.test(ua) ? "Windows PC"
+    : /CrOS/.test(ua) ? "Chromebook" : /Macintosh|Mac OS/.test(ua) ? "Mac" : /Linux/.test(ua) ? "Linux" : "";
+  const unknown = asUnavailable();
+  return `<div class="as-session-device"><b>${esc(device || unknown)}</b>${row.mine ? ` <span class="tag ok">${bi("এই ডিভাইস","This device")}</span>` : ""}
+    <dl class="as-session-meta">
+      <div><dt>${bi("ব্রাউজার","Browser")}</dt><dd>${esc(browser || unknown)}</dd></div>
+      <div><dt>${bi("আইপি ঠিকানা","IP address")}</dt><dd class="mono">${esc(row.ip || unknown)}</dd></div>
+      <div><dt>${bi("শেষ ব্যবহার","Last seen")}</dt><dd>${esc(auditStamp(row.last_seen))}</dd></div>
+    </dl></div>`;
+}
 async function userSecModal(u, after) {
   const en = LANG === "en", me = u.id === S.me.id;
   modal(`<h2>🛡 ${en ? "Security" : "সিকিউরিটি"} — ${esc(u.name || u.email)}</h2><div class="card empty">${en ? "Loading…" : "লোড হচ্ছে…"}</div>`);
@@ -5118,7 +5332,7 @@ async function userSecModal(u, after) {
   modal(`<h2>🛡 ${en ? "Security" : "সিকিউরিটি"}</h2>
     <div class="uh2">${avaEl(u.id, u.name, u.email)}<div><b>${esc(u.name || "—")}</b><div class="mut xs">${esc(u.email)}</div></div></div>
     <h3 class="sch">📱 ${en ? "Signed-in devices" : "লগইন করা ডিভাইস"} (${ss.length})</h3>
-    ${ss.length ? ss.map(x => `<div class="scrow"><div style="flex:1;min-width:0"><b>${esc(uaName(x.user_agent))}</b>${x.mine ? ` <span class="tag ok">${en ? "this device" : "এই ডিভাইস"}</span>` : ""}<div class="mut xs">${esc(x.ip || "")} · ${en ? "last seen" : "শেষ ব্যবহার"} ${relTime(x.last_seen)}</div></div><button class="btn sm ghost" data-rs="${x.id}" title="${en ? "Sign this device out" : "এই ডিভাইস লগআউট"}">${en ? "Sign out" : "লগআউট"}</button></div>`).join("") : `<div class="mut sm">${en ? "No active sessions" : "কোনো সক্রিয় সেশন নেই"}</div>`}
+    ${ss.length ? ss.map(x => `<div class="scrow">${sessionDevice(x)}<button class="btn sm ghost" data-rs="${x.id}" title="${en ? "Sign this device out" : "এই ডিভাইস লগআউট"}">${en ? "Sign out" : "লগআউট"}</button></div>`).join("") : `<div class="mut sm">${en ? "No active sessions" : "কোনো সক্রিয় সেশন নেই"}</div>`}
     ${ss.length ? `<div class="mut xs" style="margin:6px 0">${en ? "Signing out takes effect immediately — the next request from that device is refused." : "লগআউট সাথে সাথে কার্যকর — ওই ডিভাইসের পরের রিকোয়েস্টই বন্ধ হয়ে যায়।"}</div><button class="btn sm bad" id="rs-all">${en ? "Sign out everywhere" : "সব ডিভাইস থেকে লগআউট"}</button>` : ""}
     <h3 class="sch">🔐 2FA</h3>
     <div class="scrow"><div style="flex:1"><b>${sec?.has_2fa ? (en ? "On" : "চালু") : (en ? "Off" : "বন্ধ")}</b><div class="mut xs">${en ? "Each user turns 2FA on from their own Settings. If they lose their phone, reset it here." : "প্রত্যেক ইউজার নিজের সেটিংস থেকে 2FA চালু করেন। ফোন হারালে এখান থেকে রিসেট করুন।"}</div></div>${sec?.has_2fa ? `<button class="btn sm bad" id="r2fa">${en ? "Reset 2FA" : "2FA রিসেট"}</button>` : ""}</div>
@@ -5152,7 +5366,7 @@ async function boot() {
     loadAvatars();
     let mo = null;
     const start = () => { if (!location.hash && PREFS.start && PREFS.start !== "dash" && allowed().includes(PREFS.start)) location.replace("#/" + PREFS.start); shell(); route(); setTimeout(remTick, 1500); if (!mo) { let q = 0; mo = new MutationObserver(() => { if (!q) q = requestAnimationFrame(() => { q = 0; labelTables(document); }); }); mo.observe(document.body, { childList: true, subtree: true }); } };
-    if (loadCache()) { start(); reload().then(() => { refreshBadges(); const k = (location.hash.match(/^#\/(\w+)/) || [])[1] || "dash"; if (["dash", "cheques", "books", "accounts"].includes(k) && !document.querySelector(".mback,.pal") && !document.activeElement?.matches("input,select,textarea")) route(); }).catch(e => { if (!isNetErr(e)) toast(bi("রিফ্রেশ ব্যর্থ: ", "Refresh failed: ") + (e.message || e), "err"); }); Outbox.flush(); }
+    if (loadCache()) { start(); if (!navigator.onLine) return; reload().then(() => { refreshBadges(); const k = (location.hash.match(/^#\/(\w+)/) || [])[1] || "dash"; if (["dash", "cheques", "books", "accounts"].includes(k) && !document.querySelector(".mback,.pal") && !document.activeElement?.matches("input,select,textarea")) route(); }).catch(e => { if (!isNetErr(e)) toast(bi("রিফ্রেশ ব্যর্থ: ", "Refresh failed: ") + (e.message || e), "err"); }); Outbox.flush(); }
     else { $("#app").innerHTML = `<div class="boot"><div><div class="logo"><img src="icon.svg" alt="Nabiad"></div><div class="mut">ডাটা লোড হচ্ছে…</div></div></div>`; await reload(); start(); Outbox.flush(); }
   } catch (e) { console.error(e); $("#app").innerHTML = `<div class="login"><div class="card"><div class="alert rd">${bi("শুরু করা যায়নি: ", "Could not start: ")}${esc(e.message || e)}</div><p class="mut sm">${bi("config.js এ Supabase URL ও key ঠিক আছে কি না এবং schema.sql চালানো হয়েছে কি না দেখুন।", "Check that the Supabase URL and key in config.js are correct and that schema.sql has been run.")}</p></div></div>`; }
 }

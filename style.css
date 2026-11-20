@@ -2185,7 +2185,13 @@ body:has(#modal-root .mback) { overflow: hidden; }
 .adm-filters .in, .adm-actions .in { min-width: 0; }
 .adm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .adm-actions select { width: auto; max-width: 100%; }
-.adm-setup-switch, .adm-count { margin-block: 10px; }
+.adm-count { margin-block: 10px; }
+.adm-setup { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; gap: 14px; margin-top: 14px; }
+.adm-setup-links { grid-column: 1 / -1; }
+.adm-setup-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.adm-setup-head h3 { margin: 0; }
+#ad-offline { margin-bottom: 10px; }
+#ad-history .grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 122px), 1fr)); }
 .adm-account {
   display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, .75fr) auto;
   gap: 10px 15px; align-items: center; padding: 12px 14px;
@@ -2239,8 +2245,14 @@ button.as-kpi[aria-pressed="true"] { border-color: var(--pri); box-shadow: inset
 .as-field-diff > div { border-top: 1px solid var(--line); padding: 8px 0; overflow-wrap: anywhere; }
 .as-field-diff dt { font-weight: 700; }
 .as-field-diff dd { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,140px),1fr)); gap: 6px; margin: 6px 0 0; }
-.as-field-diff dd div { min-width: 0; background: var(--surface2); border-radius: 8px; padding: 6px 8px; }
-.as-field-diff dd b { display: block; white-space: pre-wrap; font-weight: 600; }
+.as-field-diff > div > dd > div { min-width: 0; background: var(--surface2); border-radius: 8px; padding: 6px 8px; }
+.as-field-diff > div > dd > div > b { display: block; white-space: pre-wrap; font-weight: 600; }
+.as-order-items { list-style: none; margin: 6px 0 0; padding: 0; }
+.as-order-items li + li { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
+.as-order-items dl, .as-session-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 0; }
+.as-order-items dl dt, .as-session-meta dt { color: var(--mut); font-size: .78rem; font-weight: 500; }
+.as-order-items dl dd, .as-session-meta dd { display: block; margin: 0; font-variant-numeric: tabular-nums; }
+.as-session-device { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .as-panels { margin-block: 12px; }
 #sc-devices .scrow > div, #sc-recent .scrow > div { min-width: 0; flex: 1; }
 #sc-devices .adm-actions { margin-top: 10px; }

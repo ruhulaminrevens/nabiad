@@ -101,3 +101,11 @@
   .cbr .cell, .cbr select.in { font-size: 16px; }
   .cbr .cbx2 { min-width: 32px; min-height: 36px; padding: 0; }
 }
+
+.cblg-h.cblg-map, .cblg-r.cblg-map { grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 1fr)); }
+.cblg-map .nm { overflow-wrap: anywhere; white-space: normal; }
+@media (max-width: 600px) {
+  .cblg-h.cblg-map { display: none; }
+  .cblg-r.cblg-map { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .cblg-map .nm { grid-column: 1 / -1; }
+}
