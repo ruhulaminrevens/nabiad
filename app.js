@@ -3759,6 +3759,19 @@ function tallyPurpose(row, ledgers) {
   const category = cashCategory(row.type === "receipt" ? match.cat_r : match.cat_p);
   return CASH_KEYS(row.type).includes(category) ? category : "";
 }
+function cashCheckerLedgerLabels(ledgers) {
+  const byGroup = new Map();
+  for (const row of ledgers.values()) {
+    const led = row.name?.trim();
+    if (!led) continue;
+    for (const type of ["receipt", "payment"]) {
+      const group = tallyPurpose({led, type}, ledgers);
+      if (!group || CASH_MEMO.includes(group)) continue;
+      byGroup.set(group, byGroup.has(group) ? "" : led);
+    }
+  }
+  return byGroup;
+}
 const tallySchemaMissing = error => ["42P01", "42883", "PGRST202", "PGRST205"].includes(error?.code);
 async function cashTallyImport(file) {
   const records = await cashTallyRows(file);
@@ -3805,6 +3818,7 @@ async function vRegister(v) {
   const canMap = ["admin","staff"].includes(S.me.role) && moduleOpen("cash");
   const ungrouped = bi("খাত নির্ধারিত নয়","Unmapped");
   const categoryTotal = bi("খাতের মোট", "Category total");
+  const mappedCategoryTotal = bi("ম্যাপ করা লেজার · খাতের মোট", "Mapped ledger · category total");
   const sources = { checker: bi("ক্যাশ চেকার", "Cash Checker"), book: bi("ক্যাশ খাতা", "Cash Book"), tally: "Tally" };
   const all = bi("সব", "All");
   v.innerHTML = head("ক্যাশ রেজিস্টার", `${canMap ? `<button type="button" class="btn" id="rg-map">${ico("sliders")} ${bi("লেজার খাত নির্ধারণ", "Ledger → Purpose/Group")}</button>` : ""}<button type="button" class="btn" id="rg-x">${ico("dl")} Excel</button>`) +
@@ -3826,7 +3840,11 @@ async function vRegister(v) {
      <div class="cq-pager rg-pager" id="rg-pager" hidden><button type="button" class="btn" id="rg-prev">${bi("আগের", "Previous")}</button><span class="mut sm" id="rg-page"></span><button type="button" class="btn" id="rg-next">${bi("পরের", "Next")}</button></div>`;
   const g = id => $("#" + id, v), out = g("rg-out"), excel = g("rg-x");
   let source = "app", page = 0, version = 0, ready = false, lines = [], shown = [];
-  let ledgerMap = new Map();
+  let ledgerMap = new Map(), checkerLabels = new Map();
+  function setLedgers(list) {
+    ledgerMap = new Map(list.map(row => [tallyLedgerKey(row.name), row]));
+    checkerLabels = cashCheckerLedgerLabels(ledgerMap);
+  }
   const pageSize = 75;
   function showNotice(message) {
     g("rg-notice").innerHTML = message ? `<div class="alert am">${esc(message)}</div>` : "";
@@ -3841,7 +3859,7 @@ async function vRegister(v) {
       try {
         const [rows, ledgers] = await Promise.all([API.cashTallyRange(f,t), cbLedLoad()]);
         if (!current()) return;
-        ledgerMap = new Map(ledgers.list.map(row => [tallyLedgerKey(row.name),row]));
+        setLedgers(ledgers.list);
         lines = rows;
         if (ledgers.err) showNotice(bi("লেজারের খাত লোড হয়নি। আবার চেষ্টা করুন।","Ledger mappings could not load. Try again."));
         else if (!rows.length) showNotice(bi("এই সময়ে Tally voucher নেই। Admin Panel → Setup থেকে ইতিহাস import করা যায়।","No Tally vouchers for this period. Import history from Admin Panel → Setup."));
@@ -3851,8 +3869,13 @@ async function vRegister(v) {
       }
     } else {
       try {
-        const [rows, allBooks] = await Promise.all([API.cashRange(f, t).then(rows => rows.map(r => ({ ...r, items: cashItems(r.items) }))), API.cbRange(f, t).catch(() => null)]);
+        const [rows, allBooks, ledgers] = await Promise.all([
+          API.cashRange(f, t).then(rows => rows.map(r => ({ ...r, items: cashItems(r.items) }))),
+          API.cbRange(f, t).catch(() => null),
+          cbLedLoad()
+        ]);
         if (!current()) return;
+        setLedgers(ledgers.list);
         const checkerDays = new Map(rows.map(r => [r.date, r]));
         const books = (allBooks || []).filter(b => ["r", "p"].some(tt => (b.lines?.[tt] || []).some(l => +l.a)) && !(checkerDays.get(b.date)?.status === "final" && b.status !== "final"));
         const bookDays = new Set(books.map(b => b.date));
@@ -3889,7 +3912,11 @@ async function vRegister(v) {
   function draw() {
     if (!ready || !out.isConnected) return;
     const q = chequeSearchKey(F.q), isTally = source === "tally";
-    const rows = isTally ? lines.map(row => ({...row,k:tallyPurpose(row,ledgerMap)})) : lines;
+    const rows = lines.map(row => {
+      if (isTally) return {...row, k: tallyPurpose(row, ledgerMap)};
+      const led = row.source === "checker" && checkerLabels.get(row.k);
+      return led ? {...row, led} : row;
+    });
     shown = rows.filter(l => (!F.type || l.type === F.type) && (!F.k || F.k === (l.k || "unmapped")) &&
       (!q || chequeSearchKey([l.led, l.k && cashLabel(l.k), l.n, l.accounts, l.ref, l.a, l.x].join(" ")).includes(q)));
     const sums = {receipt: 0, payment: 0};
@@ -3905,7 +3932,7 @@ async function vRegister(v) {
     const ledger = bi("লেজার", "Ledger"), detail = bi("ভাউচার / নোট", "Voucher / note"), recordSource = bi("উৎস", "Source");
     out.innerHTML = shown.length ? `<div class="tw cards"><table class="rg-table"><thead><tr><th>তারিখ</th><th>ধরন</th><th>${ledger}</th><th>${bi("খাত","Purpose / Group")}</th><th class="r">টাকা</th><th>${detail}</th><th>${recordSource}</th></tr></thead><tbody>
       ${shown.slice(first, first + pageSize).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td>
-      <td>${l.led ? `<b>${esc(l.led)}</b>` : `<span class="mut">${l.source === "checker" ? categoryTotal : bi("নাম দেওয়া হয়নি", "Unnamed entry")}</span>`}</td>
+      <td>${l.led ? `<b>${esc(l.led)}</b>${l.source === "checker" ? `<div class="mut xs">${mappedCategoryTotal}</div>` : ""}` : `<span class="mut">${l.source === "checker" ? categoryTotal : bi("নাম দেওয়া হয়নি", "Unnamed entry")}</span>`}</td>
       <td>${esc(l.k ? cashLabel(l.k) : ungrouped)}</td><td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td>
       <td class="sm">${[l.ref, l.accounts && "A/C " + l.accounts, l.n].filter(Boolean).map(x => `<div>${esc(x)}</div>`).join("") || "—"}</td>
       <td class="mut sm">${sources[l.source]}${l.st ? ` · ${l.st === "final" ? bi("ফাইনাল", "Final") : bi("ড্রাফট", "Draft")}` : ""}${l.by ? " · " + esc(l.by) : ""}</td></tr>`).join("")}
@@ -3926,8 +3953,8 @@ async function vRegister(v) {
     return load();
   }
   if (canMap) g("rg-map").onclick = () => cbLedgerModal(() => {
-    if (!out.isConnected || source !== "tally") return;
-    ledgerMap = new Map((CBLED?.list || []).map(row => [tallyLedgerKey(row.name),row]));
+    if (!out.isConnected) return;
+    setLedgers(CBLED?.list || []);
     resetPage();
   }, {mappingOnly:true});
   for (const btn of $$("[data-rg-source]", v)) btn.onclick = () => { if (source !== btn.dataset.rgSource) setSource(btn.dataset.rgSource); };
@@ -3939,7 +3966,7 @@ async function vRegister(v) {
   excel.onclick = () => {
     const [from, to] = cashPeriod(F);
     if (shown.length) exportXlsx({ Register: [["Date", "Type", "Ledger", "Category", "Amount", "Expression", "Note", "Status", "By", "Voucher", "A/C", "Source"],
-      ...shown.map(l => [dmy(l.date), l.type, l.led || "", l.k ? cashLabel(l.k) : l.source === "tally" ? ungrouped : "", l.a, l.x || "", l.n || "", l.st || "", l.by || "", l.ref || "", l.accounts || "", sources[l.source]])] },
+      ...shown.map(l => [dmy(l.date), l.type, l.led || "", l.k ? cashLabel(l.k) : l.source === "tally" ? ungrouped : "", l.a, l.x || "", l.n || "", l.st || "", l.by || "", l.ref || "", l.accounts || "", l.source === "checker" ? sources.checker + " · " + (l.led ? mappedCategoryTotal : categoryTotal) : sources[l.source]])] },
       `Cash_Register_${source}_${from}_to_${to}.xlsx`);
   };
   pbBind(v, "rg", F, load);
