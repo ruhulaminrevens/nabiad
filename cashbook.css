@@ -199,3 +199,35 @@
 @media (max-width: 1100px) {
   .cb-workspace { grid-template-columns: minmax(0, 1fr); }
 }
+
+.cb-workspace [hidden] { display: none !important; }
+.cb-compose { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 10px; }
+.cb-compose label { min-width: 0; font-size: .82rem; font-weight: 650; }
+.cb-compose label > :is(input, select) { display: block; width: 100%; margin-top: 4px; }
+.cb-compose .cb-compose-note, .cb-compose .cb-row-actions { grid-column: 1 / -1; }
+.cb-compose-note summary, .cb-recovery summary { cursor: pointer; color: var(--mut); font-weight: 650; }
+.cb-compose-note textarea.in { width: 100%; height: auto; margin-top: 6px; }
+.cb-compose .cb-row-actions, .c-close .cb-row-actions { gap: 8px; flex-wrap: wrap; }
+.cb-recovery li { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.cb-count-input { min-width: 0; }
+.cb-count-input .cell { width: 100%; }
+.cb-inline-balance { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px 12px; margin-top: 6px; font-size: .78rem; }
+#cb-inline-closing { color: var(--pri-ink); }
+.cb-export-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-bottom: 10px; }
+.cb-export-actions .btn { min-width: 0; min-height: 44px; justify-content: center; gap: 4px; padding-inline: 4px; font-size: .8rem; }
+.cb-export-actions .btn svg { width: 14px; flex: none; }
+.cb-record-actions { display: grid; justify-items: end; gap: 4px; flex: none; }
+.cb-record-actions .btn { min-height: 32px; }
+.cb-record-actions [data-cb-delete] { color: var(--rd); }
+.cb-export-stage { position: fixed; inset: 0 auto auto -10000px; width: 800px; pointer-events: none; }
+.cb-reg-day { margin: 8px 12px; font-size: 13px; font-weight: 700; }
+.cb-reg-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#cb-err:empty { display: none; }
+@media (max-width: 450px) {
+  .cb-compose { grid-template-columns: minmax(0, 1fr); }
+  .cb-compose .in { font-size: 16px; }
+  .cb-export-actions .btn { font-size: .75rem; }
+}
+@media (max-width: 700px) {
+  .cb-workspace .c-close .crow > :is(.cb-count-input, input) { grid-column: 1 / -1; }
+}
