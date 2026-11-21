@@ -363,7 +363,7 @@ async function vCashBook(v) {
   const sides = ["r", "p"];
   $("#cb-led", v).onclick = () => cbLedgerModal();
   $("#cb-checker", v).onclick = () => sessionStorage.setItem("nabiad_cash_date", dateInput.value);
-  async function draw() {
+  async function draw(focusSide = null) {
     const date = dateInput.value, drawId = ++revision;
     canSwitchDate = () => true;
     if (!date || date > localDay) {
@@ -506,7 +506,7 @@ async function vCashBook(v) {
       if (changed.status === "final" && (!S.lastBook || date > S.lastBook)) { S.lastBook = date; refreshBadges(); }
       cbLearn(true);
       toast(action === "close" ? bi("দিনের হিসাব বন্ধ হয়েছে", "Day closed") : bi("আপডেট হয়েছে", "Cash Book updated"));
-      await draw();
+      await draw(action === "add" && matchMedia("(pointer:fine)").matches ? side : null);
     };
 
     const drawActivity = () => {
@@ -550,11 +550,28 @@ async function vCashBook(v) {
         state.account.value = mapping?.c || (oldCategory === state.category ? state.account.value : "");
       };
       suggest(state.name, () => cbLedItems(side), guess, { free: true, max: 30 });
+      state.name.addEventListener("picked", () => state.amount.focus());
       state.name.oninput = guess;
       const read = () => ({ n: state.name.value.trim(), x: state.amount.value.trim(), ref: state.ref.value.trim(), note: state.note.value.trim(), k: state.category, c: state.account.value });
       form.oninput = form.onchange = () => {
+        if (!current()) return;
         if (state.index == null) { pending[side] = read(); storePending(); }
         else state.dirtyEdit = true;
+      };
+      form.onkeydown = event => {
+        if (event.key !== "Enter" || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
+        const { target } = event;
+        const { name, amount, ref, account } = state;
+        if (![name, amount, ref, account].includes(target) || (target === account && !account.value)) return;
+        event.preventDefault();
+        if (event.repeat) return;
+        if (!name.value.trim()) return name.focus();
+        if (target === name) return amount.focus();
+        const value = evalAmt(amount.value);
+        if (!Number.isFinite(value) || !value) return amount.focus();
+        if (target === amount) return ref.focus();
+        if (!account.parentElement.hidden && !account.value) return account.focus();
+        form.requestSubmit();
       };
       form.onsubmit = event => {
         event.preventDefault();
@@ -569,7 +586,7 @@ async function vCashBook(v) {
         });
       };
       state.cancel.onclick = () => loadForm(side, pending[side]);
-      loadForm(side, pending[side]);
+      loadForm(side, pending[side], null, side === focusSide && mayAdd);
     }
     for (const button of $$("[data-cb-side]", body)) button.onclick = () => { activitySide = button.dataset.cbSide; drawActivity(); };
     get("activity-lines").onclick = event => {

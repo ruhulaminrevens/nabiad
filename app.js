@@ -719,6 +719,7 @@ function suggest(input, getItems, onPick, opts = {}) {
   input.addEventListener("input", () => { picked = null; onPick && onPick(null); render(); });
   input.addEventListener("focus", () => { input.select(); render(); });
   input.addEventListener("keydown", e => {
+    if (e.key === "Enter" && (e.isComposing || e.keyCode === 229 || e.repeat)) return;
     if (list.classList.contains("hide") && ["ArrowDown", "ArrowUp"].includes(e.key)) render();
     if (e.key === "ArrowDown") { idx = Math.min(idx + 1, items.length - 1); moved = true; e.preventDefault(); } else if (e.key === "ArrowUp") { idx = Math.max(idx - 1, 0); moved = true; e.preventDefault(); }
     else if (e.key === "Enter" || e.key === "Tab") {
