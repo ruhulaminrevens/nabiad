@@ -191,7 +191,7 @@ async function cbTallyReportLedgers(date) {
   }
   return data;
 }
-function cbTallyRegister(date, vouchers, ledgerList, names, cash, references) {
+function cbTallyRegister(date, vouchers, ledgerList, names, cash, references, previousCash) {
   const ledgers = new Map(ledgerList.map(ledger => [tallyLedgerKey(ledger.name), ledger]));
   const labels = new Map(names.map(row => [row.type + ":" + row.ref, row.report_ledger]));
   const lines = {r: [], p: [], register: references};
@@ -202,7 +202,11 @@ function cbTallyRegister(date, vouchers, ledgerList, names, cash, references) {
     lines[side].push({n: voucher.led, a: voucher.a, reportLedger: labels.get(voucher.type + ":" + voucher.ref),
       c: CB_BANK.includes(category) ? ledger?.bank_code : undefined});
   }
-  return {date, source: "tally", lines, opening_cash: cash?.opening_cash, cash_in_hand: cash?.cash_in_hand};
+  const carriedOpening = cash?.opening_cash == null && previousCash?.cash_in_hand != null;
+  return {date, source: "tally", lines,
+    opening_cash: carriedOpening ? previousCash.cash_in_hand : cash?.opening_cash,
+    opening_source_date: carriedOpening ? previousCash.date : null,
+    cash_in_hand: cash?.cash_in_hand};
 }
 function cbRegisterTotals(book) {
   const tally = book.source === "tally";
@@ -240,9 +244,17 @@ function cbRegisterLedgerTotals(lines) {
   return [...amounts.values()].sort((a, b) => a.label.localeCompare(b.label)).map(({label, cents}) => [label, cents / 100]);
 }
 function cbRegisterClosingNote(book) {
-  if (book.source === "tally") return bi(
-    "ক্যাশ খাতা বা ক্যাশ চেকারের একই দিনের রেকর্ড থেকে শুরুর ও গুনে পাওয়া নগদ নেওয়া হয়। হিসাবের ক্লোজিংয়ে Tally প্রাপ্তি ও পরিশোধ ব্যবহার করা হয়েছে।",
-    "Opening and counted cash use the same-date Cash Book or Cash Checker record. Expected closing uses Tally receipts and payments.");
+  if (book.source === "tally") {
+    const sourceDate = book.opening_source_date;
+    const openingNote = sourceDate ? bi(
+      `শুরুর নগদ ${dmy(sourceDate)}-এর সর্বশেষ ফাইনাল রেকর্ডে গুনে পাওয়া নগদ থেকে আনা হয়েছে।`,
+      `Opening cash is carried forward from the final counted cash on ${dmy(sourceDate)}.`
+    ) : "";
+    return [openingNote, bi(
+      "হিসাবের ক্লোজিংয়ে Tally প্রাপ্তি ও পরিশোধ ব্যবহার করা হয়েছে। গুনে পাওয়া নগদ রিপোর্টের তারিখের রেকর্ড থেকে নেওয়া হয়।",
+      "Expected closing uses Tally receipts and payments. Counted cash comes from the record for the report date."
+    )].filter(Boolean).join(" ");
+  }
   const ref = book.lines?.register;
   return ref?.at ? bi("সারাংশ নেওয়া হয়েছে", "Summary captured") + " · " + cbRegisterDate(ref.at)
     : bi("সংরক্ষিত ব্যাংক ও কালেকশন সারাংশ নেই", "No saved bank and collection totals");
@@ -519,7 +531,7 @@ async function vCashBook(v) {
         cbRegisterSummary(date, true)
       ]);
       const cash = cashUseBook(book, legacy) ? book : legacy;
-      return cbTallyRegister(date, vouchers, ledgers.list, names, cash, savedReferences);
+      return cbTallyRegister(date, vouchers, ledgers.list, names, cash, savedReferences, previous);
     };
     const controls = (side, cls) => `<section class="card csec ${cls}" data-cb-form="${side}" hidden><div class="csh"><h3>${cbSideLabel(side)}</h3><b id="cb-T${side}"></b></div>
       <form class="cb-compose"><label>${bi("বিবরণ", "Particulars")}<input class="in cbname" autocomplete="off" required></label>
