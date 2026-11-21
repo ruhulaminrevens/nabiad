@@ -394,7 +394,7 @@ async function vCashBook(v) {
       const saved = lines[t] || [], entries = saved.length || locked ? saved : [{}];
       return `<div class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num" id="cb-T${t}">0</b></div>
         <div class="cbh"><span>#</span><span>${bi("বিবরণ", "Particulars")}</span><span>${bi("টাকা", "Amount")}</span><span>${cbVoucherLabel(t)} <span class="cb-ref-opt">(${bi("ঐচ্ছিক", "optional")})</span></span></div>
-        <div class="cbrows" data-t="${t}">${entries.map((entry,i) => rowHtml(t,i,entry)).join("")}</div>${locked ? "" : `<button type="button" class="btn sm cbadd" data-t="${t}">+ ${bi("লাইন", "Line")}</button>`}</div>`;
+        <div class="cbrows" data-t="${t}">${entries.map((entry,i) => rowHtml(t,i,entry)).join("")}</div>${locked ? "" : `<div class="cb-row-actions"><button type="button" class="btn pri cbadd" data-t="${t}" aria-label="${t === "r" ? bi("প্রাপ্তির লাইন যোগ করুন", "Add receipt line") : bi("পরিশোধের লাইন যোগ করুন", "Add payment line")}">${ico("plus")} ${bi("যোগ করুন", "Add")}</button></div>`}</div>`;
     };
     body.innerHTML = `<div class="cb-workspace"><div class="cb-entry"><div class="card csec c-open"><div class="csh"><h3 id="cb-opening-label">${bi("শুরুর নগদ", "Opening cash")}</h3><div class="cbopening-controls">${po != null && !locked && admin ? `<button type="button" class="btn sm" id="cb-ounlock">✎ ${bi("বদলান", "Edit")}</button>` : ""}<input class="cell cbopen" id="cb-oc" aria-labelledby="cb-opening-label" value="${fmtIn(oc)}" inputmode="decimal" ${oLocked ? "disabled" : ""}></div></div></div>
       <div class="cb-entry-sides">${side("r", cbSideLabel("r"), "c-rec")}${side("p", cbSideLabel("p"), "c-pay")}</div>
