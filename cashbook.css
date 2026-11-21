@@ -231,3 +231,28 @@
 @media (max-width: 700px) {
   .cb-workspace .c-close .crow > :is(.cb-count-input, input) { grid-column: 1 / -1; }
 }
+
+/* Cash Checker */
+.cs-workspace { display: grid; gap: 12px; min-width: 0; }
+.cs-workspace .cbchk { margin: 0; }
+.cs-source { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.cs-source > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.cs-source time { font-size: .8rem; color: var(--mut); }
+.cs-metrics, .cs-two { display: grid; gap: 10px; min-width: 0; }
+.cs-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.cs-metrics .card { display: grid; min-width: 0; gap: 5px; padding: 12px; }
+.cs-metrics span { font-size: .8rem; color: var(--mut); }
+.cs-metrics strong { font-size: clamp(.88rem, 1.5vw, 1.16rem); overflow-wrap: anywhere; }
+.cs-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cs-workspace dl { margin: 0; }
+.cs-value { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line2); }
+.cs-value > dt { min-width: 0; overflow-wrap: anywhere; }
+.cs-value > dt small { display: block; color: var(--mut); }
+.cs-value > dd { margin: 0; text-align: end; font-weight: 700; min-width: max-content; }
+.cs-group { margin-top: 6px; padding-inline: 8px; border-radius: 8px; background: var(--gr-soft); font-weight: 700; }
+.cs-empty strong { display: block; }
+.cs-empty .btn { margin-top: 10px; }
+.cs-remarks { white-space: pre-wrap; overflow-wrap: anywhere; }
+.cs-controls #cs-refresh { min-height: 40px; }
+@media (max-width: 780px) { .cs-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 570px) { .cs-two { grid-template-columns: minmax(0, 1fr); } }

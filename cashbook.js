@@ -145,44 +145,12 @@ function cbGroup(bk) {
   return { items, warn };
 }
 const cbTot = bk => { const s = t => (bk?.lines?.[t] || []).reduce((q, l) => q + (+l.a || 0), 0), R = s("r"), P = s("p"); return { R, P, exp: (+bk?.opening_cash || 0) + R - P }; };
-const cbSigned = n => (n > 0 ? "+" : n < 0 ? "−" : "") + money0(Math.abs(n));
 
 /* ---------- Cash Checker: problems & differences ---------- */
-function cbChecks(row, bk, prevBk) {
-  const L = [], add = (lv, t) => L.push({ lv, t }), R = cashItems(row.items), m = money0;
-  const sumAll = t => CASH_KEYS(t).reduce((s, k) => s + (+R[k]?.a || 0), 0), allR = sumAll("receipt"), allP = sumAll("payment");
-  if (row.cash_in_hand != null) {
-    const exp = row.opening_cash + allR - allP, d = row.cash_in_hand - exp;
-    if (Math.abs(d) > 0.5) add("err", bi(`হাতে ক্যাশ মেলে না — Opening ${m(row.opening_cash)} + Receipt (Bank সহ) ${m(allR)} − Payment (Bank সহ) ${m(allP)} = ${m(exp)} হওয়ার কথা, লেখা ${m(row.cash_in_hand)} → পার্থক্য ${cbSigned(d)}`, `Cash in hand does not tally — Opening ${m(row.opening_cash)} + Receipt (incl. Bank) ${m(allR)} − Payment (incl. Bank) ${m(allP)} = ${m(exp)} expected, entered ${m(row.cash_in_hand)} → difference ${cbSigned(d)}`));
-    else add("ok", bi("হাতে ক্যাশের হিসাব মিলেছে", "Cash in hand tallies"));
-    if (row.closing != null && row.closing - row.cash_in_hand < -0.5) add("err", bi(`Total Bank ঋণাত্মক হচ্ছে (${m(row.closing - row.cash_in_hand)}) — Cash in hand Closing-এর চেয়ে বেশি`, `Total Bank is negative (${m(row.closing - row.cash_in_hand)}) — Cash in hand is more than Closing`));
-  } else add("warn", bi("Cash in hand এখনো লেখা হয়নি", "Cash in hand is not entered yet"));
-  if (!bk) { add("info", bi("এই তারিখের ক্যাশ খাতা এন্ট্রি নেই — খাতার সাথে মেলানোর কিছু নেই", "No Cash Book entry for this date — nothing to compare with")); return L; }
-  const g = cbGroup(bk), T = cbTot(bk);
-  if (bk.status !== "final") add("warn", bi("ক্যাশ খাতা এখনো ড্রাফট — ফাইনাল সেভ হয়নি", "Cash Book is still a draft — not finalised"));
-  if (bk.cash_in_hand == null) add("warn", bi("ক্যাশ খাতায় হাতে ক্যাশ (গুনে) লেখা নেই", "Counted cash in hand is missing in the Cash Book"));
-  else if (Math.abs(bk.cash_in_hand - T.exp) > 0.5) add("err", bi(`খাতার নিজের হিসাব মেলে না — Opening ${m(bk.opening_cash)} + Receipt ${m(T.R)} − Payment ${m(T.P)} = ${m(T.exp)}, লেখা ${m(bk.cash_in_hand)} → পার্থক্য ${cbSigned(bk.cash_in_hand - T.exp)}`, `The Cash Book itself does not tally — Opening ${m(bk.opening_cash)} + Receipt ${m(T.R)} − Payment ${m(T.P)} = ${m(T.exp)}, entered ${m(bk.cash_in_hand)} → difference ${cbSigned(bk.cash_in_hand - T.exp)}`));
-  if (prevBk) { const pc = prevBk.cash_in_hand == null ? cbTot(prevBk).exp : +prevBk.cash_in_hand; if (Math.abs((+bk.opening_cash || 0) - pc) > 0.5) add("err", bi(`খাতার Opening ${m(bk.opening_cash)} ≠ আগের দিনের (${dmy(prevBk.date)}) হাতে ক্যাশ ${m(pc)} (পার্থক্য ${cbSigned(bk.opening_cash - pc)})`, `Book opening ${m(bk.opening_cash)} ≠ previous day's (${dmy(prevBk.date)}) cash in hand ${m(pc)} (difference ${cbSigned(bk.opening_cash - pc)})`)); }
-  if (Math.abs(row.opening_cash - (+bk.opening_cash || 0)) > 0.5) add("warn", bi(`Opening Cash: ফর্ম ${m(row.opening_cash)} ≠ খাতা ${m(bk.opening_cash)}`, `Opening cash: form ${m(row.opening_cash)} ≠ book ${m(bk.opening_cash)}`));
-  if (g.warn.un) add("warn", bi(`${g.warn.un}টি লাইনের খাত বাছা হয়নি — Others ধরা হয়েছে (ক্যাশ খাতায় গিয়ে ঠিক করুন)`, `${g.warn.un} line(s) have no category — counted under Others (fix in the Cash Book)`));
-  if (g.warn.noAc) add("err", bi(`${g.warn.noAc}টি Bank লাইনে A/C বাছা নেই`, `${g.warn.noAc} Bank line(s) have no A/C selected`));
-  let bad = 0;
-  [...new Set([...Object.keys(R), ...Object.keys(g.items)])].forEach(k => {
-    const fa = +R[k]?.a || 0, ba = +g.items[k]?.a || 0; if (!fa && !ba) return;
-    if (Math.abs(fa - ba) > 0.5) { bad++; add("err", bi(`${cbCatName(k)}: খাতা ${m(ba)} ≠ ফর্ম ${m(fa)} (পার্থক্য ${cbSigned(fa - ba)})`, `${cbCatName(k)}: book ${m(ba)} ≠ form ${m(fa)} (difference ${cbSigned(fa - ba)})`)); }
-    if (CB_BANK.includes(k)) {
-      const fm = {}, bm = {}; (R[k]?.accs || []).forEach(z => fm[z.c || ""] = (fm[z.c || ""] || 0) + (+z.a || 0)); (g.items[k]?.accs || []).forEach(z => bm[z.c || ""] = (bm[z.c || ""] || 0) + (+z.a || 0));
-      [...new Set([...Object.keys(fm), ...Object.keys(bm)])].forEach(c => { if (Math.abs((fm[c] || 0) - (bm[c] || 0)) > 0.5) { bad++; add("err", bi(`${cbCatName(k)} · ${c || "A/C নেই"}: খাতা ${m(bm[c] || 0)} ≠ ফর্ম ${m(fm[c] || 0)}`, `${cbCatName(k)} · ${c || "no A/C"}: book ${m(bm[c] || 0)} ≠ form ${m(fm[c] || 0)}`)); } });
-    }
-  });
-  if (!bad) add("ok", bi("খাতার সাথে প্রতিটি খাত মিলেছে", "Every category matches the Cash Book"));
-  if (bk.cash_in_hand != null && row.cash_in_hand != null && Math.abs(bk.cash_in_hand - row.cash_in_hand) > 0.5) add("err", bi(`Cash in hand: ফর্ম ${m(row.cash_in_hand)} ≠ খাতা ${m(bk.cash_in_hand)}`, `Cash in hand: form ${m(row.cash_in_hand)} ≠ book ${m(bk.cash_in_hand)}`));
-  return L;
-}
 function cbChecksHtml(L) {
   const n = lv => L.filter(x => x.lv === lv).length, e = n("err"), w = n("warn");
   const ord = { err: 0, warn: 1, info: 2, ok: 3 }, ic = { err: "✖", warn: "⚠", info: "ℹ", ok: "✔" };
-  return `<div class="cbchk-h"><b>🔎 ${bi("ক্যাশ চেকার — সমস্যা ও পার্থক্য", "Cash Checker — problems & differences")}</b><span class="cbchip ${e ? "err" : w ? "warn" : "ok"}">${e ? `${e} ${bi("সমস্যা", "problem(s)")}` : w ? `${w} ${bi("সতর্কতা", "warning(s)")}` : bi("সব ঠিক", "All OK")}</span>${e && w ? `<span class="cbchip warn">${w} ${bi("সতর্কতা", "warning(s)")}</span>` : ""}</div><ul class="cbchk-l">${[...L].sort((a, b) => ord[a.lv] - ord[b.lv]).map(x => `<li class="${x.lv}"><i>${ic[x.lv]}</i><span>${esc(x.t)}</span></li>`).join("")}</ul>`;
+  return `<div class="cbchk-h"><b>🔎 ${bi("ক্যাশ চেকার — সমস্যা ও পার্থক্য", "Cash Checker — problems & differences")}</b><span class="cbchip ${e ? "err" : w ? "warn" : "ok"}">${e ? `${e} ${bi("সমস্যা", "problem(s)")}` : w ? `${w} ${bi("সতর্কতা", "warning(s)")}` : bi("তথ্য", "Info")}</span>${e && w ? `<span class="cbchip warn">${w} ${bi("সতর্কতা", "warning(s)")}</span>` : ""}</div><ul class="cbchk-l">${[...L].sort((a, b) => ord[a.lv] - ord[b.lv]).map(x => `<li class="${x.lv}"><i>${ic[x.lv]}</i><span>${esc(x.t)}</span></li>`).join("")}</ul>`;
 }
 
 /* ---------- daily register: source totals are references, never cash lines ---------- */
@@ -386,7 +354,7 @@ async function vCashBook(v) {
   const initial = sessionStorage.getItem("nabiad_cash_date") || (last && last < localDay ? stepDay(last, 1) : localDay);
   sessionStorage.removeItem("nabiad_cash_date");
   v.innerHTML = head(ROUTES[CUR].t, `<button type="button" class="btn" id="cb-led">${ico("list")} ${bi("লেজার", "Ledgers")}</button>
-    <a class="btn" href="#/cashchk">${ico("check")} ${bi("ক্যাশ চেকার", "Cash Checker")}</a>
+    <a class="btn" href="#/cashchk" id="cb-checker">${ico("check")} ${bi("ক্যাশ চেকার", "Cash Checker")}</a>
     <a class="btn" href="#/cashsum">${ico("chart")} ${bi("সামারি", "Summary")}</a>`, "tc") +
     `<div class="card tbar navcard">${dateNav("cb", initial > localDay ? localDay : initial)}<div id="cb-msg"></div></div><div id="cb-body"></div>`;
   const body = $("#cb-body", v), dateInput = $("#cb-d", v), msg = $("#cb-msg", v);
@@ -394,6 +362,7 @@ async function vCashBook(v) {
   let revision = 0, activitySide = "r", saving = false, canSwitchDate = () => true;
   const sides = ["r", "p"];
   $("#cb-led", v).onclick = () => cbLedgerModal();
+  $("#cb-checker", v).onclick = () => sessionStorage.setItem("nabiad_cash_date", dateInput.value);
   async function draw() {
     const date = dateInput.value, drawId = ++revision;
     canSwitchDate = () => true;
