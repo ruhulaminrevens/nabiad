@@ -3806,75 +3806,154 @@ async function cashGroupedRange(from, to) {
 const cashAccSum = (src, k) => { const m = {}; (src?.items?.[k]?.accs || []).forEach(z => { if (z.c) m[z.c] = (m[z.c] || 0) + (+z.a || 0); }); return m; };
 
 async function vCash(v) {
-  const t = today(), last = [S.lastCash, S.lastBook].filter(Boolean).sort().pop();
-  const date = sessionStorage.getItem("nabiad_cash_date") || (last && last < t ? stepDay(last, 1) : t);
+  const todayDhaka = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Dhaka" });
+  const last = [S.lastCash, S.lastBook].filter(Boolean).sort().pop();
+  const date = sessionStorage.getItem("nabiad_cash_date") || (last && last < todayDhaka ? stepDay(last, 1) : todayDhaka);
   sessionStorage.removeItem("nabiad_cash_date");
   v.innerHTML = head(ROUTES[CUR].t, `<a class="btn" id="cs-register" href="#/register">${ico("list")}<span class="lb">${bi("রেজিস্টার", "Register")}</span></a>${allowed().includes("cash") ? `<a class="btn" id="cs-book" href="#/cash">${ico("book")}<span class="lb">${bi("ক্যাশ খাতা", "Cash Book")}</span></a>` : ""}<a class="btn" href="#/cashsum">${ico("chart")}<span class="lb">${bi("সামারি", "Summary")}</span></a>`, "tc")
-    + `<div class="card tbar navcard">${dateNav("cs", date > t ? t : date)}</div><div id="cs-body"></div>`;
-  const body = $("#cs-body", v), selectedDate = () => $("#cs-d", v).value;
-  $("#cs-register", v).onclick = () => sessionStorage.setItem("nabiad_register_date", selectedDate());
-  $("#cs-book", v)?.addEventListener("click", () => sessionStorage.setItem("nabiad_cash_date", selectedDate()));
-  const display = n => n == null ? "—" : money(n);
-  const amount = n => `<b class="num">${display(n)}</b>`;
-  const line = (label, value) => `<div class="crow"><span>${label}</span>${amount(value)}</div>`;
+    + `<div class="card tbar navcard cs-controls">${dateNav("cs", date > todayDhaka ? todayDhaka : date)}
+      <button class="btn" id="cs-refresh" type="button">${bi("রিফ্রেশ", "Refresh")}</button></div><div id="cs-body" class="cs-workspace"></div>`;
+  const body = $("#cs-body", v), dateInput = $("#cs-d", v), refresh = $("#cs-refresh", v);
+  dateInput.max = todayDhaka;
+  dateInput.setAttribute("aria-label", bi("ক্যাশ চেকারের তারিখ", "Cash Checker date"));
+  $("#cs-register", v).onclick = () => sessionStorage.setItem("nabiad_register_date", dateInput.value);
+  $("#cs-book", v)?.addEventListener("click", () => sessionStorage.setItem("nabiad_cash_date", dateInput.value));
+  const amount = n => n == null ? "—" : "৳ " + money(n);
+  const value = n => n == null ? null : Number(n);
+  const round = n => Math.round(n * 100) / 100;
+  const sum = (a, b) => a == null || b == null ? null : round(a + b);
+  const line = (label, n, detail = "") => `<div class="cs-value"><dt>${esc(label)}${detail ? `<small>${esc(detail)}</small>` : ""}</dt><dd class="num">${amount(n)}</dd></div>`;
+  const bankRows = map => Object.fromEntries(S.accounts.filter(a => a.daily && map?.[a.code]?.total != null).map(a => [a.code, map[a.code]]));
+  const next = $("#cs-n", v);
   let revision = 0;
+
   async function draw() {
-    const day = selectedDate(), request = ++revision;
-    if (!day) return;
-    body.innerHTML = `<div class="card empty">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
-    try {
-      const [book, legacy, prevBook, prevLegacy, bank] = await Promise.all([
-        API.cbOn(day), API.cashOn(day), API.cbPrev(day), API.cashPrev(day), API.prevBalances(day), cashGroupLoad()
-      ]);
-      if (!body.isConnected || request !== revision) return;
-      const openingBank = cashBankTotal(bank.map);
-      const fromBook = cashUseBook(book, legacy);
-      const prev = prevLegacy && (!prevBook || prevLegacy.date >= prevBook.date) ? prevLegacy : prevBook;
-      const row = fromBook ? cashFromBook(book, openingBank) : legacy || {
-        opening_cash: prev?.cash_in_hand ?? null,
-        opening_bank: openingBank ?? (prev?.closing != null && prev.cash_in_hand != null ? prev.closing - prev.cash_in_hand : null),
-        items: {}
-      };
-      const items = cashItems(row.items), totals = cashTotals(items);
-      const start = row.opening_cash == null || row.opening_bank == null ? null : +row.opening_cash + +row.opening_bank;
-      const closing = row.status ? row.closing ?? null : null;
-      const checks = cbChecks({...row, items}, book, prevBook);
-      const withdrawals = cashAccSum(row, "bank_in"), posted = new Map();
+    const day = dateInput.value, request = ++revision;
+    const current = () => request === revision && body.isConnected;
+    refresh.disabled = false;
+    next.disabled = !day || stepDay(day, 1) > todayDhaka;
+    body.setAttribute("aria-busy", "false");
+    if (!day || day > todayDhaka) {
+      body.innerHTML = `<div class="alert am">${bi("আজ অথবা আগের একটি তারিখ বাছুন।", "Choose today or an earlier date.")}</div>`;
+      return;
+    }
+    refresh.disabled = true;
+    body.setAttribute("aria-busy", "true");
+    body.innerHTML = `<div class="card empty" role="status">${bi("লোড হচ্ছে…", "Loading…")}</div>`;
+    const [bookRead, legacyRead, prevBookRead, prevLegacyRead, prevBankRead, bankRead] = await Promise.allSettled([
+      API.cbOn(day), API.cashOn(day), API.cbPrev(day), API.cashPrev(day), API.prevBalances(day), API.balancesOn(day), cashGroupLoad()
+    ]);
+    if (!current()) return;
+    refresh.disabled = false;
+    body.setAttribute("aria-busy", "false");
+    const book = bookRead.value, legacy = legacyRead.value, record = book || legacy;
+    const previousBook = prevBookRead.value, previousLegacy = prevLegacyRead.value;
+    const previous = previousBook && (!previousLegacy || previousBook.date >= previousLegacy.date) ? previousBook : previousLegacy;
+    const previousCounted = value(previous?.cash_in_hand);
+    const openingCash = record ? value(record.opening_cash) : previousCounted;
+    const previousBank = bankRows(prevBankRead.value?.map), savedBank = bankRows(bankRead.value);
+    const openingBank = !book && legacy?.opening_bank != null ? value(legacy.opening_bank) : cashBankTotal(previousBank);
+    const closingBank = cashBankTotal(savedBank);
+    const partialBank = closingBank != null && Object.keys(previousBank).some(code => !savedBank[code] && S.accounts.some(a => a.code === code && a.status === "Active"));
+    const grouped = book ? cbGroup(book) : null;
+    const items = grouped?.items ?? cashItems(legacy?.items);
+    const totals = cashTotals(items);
+    const transfers = Object.fromEntries(CASH_MEMO.map(key => [key, value(items[key]?.a) ?? 0]));
+    const cashMovement = round(totals.r - totals.p + transfers.bank_in - transfers.bank_out);
+    const expectedCash = record && openingCash != null ? round(openingCash + cashMovement) : null;
+    const countedCash = value(record?.cash_in_hand);
+    const cashDiff = countedCash == null || expectedCash == null ? null : round(countedCash - expectedCash);
+    const openingTotal = sum(openingCash, openingBank);
+    const expectedTotal = record && openingTotal != null ? round(openingTotal + totals.r - totals.p) : null;
+    const recordedTotal = partialBank ? null : sum(countedCash, closingBank);
+    const combinedDiff = recordedTotal == null || expectedTotal == null ? null : round(recordedTotal - expectedTotal);
+    const status = book ? (book.status === "final" ? bi("দিন বন্ধ", "Day closed") : bi("দিন খোলা", "Day open"))
+      : record ? (record.status === "final" ? bi("ফাইনাল", "Final") : bi("ড্রাফট", "Draft"))
+        : bookRead.status === "rejected" || legacyRead.status === "rejected" ? bi("যাচাই বাকি", "Data unavailable") : bi("এন্ট্রি নেই", "No entries");
+    const source = book ? bi("ক্যাশ খাতা", "Cash Book") : legacy ? bi("পুরোনো ক্যাশ রেকর্ড", "Historical cash record") : bi("ক্যাশ ডাটা", "Cash data");
+    const notices = [];
+    const add = (lv, t) => notices.push({lv, t});
+    if (bookRead.status === "rejected") add("err", bi("ক্যাশ খাতা লোড হয়নি। রিফ্রেশ করে আবার চেষ্টা করুন।", "Cash Book could not load. Refresh to try again."));
+    else if (!book && legacyRead.status === "rejected") add("err", bi("পুরোনো রেকর্ড লোড হয়নি।", "Historical cash records could not load."));
+    if (prevBookRead.status === "rejected" || prevLegacyRead.status === "rejected") add("warn", bi("আগের দিনের নগদ পুরোপুরি যাচাই করা যায়নি।", "Previous counted cash could not be fully verified."));
+    if (prevBankRead.status === "rejected" || bankRead.status === "rejected") add("warn", bi("ব্যাংক ক্লোজিং ডাটা পুরোপুরি লোড হয়নি।", "Bank Closing data could not be fully loaded."));
+    else if (partialBank) add("warn", bi("আগের ক্লোজিংয়ের কিছু সক্রিয় A/C এই তারিখে সেভ হয়নি।", "Some active accounts from the previous closing have no saved balance for this date."));
+    else if (record && closingBank == null) add("info", bi("এই তারিখের ব্যাংক ক্লোজিং সেভ হলে বাস্তব ব্যাংক মোট দেখাবে।", "Actual bank balance appears after Bank Closing is saved for this date."));
+    if (record && countedCash == null) add("info", bi("ক্যাশ খাতায় গুনে পাওয়া নগদ দিলে পার্থক্য দেখাবে।", "Enter counted cash in the Cash Book to calculate the difference."));
+    if (cashDiff != null && cashDiff !== 0) add("err", bi("গুনে পাওয়া নগদ হিসাবের নগদের সঙ্গে মিলছে না।", "Counted cash differs from expected cash."));
+    if (combinedDiff != null && combinedDiff !== 0) add("warn", bi("ক্যাশ ও ব্যাংকের মোট ক্লোজিং হিসাবের সঙ্গে মিলছে না।", "Recorded cash and bank closing differs from the expected total."));
+    if (book && prevBookRead.status === "fulfilled" && prevLegacyRead.status === "fulfilled" && previousCounted != null && openingCash != null && round(openingCash - previousCounted) !== 0) {
+      add("warn", bi(
+        `Opening Cash ${amount(openingCash)} · ${dmy(previous.date)}-এর গুনে পাওয়া নগদ ${amount(previousCounted)}`,
+        `Opening cash ${amount(openingCash)} · counted cash on ${dmy(previous.date)}: ${amount(previousCounted)}`
+      ));
+    }
+    if (grouped?.warn.un) add("warn", bi(`${grouped.warn.un}টি লাইন Others-এ ধরা হয়েছে।`, `${grouped.warn.un} unmapped line(s) are counted under Others.`));
+    if (grouped?.warn.noAc) add("err", bi(`${grouped.warn.noAc}টি Bank লাইনে A/C নেই।`, `${grouped.warn.noAc} bank line(s) have no account.`));
+    // Compare available cash-book withdrawals with cheque postings by account.
+    if (record && bookRead.status === "fulfilled") {
+      const withdrawals = new Map(), posted = new Map();
+      for (const entry of items.bank_in?.accs || []) {
+        withdrawals.set(entry.c, (withdrawals.get(entry.c) || 0) + Number(entry.a || 0));
+      }
       for (const cheque of S.cheques || []) {
         if (cheque.date === day && purposeKey(cheque.purpose) === "cash" && isLive(cheque) && cheque.amount > 0) {
-          posted.set(cheque.code, (posted.get(cheque.code) || 0) + cheque.amount);
+          posted.set(cheque.code, (posted.get(cheque.code) || 0) + Number(cheque.amount));
         }
       }
-      for (const code of new Set([...Object.keys(withdrawals), ...posted.keys()])) {
-        const expected = posted.get(code) || 0, actual = withdrawals[code] || 0;
-        if (Math.abs(expected - actual) > 0.01) checks.push({lv: "warn", t: bi(
-          `${code || "—"} · চেক পোস্টিং ${money(expected)} ≠ ক্যাশ উত্তোলন ${money(actual)}`,
-          `${code || "—"} · Cheque posting ${money(expected)} ≠ cash withdrawal ${money(actual)}`
-        )});
+      for (const code of new Set([...withdrawals.keys(), ...posted.keys()])) {
+        const a = posted.get(code) || 0, b = withdrawals.get(code) || 0;
+        if (round(a - b) !== 0) add("warn", bi(
+          `${code || "—"} · চেক পোস্টিং ${amount(a)} ≠ ক্যাশ উত্তোলন ${amount(b)}`,
+          `${code || "—"} · Cheque posting ${amount(a)} ≠ cash withdrawal ${amount(b)}`
+        ));
       }
-      const side = (type, title, cls, total) => `<section class="card csec ${cls}"><div class="csh"><h3>${title}</h3>${amount(total)}</div>${CASH[type].map(group => {
-        const heading = group.g ? `<div class="cgrp"><span>${esc(group.g)}</span>${amount(group.items.reduce((sum, [k]) => sum + (+items[k]?.a || 0), 0))}</div>` : "";
-        const rows = group.items.map(([key, label]) => {
-          const item = items[key], name = esc(cashHead(key, label));
-          if (!CASH_MEMO.includes(key)) return line(name, +item?.a || 0);
-          return `<div class="cbk"><div class="cbh"><span>${name}<small class="cbn">${bi("A/C ট্রান্সফার", "Account transfers")}</small></span>${amount(+item?.a || 0)}</div>${(item?.accs || []).map(account => line(esc(account.c || "—"), account.a)).join("")}</div>`;
-        }).join("");
-        return heading + `<div class="${group.g ? "cin" : ""}">${rows}</div>`;
-      }).join("")}</section>`;
-      const source = fromBook ? bi("ক্যাশ খাতা", "Cash Book") : legacy ? bi("পুরোনো ক্যাশ রেকর্ড", "Historical cash record") : bi("এই তারিখে কোনো ক্যাশ রেকর্ড নেই", "No cash record for this date");
-      body.innerHTML = `<div class="alert vi">${source}${row.status ? " · " + (row.status === "final" ? bi("ফাইনাল", "Final") : bi("ড্রাফট", "Draft")) : ""}</div>
-        <div class="card cbchk ${checks.some(check => check.lv === "err") ? "err" : checks.some(check => check.lv === "warn") ? "warn" : "ok"}">${cbChecksHtml(checks)}</div>
-        <section class="card csec c-open"><div class="csh"><h3>Opening Balance</h3>${amount(start)}</div>${line("Cash in Hand", row.opening_cash)}${line("Total Bank", row.opening_bank)}</section>
-        <div class="grid g2" style="margin-top:14px">${side("receipt", "Total Receipt", "c-rec", totals.r)}${side("payment", "Total Payment", "c-pay", totals.p)}</div>
-        <section class="card csec c-close" style="margin-top:14px"><div class="csh"><h3>Closing Balance</h3>${amount(closing)}</div>
-        ${line("Cash in Hand", row.cash_in_hand)}${line("Total Bank", closing == null || row.cash_in_hand == null ? null : closing - row.cash_in_hand)}
-        ${row.remarks ? `<div class="crow"><span>${bi("মন্তব্য", "Remarks")}</span><span>${esc(row.remarks)}</span></div>` : ""}</section>`;
-    } catch (error) {
-      if (body.isConnected && request === revision) body.innerHTML = `<div class="alert rd">${esc(cashErr(error))}</div>`;
     }
+    const diffLabel = n => n == null ? "—" : n === 0 ? bi("মিলেছে", "Matches") : amount(Math.abs(n)) + " · "
+      + (n > 0 ? bi("বেশি", "Over") : bi("কম", "Short"));
+    const receiptLabel = bi("মোট প্রাপ্তি", "Total Receipt"), paymentLabel = bi("মোট পরিশোধ", "Total Payment");
+    const side = (type, title, cls, total) => `<section class="card csec ${cls}"><div class="csh"><h3>${title}</h3><b class="num">${amount(total)}</b></div>
+      <dl>${CASH[type].map(group => {
+        const heads = group.items.filter(([key]) => !CASH_MEMO.includes(key));
+        const subtotal = heads.reduce((sum, [key]) => sum + (Number(items[key]?.a) || 0), 0);
+        return (group.g ? `<div class="cs-value cs-group"><dt>${esc(group.g)}</dt><dd>${amount(subtotal)}</dd></div>` : "")
+          + heads.map(([key, label]) => line(cashHead(key, label), Number(items[key]?.a) || 0)).join("");
+      }).join("")}</dl></section>`;
+    const transferPanel = record && (CASH_MEMO.some(key => transfers[key] || items[key]?.accs?.length)) ? `
+      <section class="card csec cs-transfers"><div class="csh"><h3>${bi("ব্যাংক ট্রান্সফার", "Bank transfers")}</h3></div>
+      <p class="mut sm">${bi("হাতে নগদের হিসাবে অন্তর্ভুক্ত। মোট প্রাপ্তি ও পরিশোধে ধরা হয় না।", "Included in expected cash. Excluded from receipt and payment totals.")}</p>
+      <div class="cs-two">${CASH_MEMO.map((key, index) => `<dl>${line(index ? bi("ব্যাংকে জমা", "Bank deposits") : bi("ব্যাংক থেকে উত্তোলন", "Bank withdrawals"), transfers[key])}
+        ${(items[key]?.accs || []).map(a => line(a.c || bi("A/C নেই", "Account missing"), value(a.a))).join("")}</dl>`).join("")}</div></section>` : "";
+    const noRecord = !record && bookRead.status === "fulfilled" && legacyRead.status === "fulfilled";
+    const counted = bi("গুনে পাওয়া নগদ", "Counted cash"), expected = bi("হিসাবের নগদ", "Expected cash");
+    body.innerHTML = `
+      <div class="card cs-source"><div role="status"><strong>${source}</strong><span class="tag ${record?.status === "final" ? "ok" : ""}">${status}</span><time datetime="${day}">${dmy(day)}</time></div>
+      ${book?.updated_at ? `<small class="mut">${bi("সর্বশেষ আপডেট", "Last updated")} · ${esc(cbRegisterDate(book.updated_at))}</small>` : ""}</div>
+      ${noRecord ? `<section class="card empty cs-empty"><strong>${bi("এই তারিখে কোনো ক্যাশ এন্ট্রি নেই", "No cash entries for this date")}</strong>
+        ${$("#cs-book", v) ? `<a id="cs-open-book" href="#/cash" class="btn">${ico("book")} ${bi("ক্যাশ খাতা খুলুন", "Open Cash Book")}</a>` : ""}</section>` : ""}
+      <div class="cs-metrics">${[[expected, amount(expectedCash), ""], [counted, amount(countedCash), ""],
+        [bi("নগদে পার্থক্য", "Cash difference"), diffLabel(cashDiff), cashDiff == null ? "" : cashDiff === 0 ? "gr" : cashDiff < 0 ? "rd" : "am"],
+        [bi("সেভ করা ব্যাংক ক্লোজিং", "Saved bank closing"), amount(closingBank), "",
+          closingBank == null ? "" : Object.keys(savedBank).length + " " + bi("A/C", "accounts")]].map(([label, n, tone, detail]) =>
+        `<div class="card"><span>${label}</span><strong class="num ${tone}">${n}</strong>${detail ? `<span>${detail}</span>` : ""}</div>`).join("")}</div>
+      ${notices.length ? `<section class="card cbchk ${notices.some(x => x.lv === "err") ? "err" : notices.some(x => x.lv === "warn") ? "warn" : ""}">${cbChecksHtml(notices)}</section>` : ""}
+      <div class="cs-two"><section class="card csec c-open"><div class="csh"><h3>${bi("শুরুর ব্যালেন্স", "Opening Balance")}</h3><b class="num">${amount(openingTotal)}</b></div>
+        <dl>${line(bi("শুরুর নগদ", "Opening cash"), openingCash)}
+        ${line(bi("শুরুর ব্যাংক", "Opening bank"), openingBank, openingBank != null && (book || legacy?.opening_bank == null) && prevBankRead.value?.date ? dmy(prevBankRead.value.date) : "")}</dl></section>
+        <section class="card csec c-close"><div class="csh"><h3>${bi("ক্লোজিং ব্যালেন্স", "Closing Balance")}</h3><b class="num">${amount(recordedTotal)}</b></div>
+        <dl>${line(bi("হিসাবের মোট ক্লোজিং", "Expected combined closing"), expectedTotal)}
+        ${line(bi("গুনে পাওয়া নগদ + সেভ করা ব্যাংক", "Counted cash + saved bank"), recordedTotal)}
+        ${line(bi("মোট ক্লোজিংয়ের পার্থক্য", "Combined difference"), combinedDiff)}
+        ${!book && legacy?.closing != null ? line(bi("পুরোনো রেকর্ডের ক্লোজিং", "Historical closing"), value(legacy.closing)) : ""}</dl>
+        ${record?.remarks ? `<p class="mut sm cs-remarks">${esc(record.remarks)}</p>` : ""}</section></div>
+      ${record ? `<div class="cs-two">${side("receipt", receiptLabel, "c-rec", totals.r)}${side("payment", paymentLabel, "c-pay", totals.p)}</div>` : ""}
+      ${transferPanel}`;
+    $("#cs-open-book", body)?.addEventListener("click", () => sessionStorage.setItem("nabiad_cash_date", day));
   }
+  refresh.onclick = draw;
   bindDateNav(v, "cs", draw);
   await draw();
+  return () => { ++revision; };
 }
 /* =================== v6: CASH — summary board / history =================== */
 const cashPeriod = F => pbRange(F);
