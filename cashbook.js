@@ -176,14 +176,29 @@ function cbRegisterReferences(snapshot) {
     [bi("এর মধ্যে অনুমোদিত Cash", "Of which approved Cash"), snapshot?.cash ?? null]
   ];
 }
+const cbRegisterSource = book => book.source === "tally" ? bi("Tally ভাউচার", "Tally vouchers") : bi("ক্যাশ খাতা", "Cash Book");
+const cbRegisterFilename = book => "Nabiad_Cash_Register_" + book.date + (book.source === "tally" ? "_Tally" : "");
+function cbTallyRegister(date, vouchers, ledgerList) {
+  const ledgers = new Map(ledgerList.map(ledger => [tallyLedgerKey(ledger.name), ledger]));
+  const lines = {r: [], p: []};
+  for (const voucher of vouchers) {
+    const side = voucher.type === "receipt" ? "r" : "p";
+    const category = tallyPurpose(voucher, ledgers);
+    const ledger = ledgers.get(tallyLedgerKey(voucher.led));
+    lines[side].push({n: voucher.led, a: voucher.a, ref: voucher.ref, k: category,
+      c: CB_BANK.includes(category) ? ledger?.bank_code : undefined});
+  }
+  return {date, source: "tally", lines};
+}
 function cbRegisterTotals(book) {
   const { R, P, exp } = cbTot(book);
   const counted = book.cash_in_hand == null ? null : Number(book.cash_in_hand);
+  const opening = book.source === "tally" ? null : Number(book.opening_cash) || 0;
   return [
-    [bi("শুরুর নগদ", "Opening cash"), Number(book.opening_cash) || 0],
+    [bi("শুরুর নগদ", "Opening cash"), opening],
     [bi("মোট প্রাপ্তি", "Total receipts"), R],
     [bi("মোট পরিশোধ", "Total payment"), P],
-    [bi("হাতে থাকার কথা", "Expected cash"), exp],
+    [bi("হাতে থাকার কথা", "Expected cash"), opening == null ? null : exp],
     [bi("গুনে পাওয়া নগদ", "Counted cash"), counted],
     [bi("পার্থক্য", "Difference"), counted == null ? null : Math.round((counted - exp) * 100) / 100]
   ];
@@ -195,12 +210,13 @@ const cbNarrationLabel = () => bi("নোট / Tally Narration", "Note / Tally N
 function cbRegisterSheet(book) {
   const lines = book.lines || {}, receipts = lines.r || [], payments = lines.p || [], ref = lines.register;
   const [[, opening], [, receipt], [, payment], [, expected], [, counted], [, difference]] = cbRegisterTotals(book);
+  const tally = book.source === "tally";
   const openingLabel = bi("শুরুর নগদ", "Opening cash");
   const totalReceipt = bi("মোট প্রাপ্তি", "Total receipts");
   const totalPayment = bi("মোট পরিশোধ", "Total payments");
   const label = (line, side) => line ? `<strong>${esc(line.n)}</strong>
     ${line.c ? `<small>${esc(line.c)}</small>` : ""}
-    ${line.ref ? `<small>${cbVoucherLabel(side)} · ${esc(line.ref)}</small>` : ""}
+    ${line.ref ? `<small>${tally ? bi("রেফারেন্স", "Reference") : cbVoucherLabel(side)} · ${esc(line.ref)}</small>` : ""}
     ${line.note ? `<small class="cb-narr">${esc(line.note)}</small>` : ""}` : "";
   const amt = line => line ? cbRegisterMoney(line.a) : "";
   const rows = Array.from({ length: Math.max(5, receipts.length + 1, payments.length) }, (_, i) => {
@@ -210,19 +226,25 @@ function cbRegisterSheet(book) {
       <td>${label(p, "p")}</td><td class="cb-reg-amount">${amt(p)}</td></tr>`;
   }).join("");
   const totals = values => values.map(([key, amount]) => `<div class="cb-reg-total"><span>${esc(key)}</span><b>${cbRegisterMoney(amount)}</b></div>`).join("");
-  const groups = cbGroup(book).items;
-  const grouped = side => totals(CB_CAT[side].filter(key => groups[key]?.a).map(key => [cbCatName(key), groups[key].a])) || `<p class="cb-reg-empty">—</p>`;
+  const groups = tally ? null : cbGroup(book).items;
+  const grouped = side => {
+    const amounts = tally ? new Map() : new Map(CB_CAT[side].filter(key => groups[key]?.a).map(key => [key, groups[key].a]));
+    if (tally) for (const line of lines[side]) amounts.set(line.k, (amounts.get(line.k) || 0) + Math.round(line.a * 100));
+    return totals([...amounts].map(([key, amount]) => [key ? cbCatName(key) : bi("খাত নির্ধারিত নয়", "Unmapped"), tally ? amount / 100 : amount])) || `<p class="cb-reg-empty">—</p>`;
+  };
   const weekday = new Date(book.date + "T12:00:00+06:00").toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", {weekday:"long", timeZone:"Asia/Dhaka"});
-  const status = book.status === "final" ? bi("ফাইনাল", "Final") : bi("দিন খোলা", "Day open");
+  const status = tally ? cbRegisterSource(book) : book.status === "final" ? bi("ফাইনাল", "Final") : bi("দিন খোলা", "Day open");
   return `<div class="rep cb-register">
     <header class="cb-reg-head"><img src="icon-192.png" alt=""><div><b>NABIAD GROUP</b><h2>${cbRegisterTitle()}</h2></div></header>
     <div class="cb-reg-day"><span>${bi("বার", "Day")} · <b>${esc(weekday)}</b></span><span>${bi("তারিখ", "Date")} · <b>${dmy(book.date)}</b></span></div>
+    <div class="cb-reg-day cb-reg-source"><strong>${cbRegisterSource(book)}</strong>
+      ${receipts.length || payments.length ? "" : bi("এই তারিখে কোনো লেনদেন নেই।", "No transactions for this date.")}</div>
     <table class="rep-t cb-reg-table"><colgroup><col style="width:5%"><col style="width:30%"><col style="width:17.5%"><col style="width:30%"><col style="width:17.5%"></colgroup>
     <thead><tr><th scope="col">#</th><th scope="col">${cbSideLabel("r")}</th><th scope="col" class="cb-reg-amount">${bi("টাকা", "Amount (Tk.)")}</th><th scope="col">${cbSideLabel("p")}</th><th scope="col" class="cb-reg-amount">${bi("টাকা", "Amount (Tk.)")}</th></tr></thead>
     <tbody>${rows}</tbody>
     <tbody class="cb-reg-totals">
       <tr><td></td><th scope="row">${totalReceipt}</th><td class="cb-reg-amount">${cbRegisterMoney(receipt)}</td><th scope="row">${totalPayment}</th><td class="cb-reg-amount">${cbRegisterMoney(payment)}</td></tr>
-      <tr><td></td><th scope="row">${bi("শুরুর নগদসহ মোট", "Opening cash + receipts")}</th><td class="cb-reg-amount">${cbRegisterMoney(Math.round((opening + receipt) * 100) / 100)}</td>
+      <tr><td></td><th scope="row">${bi("শুরুর নগদসহ মোট", "Opening cash + receipts")}</th><td class="cb-reg-amount">${cbRegisterMoney(opening == null ? null : Math.round((opening + receipt) * 100) / 100)}</td>
       <th scope="row">${bi("দিনশেষে হাতে নগদ", "Closing cash · counted")}</th><td class="cb-reg-amount">${cbRegisterMoney(counted)}</td></tr>
     </tbody></table>
     <div class="cb-reg-groups">
@@ -234,7 +256,7 @@ function cbRegisterSheet(book) {
       [bi("গুনে পাওয়া নগদের পার্থক্য", "Counted cash difference"), difference],
       ...cbRegisterReferences(ref)
     ])}
-    <small>${ref?.at ? bi("সারাংশ নেওয়া হয়েছে", "Summary captured") + " · " + cbRegisterDate(ref.at) : bi("সংরক্ষিত ব্যাংক ও কালেকশন সারাংশ নেই", "No saved bank and collection totals")}</small></section>
+    <small>${tally ? bi("আমদানি করা ভাউচারে শুরুর ও গুনে পাওয়া নগদ নেই।", "Opening and counted cash are unavailable in the imported vouchers.") : ref?.at ? bi("সারাংশ নেওয়া হয়েছে", "Summary captured") + " · " + cbRegisterDate(ref.at) : bi("সংরক্ষিত ব্যাংক ও কালেকশন সারাংশ নেই", "No saved bank and collection totals")}</small></section>
     ${book.remarks ? `<section class="cb-reg-block cb-narr"><h3>${bi("মন্তব্য", "Remarks")}</h3>${esc(book.remarks)}</section>` : ""}
     <div class="rep-ft"><span>${[status, book.updated_at && cbRegisterDate(book.updated_at), esc(book.entered_by || "")].filter(Boolean).join(" · ")}</span><span>NABIAD Smart Finance Suite</span></div></div>`;
 }
@@ -242,10 +264,11 @@ async function cbRegisterExcel(book) {
   await loadScript("vendor/xlsx.min.js");
   const lines = book.lines || {}, ref = lines.register;
   const entry = l => l ? [l.n, l.a, l.ref || "", l.note || ""] : ["", null, "", ""];
+  const refLabel = side => book.source === "tally" ? bi("রেফারেন্স", "Reference") : cbVoucherLabel(side);
   const rows = Array.from({ length: Math.max(lines.r?.length || 0, lines.p?.length || 0) }, (_, i) => [i + 1, ...entry(lines.r?.[i]), ...entry(lines.p?.[i])]);
   const ws = XLSX.utils.aoa_to_sheet([
-    [cbRegisterTitle(), book.date, bi("ফাইনাল", "Final"), cbRegisterDate(book.updated_at), book.entered_by || ""],
-    ["#", bi("প্রাপ্তি", "Receipt"), "৳", cbVoucherLabel("r"), cbNarrationLabel(), bi("পরিশোধ", "Payment"), "৳", cbVoucherLabel("p"), cbNarrationLabel()],
+    [cbRegisterTitle(), book.date, cbRegisterSource(book), cbRegisterDate(book.updated_at), book.entered_by || ""],
+    ["#", bi("প্রাপ্তি", "Receipt"), "৳", refLabel("r"), cbNarrationLabel(), bi("পরিশোধ", "Payment"), "৳", refLabel("p"), cbNarrationLabel()],
     ...rows, [], ...cbRegisterTotals(book), [], ...cbRegisterReferences(ref),
     [bi("সারাংশ নেওয়া হয়েছে", "Summary captured"), cbRegisterDate(ref?.at)],
     [bi("মন্তব্য", "Remarks"), book.remarks || ""]
@@ -297,7 +320,7 @@ async function cbRegisterVisual(el, format) {
   return cbRegisterPdf(pages);
 }
 function cbRegisterModal(book) {
-  const name = "Nabiad_Cash_Register_" + book.date, sheet = cbRegisterSheet(book);
+  const name = cbRegisterFilename(book), sheet = cbRegisterSheet(book);
   modal(`<h2>${cbRegisterTitle()}</h2><div class="modal-actions cb-register-actions">
     ${["xlsx", "pdf", "png"].map((f, i) => `<button type="button" class="btn" data-register-format="${f}">${["Excel", "PDF", "Image"][i]}</button>`).join("")}
     <button type="button" class="btn" data-register-print>${bi("প্রিন্ট", "Print")}</button>
@@ -445,6 +468,10 @@ async function vCashBook(v) {
     }
     const moneyText = amount => amount == null ? "—" : "৳ " + money(amount);
     const reference = { value: lines.register || null };
+    let tallyRequest;
+    const tallySnapshot = () => tallyRequest ||= Promise.all([API.cashTallyRange(date, date), cbLedLoad()])
+      .then(([vouchers, ledgers]) => cbTallyRegister(date, vouchers, ledgers.list))
+      .catch(error => { tallyRequest = null; throw error; });
     const controls = (side, cls) => `<section class="card csec ${cls}" data-cb-form="${side}" hidden><div class="csh"><h3>${cbSideLabel(side)}</h3><b id="cb-T${side}"></b></div>
       <form class="cb-compose"><label>${bi("বিবরণ", "Particulars")}<input class="in cbname" autocomplete="off" required></label>
         <label>${bi("অঙ্ক", "Amount")}<input class="in cbamt2" inputmode="decimal" required></label>
@@ -480,6 +507,12 @@ async function vCashBook(v) {
       </div><div class="cb-review"><section class="card flush cb-activity" aria-labelledby="cb-activity-title">
         <div class="ch cb-activity-head"><h3 id="cb-activity-title">${bi("দিনের ক্যাশ লেনদেন", "Cash Book activity")}</h3><time datetime="${date}">${dmy(date)}</time></div>
         <div class="cb-activity-body">
+          <label class="cb-report-source">${bi("রিপোর্টের উৎস", "Report source")}
+            <select class="in" id="cb-report-source">
+              <option value="app">${bi("ক্যাশ খাতা", "Cash Book")}</option>
+              <option value="tally">${bi("Tally ভাউচার", "Tally vouchers")}</option>
+            </select>
+          </label>
           <div class="cb-export-actions" role="group" aria-label="${bi("ক্যাশ খাতা এক্সপোর্ট", "Cash Book export")}">
             ${[["png", "img", bi("স্ক্রিনশট", "Screenshot")], ["print", "print", bi("প্রিন্ট", "Print")], ["share", "share", bi("শেয়ার", "Share")]].map(([key, icon, label]) => `<button type="button" class="btn" data-cb-export="${key}">${ico(icon)} <span>${label}</span></button>`).join("")}
           </div>
@@ -498,7 +531,7 @@ async function vCashBook(v) {
           </dl>
         </div></section>
         <section class="card csec cb-references"><div class="csh"><h3>${bi("দৈনিক রেজিস্টার", "Daily register")}</h3>
-          ${final ? `<button type="button" id="cb-register" class="btn sm">${bi("দেখুন / Export", "View / Export")}</button>` : ""}</div><div id="cb-refs" role="status"></div></section>
+          <button type="button" id="cb-register" class="btn sm">${bi("দেখুন / Export", "View / Export")}</button></div><div id="cb-refs" role="status"></div></section>
       </div></div>`;
     const get = key => $("#cb-" + key, body);
     const fail = error => { get("err").textContent = cbWorkflowError(error); toast(get("err").textContent, "err"); };
@@ -676,22 +709,42 @@ async function vCashBook(v) {
         `<div class="cb-reg-total"><span>${esc(label)}</span><b>${moneyText(value)}</b></div>`).join("") +
         (final && !reference.value ? `<small class="mut">${bi("এই পুরনো দিনের সংরক্ষিত সারাংশ নেই।", "This older day has no saved reference totals.")}</small>` : "");
     };
-    if (final) get("register").onclick = () => cbRegisterModal(book);
+    const reportSource = get("report-source");
+    let chooseInitialSource;
+    if (!lines.r?.length && !lines.p?.length && navigator.onLine) {
+      let changed = false;
+      reportSource.addEventListener("change", () => { changed = true; }, {once: true});
+      chooseInitialSource = tallySnapshot().then(tally => {
+        if (current() && !changed && (tally.lines.r.length || tally.lines.p.length)) reportSource.value = "tally";
+      }, () => {}).finally(() => { chooseInitialSource = null; });
+    }
+    const reportSnapshot = () => reportSource.value === "tally" ? tallySnapshot()
+      : { ...book, date, opening_cash: opening, lines: { ...lines, register: reference.value } };
+    const withReport = (button, action) => async () => {
+      button.disabled = true;
+      try {
+        if (chooseInitialSource) await chooseInitialSource;
+        if (!current()) return;
+        const report = reportSnapshot();
+        const snapshot = report instanceof Promise ? await report : report;
+        if (current()) await action(snapshot);
+      } catch (error) { if (current()) toast(cashErr(error), "err"); }
+      finally { button.disabled = false; }
+    };
+    get("register").onclick = withReport(get("register"), cbRegisterModal);
     if (!reference.value && !final) cbRegisterSummary(date).then(result => {
       if (!current()) return;
       reference.value = result;
       showReferences();
     }, () => { if (current()) get("refs").textContent = bi("সারাংশ পাওয়া যায়নি।", "Reference totals unavailable."); });
 
-    for (const button of $$("[data-cb-export]", body)) button.onclick = async () => {
-      const snapshot = { ...book, date, opening_cash: opening, lines: { ...lines, register: reference.value } };
-      const sheet = cbRegisterSheet(snapshot), filename = "Nabiad_Cash_Register_" + date;
+    for (const button of $$("[data-cb-export]", body)) button.onclick = withReport(button, async snapshot => {
+      const sheet = cbRegisterSheet(snapshot), filename = cbRegisterFilename(snapshot);
       if (button.dataset.cbExport === "print") { printSheet(sheet, filename); return; }
       const stage = document.createElement("div");
       stage.className = "cb-export-stage";
       stage.innerHTML = sheet;
       document.body.append(stage);
-      button.disabled = true;
       try {
         const blob = await cbRegisterVisual($(".cb-register", stage), "png");
         const file = new File([blob], filename + ".png", { type: "image/png" });
@@ -708,9 +761,8 @@ async function vCashBook(v) {
             }
           }
         } else dlBlob(file, file.name);
-      } catch (error) { fail(error); }
-      finally { stage.remove(); button.disabled = false; }
-    };
+      } finally { stage.remove(); }
+    });
     preview(); drawActivity(); showReferences();
   }
   bindDateNav(v, "cb", () => { if (!saving && canSwitchDate()) draw(); });

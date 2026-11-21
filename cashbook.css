@@ -277,3 +277,7 @@
 .cs-controls #cs-refresh { min-height: 40px; }
 @media (max-width: 780px) { .cs-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 570px) { .cs-two { grid-template-columns: minmax(0, 1fr); } }
+
+.cb-report-source { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; font-size: .8rem; font-weight: 600; }
+.cb-report-source .in { width: auto; flex: 1 1 130px; }
+.cb-reg-source { padding-top: 0; }
