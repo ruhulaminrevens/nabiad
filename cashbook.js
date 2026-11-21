@@ -708,16 +708,18 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
      <label class="f">${bi("প্রদর্শিত নাম", "Display name")}<input class="in" id="lg-head-name" maxlength="120" autocomplete="off"></label></div>
    </fieldset>` : ""}
    ${canAdd ? `<div class="cblg-new"><input class="in" id="lg-n" placeholder="${bi("নতুন লেজারের নাম", "New ledger name")}" autocomplete="off"><select class="in" id="lg-r">${cbLgOpts("r")}</select><select class="in" id="lg-p">${cbLgOpts("p")}</select><button class="btn pri" id="lg-add">${ico("plus")} ${bi("যোগ", "Add")}</button></div>` : ""}
-   <div class="cblg-filters${mappingOnly ? " cblg-filters-map" : ""}">
-     <div>${mappingOnly ? `<label class="f" for="lg-q">${bi("লেজার খুঁজুন", "Search ledgers")}</label>` : ""}<input class="in" id="lg-q" type="search" placeholder="${bi("খুঁজুন…", "Search…")}" autocomplete="off"></div>
-     ${mappingOnly ? `<div><label class="f" for="lg-group">${bi("খাত", "Purpose / Group")}</label><select class="in" id="lg-group">
+   <div class="cblg-filters cblg-filters-map">
+     <div><label class="f" for="lg-q">${bi("লেজার খুঁজুন", "Search ledgers")}</label><input class="in" id="lg-q" type="search" placeholder="${bi("খুঁজুন…", "Search…")}" autocomplete="off"></div>
+     <div><label class="f" for="lg-group">${bi("খাত", "Purpose / Group")}</label><select class="in" id="lg-group">
        <option value="">${bi("সব খাত", "All groups")}</option>
-       ${[["r", "Receipt"], ["p", "Payment"]].map(([side, label]) => `<optgroup label="${label}">${CB_CAT[side].map(k => `<option value="${side}:${k}">${esc(cbCatName(k))}</option>`).join("")}</optgroup>`).join("")}
+       <option value="mapped">${bi("খাত নির্ধারিত", "Mapped")}</option>
        <option value="unmapped">${bi("খাত নির্ধারিত নয়", "Unmapped")}</option>
-     </select></div>` : ""}
+       ${[["r", "Receipt"], ["p", "Payment"]].map(([side, label]) => `<optgroup label="${label}">${CB_CAT[side].map(k => `<option value="${side}:${k}">${esc(cbCatName(k))}</option>`).join("")}</optgroup>`).join("")}
+     </select></div>
    </div>
    <div class="cblg-h ${mappingOnly ? "cblg-map" : ""}"><span>${bi("লেজার", "Ledger")}</span><span>Receipt ${bi("খাত", "group")}</span><span>Payment ${bi("খাত", "group")}</span>${mappingOnly ? `<span>${bi("স্ট্যাটাস ও অ্যাকশন", "Status & actions")}</span>` : "<span>Bank A/C</span><span></span>"}</div>
-   <div class="mut sm" id="lg-c"></div><div class="cblg" id="lg-l"></div>
+   <div class="mut sm" id="lg-c" role="status"></div><div class="cblg" id="lg-l"></div>
+   <button class="btn sm" type="button" id="lg-more" hidden>${bi("আরও দেখুন", "Show more")}</button>
    ${mappingOnly ? `<div class="modal-actions"><span id="lg-status" class="mut sm" role="status"></span><button type="button" class="btn" id="lg-close">${bi("বন্ধ", "Close")}</button>${canEdit ? `<button type="button" class="btn" id="lg-edit" disabled>${ico("edit")} ${bi("এডিট", "Edit")}</button><button type="button" class="btn pri" id="lg-save" disabled>${ico("save")} ${bi("সেভ", "Save")}</button>` : ""}</div>` : ""}`, async (root, close) => {
     const panel = $(".modal", root), g = id => $("#" + id, panel);
     panel.classList.add("wide");
@@ -747,13 +749,10 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
     const notify = () => { changed = true; if (mappingOnly) after?.(); };
     if (CBLED.err) g("lg-err").innerHTML = `<div class="alert rd">${/relation|does not exist|schema cache|not find/i.test(CBLED.err.message || "") ? bi("লেজার টেবিল নেই — Supabase-এ schema_v6.sql-এর v6.77 অংশ চালাতে হবে", "Ledger table is missing — run the v6.77 part of schema_v6.sql in Supabase") : esc(CBLED.err.message || "")}</div>`;
     const acOpts = c => `<option value="">—</option>` + (S.accounts || []).map(a => `<option value="${esc(a.code)}" ${a.code === c ? "selected" : ""}>${esc(a.code)} · ${esc(a.holder || "")}</option>`).join("");
-    const group = g("lg-group");
+    const group = g("lg-group"), more = g("lg-more");
+    const groupLabels = new Map([...group.options].map(option => [option.value, option.textContent]));
+    let limit = 150;
     const refreshGroups = () => {
-      if (!group) return;
-      for (const option of group.options) {
-        const key = option.value.split(":")[1];
-        if (key) option.textContent = cbCatName(key);
-      }
       for (const side of ["r", "p"]) {
         const select = g("lg-" + side);
         if (select) select.innerHTML = cbLgOpts(side, select.value);
@@ -772,17 +771,31 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
         ${admin ? `<button type="button" class="btn sm ld" aria-label="${esc(bi("মুছুন", "Delete") + " · " + ledger.name)}" ${busy}>${bi("মুছুন", "Delete")}</button>` : ""}
       </div>`;
     }
-    const draw = () => {
-      const q = norm(g("lg-q").value), selected = group?.value || "";
-      const [side, category] = selected.split(":");
-      const matches = CBLED.list.filter(m => {
-        if (q && !norm(m.name).includes(q)) return false;
-        if (selected === "unmapped") return !cbLedCat(m, "r") && !cbLedCat(m, "p");
-        return !selected || cbLedCat(m, side) === category;
-      });
-      const shown = matches.slice(0, 150);
+    const visibleLedgers = () => {
+      const q = norm(g("lg-q").value), selected = group.value;
+      const counts = new Map([...groupLabels.keys()].map(key => [key, 0]));
+      const matches = [];
+      for (const ledger of CBLED.list) {
+        if (q && !norm(ledger.name).includes(q)) continue;
+        const groups = ["r", "p"].flatMap(side => {
+          const key = `${side}:${cbLedCat(ledger, side)}`;
+          return counts.has(key) ? [key] : [];
+        });
+        const filters = ["", groups.length ? "mapped" : "unmapped", ...groups];
+        for (const key of filters) counts.set(key, counts.get(key) + 1);
+        if (filters.includes(selected)) matches.push(ledger);
+      }
+      for (const option of group.options) {
+        const key = option.value.split(":")[1];
+        option.textContent = `${key ? cbCatName(key) : groupLabels.get(option.value)} (${counts.get(option.value)})`;
+      }
+      const shown = matches.slice(0, limit);
+      more.hidden = shown.length === matches.length;
+      g("lg-c").textContent = bi(`${shown.length} / ${matches.length}টি দেখানো হচ্ছে · মোট ${CBLED.list.length}`, `Showing ${shown.length} of ${matches.length} matches · ${CBLED.list.length} ledgers total`);
+      return shown;
+    };
+    const draw = (shown = visibleLedgers()) => {
       const selectable = canEdit && (!mappingOnly || (editing && !saving));
-      g("lg-c").textContent = bi(`${CBLED.list.length}টি লেজার · দেখানো হচ্ছে ${shown.length}`, `${CBLED.list.length} ledgers · showing ${shown.length}`);
       g("lg-l").innerHTML = shown.map(m => `<div class="cblg-r ${mappingOnly ? "cblg-map" : ""} ${!mappingOnly && m.active === false ? "off" : ""}" data-id="${m.id}">
         <span class="nm" title="${esc(m.name)}">${mappingOnly ? esc(m.name) : `<input class="cell ln" value="${esc(m.name)}">`}</span>
         <select class="in lr" aria-label="${esc(m.name)} · Receipt group" ${selectable ? "" : "disabled"}>${cbLgOpts("r", cbLedCat({ ...m, ...mappings.get(m.id) }, "r"))}</select>
@@ -795,12 +808,19 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
       if (!canEdit) return;
       const parent = el.closest(".cblg-r");
       el.disabled = true;
+      const redraw = "cat_r" in patch || "cat_p" in patch || "name" in patch;
       try {
         const row = await API.cbLedgerSave({...m, ...patch});
         Object.assign(m, row);
         CBLED.byNorm = new Map(CBLED.list.map(x => [cbNorm(x.name), x]));
         notify();
         parent.classList.toggle("off", m.active === false);
+        if (redraw && panel.isConnected) {
+          const shown = visibleLedgers(), rows = $$(".cblg-r", panel);
+          if (shown.length !== rows.length || shown.some((row, index) => String(row.id) !== rows[index].dataset.id)) {
+            draw(shown);
+          }
+        }
       } catch (e) {
         toast(/duplicate|unique/i.test(e.message || "") ? bi("এই নামে লেজার আগেই আছে","A ledger with this name already exists") : e.message || String(e), "err");
         draw();
@@ -876,8 +896,13 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
         }
       };
     }
-    g("lg-q").oninput = draw;
-    if (group) group.onchange = draw;
+    g("lg-q").oninput = group.onchange = () => { limit = 150; draw(); };
+    more.onclick = () => {
+      const firstNew = limit;
+      limit += 150;
+      draw();
+      $$(".cblg-r", panel)[firstNew]?.scrollIntoView({ block: "nearest" });
+    };
     g("lg-l").onchange = e => {
       const t = e.target;
       if (mappingOnly) {
