@@ -193,26 +193,50 @@ const cbVoucherLabel = t => t === "r" ? bi("মানি রিসিট নং"
 const cbSideLabel = t => t === "r" ? bi("প্রাপ্তি", "Receipt") : bi("পরিশোধ", "Payment");
 const cbNarrationLabel = () => bi("নোট / Tally Narration", "Note / Tally Narration");
 function cbRegisterSheet(book) {
-  const lines = book.lines || {}, ref = lines.register;
-  const label = (l, t) => l ? `<b>${esc(l.n)}</b>${l.ref ? `<small>${cbVoucherLabel(t)}: ${esc(l.ref)}</small>` : ""}${l.note ? `<small class="cb-narr">${esc(l.note)}</small>` : ""}` : "";
-  const row = (r, p, i) => `<tr><td>${i + 1}</td><td>${label(r, "r")}</td><td class="r">${cbRegisterMoney(r?.a)}</td><td>${label(p, "p")}</td><td class="r">${cbRegisterMoney(p?.a)}</td></tr>`;
-  const totals = values => values.map(([k, n]) => `<div class="cb-reg-total"><span>${esc(k)}</span><b>${cbRegisterMoney(n)}</b></div>`).join("");
-  const records = Array.from({ length: Math.max(lines.r?.length || 0, lines.p?.length || 0) }, (_, i) => row(lines.r?.[i], lines.p?.[i], i)).join("");
+  const lines = book.lines || {}, receipts = lines.r || [], payments = lines.p || [], ref = lines.register;
+  const [[, opening], [, receipt], [, payment], [, expected], [, counted], [, difference]] = cbRegisterTotals(book);
+  const openingLabel = bi("শুরুর নগদ", "Opening cash");
+  const totalReceipt = bi("মোট প্রাপ্তি", "Total receipts");
+  const totalPayment = bi("মোট পরিশোধ", "Total payments");
+  const label = (line, side) => line ? `<strong>${esc(line.n)}</strong>
+    ${line.c ? `<small>${esc(line.c)}</small>` : ""}
+    ${line.ref ? `<small>${cbVoucherLabel(side)} · ${esc(line.ref)}</small>` : ""}
+    ${line.note ? `<small class="cb-narr">${esc(line.note)}</small>` : ""}` : "";
+  const amt = line => line ? cbRegisterMoney(line.a) : "";
+  const rows = Array.from({ length: Math.max(5, receipts.length + 1, payments.length) }, (_, i) => {
+    const r = receipts[i - 1], p = payments[i];
+    return `<tr><td class="cb-reg-number">${i + 1}</td><td${i === 0 ? ' class="cb-reg-opening"' : ""}>${i === 0 ? `<strong>${openingLabel}</strong>` : label(r, "r")}</td>
+      <td class="cb-reg-amount${i === 0 ? " cb-reg-opening" : ""}">${i === 0 ? cbRegisterMoney(opening) : amt(r)}</td>
+      <td>${label(p, "p")}</td><td class="cb-reg-amount">${amt(p)}</td></tr>`;
+  }).join("");
+  const totals = values => values.map(([key, amount]) => `<div class="cb-reg-total"><span>${esc(key)}</span><b>${cbRegisterMoney(amount)}</b></div>`).join("");
   const groups = cbGroup(book).items;
-  const grouped = side => CB_CAT[side].filter(key => groups[key]?.a).map(key => [cbCatName(key), groups[key].a]);
-  const weekday = new Date(book.date + "T12:00:00+06:00").toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", {weekday:"long",timeZone:"Asia/Dhaka"});
-  return `<div class="rep cb-register">${dcHead(cbRegisterTitle(), book.date, book.date)}
-    <div class="cb-reg-day">${esc(weekday)} · ${dmy(book.date)}</div>
-    <table class="rep-t cb-reg-table"><colgroup><col style="width:5%"><col style="width:32%"><col style="width:15.5%"><col style="width:32%"><col style="width:15.5%"></colgroup>
-    <thead><tr><th>#</th><th>${bi("প্রাপ্তি", "Receipt")}</th><th class="r">৳</th><th>${bi("পরিশোধ", "Payment")}</th><th class="r">৳</th></tr></thead>
-    <tbody>${records || `<tr><td colspan="5">${bi("কোনো লেনদেন নেই", "No transactions")}</td></tr>`}</tbody></table>
-    <div class="cb-reg-groups"><section class="cb-reg-block"><h3>${bi("প্রাপ্তির খাত", "Receipt groups")}</h3>${totals(grouped("r"))}</section>
-    <section class="cb-reg-block"><h3>${bi("পরিশোধের খাত", "Payment groups")}</h3>${totals(grouped("p"))}</section></div>
-    <section class="cb-reg-block"><h3>${bi("নগদ হিসাব", "Cash reconciliation")}</h3>${totals(cbRegisterTotals(book))}</section>
-    <section class="cb-reg-block"><h3>${bi("অন্যান্য সারাংশ", "Reference totals")}</h3>${totals(cbRegisterReferences(ref))}
-    <small>${ref ? bi("সারাংশ নেওয়া হয়েছে", "Summary captured") + " · " + cbRegisterDate(ref.at) : bi("এই রেকর্ডে সংরক্ষিত সারাংশ নেই", "This record has no saved reference totals")}</small></section>
-    ${book.remarks ? `<section class="cb-reg-block cb-narr">${esc(book.remarks)}</section>` : ""}
-    <div class="rep-ft"><span>${book.status === "final" ? bi("ফাইনাল", "Final") : bi("দিন খোলা", "Day open")} · ${cbRegisterDate(book.updated_at)} · ${esc(book.entered_by || "")}</span><span>NABIAD Smart Finance Suite</span></div></div>`;
+  const grouped = side => totals(CB_CAT[side].filter(key => groups[key]?.a).map(key => [cbCatName(key), groups[key].a])) || `<p class="cb-reg-empty">—</p>`;
+  const weekday = new Date(book.date + "T12:00:00+06:00").toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", {weekday:"long", timeZone:"Asia/Dhaka"});
+  const status = book.status === "final" ? bi("ফাইনাল", "Final") : bi("দিন খোলা", "Day open");
+  return `<div class="rep cb-register">
+    <header class="cb-reg-head"><img src="icon-192.png" alt=""><div><b>NABIAD GROUP</b><h2>${cbRegisterTitle()}</h2></div></header>
+    <div class="cb-reg-day"><span>${bi("বার", "Day")} · <b>${esc(weekday)}</b></span><span>${bi("তারিখ", "Date")} · <b>${dmy(book.date)}</b></span></div>
+    <table class="rep-t cb-reg-table"><colgroup><col style="width:5%"><col style="width:30%"><col style="width:17.5%"><col style="width:30%"><col style="width:17.5%"></colgroup>
+    <thead><tr><th scope="col">#</th><th scope="col">${cbSideLabel("r")}</th><th scope="col" class="cb-reg-amount">${bi("টাকা", "Amount (Tk.)")}</th><th scope="col">${cbSideLabel("p")}</th><th scope="col" class="cb-reg-amount">${bi("টাকা", "Amount (Tk.)")}</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tbody class="cb-reg-totals">
+      <tr><td></td><th scope="row">${totalReceipt}</th><td class="cb-reg-amount">${cbRegisterMoney(receipt)}</td><th scope="row">${totalPayment}</th><td class="cb-reg-amount">${cbRegisterMoney(payment)}</td></tr>
+      <tr><td></td><th scope="row">${bi("শুরুর নগদসহ মোট", "Opening cash + receipts")}</th><td class="cb-reg-amount">${cbRegisterMoney(Math.round((opening + receipt) * 100) / 100)}</td>
+      <th scope="row">${bi("দিনশেষে হাতে নগদ", "Closing cash · counted")}</th><td class="cb-reg-amount">${cbRegisterMoney(counted)}</td></tr>
+    </tbody></table>
+    <div class="cb-reg-groups">
+      <section class="cb-reg-block"><h3>${bi("প্রাপ্তির খাত", "Receipt groups")}</h3>${grouped("r")}</section>
+      <section class="cb-reg-block"><h3>${bi("পরিশোধের খাত", "Payment groups")}</h3>${grouped("p")}</section>
+    </div>
+    <section class="cb-reg-block"><h3>${bi("দিনশেষের সারাংশ", "Closing summary")}</h3>${totals([
+      [bi("হিসাব অনুযায়ী হাতে নগদ", "Expected closing cash"), expected],
+      [bi("গুনে পাওয়া নগদের পার্থক্য", "Counted cash difference"), difference],
+      ...cbRegisterReferences(ref)
+    ])}
+    <small>${ref?.at ? bi("সারাংশ নেওয়া হয়েছে", "Summary captured") + " · " + cbRegisterDate(ref.at) : bi("সংরক্ষিত ব্যাংক ও কালেকশন সারাংশ নেই", "No saved bank and collection totals")}</small></section>
+    ${book.remarks ? `<section class="cb-reg-block cb-narr"><h3>${bi("মন্তব্য", "Remarks")}</h3>${esc(book.remarks)}</section>` : ""}
+    <div class="rep-ft"><span>${[status, book.updated_at && cbRegisterDate(book.updated_at), esc(book.entered_by || "")].filter(Boolean).join(" · ")}</span><span>NABIAD Smart Finance Suite</span></div></div>`;
 }
 async function cbRegisterExcel(book) {
   await loadScript("vendor/xlsx.min.js");
