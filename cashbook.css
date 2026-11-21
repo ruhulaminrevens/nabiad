@@ -17,7 +17,8 @@
 .cbr .cbx2:hover{color:var(--rd)}
 .cbr .cbac{grid-column:2/6}
 .cbr .cbac[hidden]{display:none}
-.cbadd{margin-top:8px}
+.cb-row-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+.cb-row-actions .cbadd { width: clamp(96px, 50%, 180px); min-height: 44px; justify-content: center; }
 .cbsg{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .cbsg h4{margin:0 0 6px;font-size:13px}
 .cbs{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line2);font-size:13.5px}
