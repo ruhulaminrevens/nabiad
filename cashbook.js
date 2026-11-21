@@ -341,7 +341,7 @@ async function vCashBook(v) {
   const t0 = today(), last = [S.lastBook, S.lastCash].filter(Boolean).sort().pop();
   let date = sessionStorage.getItem("nabiad_cash_date") || (last && last < t0 ? stepDay(last, 1) : t0); sessionStorage.removeItem("nabiad_cash_date"); if (date > t0) date = t0;
   v.innerHTML = head(ROUTES[CUR].t, `<button type="button" class="btn" id="cb-led" title="${bi("লেজার তালিকা", "Ledger list")}">${ico("list")}<span class="lb">${bi("লেজার", "Ledgers")}</span></button><a class="btn" href="#/cashchk" title="${bi("ক্যাশ চেকার", "Cash Checker")}">${ico("check")}<span class="lb">${bi("ক্যাশ চেকার", "Cash Checker")}</span></a><a class="btn" href="#/cashsum" title="${bi("সামারি", "Summary")}">${ico("chart")}<span class="lb">${bi("সামারি", "Summary")}</span></a>`, "tc") + `<div class="card tbar navcard">${dateNav("cb", date)}<div id="cb-msg" style="margin-top:10px"></div></div><div id="cb-body"><div class="card empty">${bi("লোড হচ্ছে…", "Loading…")}</div></div>`;
-  const body = $("#cb-body", v); let autoT = null, drawId = 0, pendingDraft = null, saving = false, focusout = null;
+  const body = $("#cb-body", v); let activitySide = "r", autoT = null, drawId = 0, pendingDraft = null, saving = false, focusout = null;
   const flushDraft = () => { clearTimeout(autoT); const fn = pendingDraft; pendingDraft = null; fn?.(); };
   async function draw() {
     if (saving) return;
@@ -396,21 +396,44 @@ async function vCashBook(v) {
         <div class="cbh"><span>#</span><span>${bi("বিবরণ", "Particulars")}</span><span>${bi("টাকা", "Amount")}</span><span>${cbVoucherLabel(t)} <span class="cb-ref-opt">(${bi("ঐচ্ছিক", "optional")})</span></span></div>
         <div class="cbrows" data-t="${t}">${entries.map((entry,i) => rowHtml(t,i,entry)).join("")}</div>${locked ? "" : `<button type="button" class="btn sm cbadd" data-t="${t}">+ ${bi("লাইন", "Line")}</button>`}</div>`;
     };
-    body.innerHTML = `<div class="card csec c-open"><div class="csh"><h3 id="cb-opening-label">${bi("শুরুর নগদ", "Opening cash")}</h3><div class="cbopening-controls">${po != null && !locked && admin ? `<button type="button" class="btn sm" id="cb-ounlock">✎ ${bi("বদলান", "Edit")}</button>` : ""}<input class="cell cbopen" id="cb-oc" aria-labelledby="cb-opening-label" value="${fmtIn(oc)}" inputmode="decimal" ${oLocked ? "disabled" : ""}></div></div></div>
-      <div class="grid g2 cbgrid" style="margin-top:14px">${side("r", cbSideLabel("r"), "c-rec")}${side("p", cbSideLabel("p"), "c-pay")}</div>
-      <div class="card csec" style="margin-top:14px"><div class="csh"><h3>${bi("খাত অনুযায়ী যোগফল (অটো গ্রুপ)", "Totals by category (auto-grouped)")}</h3></div><div id="cb-sum"></div></div>
-      <div class="card csec c-close" style="margin-top:14px"><div class="csh"><h3>${bi("হিসাব মেলানো", "Balance")}</h3></div>
-       <div class="cbox"><div><span>Opening</span><b class="num" id="cb-x1"></b></div><div class="gr"><span>+ ${cbSideLabel("r")}</span><b class="num" id="cb-x2"></b></div><div class="rd"><span>− ${cbSideLabel("p")}</span><b class="num" id="cb-x3"></b></div><div class="eq"><span>= ${bi("হাতে থাকার কথা", "Expected in hand")}</span><b class="num" id="cb-x4"></b></div></div>
-       <div class="crow hl"><label>${bi("হাতে ক্যাশ", "Cash in hand")} <span class="mut xs">(${bi("গুনে লিখুন", "count and enter")})</span></label><input class="cell" id="cb-ch" value="${src?.cash_in_hand == null ? "" : fmtIn(src.cash_in_hand)}" inputmode="decimal" placeholder="${bi("হাতে নগদ", "cash in hand")}" ${dis}></div>
-       <div class="crow"><label>${bi("পার্থক্য", "Difference")}</label><b class="num" id="cb-df">—</b></div>
-       <div class="crow"><label>${bi("মন্তব্য", "Remarks")}</label><input class="cell t" id="cb-rm" value="${esc(src?.remarks || "")}" ${dis}></div></div>
+    body.innerHTML = `<div class="cb-workspace"><div class="cb-entry"><div class="card csec c-open"><div class="csh"><h3 id="cb-opening-label">${bi("শুরুর নগদ", "Opening cash")}</h3><div class="cbopening-controls">${po != null && !locked && admin ? `<button type="button" class="btn sm" id="cb-ounlock">✎ ${bi("বদলান", "Edit")}</button>` : ""}<input class="cell cbopen" id="cb-oc" aria-labelledby="cb-opening-label" value="${fmtIn(oc)}" inputmode="decimal" ${oLocked ? "disabled" : ""}></div></div></div>
+      <div class="cb-entry-sides">${side("r", cbSideLabel("r"), "c-rec")}${side("p", cbSideLabel("p"), "c-pay")}</div>
+      <div class="card csec"><div class="csh"><h3>${bi("খাত অনুযায়ী যোগফল (অটো গ্রুপ)", "Totals by category (auto-grouped)")}</h3></div><div id="cb-sum"></div></div>
+      <div class="card csec c-close"><div class="csh"><h3>${bi("হিসাব মেলানো", "Balance")}</h3></div>
+       <div class="crow hl"><label for="cb-ch">${bi("হাতে ক্যাশ", "Cash in hand")} <span class="mut xs">(${bi("গুনে লিখুন", "count and enter")})</span></label><input class="cell" id="cb-ch" value="${src?.cash_in_hand == null ? "" : fmtIn(src.cash_in_hand)}" inputmode="decimal" placeholder="${bi("হাতে নগদ", "cash in hand")}" ${dis}></div>
+       <div class="crow"><label for="cb-rm">${bi("মন্তব্য", "Remarks")}</label><input class="cell t" id="cb-rm" value="${esc(src?.remarks || "")}" ${dis}></div></div>
+      ${locked ? "" : `<div class="cbar entry-actions"><button class="btn lg fix" id="cb-draft">${ico("edit")} ${bi("ড্রাফট সেভ", "Save draft")}</button><button class="btn pri lg fix" id="cb-save">${ico("save")} <span class="bl">${bi("ফাইনাল সেভ", "Final save")}<small>${dmy(date)}</small></span></button><div class="hint" id="cb-err"></div><div class="sp"></div><span class="mut sm" id="cb-auto"></span></div>`}
+      </div>
+      <div class="cb-review">
+        <section class="card flush cb-activity" aria-labelledby="cb-activity-title">
+          <div class="ch cb-activity-head"><h3 id="cb-activity-title">${bi("দিনের ক্যাশ লেনদেন", "Cash Book activity")}</h3><time datetime="${date}">${dmy(date)}</time></div>
+          <div class="cb-activity-body">
+            <dl class="cb-activity-totals">
+              <div class="cb-stat-wide"><dt>${bi("শুরুর নগদ", "Opening cash")}</dt><dd id="cb-x1" class="num"></dd></div>
+            </dl>
+            <div class="cb-activity-filters" role="group" aria-label="${bi("লেনদেনের ধরন", "Transaction type")}">
+              ${["r", "p"].map(t => `<button type="button" class="btn sm" data-cb-side="${t}" aria-controls="cb-activity-lines" aria-pressed="false">${cbSideLabel(t)} <span class="cb-side-count"></span></button>`).join("")}
+            </div>
+            <ul id="cb-activity-lines" class="cb-activity-lines" aria-label="${bi("দিনের লেনদেন", "Daily transactions")}" tabindex="0"></ul>
+            <p id="cb-activity-empty" class="mut sm" hidden></p>
+            <dl class="cb-activity-totals">
+              <div class="cb-stat-receipt"><dt>${bi("মোট প্রাপ্তি", "Total Receipt")}</dt><dd id="cb-x2" class="num"></dd></div>
+              <div class="cb-stat-payment"><dt>${bi("মোট পরিশোধ", "Total Payment")}</dt><dd id="cb-x3" class="num"></dd></div>
+              <div class="cb-stat-wide"><dt>${bi("মোট ব্যাংক ক্লোজিং", "Total Bank Closing")}</dt><dd id="cb-bank-total" class="num">—</dd></div>
+              <div><dt>${bi("হাতে থাকার কথা", "Expected cash")}</dt><dd id="cb-x4" class="num"></dd></div>
+              <div class="cb-stat-counted"><dt>${bi("হাতে ক্যাশ", "Cash in hand")}</dt><dd id="cb-counted" class="num"></dd></div>
+              <div class="cb-stat-wide cb-stat-difference"><dt>${bi("পার্থক্য", "Difference")}</dt><dd id="cb-df" class="num">—</dd></div>
+            </dl>
+          </div>
+        </section>
       <div class="card csec cb-references"><div class="csh"><h3>${bi("দৈনিক রেজিস্টার", "Daily register")}</h3>
         ${final ? `<button type="button" id="cb-register" class="btn sm">${ico("book")} ${bi("দেখুন / Export", "View / Export")}</button>` : ""}</div>
         <div id="cb-refs" role="status"></div></div>
-      ${locked ? "" : `<div class="cbar entry-actions"><button class="btn lg fix" id="cb-draft">${ico("edit")} ${bi("ড্রাফট সেভ", "Save draft")}</button><button class="btn pri lg fix" id="cb-save">${ico("save")} <span class="bl">${bi("ফাইনাল সেভ", "Final save")}<small>${dmy(date)}</small></span></button><div class="hint" id="cb-err"></div><div class="sp"></div><span class="mut sm" id="cb-auto"></span></div>`}`;
-    const refs = $("#cb-refs", body);
+      </div></div>`;
+    const refs = $("#cb-refs", body), bankTotal = $("#cb-bank-total", body);
     const showRefs = (snapshot, error = false) => {
-      refs.innerHTML = cbRegisterReferences(snapshot).map(([label, value]) => `<div class="cb-reg-total"><span>${esc(label)}</span><b>${cbRegisterMoney(value)}</b></div>`).join("")
+      bankTotal.textContent = snapshot?.bank == null ? "—" : "৳ " + money(snapshot.bank);
+      refs.innerHTML = cbRegisterReferences(snapshot).slice(1).map(([label, value]) => `<div class="cb-reg-total"><span>${esc(label)}</span><b>${cbRegisterMoney(value)}</b></div>`).join("")
         + `<small class="mut">${error ? bi("সারাংশ আনা যায়নি। ফাইনাল সেভে আবার চেষ্টা হবে।", "Reference totals unavailable. Final save will retry.") : final
           ? snapshot ? bi("ফাইনাল সেভের সারাংশ", "Saved final summary") + " · " + cbRegisterDate(snapshot.at) : bi("এই পুরনো রেকর্ডে সংরক্ষিত সারাংশ নেই", "This older record has no saved reference totals")
           : bi("বর্তমান সারাংশ। ফাইনাল সেভের সময় সংরক্ষিত হবে।", "Current reference totals. Captured on final save.")}</small>`;
@@ -448,10 +471,36 @@ async function vCashBook(v) {
       const oc = num($("#cb-oc", body).value), chv = $("#cb-ch", body).value.trim(), R = out.r.reduce((s, l) => s + l.a, 0), P = out.p.reduce((s, l) => s + l.a, 0);
       return { bad, noName, noCat, noAc, noAmount, row: { date, opening_cash: oc, lines: out, total_receipt: R, total_payment: P, cash_in_hand: chv === "" ? null : num(chv), remarks: $("#cb-rm", body).value.trim() || null } };
     };
+    const activityButtons = $$("[data-cb-side]", body), activityList = $("#cb-activity-lines", body), activityEmpty = $("#cb-activity-empty", body);
+    const amountLabel = amount => amount == null ? "—" : "৳ " + money(amount);
+    let previewLines, shownLines = "";
+    const showActivity = () => {
+      for (const button of activityButtons) {
+        const side = button.dataset.cbSide;
+        button.setAttribute("aria-pressed", String(side === activitySide));
+        $(".cb-side-count", button).textContent = previewLines[side].length;
+      }
+      const entries = previewLines[activitySide];
+      const html = entries.map(({n, a, ref, c, note}) => `<li><div><strong>${esc(n || bi("বিবরণ বাকি", "Particulars needed"))}</strong>
+        ${ref || c ? `<small>${[ref && cbVoucherLabel(activitySide) + " " + ref, c].filter(Boolean).map(esc).join(" · ")}</small>` : ""}
+        ${note ? `<small class="cb-narr">${esc(note)}</small>` : ""}</div><b class="num">${amountLabel(a)}</b></li>`).join("");
+      if (shownLines !== html) activityList.innerHTML = shownLines = html;
+      activityList.hidden = !entries.length;
+      activityEmpty.hidden = !!entries.length;
+      activityEmpty.textContent = activitySide === "r" ? bi("দেখানোর মতো কোনো প্রাপ্তি নেই।", "No receipt entries to show.") : bi("দেখানোর মতো কোনো পরিশোধ নেই।", "No payment entries to show.");
+    };
+    activityButtons.forEach(button => button.onclick = () => {
+      activitySide = button.dataset.cbSide;
+      showActivity();
+      activityList.scrollTop = 0;
+    });
     const calc = () => {
       const { row: r } = collect(), exp = r.opening_cash + r.total_receipt - r.total_payment;
-      $("#cb-Tr", body).textContent = money0(r.total_receipt); $("#cb-Tp", body).textContent = money0(r.total_payment);
-      $("#cb-x1", body).textContent = money0(r.opening_cash); $("#cb-x2", body).textContent = money0(r.total_receipt); $("#cb-x3", body).textContent = money0(r.total_payment); $("#cb-x4", body).textContent = money0(exp);
+      previewLines = r.lines;
+      showActivity();
+      $("#cb-Tr", body).textContent = money(r.total_receipt); $("#cb-Tp", body).textContent = money(r.total_payment);
+      $("#cb-x1", body).textContent = amountLabel(r.opening_cash); $("#cb-x2", body).textContent = amountLabel(r.total_receipt); $("#cb-x3", body).textContent = amountLabel(r.total_payment); $("#cb-x4", body).textContent = amountLabel(exp);
+      $("#cb-counted", body).textContent = amountLabel(r.cash_in_hand);
       const df = $("#cb-df", body); if (r.cash_in_hand == null) { df.textContent = "—"; df.className = "num"; } else { const d = r.cash_in_hand - exp; df.textContent = Math.abs(d) < 0.5 ? "✔ " + bi("মিলেছে", "matches") : cbSigned(d); df.className = "num b " + (Math.abs(d) < 0.5 ? "gr" : "rd"); }
       const g = cbGroup({ lines: r.lines }), sum = $("#cb-sum", body), chip = (k, a) => `<div class="cbs ${CB_BANK.includes(k) ? "memo" : ""}"><span>${esc(cbCatName(k))}</span><b class="num">${money0(a)}</b></div>`;
       const mk = t => CB_CAT[t].filter(k => g.items[k]?.a).map(k => chip(k, g.items[k].a)).join("") || `<span class="mut sm">—</span>`;
@@ -503,8 +552,9 @@ async function vCashBook(v) {
       return box.lastElementChild;
     };
     body.oninput = e => {
+      const row = e.target.closest(".cbr");
+      if (row) activitySide = row.dataset.t;
       if (e.target.classList.contains("cbname")) {
-        const row = e.target.closest(".cbr");
         delete row.dataset.storedCategory;
         guessRow(row);
       }
@@ -549,7 +599,7 @@ async function vCashBook(v) {
       if (r && e.target.classList.contains("cbac") && e.target.value) {
         e.preventDefault(); goNext(r); return;
       }
-      if (e.target.id === "cb-oc") { e.preventDefault(); $(".cbname", body).focus(); } else if (e.target.id === "cb-ch") { e.preventDefault(); $("#cb-save", body)?.focus(); }
+      if (e.target.id === "cb-oc") { e.preventDefault(); $(".cbname", body)?.focus(); } else if (e.target.id === "cb-ch") { e.preventDefault(); $("#cb-save", body)?.focus(); }
     };
     body.onclick = e => {
       if (locked) return;
