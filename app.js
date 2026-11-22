@@ -414,7 +414,7 @@ const SbAPI = {
   async upsertAccount(a) { const { error } = await sb.from("accounts").upsert(a, { onConflict: "code" }); if (error) throw error; },
   async upsertBook(b) {
     const row = { code: b.code, series: b.series || null, first_leaf: b.first, last_leaf: b.last, track_from: b.track, status: b.status, note: b.note || null }; if (b.id) row.id = b.id;
-    const { data, error } = await sb.from("books").upsert(row).select().single(); if (error) throw error; return data.id;
+    const q = sb.from("books"), { data, error } = await (b.id ? q.upsert(row) : q.insert(row)).select().single(); if (error) throw error; return data.id;
   },
   async marks() { const { data, error } = await sb.from("leaf_marks").select("*").order("created_at", { ascending: false }).limit(5000); if (error) throw error; return data.map(markFrom); },
   async addMarks(rows) { const { error } = await sb.from("leaf_marks").insert(rows.map(r => ({ code: r.code, leaf_no: r.no, kind: r.kind, note: r.note || null, photo: r.photo || null, entered_by: S.me.name, user_id: S.me.id }))); if (error) throw error; },
@@ -657,6 +657,8 @@ function bookForLeaf(code, no) {
   }
   return latest && (latest.last == null || no <= latest.last) ? latest : null;
 }
+const canAddBook = () => S.me.role === "admin" || (S.me.role === "staff" && moduleCan("cheque", "entry"));
+const noBookMsg = (code, no) => bi(`${code} · ${no} কোনো রেজিস্টার্ড চেক বইয়ে নেই — আগে চেক বই যোগ করুন।`, `${code} · ${no} is not in any registered cheque book — register the cheque book first.`);
 const leafLabel = (code, no) => { const b = bookForLeaf(code, no); return (b?.series ? b.series + " " : "") + no; };
 function bookLedger() {
   const accounts = new Map();
@@ -1214,8 +1216,9 @@ async function vEntry(v) {
     $e("e-amthint").textContent = amt ? "৳ " + money(amt) : ""; const el = $e("e-sum");
     if (code && no) {
       const dup = S.cheques.find(c => c.code === code && c.no === +no);
-      el.style.display = ""; el.className = "s4 sumbox" + (dup ? " dup" : "");
-      el.innerHTML = dup ? `⛔ <b>${esc(code)} · ${no}</b> আগেই এন্ট্রি আছে (${dmy(dup.date)}, ৳ ${money(dup.amount)}, ${dup.status})` : `<span class="tag">${esc(code)}</span><span>চেক নং <b>${no}</b></span><span class="big num">৳ ${Number.isFinite(amt) ? money(amt) : "—"}</span><span class="mut">${esc((st.purpose || "খাত বাছুন").split(" (")[0])}</span>`;
+      const nobk = !dup && !bookForLeaf(code, +no);
+      el.style.display = ""; el.className = "s4 sumbox" + (dup || nobk ? " dup" : "");
+      el.innerHTML = dup ? `⛔ <b>${esc(code)} · ${no}</b> আগেই এন্ট্রি আছে (${dmy(dup.date)}, ৳ ${money(dup.amount)}, ${dup.status})` : nobk ? `⛔ <b>${esc(code)} · ${no}</b> ${bi("কোনো রেজিস্টার্ড চেক বইয়ে নেই — আগে বই যোগ করুন", "is not in any registered cheque book — register the book first")}` : `<span class="tag">${esc(code)}</span><span>চেক নং <b>${no}</b></span><span class="big num">৳ ${Number.isFinite(amt) ? money(amt) : "—"}</span><span class="mut">${esc((st.purpose || "খাত বাছুন").split(" (")[0])}</span>`;
     } else el.style.display = "none";
   }
   ["e-no", "e-amt"].forEach(i => $e(i).addEventListener("input", sum));
@@ -1356,6 +1359,11 @@ async function vEntry(v) {
     if (k === "own" && !toac.get()) return err.textContent = "কোন A/C তে জমা — বাছুন", $e("e-toac").focus();
     if (k === "own" && toac.get().value === code) return err.textContent = "From ও To একই A/C হতে পারে না";
     if (S.cheques.some(c => c.code === code && c.no === no)) return err.textContent = "এই চেক আগেই এন্ট্রি আছে";
+    if (!bookForLeaf(code, no)) {
+      err.textContent = noBookMsg(code, no) + (canAddBook() ? "" : bi(" Admin-কে চেক বই যোগ করতে বলুন।", " Ask an admin to add the book."));
+      if (canAddBook() && ask(bi("এখনই নতুন চেক বই যোগ করবেন?", "Register a new cheque book now?"))) bookModal({ code, series: "", first: "", last: "", track: "", status: "Active", note: "" }, () => sum());
+      return;
+    }
     const diff = daysBetween(date, today());
     if ((diff > 7 || diff < 0) && !ask(bi(`তারিখ ${dmy(date)} — আজ থেকে ${Math.abs(diff)} দিন ${diff > 0 ? "আগের" : "পরের"}। ঠিক আছে?`, `Date ${dmy(date)} is ${Math.abs(diff)} day(s) ${diff > 0 ? "before" : "after"} today. Is that right?`))) return;
     if (amount >= 1000000 && !ask(bi(`৳ ${money(amount)} — অঙ্ক ঠিক আছে?`, `৳ ${money(amount)} — is the amount right?`))) return;
@@ -1648,6 +1656,7 @@ function editChequeModal(c, after) {
       const purpose = get("p").value, kind = purposeKey(purpose), rawAmount = get("a").value.trim();
       const amount = kind === "cancel" && !rawAmount ? 0 : chequeAmount(rawAmount);
       const taker = get("t").value.trim(), toac = get("o").value.trim();
+      if ((code !== c.code || no !== c.no) && !bookForLeaf(code, no)) { error.textContent = noBookMsg(code, no); return; }
       const fail = (field, message) => { error.textContent = message; get(field).focus(); };
       if (!validChequeDate(date)) return fail("d", bi("সঠিক তারিখ দিন।", "Enter a valid cheque date."));
       if (!code) return fail("c", bi("A/C Code বাছুন।", "Choose an A/C code."));
@@ -2389,7 +2398,7 @@ async function vBooks(v) {
       ["open", bi("ফলো-আপ বাকি", "Open follow-ups"), open]
     ];
     const current = BK_TAB === "books" ? filters.mode : LF_F.st === "open" ? "open" : "";
-    v.innerHTML = head(bi("চেক বই ও মিসিং পাতা", "Cheque Books & Missing Leaves"), (canMark ? `<button class="btn ${admin ? "" : "pri"}" id="bk-mk">${ico("flag")} ${bi("পাতা মার্ক করুন", "Mark leaves")}</button>` : "") + (admin ? `<button class="btn pri" id="bk-add">${ico("plus")} ${bi("নতুন বই", "New book")}</button>` : "")) +
+    v.innerHTML = head(bi("চেক বই ও মিসিং পাতা", "Cheque Books & Missing Leaves"), (canMark ? `<button class="btn ${admin ? "" : "pri"}" id="bk-mk">${ico("flag")} ${bi("পাতা মার্ক করুন", "Mark leaves")}</button>` : "") + (canAddBook() ? `<button class="btn pri" id="bk-add">${ico("plus")} ${bi("নতুন বই", "New book")}</button>` : "")) +
       `<div class="bk-overview" aria-label="${bi("চেক বইয়ের সারাংশ", "Cheque book overview")}">${groups.map(([id, label, n]) => `<button type="button" class="bk-stat" data-bk-mode="${id}" aria-pressed="${id === current}" ${S.marksOff && ["low", "missing", "open"].includes(id) ? "disabled" : ""}><span>${label}</span><strong class="num">${["open", "missing", "low"].includes(id) && S.marksOff ? "—" : money0(n)}</strong></button>`).join("")}</div>
       <div class="pbm bk-tabs"><button type="button" class="chip ${BK_TAB === "books" ? "on" : ""}" data-t="books" aria-pressed="${BK_TAB === "books"}">${bi("চেক বই", "Books")}</button><button type="button" class="chip ${BK_TAB === "leaves" ? "on" : ""}" data-t="leaves" aria-pressed="${BK_TAB === "leaves"}">${bi("পাতার রেজিস্টার", "Leaf register")}</button></div><div id="bk-body"></div>`;
     const show = (tab, focus) => { BK_TAB = tab; draw(); $(focus, v)?.focus({ preventScroll: true }); };
