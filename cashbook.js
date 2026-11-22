@@ -157,26 +157,27 @@ function cbChecksHtml(L) {
 const cbRegisterMoney = n => n == null ? "—" : (Math.abs(n) < 0.5 ? 0 : Number(n))
   .toLocaleString("en-IN", {maximumFractionDigits: 0});
 const cbRegisterDate = at => at ? new Date(at).toLocaleString("en-GB", { timeZone: "Asia/Dhaka", dateStyle: "medium", timeStyle: "short" }) + " (Dhaka)" : "—";
-async function cbRegisterSummary(date, allowPartial = false) {
+async function cbRegisterSummary(date, allowPartial = false, saved = null) {
   const sources = [API.balancesOn(date), API.dcolRange(date, date)];
   const [balances, collections] = await (allowPartial
     ? Promise.allSettled(sources).then(results => results.map(result => result.value))
     : Promise.all(sources));
-  const codes = S.accounts.filter(a => a.daily).map(a => a.code);
-  const bank = codes.map(code => balances?.[code]?.total).filter(n => n != null);
+  const bank = balances == null ? saved?.bank ?? null : cashBankTotal(Object.fromEntries(
+    S.accounts.filter(a => a.daily && balances[a.code]).map(a => [a.code, balances[a.code]])
+  ));
   const approved = collections?.filter(c => c.date === date && c.status === "approved");
   const sum = (rows, amount) => rows.reduce((t, row) => t + Math.round(Number(amount(row)) * 100), 0) / 100;
   return {
     at: new Date().toISOString(),
-    bank: bank.length ? sum(bank, n => n) : null,
-    collection: approved == null ? null : sum(approved, c => c.amount),
+    bank,
+    collection: approved == null ? saved?.collection ?? null : sum(approved, c => c.amount),
     cash: approved == null ? null : sum(approved.filter(c => String(c.account || "").trim().toLowerCase() === "cash"), c => c.amount)
   };
 }
 function cbRegisterReferences(snapshot) {
   return [
     [bi("মোট ব্যাংক ক্লোজিং", "Total Bank Closing"), snapshot?.bank ?? null],
-    [bi("নাবিয়াদ ডিস্ট্রিবিউশন · মোট অনুমোদিত কালেকশন", "Nabiad Distribution · All approved collections"), snapshot?.collection ?? null]
+    [bi("ডিস্ট্রিবিউশন কালেকশন", "Distribution Collection"), snapshot?.collection ?? null]
   ];
 }
 const cbIsTallyReport = book => book?.source === "tally" && !book.importedForCashBook;
@@ -254,7 +255,7 @@ function cbRegisterTotals(book) {
     [bi("হাতে থাকার কথা", "Expected cash"), expected],
     [bi("গুনে পাওয়া নগদ", "Counted cash"), counted],
     [bi("পার্থক্য", "Difference"), counted == null || expected == null ? null : round(counted - expected)],
-    [bi("নগদ চলাচল (প্রাপ্তি − পরিশোধ)", "Net cash movement (receipts − payments)"), movement]
+    [bi("নিট নগদ প্রবাহ", "Net cash movement"), movement]
   ];
 }
 const cbRegisterTitle = () => bi("দৈনিক ক্যাশ রেজিস্টার", "Daily Cash Register");
@@ -284,6 +285,26 @@ const cbPendingPartyRef = (line, rawTally) =>
   !rawTally && line?.needsPartyName ? cbPendingParty() + " · " + line.sourceRef : "";
 const cbRegisterNoteTitle = () => bi("নোট", "Note");
 const cbRegisterNoteRows = Array.from({length: 5}, (_, i) => [i + 1, i + 6]);
+const cbNotesPrefix = "cash-book-notes:v1:";
+function cbReadNotes(remarks) {
+  let values = [remarks || ""];
+  if (typeof remarks === "string" && remarks.startsWith(cbNotesPrefix)) {
+    try {
+      const stored = JSON.parse(remarks.slice(cbNotesPrefix.length));
+      if (Array.isArray(stored)) values = stored;
+    } catch { /* Preserve unrecognized remarks as the first note. */ }
+  }
+  return Array.from({length: 10}, (_, i) => typeof values[i] === "string" ? values[i] : "");
+}
+function cbWriteNotes(values) {
+  const notes = values.map(value => value.trim());
+  return notes.some(Boolean) ? cbNotesPrefix + JSON.stringify(notes) : "";
+}
+function cbNotesText(remarks) {
+  if (typeof remarks !== "string") return "";
+  if (!remarks.startsWith(cbNotesPrefix)) return remarks;
+  return cbReadNotes(remarks).map((note, i) => note ? `${i + 1}. ${note}` : "").filter(Boolean).join("\n");
+}
 
 function cbRegisterSheet(book, paper = false) {
   const lines = book.lines || {}, receipts = lines.r || [], payments = lines.p || [], ref = lines.register;
@@ -292,7 +313,7 @@ function cbRegisterSheet(book, paper = false) {
   const openingLabel = bi("শুরুর নগদ", "Opening cash");
   const totalReceipt = bi("মোট প্রাপ্তি", "Total receipts");
   const totalPayment = bi("মোট পরিশোধ", "Total payments");
-  const rawTally = cbIsTallyReport(book);
+  const rawTally = cbIsTallyReport(book), notes = cbReadNotes(book.remarks);
   const label = (line, side) => line ? `<strong>${esc(cbRegisterLineLabel(line, rawTally))}</strong>
     ${line.c ? `<small>${esc(line.c)}</small>` : ""}
     ${line.ref && !rawTally ? `<small>${cbVoucherLabel(side)} · ${esc(line.ref)}</small>` : ""}
@@ -322,7 +343,7 @@ function cbRegisterSheet(book, paper = false) {
       <th scope="row">${bi("দিনশেষে হাতে নগদ", "Closing cash · counted")}</th><td class="cb-reg-amount">${cbRegisterMoney(counted)}</td></tr>
     </tbody></table>
     ${rawTally ? "" : `<section class="cb-reg-block cb-reg-notes"><h3>${cbRegisterNoteTitle()}</h3>
-      <ol>${cbRegisterNoteRows.flat().map(n => `<li><span>${n}.</span><span class="cb-note-line"></span></li>`).join("")}</ol>
+      <ol>${cbRegisterNoteRows.flat().map(n => `<li><span>${n}.</span><span class="cb-note-line">${esc(notes[n - 1])}</span></li>`).join("")}</ol>
     </section>`}
     <div class="cb-reg-end">
     <section class="cb-reg-block cb-reg-closing"><h3>${bi("দিনশেষের সারাংশ", "Closing summary")}</h3><div class="cb-reg-closing-grid">${totals([
@@ -332,7 +353,6 @@ function cbRegisterSheet(book, paper = false) {
       [bi("গুনে পাওয়া নগদের পার্থক্য", "Counted cash difference"), difference],
       ...cbRegisterReferences(ref)
     ])}</div></section>
-    ${book.remarks ? `<section class="cb-reg-block cb-narr"><h3>${bi("মন্তব্য", "Remarks")}</h3>${esc(book.remarks)}</section>` : ""}
     ${rawTally ? "" : `<div class="cb-reg-signatures">
       ${cbRegisterSigners().map(label => `<div>${esc(label)}</div>`).join("")}
     </div>`}
@@ -341,7 +361,8 @@ function cbRegisterSheet(book, paper = false) {
 async function cbRegisterExcel(book) {
   await loadScript("vendor/xlsx.min.js");
   const lines = book.lines || {}, ref = lines.register;
-  const rawTally = cbIsTallyReport(book);
+  const rawTally = cbIsTallyReport(book), notes = cbReadNotes(book.remarks);
+  const noteCell = n => `${n}. ${notes[n - 1] || "____________________________________"}`;
   const entry = l => [cbRegisterLineLabel(l, rawTally), l?.a ?? null,
     ...(!rawTally ? [l?.ref || (l?.needsPartyName ? l.sourceRef : "")] : []),
     [cbPendingPartyRef(l, rawTally), l?.note].filter(Boolean).join(" · ")];
@@ -352,10 +373,9 @@ async function cbRegisterExcel(book) {
     ["#", ...headings("r"), ...headings("p")],
     ...rows, [],
     ...(rawTally ? [] : [[cbRegisterNoteTitle()], ...cbRegisterNoteRows.map(([left, right]) =>
-      [left + ". ____________________________________", null, null, null, null, right + ". ____________________________________"]), []]),
+      [noteCell(left), null, null, null, null, noteCell(right)]), []]),
     [bi("দিনশেষের সারাংশ", "Closing summary")], ...cbRegisterTotals(book), ...cbRegisterReferences(ref),
-    ...(cbRegisterWarning(book) ? [[cbRegisterWarning(book)]] : []),
-    [bi("মন্তব্য", "Remarks"), book.remarks || ""]
+    ...(cbRegisterWarning(book) ? [[cbRegisterWarning(book)]] : [])
   ];
   const signers = rawTally ? [] : cbRegisterSigners();
   const signatureRow = cells.length + 3;
@@ -609,16 +629,27 @@ async function vCashBook(v) {
   v.innerHTML = head(ROUTES[CUR].t, `<button type="button" class="btn cb-action" id="cb-led">${ico("list")}<span>${bi("লেজার", "Ledgers")}</span></button>
     <a class="btn cb-action" href="#/cashchk" id="cb-checker">${ico("check")}<span>${bi("ক্যাশ চেকার", "Cash Checker")}</span></a>
     <a class="btn cb-action cb-summary-link" href="#/cashsum">${ico("chart")}<span>${bi("সামারি", "Summary")}</span></a>`, "tc cb-page-head") +
-    `<div class="card tbar navcard">${dateNav("cb", initial > localDay ? localDay : initial)}<div id="cb-msg"></div></div><div id="cb-body"></div>`;
+    `<div class="card tbar navcard cb-date-card"><div class="cb-date-row">
+      ${dateNav("cb", initial > localDay ? localDay : initial)}
+      <dl class="cb-date-stats" aria-label="${bi("দিনের সারাংশ", "Daily totals")}">
+        <div><dt>${bi("মোট ব্যাংক ক্লোজিং", "Total Bank Closing")}</dt><dd id="cb-bank-total">—</dd></div>
+        <div><dt>${bi("ডিস্ট্রিবিউশন কালেকশন", "Distribution Collection")}</dt><dd id="cb-collection-total">—</dd></div>
+        <div><dt>${bi("নগদের পার্থক্য", "Cash Difference")}</dt><dd id="cb-df">—</dd></div>
+      </dl></div><div id="cb-msg"></div></div><div id="cb-body"></div>`;
   const body = $("#cb-body", v), dateInput = $("#cb-d", v), msg = $("#cb-msg", v);
   dateInput.max = localDay;
-  let revision = 0, activitySide = "r", saving = false, canSwitchDate = () => true;
+  let revision = 0, activitySide = "r", reportMode = "app", saving = false, canSwitchDate = () => true;
+  const dateStat = key => $("#cb-" + key, v);
   const sides = ["r", "p"];
   $("#cb-led", v).onclick = () => cbLedgerModal();
   $("#cb-checker", v).onclick = () => sessionStorage.setItem("nabiad_cash_date", dateInput.value);
-  async function draw(focusSide = null) {
+  async function draw(focusSide = null, reopenNotes = false) {
     const date = dateInput.value, drawId = ++revision;
     canSwitchDate = () => true;
+    for (const key of ["bank-total", "collection-total", "df"]) {
+      dateStat(key).textContent = "—";
+      dateStat(key).className = "";
+    }
     if (!date || date > localDay) {
       msg.textContent = bi("আজ অথবা আগের একটি তারিখ বাছুন।", "Choose today or an earlier date.");
       body.replaceChildren();
@@ -673,14 +704,16 @@ async function vCashBook(v) {
       }
     }
     const moneyText = amount => amount == null ? "—" : "৳ " + money(amount);
-    const reference = { value: lines.register || null };
+    const references = cbRegisterSummary(date, true, lines.register);
+    const savedRemarks = book?.remarks ?? "";
+    const notes = pending.notes || cbReadNotes(pending.balance?.remarks ?? savedRemarks);
     let tallyRequest;
     const tallyVouchers = () => tallyRequest ||= API.cashTallyRange(date, date)
       .catch(error => { tallyRequest = null; throw error; });
     const tallySnapshot = async forCashBook => {
       const [vouchers, ledgers, details, legacy, savedReferences] = await Promise.all([
         tallyVouchers(), cbLedLoad(), cbTallyReportDetails(date, forCashBook), API.cashOn(date).catch(() => null),
-        cbRegisterSummary(date, true)
+        references
       ]);
       const cash = cashUseBook(book, legacy) ? book : legacy;
       return cbTallyRegister(date, vouchers, ledgers.list, details, cash, savedReferences, previous);
@@ -711,7 +744,13 @@ async function vCashBook(v) {
         <div class="crow hl"><label for="cb-ch">${bi("হাতে ক্যাশ (গুনে লিখুন)", "Cash in hand (count and enter)")}</label><div class="cb-count-input">
           <input class="cell" id="cb-ch" inputmode="decimal" aria-describedby="cb-inline-closing cb-inline-diff" value="${esc(pending.balance?.cash_in_hand ?? (book?.cash_in_hand == null ? "" : fmtIn(book.cash_in_hand)))}" ${mayBalance ? "" : "disabled"}>
           <div class="cb-inline-balance"><strong id="cb-inline-closing"></strong><strong id="cb-inline-diff"></strong></div></div></div>
-        <div class="crow"><label for="cb-rm">${bi("মন্তব্য", "Remarks")}</label><input class="cell t" id="cb-rm" value="${esc(pending.balance?.remarks ?? book?.remarks ?? "")}" ${mayBalance ? "" : "disabled"}></div>
+        <details class="cb-day-notes"${reopenNotes ? " open" : ""}>
+          <summary>${ico("list")} <span>${cbRegisterNoteTitle()}</span></summary>
+          <div class="cb-note-fields">
+            ${notes.map((note, i) => `<label><span>${i + 1}</span><textarea class="in" rows="2" id="cb-note-${i + 1}" aria-label="${cbRegisterNoteTitle()} ${i + 1}" ${mayBalance ? "" : "readonly"}>${esc(note)}</textarea></label>`).join("")}
+          </div>
+          ${mayBalance ? `<div class="cb-row-actions"><button type="button" class="btn" id="cb-note-save" disabled>${ico("save")} ${bi("নোট সেভ করুন", "Save notes")}</button></div>` : ""}
+        </details>
         ${mayBalance ? `<div class="cb-row-actions">${final
           ? `<button type="button" class="btn" id="cb-balance">${bi("নগদের হিসাব আপডেট", "Update cash count")}</button>`
           : `<button type="button" class="btn pri" id="cb-close-day">${ico("check")} ${bi("দিন বন্ধ করুন", "Close day")}</button>`}</div>` : ""}
@@ -720,29 +759,26 @@ async function vCashBook(v) {
       </div><div class="cb-review"><section class="card flush cb-activity" aria-labelledby="cb-activity-title">
         <div class="ch cb-activity-head"><h3 id="cb-activity-title">${bi("দিনের ক্যাশ লেনদেন", "Cash Book activity")}</h3><time datetime="${date}">${dmy(date)}</time></div>
         <div class="cb-activity-body">
-          <label class="cb-report-source">${bi("রিপোর্টের উৎস", "Report source")}
+          <div class="cb-report-controls"><label class="cb-report-source">${bi("রিপোর্টের উৎস", "Report source")}
             <select class="in" id="cb-report-source">
               <option value="app">${bi("ক্যাশ খাতা", "Cash Book")}</option>
               <option value="tally">${bi("Tally ভাউচার", "Tally vouchers")}</option>
             </select>
-          </label>
+          </label><button type="button" id="cb-register" class="btn pri">${ico("table")}<span>${bi("দেখুন / Export", "View / Export")}</span></button></div>
           <p id="cb-activity-source" class="mut sm" role="status"></p>
           <dl class="cb-activity-totals"><div class="cb-stat-wide"><dt>${bi("শুরুর নগদ", "Opening cash")}</dt><dd id="cb-x1"></dd></div></dl>
           <div class="cb-activity-filters" role="group" aria-label="${bi("লেনদেনের ধরন", "Transaction type")}">
             ${sides.map(side => `<button type="button" class="btn sm" data-cb-side="${side}" aria-controls="cb-activity-lines" aria-pressed="false">${cbSideLabel(side)} <span class="cb-side-count">${(lines[side] || []).length}</span></button>`).join("")}
           </div>
-          <ul id="cb-activity-lines" class="cb-activity-lines" tabindex="0"></ul><p id="cb-activity-empty" class="mut sm" hidden></p>
+          <ul id="cb-activity-lines" class="cb-activity-lines"></ul><p id="cb-activity-empty" class="mut sm" hidden></p>
           <dl class="cb-activity-totals">
             <div class="cb-stat-receipt"><dt>${bi("মোট প্রাপ্তি", "Total Receipt")}</dt><dd id="cb-x2"></dd></div>
             <div class="cb-stat-payment"><dt>${bi("মোট পরিশোধ", "Total Payment")}</dt><dd id="cb-x3"></dd></div>
-            <div class="cb-stat-wide"><dt>${bi("মোট ব্যাংক ক্লোজিং", "Total Bank Closing")}</dt><dd id="cb-bank-total">—</dd></div>
+            <div class="cb-stat-wide"><dt>${bi("নিট নগদ প্রবাহ", "Net cash movement")}</dt><dd id="cb-movement"></dd></div>
             <div><dt>${bi("হাতে থাকার কথা", "Expected cash")}</dt><dd id="cb-x4"></dd></div>
             <div class="cb-stat-counted"><dt>${bi("হাতে ক্যাশ", "Cash in hand")}</dt><dd id="cb-counted"></dd></div>
-            <div class="cb-stat-wide cb-stat-difference"><dt>${bi("পার্থক্য", "Difference")}</dt><dd id="cb-df"></dd></div>
           </dl>
         </div></section>
-        <section class="card csec cb-references"><div class="csh"><h3>${bi("দৈনিক রেজিস্টার", "Daily register")}</h3>
-          <button type="button" id="cb-register" class="btn pri">${ico("table")}<span>${bi("দেখুন / Export", "View / Export")}</span></button></div><div id="cb-refs" role="status"></div></section>
       </div></div>`;
     const get = key => $("#cb-" + key, body);
     const fail = error => { get("err").textContent = cbWorkflowError(error); toast(get("err").textContent, "err"); };
@@ -778,7 +814,8 @@ async function vCashBook(v) {
       if (changed.status === "final" && (!S.lastBook || date > S.lastBook)) { S.lastBook = date; refreshBadges(); }
       cbLearn(true);
       toast(action === "close" ? bi("দিনের হিসাব বন্ধ হয়েছে", "Day closed") : bi("আপডেট হয়েছে", "Cash Book updated"));
-      await draw(action === "add" && matchMedia("(pointer:fine)").matches ? side : null);
+      const reopen = !!$(".cb-day-notes[open]", body);
+      await draw(action === "add" && matchMedia("(pointer:fine)").matches ? side : null, reopen);
     };
 
     let activityBook = null;
@@ -802,10 +839,11 @@ async function vCashBook(v) {
       get("activity-lines").hidden = !entries.length;
       get("activity-empty").hidden = !activityBook || !!entries.length;
       const values = activityBook ? cbRegisterTotals(activityBook).map(row => row[1]) : [];
-      const [open, receipts, payments, expected, counted, diff] = values;
-      for (const [id, value] of Object.entries({x1: open, x2: receipts, x3: payments, x4: expected, counted, "bank-total": activityBook?.lines.register?.bank})) get(id).textContent = moneyText(value);
-      get("df").className = diff == null ? "mut" : diff === 0 ? "gr" : diff > 0 ? "am" : "rd";
-      get("df").textContent = diff == null ? "—" : diff === 0 ? bi("৳ ০ · মিলেছে", "৳ 0 · Matches")
+      const [open, receipts, payments, expected, counted, diff, movement] = values;
+      for (const [id, value] of Object.entries({x1: open, x2: receipts, x3: payments, x4: expected, counted, movement})) get(id).textContent = moneyText(value);
+      get("movement").className = movement == null ? "" : movement < 0 ? "rd" : movement > 0 ? "gr" : "";
+      dateStat("df").className = diff == null ? "mut" : diff === 0 ? "gr" : diff > 0 ? "am" : "rd";
+      dateStat("df").textContent = diff == null ? "—" : diff === 0 ? bi("৳ ০ · মিলেছে", "৳ 0 · Matches")
         : moneyText(Math.abs(diff)) + " · " + (diff > 0 ? bi("ক্যাশ বেশি", "Cash over") : bi("ক্যাশ কম", "Cash short"));
       get("activity-empty").textContent = activitySide === "r" ? bi("কোনো প্রাপ্তি নেই।", "No receipts.") : bi("কোনো পরিশোধ নেই।", "No payments.");
     };
@@ -916,8 +954,24 @@ async function vCashBook(v) {
       get("inline-diff").className = tone;
       return {open, counted, diff};
     };
-    for (const id of ["oc", "ch", "rm"]) get(id).oninput = () => {
-      pending.balance = { opening_cash: get("oc").value, cash_in_hand: get("ch").value, remarks: get("rm").value };
+    const currentNotes = () => notes.map((_, i) => get("note-" + (i + 1)).value);
+    const remarks = () => cbWriteNotes(currentNotes());
+    const noteSave = get("note-save");
+    if (noteSave) {
+      noteSave.disabled = remarks() === cbWriteNotes(cbReadNotes(savedRemarks));
+      $$(".cb-note-fields textarea", body).forEach(field => field.oninput = () => {
+        pending.notes = currentNotes();
+        noteSave.disabled = remarks() === cbWriteNotes(cbReadNotes(savedRemarks));
+        storePending();
+      });
+      noteSave.onclick = () => post("balance", null, null, {remarks: remarks()}, () => {
+        delete pending.notes;
+        if (pending.balance) delete pending.balance.remarks;
+      });
+    }
+    for (const id of ["oc", "ch"]) get(id).oninput = () => {
+      if (noteSave) pending.notes = currentNotes();
+      pending.balance = { opening_cash: get("oc").value, cash_in_hand: get("ch").value };
       storePending();
       preview();
     };
@@ -933,31 +987,32 @@ async function vCashBook(v) {
       }
       if (close && !ask(diff ? bi("ক্যাশে পার্থক্য আছে। দিন বন্ধ করবেন?", "Cash differs from the expected amount. Close this day?") : bi("দিনের হিসাব বন্ধ করবেন?", "Close this Cash Book day?"))) return;
       if (close && grouped.warn.noAc) return fail(new Error(bi("ব্যাংকের লাইনগুলোতে A/C নির্বাচন করুন।", "Choose an account on each bank line before closing.")));
-      const data = { ...(admin ? {opening_cash: open} : {}), cash_in_hand: counted, remarks: get("rm").value };
-      await post(close ? "close" : "balance", null, null, data, () => { delete pending.balance; });
+      const data = { ...(admin ? {opening_cash: open} : {}), cash_in_hand: counted, remarks: remarks() };
+      await post(close ? "close" : "balance", null, null, data, () => { delete pending.balance; delete pending.notes; });
     };
     if (get("balance")) get("balance").onclick = () => saveBalance(false);
     if (get("close-day")) get("close-day").onclick = () => saveBalance(true);
-    const showReferences = () => {
-      get("refs").innerHTML = cbRegisterReferences(reference.value).slice(1).map(([label, value]) =>
-        `<div class="cb-reg-total"><span>${esc(label)}</span><b>${moneyText(value)}</b></div>`).join("") +
-        (final && !reference.value ? `<small class="mut">${bi("এই পুরনো দিনের সংরক্ষিত সারাংশ নেই।", "This older day has no saved reference totals.")}</small>` : "");
-    };
     const reportSource = get("report-source");
+    reportSource.value = reportMode;
+    references.then(result => {
+      if (!current()) return;
+      dateStat("bank-total").textContent = moneyText(result.bank);
+      dateStat("collection-total").textContent = moneyText(result.collection);
+    }, () => {});
     let sourceRequest;
     const loadActivity = () => {
       activityBook = null;
       drawActivity();
       const note = get("activity-source");
       note.textContent = bi("ভাউচার লোড হচ্ছে…", "Loading vouchers…");
-      const nativeBook = { ...book, date, opening_cash: opening, lines: { ...lines, register: reference.value } };
+      const nativeBook = { ...book, date, opening_cash: opening, lines: { ...lines } };
       const source = reportSource.value;
-      const requested = cbActivitySnapshot(source, nativeBook, () => tallySnapshot(source === "app"));
+      const requested = Promise.all([cbActivitySnapshot(source, nativeBook, () => tallySnapshot(source === "app")), references])
+        .then(([snapshot, register]) => ({ ...snapshot, lines: { ...snapshot.lines, register } }));
       sourceRequest = requested;
       requested.then(snapshot => {
         if (!current() || sourceRequest !== requested) return;
         activityBook = snapshot;
-        if (snapshot.source !== "tally") snapshot.lines.register = reference.value;
         note.textContent = cbIsTallyReport(snapshot) ? bi("আমদানি করা Tally ভাউচার", "Imported Tally vouchers")
           : snapshot.importedVouchersUnavailable ? bi("আমদানি করা লেনদেন লোড হয়নি।", "Imported transactions could not load.")
           : admin && snapshot.importedForCashBook && !snapshot.importedEditable
@@ -968,7 +1023,7 @@ async function vCashBook(v) {
         note.textContent = bi("ভাউচার লোড হয়নি। অন্য উৎস বেছে নিয়ে আবার চেষ্টা করুন।", "Vouchers could not load. Switch sources and try again.");
       });
     };
-    reportSource.onchange = loadActivity;
+    reportSource.onchange = () => { reportMode = reportSource.value; loadActivity(); };
     const withReport = (button, action) => async () => {
       button.disabled = true;
       try {
@@ -978,15 +1033,9 @@ async function vCashBook(v) {
       } catch (error) { if (current()) toast(cashErr(error), "err"); }
       finally { button.disabled = false; }
     };
-    get("register").onclick = withReport(get("register"), cbRegisterModal);
-    if (!reference.value && !final) cbRegisterSummary(date).then(result => {
-      if (!current()) return;
-      reference.value = result;
-      if (activityBook && activityBook.source !== "tally") { activityBook.lines.register = result; drawActivity(); }
-      showReferences();
-    }, () => { if (current()) get("refs").textContent = bi("সারাংশ পাওয়া যায়নি।", "Reference totals unavailable."); });
-
-    preview(); showReferences(); loadActivity();
+    get("register").onclick = withReport(get("register"), snapshot =>
+      cbRegisterModal({ ...snapshot, remarks: remarks() }));
+    preview(); loadActivity();
   }
   bindDateNav(v, "cb", () => { if (!saving && canSwitchDate()) draw(); });
   await draw();

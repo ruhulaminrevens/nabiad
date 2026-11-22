@@ -3769,7 +3769,7 @@ function cashFromBook(book, openingBank) {
   const totals = cashTotals(items);
   const openingCash = Number(book.opening_cash) || 0;
   return {
-    ...book, items, opening_cash: openingCash, opening_bank: openingBank,
+    ...book, items, remarks: cbNotesText(book.remarks), opening_cash: openingCash, opening_bank: openingBank,
     total_receipt: totals.r, total_payment: totals.p,
     closing: openingBank == null ? null : openingCash + openingBank + totals.r - totals.p
   };
