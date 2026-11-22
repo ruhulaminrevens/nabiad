@@ -2,7 +2,11 @@
    The app is written in Bangla; in English mode every rendered text node, placeholder and title
    is translated from this dictionary (longest phrase first). Short words translate only on exact match. */
 "use strict";
-let LANG = (() => { try { return localStorage.getItem("nabiad_lang") || "bn"; } catch { return "bn"; } })();
+function savedAppLanguage() {
+  try { return localStorage.getItem("nabiad_lang") === "bn" ? "bn" : "en"; }
+  catch { return "en"; }
+}
+let LANG = savedAppLanguage();
 const I18N = {
   // navigation / shell
   "ড্যাশবোর্ড": "Dashboard", "চেক এন্ট্রি": "Cheque Entry", "স্ট্যাটাস": "Status", "চেক তালিকা": "Cheque List", "দৈনিক ক্লোজিং": "Daily Closing",
