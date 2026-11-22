@@ -393,7 +393,14 @@
 .cb-activity-status > p:empty { display: none; }
 .cb-activity-status:not(:has(p:empty)) { margin-bottom: 8px; }
 .cb-activity-status .cb-party-open { flex: none; justify-content: center; min-width: 32px; min-height: 32px; padding: 4px; color: var(--pri-ink); }
-.mback .cb-party-dialog { width: min(420px, 100%); }
+.mback .cb-party-dialog { width: min(600px, 100%); max-width: 600px; }
 .cb-party-vouchers { width: 100%; border-collapse: collapse; }
 .cb-party-vouchers :is(th, td) { padding: 7px 4px; text-align: start; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
-.cb-party-vouchers :is(th, td):last-child { text-align: end; font-variant-numeric: tabular-nums; }
+.cb-party-vouchers :is(th, td):nth-child(2) { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cb-party-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cb-party-edit .in { flex: 1 1 110px; min-width: 0; width: auto; }
+.cb-party-edit .btn { min-height: 34px; }
+.cb-party-status:empty { display: none; }
+@media (max-width: 450px) {
+  .cb-party-edit .in { font-size: 16px; }
+}

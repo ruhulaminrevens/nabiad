@@ -280,20 +280,68 @@ function cbPartyWarning(book) {
     `${count} receipt(s) need party names. Check the original records using the voucher numbers.`
   ) : "";
 }
-function cbPendingReceiptsModal(book) {
+function cbPendingReceiptsModal(book, savePartyName) {
   const rows = cbPendingReceipts(book);
   if (!rows.length) return;
+  const partyName = bi("পার্টির নাম", "Party name");
+  const closeLabel = bi("বন্ধ", "Close");
   modal(`<h2>${bi("পার্টির নাম যাচাই বাকি", "Receipts needing party names")}</h2>
     <div class="modal-body">
       <p class="mut sm">${esc(dmy(book.date))} · ${bi("ভাউচার নম্বর দিয়ে মূল রেকর্ড মিলিয়ে নিন।", "Check the original records using the voucher numbers.")}</p>
       <table class="cb-party-vouchers">
-        <thead><tr><th scope="col">${bi("ভাউচার নম্বর", "Voucher no.")}</th><th scope="col">${bi("অঙ্ক", "Amount")}</th></tr></thead>
-        <tbody>${rows.map(row => `<tr><td>${esc(row.sourceRef)}</td><td>৳ ${money(row.a)}</td></tr>`).join("")}</tbody>
+        <thead><tr><th scope="col">${bi("ভাউচার নম্বর", "Voucher no.")}</th><th scope="col">${bi("অঙ্ক", "Amount")}</th>${savePartyName ? `<th scope="col">${partyName}</th>` : ""}</tr></thead>
+        <tbody>${rows.map((row, index) => `<tr><td>${esc(row.sourceRef)}</td><td>৳ ${money(row.a)}</td>
+          ${savePartyName ? `<td><form class="cb-party-edit" data-party-row="${index}">
+            <input class="in" type="text" aria-label="${esc(partyName + " · " + row.sourceRef)}" placeholder="${esc(partyName)}" maxlength="300" required>
+            <button type="submit" class="btn sm pri">${bi("সেভ", "Save")}</button>
+          </form></td>` : ""}
+          </tr>`).join("")}</tbody>
       </table>
+      <p class="sm cb-party-status" role="status" aria-live="polite"></p>
     </div>
-    <div class="modal-actions"><button type="button" class="btn" id="cb-party-close">${bi("বন্ধ", "Close")}</button></div>`, (root, close) => {
-    $(".modal", root).classList.add("cb-party-dialog");
-    $("#cb-party-close", root).onclick = close;
+    <div class="modal-actions"><button type="button" class="btn" id="cb-party-close">${closeLabel}</button></div>`, (root, close) => {
+    const panel = $(".modal", root), closeButton = $("#cb-party-close", root);
+    panel.classList.add("cb-party-dialog");
+    closeButton.onclick = close;
+    const status = $(".cb-party-status", panel);
+    for (const form of $$("[data-party-row]", panel)) {
+      const field = $("input", form), row = rows[Number(form.dataset.partyRow)];
+      form.onsubmit = async event => {
+        event.preventDefault();
+        const name = field.value.trim();
+        if (!name || tallyLedgerKey(name) === tallyLedgerKey(row.n)) {
+          status.textContent = bi("মূল ভাউচার দেখে সঠিক পার্টির নাম লিখুন।", "Enter the party name from the original voucher.");
+          status.classList.add("rd");
+          field.focus();
+          return;
+        }
+        const buttons = $$("[data-party-row] button", panel);
+        if (buttons.some(button => button.disabled)) return;
+        buttons.forEach(button => { button.disabled = true; });
+        field.disabled = true;
+        status.classList.remove("rd");
+        status.textContent = bi("সেভ হচ্ছে…", "Saving…");
+        try {
+          await savePartyName(row, name);
+          form.closest("tr").remove();
+          if (!panel.isConnected) return;
+          const next = $("[data-party-row] input", panel);
+          $(".cb-party-vouchers", panel).hidden = !next;
+          status.textContent = next
+            ? bi("পার্টির নাম সেভ হয়েছে।", "Party name saved.")
+            : bi("সব পার্টির নাম সেভ হয়েছে।", "All party names saved.");
+          (next || closeButton).focus();
+        } catch (error) {
+          if (!panel.isConnected) return;
+          status.textContent = cbWorkflowError(error);
+          status.classList.add("rd");
+          field.disabled = false;
+          field.focus();
+        } finally {
+          buttons.forEach(button => { button.disabled = false; });
+        }
+      };
+    }
   });
 }
 const cbRegisterWarning = book => book.importedVouchersUnavailable
@@ -794,7 +842,7 @@ async function vCashBook(v) {
             <p id="cb-activity-source" class="mut sm" role="status"></p>
             <button type="button" class="btn sm cb-party-open" id="cb-party-open" aria-haspopup="dialog"
               aria-label="${bi("যাচাই বাকি ভাউচার দেখুন", "View receipts needing party names")}"
-              title="${bi("যাচাই বাকি ভাউচার দেখুন", "View receipts needing party names")}" hidden>${ico("list")}</button>
+              title="${bi("যাচাই বাকি ভাউচার দেখুন", "View receipts needing party names")}" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 5h6v6m0-6-9 9m6-2v6H6V8h6"/></svg></button>
           </div>
           <dl class="cb-activity-totals"><div class="cb-stat-wide"><dt>${bi("শুরুর নগদ", "Opening cash")}</dt><dd id="cb-x1"></dd></div></dl>
           <ol id="cb-activity-lines" class="cb-activity-lines" role="list"></ol><p id="cb-activity-empty" class="mut sm" hidden></p>
@@ -1046,7 +1094,13 @@ async function vCashBook(v) {
       return snapshot;
     });
     const partyButton = get("party-open");
-    partyButton.onclick = () => cbPendingReceiptsModal(activityBook);
+    partyButton.onclick = () => cbPendingReceiptsModal(activityBook, mayUpdateImported() ? async (item, name) => {
+      if (!current() || saving) throw new Error("cashbook_conflict");
+      await API.cbEditImported(date, "r", item, {n: name, a: item.a, ref: item.ref ?? "", note: item.note ?? ""});
+      if (!current()) return;
+      cashBookRequest = null;
+      loadActivity();
+    } : null);
     let sourceRequest;
     const loadActivity = () => {
       partyButton.hidden = true;
