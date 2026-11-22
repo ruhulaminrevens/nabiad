@@ -2099,6 +2099,7 @@ html:has(.bc-register .cbar) #toasts { pointer-events: none; }
 .cp-row-date { display: grid; gap: 2px; }
 .cp-row-actions { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
 .cp-row-actions .btn { min-height: 32px; padding-inline: 7px; }
+.cp-row-actions .btn.rdo { margin-inline-start: 6px; }   /* destructive action: outlined, set apart from View/Edit so it is not hit by accident */
 .cp-activity-footer { padding: 8px 14px; }
 .cp-activity-footer:has(#e-visible:empty):has(#e-more[hidden]) { display: none; }
 .cp-activity-footer .cp-more { margin: 0; }
@@ -2382,3 +2383,9 @@ button.as-kpi[aria-pressed="true"] { border-color: var(--pri); box-shadow: inset
 @media (max-width: 640px) {
   .enquiry-toolbar { align-items: flex-start; flex-direction: column; }
 }
+
+/* Cheque Posting: full-width date + totals strip above the form/activity columns (same pattern as Cash Book) */
+.cq-posting .cp-date-card { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 18px; padding: 12px 14px; }
+.cp-date-card .cp-period { justify-content: flex-start; }
+.cp-date-card .cp-activity-stats { flex: 1 1 22rem; max-width: 46rem; margin: 0; }
+.cp-period [hidden] { display: none !important; }

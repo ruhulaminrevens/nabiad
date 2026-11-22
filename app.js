@@ -938,6 +938,18 @@ async function route() {
   window.scrollTo(0, 0);
 }
 let ROUTE_TOK = 0;
+/* ---------- accessibility: icon-only buttons take their accessible name from the title tooltip ---------- */
+(function () {
+  let queued = false;
+  const label = () => {
+    queued = false;
+    document.querySelectorAll("button[title]:not([aria-label]),a[title]:not([aria-label])").forEach(el => { if (!el.textContent.trim()) el.setAttribute("aria-label", el.getAttribute("title")); });
+  };
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(label); } };
+  new MutationObserver(queue).observe(document.documentElement, { childList: true, subtree: true });
+  queue();
+})();
+
 /* ---------- command palette (Ctrl+K) ---------- */
 function palette() {
   if ($(".pal")) return;
@@ -1102,6 +1114,13 @@ async function vEntry(v) {
   const activitySearchLabel = bi("এই তালিকায় চেক খুঁজুন", "Search this activity");
   v.innerHTML = head("চেক পোস্টিং", `<a class="btn" href="#/books">${ico("book")} ${bi("চেক বই", "Cheque Book")}</a>${moduleCan("cheque", "edit") ? `<a class="btn" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a>` : ""}<a class="btn" href="#/cheques">${ico("list")} ${bi("রেজিস্টার", "Register")}</a>`, "tc cp-header") + `
   <div class="split cq-posting">
+   <div class="card tbar navcard cp-date-card"><div class="cp-period"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true" aria-controls="e-list">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false" aria-controls="e-list">${bi("চেকের তারিখে", "By cheque date")}</button></div>
+       <time id="e-period" class="mut sm num"></time><button type="button" class="btn sm" id="e-dprev" title="${bi("আগের দিন (শুক্রবার বাদ)", "Previous day (skips Friday)")}" hidden>${bi("‹ আগের", "‹ Prev")}</button><input class="in" type="date" id="e-activity-date" aria-label="${dateLabel}" hidden><button type="button" class="btn sm" id="e-dnext" title="${bi("পরের দিন (শুক্রবার বাদ)", "Next day (skips Friday)")}" hidden>${bi("পরের ›", "Next ›")}</button></div>
+    <dl class="cp-activity-stats">
+         <div><dt>${bi("এন্ট্রি", "Entries")}</dt><dd id="e-cnt" class="num"></dd></div>
+         <div><dt>${bi("কার্যকর মোট", "Live amount")}</dt><dd id="e-total" class="num"></dd></div>
+         <div><dt>${bi("অপেক্ষমাণ অঙ্ক", "Pending amount")}</dt><dd id="e-pending-total" class="num"></dd></div>
+       </dl></div>
    <section class="card efc" aria-labelledby="e-title">
     <h2 class="cp-title" id="e-title">${bi("নতুন চেক এন্ট্রি", "New cheque entry")}</h2>
     <div class="fgrid ef">
@@ -1133,13 +1152,6 @@ async function vEntry(v) {
    <section class="card flush cp-activity" aria-labelledby="e-activity-title">
      <div class="ch"><h3 id="e-activity-title">${bi("চেক এন্ট্রি", "Cheque activity")}</h3></div>
      <div class="cp-activity-controls">
-       <div class="cp-period"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true" aria-controls="e-list">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false" aria-controls="e-list">${bi("চেকের তারিখে", "By cheque date")}</button></div>
-       <time id="e-period" class="mut sm num"></time><input class="in" type="date" id="e-activity-date" aria-label="${dateLabel}" hidden></div>
-       <dl class="cp-activity-stats">
-         <div><dt>${bi("এন্ট্রি", "Entries")}</dt><dd id="e-cnt" class="num"></dd></div>
-         <div><dt>${bi("কার্যকর মোট", "Live amount")}</dt><dd id="e-total" class="num"></dd></div>
-         <div><dt>${bi("অপেক্ষমাণ অঙ্ক", "Pending amount")}</dt><dd id="e-pending-total" class="num"></dd></div>
-       </dl>
        <div id="e-review-tools">
          <label class="cp-search"><span aria-hidden="true">${ico("search")}</span><input class="in" type="search" id="e-find" aria-label="${activitySearchLabel}" placeholder="${bi("চেক নং, A/C, ব্যাংক বা অঙ্ক", "Cheque no, A/C, bank or amount")}" autocomplete="off"></label>
          <div class="chips cp-status-chips" id="e-activity-filters" role="group" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}"></div>
@@ -1263,7 +1275,7 @@ async function vEntry(v) {
         <td><div class="cp-row-actions">
           <button type="button" class="btn sm" data-recent="${esc(c.id)}" data-activity-action="view">${bi("দেখুন","View")}</button>
           ${canEditChq(c) ? `<button type="button" class="btn sm" data-recent="${esc(c.id)}" data-activity-action="edit">${bi("এডিট","Edit")}</button>` : ""}
-          ${canDeleteChq(c) ? `<button type="button" class="btn sm bad" data-recent="${esc(c.id)}" data-activity-action="delete">${bi("মুছুন","Delete")}</button>` : ""}
+          ${canDeleteChq(c) ? `<button type="button" class="btn sm rdo" data-recent="${esc(c.id)}" data-activity-action="delete">${bi("মুছুন","Delete")}</button>` : ""}
         </div></td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty cp-empty"><strong>${records.length ? bi("ফিল্টারে কোনো চেক মেলেনি", "No cheques match these filters") : byDate ? bi("এই তারিখে কোনো চেক নেই", "No cheques for this date") : bi("আজ কোনো চেক পোস্ট হয়নি", "No cheques posted today")}</strong>${records.length ? `<button class="btn sm" type="button" id="e-reset-activity">${bi("ফিল্টার মুছুন", "Clear filters")}</button>` : ""}</div>`;
     if (html !== renderedActivity) {
@@ -1283,6 +1295,7 @@ async function vEntry(v) {
     $e("e-period").hidden = mode === "date";
     const activityDate = $e("e-activity-date");
     activityDate.hidden = mode !== "date";
+    $e("e-dprev").hidden = $e("e-dnext").hidden = mode !== "date";
     if (mode === "date" && !activityDate.value) {
       const postingDate = $e("e-date").value;
       activityDate.value = validChequeDate(postingDate) ? postingDate : today();
@@ -1306,6 +1319,13 @@ async function vEntry(v) {
     if (!validChequeDate($e("e-activity-date").value)) $e("e-activity-date").value = today();
     resetActivity("date");
   };
+  const stepActivityDate = dir => {
+    const d = $e("e-activity-date"), next = stepDay(d.value || today(), dir);
+    if (!validChequeDate(next)) return;
+    d.value = next; resetActivity("date");
+  };
+  $e("e-dprev").onclick = () => stepActivityDate(-1);
+  $e("e-dnext").onclick = () => stepActivityDate(1);
   $e("e-find").oninput = () => { activityLimit = activityPageSize; list(); };
   $e("e-activity-filters").onclick = event => {
     const btn = event.target.closest("[data-activity-status]");
