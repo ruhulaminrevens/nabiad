@@ -450,3 +450,4 @@
 .cb-act-amt,.cb-act-amt.gr,.cb-act-amt.rd{color:var(--ink,var(--tx,inherit));font-size:1rem;font-weight:750;font-variant-numeric:tabular-nums}
 .cb-act-h,.cb-activity-lines li.cb-act-row{grid-template-columns:42px minmax(0,1fr) minmax(120px,auto) minmax(120px,auto)}
 .cb-act-amt,.cb-act-h .r{min-width:120px;text-align:right}
+.cb-act-amt,.cb-act-amt.gr,.cb-act-amt.rd{font-size:var(--amt-fs,15px);font-weight:var(--amt-fw,700)}
