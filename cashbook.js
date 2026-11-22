@@ -284,6 +284,7 @@ function cbPendingReceiptsModal(book, savePartyName) {
   const rows = cbPendingReceipts(book);
   if (!rows.length) return;
   const partyName = bi("পার্টির নাম", "Party name");
+  const ledgerItems = savePartyName ? cbLedItems("r") : [];
   const closeLabel = bi("বন্ধ", "Close");
   modal(`<h2>${bi("পার্টির নাম যাচাই বাকি", "Receipts needing party names")}</h2>
     <div class="modal-body">
@@ -292,7 +293,9 @@ function cbPendingReceiptsModal(book, savePartyName) {
         <thead><tr><th scope="col">${bi("ভাউচার নম্বর", "Voucher no.")}</th><th scope="col">${bi("অঙ্ক", "Amount")}</th>${savePartyName ? `<th scope="col">${partyName}</th>` : ""}</tr></thead>
         <tbody>${rows.map((row, index) => `<tr><td>${esc(row.sourceRef)}</td><td>৳ ${money(row.a)}</td>
           ${savePartyName ? `<td><form class="cb-party-edit" data-party-row="${index}">
-            <input class="in" type="text" aria-label="${esc(partyName + " · " + row.sourceRef)}" placeholder="${esc(partyName)}" maxlength="300" required>
+            <div class="cb-party-ledger"><input class="in" type="text" autocomplete="off"
+              aria-label="${esc(partyName + " · " + row.sourceRef)}"
+              placeholder="${bi("পার্টির লেজার খুঁজুন", "Search party ledger")}" maxlength="300" required></div>
             <button type="submit" class="btn sm pri">${bi("সেভ", "Save")}</button>
           </form></td>` : ""}
           </tr>`).join("")}</tbody>
@@ -306,10 +309,13 @@ function cbPendingReceiptsModal(book, savePartyName) {
     const status = $(".cb-party-status", panel);
     for (const form of $$("[data-party-row]", panel)) {
       const field = $("input", form), row = rows[Number(form.dataset.partyRow)];
+      const controlLedger = tallyLedgerKey(row.n);
+      const parties = ledgerItems.filter(item => tallyLedgerKey(item.value) !== controlLedger);
+      suggest(field, () => field.value.trim() ? parties : [], null, {free: true, normalize: cbNorm, max: 15});
       form.onsubmit = async event => {
         event.preventDefault();
         const name = field.value.trim();
-        if (!name || tallyLedgerKey(name) === tallyLedgerKey(row.n)) {
+        if (!name || tallyLedgerKey(name) === controlLedger) {
           status.textContent = bi("মূল ভাউচার দেখে সঠিক পার্টির নাম লিখুন।", "Enter the party name from the original voucher.");
           status.classList.add("rd");
           field.focus();
