@@ -316,7 +316,7 @@ function cbRegisterSheet(book, paper = false) {
     <div class="cb-reg-day"><span>${bi("বার", "Day")} · <b>${esc(weekday)}</b></span><span>${bi("তারিখ", "Date")} · <b>${dmy(book.date)}</b></span></div>
     <div class="cb-reg-day cb-reg-source"><strong>${cbRegisterSource(book)}</strong>
       ${receipts.length || payments.length ? "" : bi("এই তারিখে কোনো লেনদেন নেই।", "No transactions for this date.")}</div>
-    <table class="rep-t cb-reg-table"><colgroup><col style="width:5%"><col style="width:30%"><col style="width:17.5%"><col style="width:30%"><col style="width:17.5%"></colgroup>
+    <table class="rep-t cb-reg-table"><colgroup><col class="cb-reg-col-index"><col class="cb-reg-col-name"><col class="cb-reg-col-amount"><col class="cb-reg-col-name"><col class="cb-reg-col-amount"></colgroup>
     <thead><tr><th scope="col">#</th><th scope="col">${cbSideLabel("r")}</th><th scope="col" class="cb-reg-amount">${bi("টাকা", "Amount (Tk.)")}</th><th scope="col">${cbSideLabel("p")}</th><th scope="col" class="cb-reg-amount">${bi("টাকা", "Amount (Tk.)")}</th></tr></thead>
     <tbody>${rows}</tbody>
     <tbody class="cb-reg-totals">
@@ -406,16 +406,16 @@ function cbRegisterPdf(pages) {
 }
 async function cbRegisterVisual(el, format) {
   await document.fonts?.ready;
-  if (format === "png") return cbCanvasBlob(await dcCanvas(el), "image/png");
-
-  // Match paper layout across devices and capture complete table rows on every page.
+  // Use the same export width on phones and desktops. PDF uses the compact paper layout.
   const stage = document.createElement("div"), paper = el.cloneNode(true);
   stage.className = "cb-export-stage";
-  paper.classList.add("cb-register-paper");
+  stage.setAttribute("aria-hidden", "true");
+  if (format === "pdf") paper.classList.add("cb-register-paper");
   stage.append(paper);
   document.body.append(stage);
   try {
     await document.fonts?.ready;
+    if (format === "png") return cbCanvasBlob(await dcCanvas(paper), "image/png");
     const pages = [];
     const capture = async () => {
       const canvas = await dcCanvas(paper);
@@ -469,14 +469,20 @@ async function cbRegisterVisual(el, format) {
 }
 function cbRegisterModal(book) {
   const name = cbRegisterFilename(book), sheet = cbRegisterSheet(book);
-  modal(`<h2>${cbRegisterTitle()}</h2><div class="modal-actions cb-register-actions">
-    ${["xlsx", "pdf", "png"].map((f, i) => `<button type="button" class="btn" data-register-format="${f}">${["Excel", "PDF", "Image"][i]}</button>`).join("")}
-    <button type="button" class="btn" data-register-print>${bi("প্রিন্ট", "Print")}</button>
-    <button type="button" class="btn" data-register-share hidden>${bi("ফাইল শেয়ার", "Share file")}</button>
-    <button type="button" class="btn" data-register-close>${bi("বন্ধ", "Close")}</button>
-    <span class="mut sm" data-register-status role="status"></span></div><div class="rep-scroll">${sheet}</div>`, (root, close) => {
+  const closeLabel = bi("বন্ধ", "Close");
+  const formats = [["xlsx", "table", "Excel"], ["pdf", "list", "PDF"], ["png", "img", bi("ছবি", "Image")]];
+  modal(`<h2 aria-label="${cbRegisterTitle()}"><span>${cbRegisterTitle()}</span>
+    <button type="button" class="cb-register-close" data-register-close aria-label="${closeLabel}" title="${closeLabel}">${ico("x")}</button></h2>
+    <div class="modal-body cb-register-preview">${sheet}</div>
+    <div class="modal-actions cb-register-actions">
+      ${formats.map(([format, icon, label]) => `<button type="button" class="btn cb-action" data-register-format="${format}">${ico(icon)}<span>${label}</span></button>`).join("")}
+      <button type="button" class="btn cb-action" data-register-print>${ico("print")}<span>${bi("প্রিন্ট", "Print")}</span></button>
+      <button type="button" class="btn cb-action" data-register-share hidden>${ico("share")}<span>${bi("ফাইল শেয়ার", "Share file")}</span></button>
+      <span class="mut sm" data-register-status role="status"></span>
+    </div>`, (root, close) => {
     root.querySelector(".modal").classList.add("cb-register-dialog");
     let file = null, loading = false;
+    const exports = $$("[data-register-format], [data-register-print]", root);
     const share = $("[data-register-share]", root), status = $("[data-register-status]", root);
     $("[data-register-close]", root).onclick = close;
     $("[data-register-print]", root).onclick = () => printSheet(cbRegisterSheet(book, true), name);
@@ -486,7 +492,7 @@ function cbRegisterModal(book) {
     };
     $$("[data-register-format]", root).forEach(btn => btn.onclick = async () => {
       if (loading) return;
-      loading = true; btn.disabled = true; share.hidden = true; file = null;
+      loading = true; exports.forEach(control => { control.disabled = true; }); share.hidden = true; file = null;
       status.textContent = bi("ফাইল তৈরি হচ্ছে…", "Preparing file…");
       try {
         const format = btn.dataset.registerFormat;
@@ -497,7 +503,7 @@ function cbRegisterModal(book) {
         share.hidden = !navigator.canShare?.({ files: [file] });
         status.textContent = file.name;
       } catch (e) { status.textContent = e.message; }
-      finally { loading = false; btn.disabled = false; }
+      finally { loading = false; exports.forEach(control => { control.disabled = false; }); }
     });
   });
 }
@@ -574,9 +580,9 @@ async function vCashBook(v) {
   const last = [...latest, S.lastBook, S.lastCash].filter(date => date && date <= localDay).sort().pop();
   const initial = handoff || last || localDay;
   sessionStorage.removeItem("nabiad_cash_date");
-  v.innerHTML = head(ROUTES[CUR].t, `<button type="button" class="btn" id="cb-led">${ico("list")} ${bi("লেজার", "Ledgers")}</button>
-    <a class="btn" href="#/cashchk" id="cb-checker">${ico("check")} ${bi("ক্যাশ চেকার", "Cash Checker")}</a>
-    <a class="btn" href="#/cashsum">${ico("chart")} ${bi("সামারি", "Summary")}</a>`, "tc") +
+  v.innerHTML = head(ROUTES[CUR].t, `<button type="button" class="btn cb-action" id="cb-led">${ico("list")}<span>${bi("লেজার", "Ledgers")}</span></button>
+    <a class="btn cb-action" href="#/cashchk" id="cb-checker">${ico("check")}<span>${bi("ক্যাশ চেকার", "Cash Checker")}</span></a>
+    <a class="btn cb-action cb-summary-link" href="#/cashsum">${ico("chart")}<span>${bi("সামারি", "Summary")}</span></a>`, "tc cb-page-head") +
     `<div class="card tbar navcard">${dateNav("cb", initial > localDay ? localDay : initial)}<div id="cb-msg"></div></div><div id="cb-body"></div>`;
   const body = $("#cb-body", v), dateInput = $("#cb-d", v), msg = $("#cb-msg", v);
   dateInput.max = localDay;
@@ -670,7 +676,7 @@ async function vCashBook(v) {
     ].filter(Boolean).join(" · ");
     body.innerHTML = `<div class="cb-workspace"><div class="cb-entry">
       <section class="card csec c-open"><div class="csh"><h3 id="cb-opening-label">${bi("শুরুর নগদ", "Opening cash")}</h3>
-        <input id="cb-oc" class="cell cbopen" aria-labelledby="cb-opening-label" inputmode="decimal" value="${fmtIn(pending.balance?.opening_cash ?? opening)}" ${admin ? "" : "disabled"}></div></section>
+        <div class="cb-opening-field"><span aria-hidden="true">৳</span><input id="cb-oc" class="cell cbopen" aria-labelledby="cb-opening-label" inputmode="decimal" value="${esc(fmtIn(pending.balance?.opening_cash ?? opening))}" ${admin ? "" : "disabled"}></div></div></section>
       <div class="cb-entry-sides">${controls("r", "c-rec")}${controls("p", "c-pay")}</div>
       ${recoverable.length && mayAdd ? `<details class="card cb-recovery"><summary>${bi("এই ডিভাইসের আগের অসম্পূর্ণ লাইন", "Previous unsaved lines on this device")} (${recoverable.length})</summary>
         <ul>${recoverable.map(({side, item}, index) => `<li><span>${cbSideLabel(side)} · ${esc(item.n)} · ${moneyText(item.a)}</span><button type="button" class="btn sm" data-cb-recover="${index}">${bi("ফর্মে নিন", "Load into form")}</button></li>`).join("")}</ul></details>` : ""}
@@ -710,7 +716,7 @@ async function vCashBook(v) {
           </dl>
         </div></section>
         <section class="card csec cb-references"><div class="csh"><h3>${bi("দৈনিক রেজিস্টার", "Daily register")}</h3>
-          <button type="button" id="cb-register" class="btn sm">${bi("দেখুন / Export", "View / Export")}</button></div><div id="cb-refs" role="status"></div></section>
+          <button type="button" id="cb-register" class="btn pri">${ico("table")}<span>${bi("দেখুন / Export", "View / Export")}</span></button></div><div id="cb-refs" role="status"></div></section>
       </div></div>`;
     const get = key => $("#cb-" + key, body);
     const fail = error => { get("err").textContent = cbWorkflowError(error); toast(get("err").textContent, "err"); };
