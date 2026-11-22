@@ -2450,3 +2450,10 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 .tag.ty-receipt{background:var(--gr-soft);color:var(--gr)}
 .tag.ty-payment{background:var(--rd-soft);color:var(--rd)}
 .tag.ty-both{background:var(--vi-soft);color:var(--vi)}
+
+/* Cheque view modal actions (v6.94): secondary row + Edit/Delete/Close footer row */
+.modal-actions.cq-va{display:flex;flex-direction:column;gap:8px}
+.cq-va-top{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.cq-va-bot{display:flex;gap:8px;padding-top:8px;border-top:1px solid var(--line2)}
+.cq-va-bot>.btn{flex:1 1 0;min-width:0;justify-content:center}
+.cq-va .btn{width:auto}
