@@ -703,6 +703,9 @@ async function vCashBook(v) {
         }
       }
     }
+    const openingDraft = String(pending.balance?.opening_cash ?? "").trim();
+    const draftAmount = /\d/.test(openingDraft) ? evalAmt(openingDraft) : NaN;
+    const openingInput = fmtIn(Number.isFinite(draftAmount) ? draftAmount : opening);
     const moneyText = amount => amount == null ? "—" : "৳ " + money(amount);
     const references = cbRegisterSummary(date, true, lines.register);
     const savedRemarks = book?.remarks ?? "";
@@ -735,7 +738,7 @@ async function vCashBook(v) {
     ].filter(Boolean).join(" · ");
     body.innerHTML = `<div class="cb-workspace"><div class="cb-entry">
       <section class="card csec c-open"><div class="csh"><h3 id="cb-opening-label">${bi("শুরুর নগদ", "Opening cash")}</h3>
-        <div class="cb-opening-field"><span aria-hidden="true">৳</span><input id="cb-oc" class="cell cbopen" aria-labelledby="cb-opening-label" inputmode="decimal" value="${esc(fmtIn(pending.balance?.opening_cash ?? opening))}" ${admin ? "" : "disabled"}></div></div></section>
+        <div class="cb-opening-field"><span aria-hidden="true">৳</span><input id="cb-oc" class="cell cbopen" aria-labelledby="cb-opening-label" inputmode="decimal" value="${esc(openingInput)}" ${admin ? "" : "disabled"}></div></div></section>
       <div class="cb-entry-sides">${controls("r", "c-rec")}${controls("p", "c-pay")}</div>
       ${recoverable.length && mayAdd ? `<details class="card cb-recovery"><summary>${bi("এই ডিভাইসের আগের অসম্পূর্ণ লাইন", "Previous unsaved lines on this device")} (${recoverable.length})</summary>
         <ul>${recoverable.map(({side, item}, index) => `<li><span>${cbSideLabel(side)} · ${esc(item.n)} · ${moneyText(item.a)}</span><button type="button" class="btn sm" data-cb-recover="${index}">${bi("ফর্মে নিন", "Load into form")}</button></li>`).join("")}</ul></details>` : ""}
@@ -941,7 +944,8 @@ async function vCashBook(v) {
       `<div class="cbs"><span>${esc(cbCatName(key))}</span><b>${moneyText(grouped.items[key].a)}</b></div>`).join("") || "—"}</div>`).join("")}</div>`
       + (grouped.warn.un ? `<p class="mut sm">${bi("ম্যাপ করা হয়নি এমন লাইন Others-এ ধরা হয়েছে।", "Unmapped lines are counted under Others.")}</p>` : "");
     const preview = () => {
-      const open = admin ? evalAmt(get("oc").value) : +opening;
+      const openingValue = get("oc").value;
+      const open = admin ? (/\d/.test(openingValue) ? evalAmt(openingValue) : NaN) : +opening;
       const counted = get("ch").value.trim() ? evalAmt(get("ch").value) : null;
       const {R, P, exp} = cbTot({ opening_cash: open, lines });
       const diff = counted == null || !Number.isFinite(open) || !Number.isFinite(counted) ? null : Math.round((counted - exp) * 100) / 100;
@@ -979,7 +983,7 @@ async function vCashBook(v) {
       if (saving || !current()) return;
       const {open, counted, diff} = preview();
       if (!Number.isFinite(open) || counted !== null && !Number.isFinite(counted) || (close || final) && counted == null) {
-        get("ch").focus();
+        get(!Number.isFinite(open) ? "oc" : "ch").focus();
         return fail(new Error(bi("সঠিক শুরুর নগদ ও হাতে ক্যাশ লিখুন।", "Enter valid opening and counted cash amounts.")));
       }
       if (sides.some(side => formState[side].index != null || ["n", "x", "ref", "note"].some(key => pending[side]?.[key])) && close) {
