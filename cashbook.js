@@ -324,10 +324,10 @@ function cbRegisterSheet(book, paper = false) {
       <tr><td></td><th scope="row">${bi("শুরুর নগদসহ মোট", "Opening cash + receipts")}</th><td class="cb-reg-amount">${cbRegisterMoney(opening == null ? null : Math.round((opening + receipt) * 100) / 100)}</td>
       <th scope="row">${bi("দিনশেষে হাতে নগদ", "Closing cash · counted")}</th><td class="cb-reg-amount">${cbRegisterMoney(counted)}</td></tr>
     </tbody></table>
-    <div class="cb-reg-end">
     ${rawTally ? "" : `<section class="cb-reg-block cb-reg-notes"><h3>${cbRegisterNoteTitle()}</h3>
       <ol>${cbRegisterNoteRows.flat().map(n => `<li><span>${n}.</span><span class="cb-note-line"></span></li>`).join("")}</ol>
     </section>`}
+    <div class="cb-reg-end">
     <section class="cb-reg-block"><h3>${bi("দিনশেষের সারাংশ", "Closing summary")}</h3>${totals([
       [movementLabel, movement],
       [bi("হিসাব অনুযায়ী হাতে নগদ", "Expected closing cash"), expected],
@@ -432,10 +432,18 @@ async function cbRegisterVisual(el, format) {
     }
 
     const table = $(".cb-reg-table", paper), body = table.tBodies[0];
-    const totals = $(".cb-reg-totals", table), end = $(".cb-reg-end", paper);
+    const totals = $(".cb-reg-totals", table), notes = $(".cb-reg-notes", paper), end = $(".cb-reg-end", paper);
     const rows = [...body.rows];
+    const addCashTotals = () => {
+      table.append(totals);
+      if (notes) paper.append(notes);
+    };
+    const removeCashTotals = () => {
+      totals.remove();
+      notes?.remove();
+    };
     body.replaceChildren();
-    totals.remove();
+    removeCashTotals();
     end.remove();
     for (const row of rows) {
       body.append(row);
@@ -446,19 +454,26 @@ async function cbRegisterVisual(el, format) {
       }
     }
 
-    table.append(totals);
-    paper.append(end);
+    // Keep the handwritten notes on the same page as the cash totals.
+    addCashTotals();
     if (body.rows.length && !fits()) {
       const remaining = [...body.rows];
       const last = remaining.at(-1);
       body.replaceChildren(last);
       const carryLast = remaining.length > 1 && fits();
-      totals.remove();
-      end.remove();
+      removeCashTotals();
       body.replaceChildren(...(carryLast ? remaining.slice(0, -1) : remaining));
       await capture();
       body.replaceChildren(...(carryLast ? [last] : []));
-      table.append(totals);
+      addCashTotals();
+    }
+
+    paper.append(end);
+    if (!fits()) {
+      end.remove();
+      await capture();
+      table.remove();
+      notes?.remove();
       paper.append(end);
     }
     await capture();

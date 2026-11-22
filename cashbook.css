@@ -128,13 +128,15 @@
 .cb-register-paper .cb-reg-day { padding: 4px 12px; font-size: 12px; }
 .cb-register-paper .cb-reg-table.rep-t :is(th,td) { padding: 3px 6px; }
 .cb-register-paper .cb-reg-table.rep-t tbody tr { height: auto; }
-.cb-register-paper .cb-reg-total { padding: 2px 0; }
-.cb-register-paper .cb-reg-notes li { min-height: 23px; }
-.cb-register-paper .cb-reg-signatures { padding-top: 31px; }
+.cb-register-paper .cb-reg-block { padding: 5px 10px; }
+.cb-register-paper .cb-reg-total { padding: 1px 0; }
+.cb-register-paper .cb-reg-notes li { min-height: 20px; }
+.cb-register-paper .cb-reg-signatures { padding: 26px 12px 8px; }
 @media print {
-  .cb-register.rep { overflow: visible; }
+  .cb-register.rep { display: block; overflow: visible; }
   .cb-reg-table thead { display: table-header-group; }
-  .cb-reg-table tr, .cb-reg-totals, .cb-reg-end { break-inside: avoid; }
+  .cb-reg-table:has(+ .cb-reg-notes) { break-after: avoid; }
+  .cb-reg-table tr, .cb-reg-totals, .cb-reg-notes, .cb-reg-end { break-inside: avoid; }
 }
 
 .csec.c-open .csh { flex-wrap: wrap; justify-content: space-between; }
