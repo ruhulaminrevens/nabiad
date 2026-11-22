@@ -4333,6 +4333,7 @@ async function vRegister(v) {
     return { type, typeLabel, groupFields, groups, dates, id: String(row.id).padStart(2, "0") };
   }
   const ledgerStatus = active => active ? bi("চালু", "Active") : bi("নিষ্ক্রিয়", "Inactive");
+  const ledgerCmp = new Intl.Collator("en", { numeric: true, sensitivity: "base" }).compare;
   function drawLedgers() {
     const query = chequeSearchKey(F.q);
     shownLedgers = ledgerRows.map(row => ({ row, ...ledgerFields(row) })).filter(ledger => {
@@ -4340,16 +4341,19 @@ async function vRegister(v) {
       return matchesGroup && (!F.type || F.type === ledger.type) &&
         (!query || chequeSearchKey([ledger.id, ledger.row.name, ...ledger.groups].join(" ")).includes(query));
     });
+    shownLedgers.sort((x, y) => ledgerCmp(x.row.name || "", y.row.name || ""));
     const first = paginate(shownLedgers.length);
-    g("rg-sum").textContent = "";
+    const activeCount = shownLedgers.filter(l => l.row.active !== false).length;
+    g("rg-sum").innerHTML = [[bi("লেজার", "Ledgers"), shownLedgers.length, ""], [bi("চালু", "Active"), activeCount, "gr"], [bi("নিষ্ক্রিয়", "Inactive"), shownLedgers.length - activeCount, "rd"]]
+      .map(([label, value, cls]) => `<div class="card"><span class="mut sm">${label}</span><strong class="${cls}">${value}</strong></div>`).join("");
     const details = values => values.length ? values.map(value => `<div>${esc(value)}</div>`).join("") : "—";
-    out.innerHTML = `<div class="tw cards"><table class="rg-table"><thead><tr>${ledgerHeadings.map(label => `<th scope="col">${esc(label)}</th>`).join("")}</tr></thead><tbody>
+    out.innerHTML = `<div class="tw cards"><table class="rg-table rg-ledgers"><colgroup><col class="c-id"><col class="c-type"><col class="c-name"><col class="c-grp"><col class="c-date"><col class="c-st"></colgroup><thead><tr>${ledgerHeadings.map(label => `<th scope="col">${esc(label)}</th>`).join("")}</tr></thead><tbody>
       ${shownLedgers.slice(first, first + pageSize).map(({ row, id, typeLabel, groups, dates }) => {
         const active = row.active !== false, status = ledgerStatus(active);
         const tag = active ? "au-insert" : "au-delete";
-        const control = canToggleLedger
-          ? `<button type="button" class="btn sm" data-rg-ledger="${esc(row.id)}" aria-pressed="${active}" aria-label="${esc(`${bi("লেজারের সক্রিয়তা", "Ledger activation")} · ${row.name} · ${status}`)}"${toggling.has(String(row.id)) ? " disabled" : ""}><span class="tag ${tag}">${esc(status)}</span></button>`
-          : `<span class="tag ${tag}">${esc(status)}</span>`;
+        const act = active ? bi("নিষ্ক্রিয় করুন", "Disable") : bi("সক্রিয় করুন", "Activate");
+        const control = `<span class="tag ${tag}">${esc(status)}</span>` + (canToggleLedger
+          ? ` <button type="button" class="btn sm" data-rg-ledger="${esc(row.id)}" aria-label="${esc(`${act} · ${row.name}`)}"${toggling.has(String(row.id)) ? " disabled" : ""}>${esc(act)}</button>` : "");
         return `<tr><td class="num">${esc(id)}</td><td>${esc(typeLabel)}</td><td><b>${esc(row.name)}</b></td><td>${groups.length ? details(groups) : esc(ungrouped)}</td><td class="num sm">${details(dates)}</td><td>${control}</td></tr>`;
       }).join("")}
       </tbody></table></div>${shownLedgers.length ? "" : `<div class="empty">${bi("কোনো লেজার মেলেনি", "No ledgers match these filters")}</div>`}`;
