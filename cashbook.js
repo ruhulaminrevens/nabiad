@@ -230,7 +230,7 @@ function cbTallyRegister(date, vouchers, ledgerList, details, cash, references, 
     const controlLedger = tallyLedgerKey(voucher.led);
     const needsPartyName = side === "r" && controlLedger === "nabiad-chawkbazar-2026"
       && (!reportLedger || tallyLedgerKey(reportLedger) === controlLedger);
-    lines[side].push({n: voucher.led, a: edit?.a ?? voucher.a, reportLedger, needsPartyName,
+    lines[side].push({n: voucher.led, a: edit?.a ?? voucher.a, k: category, reportLedger, needsPartyName,
       c: CB_BANK.includes(category) ? ledger?.bank_code : undefined,
       ref: edit?.ref, note: edit?.note, sourceRef: voucher.ref, editVersion: edit?.updated_at});
   }
@@ -939,21 +939,27 @@ async function vCashBook(v) {
       if (pending[side]?.n && !ask(bi("ফর্মের বর্তমান লাইন বদলাবেন?", "Replace the current unsaved line in the form?"))) return;
       pending[side] = item; storePending(); loadForm(side, item, null, true);
     };
-    const grouped = cbGroup({lines});
-    get("sum").innerHTML = `<div class="cbsg">${sides.map(side => `<div><h4>${cbSideLabel(side)}</h4>${CB_CAT[side].filter(key => grouped.items[key]?.a).map(key =>
+    const nativeGrouping = cbGroup({lines});
+    const nativeBook = { ...book, date, opening_cash: opening, lines: { ...lines } };
+    let cashBookActivity = cbHasSavedLines(lines) ? nativeBook : null;
+    const drawCategoryTotals = () => {
+      const grouped = cbGroup(cashBookActivity);
+      get("sum").innerHTML = `<div class="cbsg">${sides.map(side => `<div><h4>${cbSideLabel(side)}</h4>${CB_CAT[side].filter(key => grouped.items[key]?.a).map(key =>
       `<div class="cbs"><span>${esc(cbCatName(key))}</span><b>${moneyText(grouped.items[key].a)}</b></div>`).join("") || "—"}</div>`).join("")}</div>`
-      + (grouped.warn.un ? `<p class="mut sm">${bi("ম্যাপ করা হয়নি এমন লাইন Others-এ ধরা হয়েছে।", "Unmapped lines are counted under Others.")}</p>` : "");
+        + (grouped.warn.un ? `<p class="mut sm">${bi("ম্যাপ করা হয়নি এমন লাইন Others-এ ধরা হয়েছে।", "Unmapped lines are counted under Others.")}</p>` : "");
+    };
     const preview = () => {
       const openingValue = get("oc").value;
       const open = admin ? (/\d/.test(openingValue) ? evalAmt(openingValue) : NaN) : +opening;
       const counted = get("ch").value.trim() ? evalAmt(get("ch").value) : null;
-      const {R, P, exp} = cbTot({ opening_cash: open, lines });
-      const diff = counted == null || !Number.isFinite(open) || !Number.isFinite(counted) ? null : Math.round((counted - exp) * 100) / 100;
+      const hasActivity = cashBookActivity && !cashBookActivity.importedVouchersUnavailable;
+      const {R, P, exp} = hasActivity ? cbTot({ opening_cash: open, lines: cashBookActivity.lines }) : {};
+      const diff = counted == null || !Number.isFinite(open) || !Number.isFinite(counted) || !Number.isFinite(exp) ? null : Math.round((counted - exp) * 100) / 100;
       const direction = diff == null ? "—" : diff > 0 ? moneyText(diff) + " · " + bi("ক্যাশ বেশি", "Cash over")
         : diff < 0 ? moneyText(Math.abs(diff)) + " · " + bi("ক্যাশ কম", "Cash short") : bi("৳ ০ · মিলেছে", "৳ 0 · Matches");
       const tone = diff === 0 ? "gr" : diff > 0 ? "am" : diff < 0 ? "rd" : "mut";
       for (const [id, value] of Object.entries({Tr: R, Tp: P})) get(id).textContent = moneyText(value);
-      get("inline-closing").textContent = bi("ক্যাশ ক্লোজিং", "Cash Closing") + " = " + (Number.isFinite(open) ? moneyText(exp) : "—");
+      get("inline-closing").textContent = bi("ক্যাশ ক্লোজিং", "Cash Closing") + " = " + (Number.isFinite(open) && Number.isFinite(exp) ? moneyText(exp) : "—");
       get("inline-diff").textContent = bi("পার্থক্য", "Diff.") + " = " + direction;
       get("inline-diff").className = tone;
       return {open, counted, diff};
@@ -981,6 +987,9 @@ async function vCashBook(v) {
     };
     const saveBalance = async close => {
       if (saving || !current()) return;
+      if (close && (!cashBookActivity || cashBookActivity.importedVouchersUnavailable)) {
+        return fail(new Error(bi("দিন বন্ধ করার আগে ক্যাশ লেনদেন লোড করুন।", "Load the Cash Book transactions before closing the day.")));
+      }
       const {open, counted, diff} = preview();
       if (!Number.isFinite(open) || counted !== null && !Number.isFinite(counted) || (close || final) && counted == null) {
         get(!Number.isFinite(open) ? "oc" : "ch").focus();
@@ -990,7 +999,7 @@ async function vCashBook(v) {
         return fail(new Error(bi("দিন বন্ধ করার আগে অসম্পূর্ণ লাইন যোগ বা বাতিল করুন।", "Add or clear any unsaved lines before closing the day.")));
       }
       if (close && !ask(diff ? bi("ক্যাশে পার্থক্য আছে। দিন বন্ধ করবেন?", "Cash differs from the expected amount. Close this day?") : bi("দিনের হিসাব বন্ধ করবেন?", "Close this Cash Book day?"))) return;
-      if (close && grouped.warn.noAc) return fail(new Error(bi("ব্যাংকের লাইনগুলোতে A/C নির্বাচন করুন।", "Choose an account on each bank line before closing.")));
+      if (close && nativeGrouping.warn.noAc) return fail(new Error(bi("ব্যাংকের লাইনগুলোতে A/C নির্বাচন করুন।", "Choose an account on each bank line before closing.")));
       const data = { ...(admin ? {opening_cash: open} : {}), cash_in_hand: counted, remarks: remarks() };
       await post(close ? "close" : "balance", null, null, data, () => { delete pending.balance; delete pending.notes; });
     };
@@ -1003,15 +1012,24 @@ async function vCashBook(v) {
       dateStat("bank-total").textContent = moneyText(result.bank);
       dateStat("collection-total").textContent = moneyText(result.collection);
     }, () => {});
+    let cashBookRequest;
+    const loadCashBookActivity = () => cashBookRequest ||= cbActivitySnapshot("app", nativeBook, () => tallySnapshot(true)).then(snapshot => {
+      if (snapshot.importedVouchersUnavailable) cashBookRequest = null;
+      if (current()) {
+        cashBookActivity = snapshot;
+        drawCategoryTotals();
+        preview();
+      }
+      return snapshot;
+    });
     let sourceRequest;
     const loadActivity = () => {
       activityBook = null;
       drawActivity();
       const note = get("activity-source");
       note.textContent = bi("ভাউচার লোড হচ্ছে…", "Loading vouchers…");
-      const nativeBook = { ...book, date, opening_cash: opening, lines: { ...lines } };
       const source = reportSource.value;
-      const requested = Promise.all([cbActivitySnapshot(source, nativeBook, () => tallySnapshot(source === "app")), references])
+      const requested = Promise.all([source === "app" ? loadCashBookActivity() : tallySnapshot(false), references])
         .then(([snapshot, register]) => ({ ...snapshot, lines: { ...snapshot.lines, register } }));
       sourceRequest = requested;
       requested.then(snapshot => {
@@ -1039,7 +1057,10 @@ async function vCashBook(v) {
     };
     get("register").onclick = withReport(get("register"), snapshot =>
       cbRegisterModal({ ...snapshot, remarks: remarks() }));
-    preview(); loadActivity();
+    drawCategoryTotals();
+    preview();
+    if (reportMode === "tally") loadCashBookActivity();
+    loadActivity();
   }
   bindDateNav(v, "cb", () => { if (!saving && canSwitchDate()) draw(); });
   await draw();
