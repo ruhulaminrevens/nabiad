@@ -297,6 +297,8 @@ const ico = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 const markFrom = r => ({ id: r.id, code: r.code, no: Number(r.leaf_no), kind: r.kind, note: r.note, photo: r.photo || null, resolved: !!r.resolved, rnote: r.resolved_note, rby: r.resolved_by, rat: r.resolved_at, by: r.entered_by, uid: r.user_id, at: r.created_at });
 const S = { me: null, accounts: [], cheques: [], books: [], marks: [], reminders: [], loaded: false, lastBal: null };
 const accMap = () => Object.fromEntries(S.accounts.map(a => [a.code, a]));
+let _alc = { src: null, map: null };
+const acLabel = code => { if (_alc.src !== S.accounts) _alc = { src: S.accounts, map: accMap() }; const h = (_alc.map[code] || {}).holder; return h ? `${code} · ${h}` : `${code}`; };
 function derive(c) {
   const k = purposeKey(c.purpose);
   let st = "Pending", sd = null;
@@ -994,7 +996,7 @@ function palette() {
     const pages = allowed().filter(k => !n || norm(ROUTES[k].t + k).includes(n)).map(k => ({ g: "পাতা", ic: ROUTES[k].ic, t: ROUTES[k].t, s: "", go: () => location.hash = "#/" + k }));
     let chq = [], acc = [];
     if (n) {
-      acc = S.accounts.filter(a => norm(a.code + a.holder + a.bank + (a.acno || "")).includes(n)).slice(0, 6).map(a => ({ g: "অ্যাকাউন্ট", ic: "card", t: `<b>${esc(a.code)}</b> · ${esc(a.holder || "")}`, s: `${esc(a.bank || "")} ${a.acno ? "· " + esc(a.acno) : ""}`, go: () => { location.hash = "#/accounts"; setTimeout(() => { const i = $("#ad-q"); if (i) { i.value = a.code; i.dispatchEvent(new Event("input")); } }, 60); } }));
+      acc = S.accounts.filter(a => norm(a.code + a.holder + a.bank + (a.acno || "")).includes(n)).slice(0, 6).map(a => ({ g: "অ্যাকাউন্ট", ic: "card", t: `<b>${esc(a.code)}</b> · ${esc(a.holder || "")}`, s: `${esc(a.bank || "")} ${a.acno ? "· " + esc(a.acno) : ""}`, go: () => { location.hash = "#/accounts"; setTimeout(() => { const i = $("#acf-q"); if (i) { i.value = a.code; i.dispatchEvent(new Event("input")); } }, 60); } }));
       const raw = q.replace(/,/g, "");
       chq = S.cheques.filter(c => String(c.no).includes(raw) || norm(c.code + c.no + (c.party || "") + (c.remarks || "")).includes(n) || String(c.amount) === raw).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10)
         .map(c => ({ g: "চেক", ic: "list", t: `<b>${esc(c.code)} · ${c.no}</b> &nbsp;<span class="num">৳ ${money(c.amount)}</span> &nbsp;${stTag(c.status)}`, s: `${dmy(c.date)} · ${esc(c.purpose.split(" (")[0])}${c.party ? " · " + esc(c.party) : ""}`, go: () => chequeModal(c, () => { }) }));
@@ -1296,7 +1298,7 @@ async function vEntry(v) {
     const countText = records.length ? bi(`${filtered.length}টির মধ্যে ${visible.length}টি দেখানো হয়েছে`, `Showing ${visible.length} of ${filtered.length} matches`) : "";
     if ($e("e-visible").textContent !== countText) $e("e-visible").textContent = countText;
     const html = visible.length ? `<div class="tw cards cp-activity-table"><table><thead><tr><th scope="col">A/C · ${bi("চেক", "Cheque")}</th><th scope="col" class="r">${bi("অঙ্ক", "Amount")}</th><th scope="col">${bi("স্ট্যাটাস", "Status")}</th><th scope="col">${bi("তারিখ ও অপারেটর", "Date & operator")}</th><th scope="col">${bi("অ্যাকশন","Action")}</th></tr></thead><tbody>
-      ${visible.map(({c, posted}) => `<tr><td data-l=""><button type="button" class="cq-link" data-recent="${esc(c.id)}" data-activity-action="reference">${esc(c.code)} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc([c.purpose?.split(" (")[0], c.party].filter(Boolean).join(" · "))}</div></td>
+      ${visible.map(({c, posted}) => `<tr><td data-l=""><button type="button" class="cq-link" data-recent="${esc(c.id)}" data-activity-action="reference">${esc(acLabel(c.code))} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc([c.purpose?.split(" (")[0], c.party].filter(Boolean).join(" · "))}</div></td>
         <td class="r num"><strong>৳ ${money(c.amount)}</strong></td>
         <td><div class="stc">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}</div></td>
         <td><div class="cp-row-date mut sm"><span>${byDate ? postedLabel : dateLabel} ${dmy(byDate ? posted : c.date) || "—"}</span><span>${esc(c.by || "—")}</span></div></td>
@@ -1428,7 +1430,7 @@ function statusModal(c, after, initialDate = today(), initialStatus = c.status) 
     bi("তারিখে সমস্যা", "Date issue"),
     bi("কথায় ও অঙ্কে অমিল", "Amount mismatch")
   ];
-  modal(`<h2>${esc(c.code)} · ${c.no}</h2><div class="cq-meta"><strong class="num">৳ ${money(c.amount)}</strong> ${stTag(c.status)} <span class="mut">${dmy(c.date)} · ${esc(c.purpose.split(" (")[0])}</span></div>
+  modal(`<h2>${esc(acLabel(c.code))} · ${c.no}</h2><div class="cq-meta"><strong class="num">৳ ${money(c.amount)}</strong> ${stTag(c.status)} <span class="mut">${dmy(c.date)} · ${esc(c.purpose.split(" (")[0])}</span></div>
     <form id="cq-status-form">
       <div class="cq-status-fields"><div><label class="f" for="m-st">${bi("নতুন স্ট্যাটাস", "New status")}</label><select class="in" id="m-st">${STATUSES.map(s => `<option ${s === initialStatus ? "selected" : ""}>${s}</option>`).join("")}</select></div>
       <div><label class="f" for="m-d">${bi("স্ট্যাটাসের তারিখ", "Status date")}</label><input class="in" type="date" id="m-d" value="${esc(initialDate)}" max="${today()}" aria-describedby="m-err" required></div></div>
@@ -1549,7 +1551,7 @@ async function vStatus(v) {
     next.disabled = page + 1 >= pages;
     $("#s-page", pager).textContent = `${page + 1} / ${pages}`;
     list.innerHTML = queue.length ? queue.slice(start, end).map(c => {
-      const ref = `${esc(c.code)} · ${c.no}`, age = daysBetween(c.date, t);
+      const ref = `${esc(acLabel(c.code))} · ${c.no}`, age = daysBetween(c.date, t);
       return `<article class="card cq-item" ${c.status === "Pending" && age > alertDays ? 'data-priority="older"' : c.status === "Bounced" || c.status === "Stopped" ? 'data-priority="review"' : ""}><div class="cq-ref">
         <button type="button" class="cq-link" data-cq-open="${esc(c.id)}">${ref}</button>
         <div class="mut sm">${esc([accounts[c.code]?.holder, accounts[c.code]?.bank].filter(Boolean).join(" · "))}</div>
@@ -1635,7 +1637,7 @@ async function deleteChequeEntry(c, after) {
 }
 function chequeModal(c, after) {
   const admin = S.me.role === "admin"; const a = accMap()[c.code] || {};
-  modal(`<h2><span class="cq-detail-ref">${esc(c.code)} · ${c.no}</span> ${stTag(c.status)} ${statementBadge(c)}</h2>
+  modal(`<h2><span class="cq-detail-ref">${esc(acLabel(c.code))} · ${c.no}</span> ${stTag(c.status)} ${statementBadge(c)}</h2>
    <div class="grid g2 cq-detail" style="gap:8px;font-size:14px"><div><span class="mut sm">তারিখ</span><br>${dmy(c.date)}</div><div><span class="mut sm">টাকা</span><br><b class="num">৳ ${money(c.amount)}</b></div>
    <div><span class="mut sm">A/C</span><br>${esc(a.holder || "")}<div class="mut sm">${esc(a.bank || "")}</div></div><div><span class="mut sm">খাত</span><br>${esc(c.purpose)}</div>
    ${c.taker ? `<div><span class="mut sm">কে তুলেছে</span><br>${esc(c.taker)}</div>` : ""}${c.toac ? `<div><span class="mut sm">To A/C</span><br>${esc(c.toac)}</div>` : ""}${c.party ? `<div><span class="mut sm">পার্টি</span><br>${esc(c.party)}</div>` : ""}${c.remarks ? `<div><span class="mut sm">মন্তব্য</span><br>${esc(c.remarks)}</div>` : ""}
@@ -1659,7 +1661,7 @@ function chequeModal(c, after) {
 const chequeEditDenied = () => bi("এই চেক এডিটের অনুমোদিত সময় বা অ্যাক্সেস নেই।", "The edit window is closed or you do not have permission to edit this cheque.");
 function editChequeModal(c, after) {
   if (!canEditChq(c)) { after?.(); return toast(chequeEditDenied(),"err"); }
-  modal(`<h2>${bi("চেক এডিট","Edit cheque")} · ${esc(c.code)} · ${c.no}</h2><div class="grid" style="gap:10px">
+  modal(`<h2>${bi("চেক এডিট","Edit cheque")} · ${esc(acLabel(c.code))} · ${c.no}</h2><div class="grid" style="gap:10px">
    <div class="cq-edit-row"><div><label class="f" for="x-d">তারিখ</label><input class="in" type="date" id="x-d" value="${c.date}"></div><div><label class="f" for="x-c">A/C Code</label><select class="in" id="x-c">${S.accounts.map(a => `<option ${a.code === c.code ? "selected" : ""}>${esc(a.code)}</option>`).join("")}</select></div></div>
    <div class="cq-edit-row"><div><label class="f" for="x-n">চেক নং</label><input class="in" id="x-n" inputmode="numeric" value="${c.no}"></div><div><label class="f" for="x-a">টাকা</label><input class="in" id="x-a" inputmode="decimal" value="${c.amount}"></div></div>
    <div><label class="f" for="x-p">খাত</label><select class="in" id="x-p">${allPurposes(true).map(p => `<option ${pKey(p) === pKey(c.purpose) ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></div>
@@ -1786,7 +1788,7 @@ async function vCheques(v) {
     const cell = (index, content, cls = "") => `<td class="${cls}" data-l="${columns[index]}"><div>${content}</div></td>`;
     $("#k-tab", v).innerHTML = part.length ? `<div class="tw cards"><table><thead><tr>${columns.map((column, i) => `<th scope="col"${i === 3 ? ' class="r"' : ""}>${column}</th>`).join("")}</tr></thead><tbody>${part.map(c => `<tr>
       ${cell(0, dmy(c.date))}
-      ${cell(1, `<button type="button" class="cq-link" data-register-id="${esc(c.id)}">${esc(c.code)} · ${esc(c.no)}</button>${chqIcons(c)}`)}
+      ${cell(1, `<button type="button" class="cq-link" data-register-id="${esc(c.id)}">${esc(acLabel(c.code))} · ${esc(c.no)}</button>${chqIcons(c)}`)}
       ${cell(2, esc(accounts[c.code]?.holder || "—"), "mut sm")}
       ${cell(3, money(c.amount), "r num")}
       ${cell(4, `${esc(c.purpose.split(" (")[0])}<div class="mut sm">${esc([c.taker, c.party, c.toac && "→ " + c.toac, c.remarks].filter(Boolean).join(" · "))}</div>`)}
@@ -2609,7 +2611,7 @@ function leafMarkModal(book0, after) {
 }
 function leafResolveModal(m, after) {
   const Q = [["ব্যাংক নিশ্চিত করেছে: উপস্থাপন হয়নি", "Bank confirmed: not presented"], ["Stop Payment দেওয়া হয়েছে", "Stop payment given"], ["খুঁজে পাওয়া গেছে", "Found"], ["ভুলে মুড়ি লেখা হয়নি, চেকটি ব্যবহৃত", "Used, stub was just not filled"]];
-  modal(`<h2>${bi("নিষ্পত্তি করুন", "Close this trace")} · ${esc(m.code)} · ${esc(leafLabel(m.code, m.no))}</h2><div style="margin-bottom:10px">${lkTag(m.kind)}</div>
+  modal(`<h2>${bi("নিষ্পত্তি করুন", "Close this trace")} · ${esc(acLabel(m.code))} · ${esc(leafLabel(m.code, m.no))}</h2><div style="margin-bottom:10px">${lkTag(m.kind)}</div>
    <label class="f">${bi("কীভাবে নিষ্পত্তি হলো?", "How was it settled?")}</label><input class="in" id="lr-n" autocomplete="off"><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${Q.map((q, i) => `<span class="chip" data-i="${i}">${bi(q[0], q[1])}</span>`).join("")}</div>
    <div class="modal-actions"><button class="btn pri" id="lr-ok">${bi("নিষ্পত্তি", "Close trace")}</button><button class="btn" id="lr-c">${bi("বাতিল", "Cancel")}</button></div>`, (root, close) => {
     $$(".chip", root).forEach(c => c.onclick = () => { $("#lr-n", root).value = bi(Q[+c.dataset.i][0], Q[+c.dataset.i][1]); }); $("#lr-c", root).onclick = close;
@@ -2617,7 +2619,7 @@ function leafResolveModal(m, after) {
   });
 }
 function leafPhotoModal(m) {
-  modal(`<h2>${esc(m.code)} · ${esc(leafLabel(m.code, m.no))}</h2><div style="margin-bottom:8px">${lkTag(m.kind)}</div><div id="lp-i" class="mut">…</div><div class="modal-actions"><button class="btn" id="lp-c">${bi("বন্ধ", "Close")}</button></div>`, (root, close) => {
+  modal(`<h2>${esc(acLabel(m.code))} · ${esc(leafLabel(m.code, m.no))}</h2><div style="margin-bottom:8px">${lkTag(m.kind)}</div><div id="lp-i" class="mut">…</div><div class="modal-actions"><button class="btn" id="lp-c">${bi("বন্ধ", "Close")}</button></div>`, (root, close) => {
     $("#lp-c", root).onclick = close;
     API.photoUrl(m.photo).then(u => $("#lp-i", root).innerHTML = `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="stub" style="width:100%;border-radius:12px;border:1px solid var(--line)"></a>`).catch(e => $("#lp-i", root).textContent = bi("ছবি লোড হয়নি: ", "Photo failed to load: ") + (e.message || e));
   });
@@ -2910,29 +2912,29 @@ async function vAccounts(v, F = { q: "", b: "", h: "", st: "Active", miss: "", v
   const banks = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort(compare), holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort(compare);
   if (!banks.includes(F.b)) F.b = "";
   if (!holders.includes(F.h)) F.h = "";
-  v.innerHTML = head("অ্যাকাউন্ট খুঁজুন", admin ? `<button class="btn" id="ad-imp">${ico("cam")} ছবি ইমপোর্ট</button><button class="btn pri" id="ad-add">${ico("plus")} নতুন অ্যাকাউন্ট</button>` : "") + `<div class="card tbar noprint">
-    ${searchBox("ad-q", "কোড, নাম, ব্যাংক, শাখা, A/C বা Routing নং — যেমন: 483, pubali")}
-    <div class="ad-filters">
-      <select class="in" id="ad-b" aria-label="${bi("ব্যাংক", "Bank")}"><option value="">সব ব্যাংক</option>${banks.map(b => `<option${selected(b, F.b)}>${esc(b)}</option>`).join("")}</select>
-      <select class="in" id="ad-h" aria-label="${bi("অ্যাকাউন্ট হোল্ডার", "Account holder")}"><option value="">সব হোল্ডার</option>${holders.map(h => `<option${selected(h, F.h)}>${esc(h)}</option>`).join("")}</select>
-      <select class="in" id="ad-s" aria-label="${bi("অ্যাকাউন্টের অবস্থা", "Account status")}"><option value="Active"${selected("Active", F.st)}>Active</option><option value=""${selected("", F.st)}>সব</option><option value="Closed"${selected("Closed", F.st)}>Closed</option></select>
-      <div class="ad-view" role="group" aria-label="${bi("অ্যাকাউন্ট দেখার ধরন", "Account view")}">${views.map(([key, icon, label]) => `<button type="button" class="btn" data-ad-view="${key}" aria-controls="ad-out" aria-pressed="${F.view === key}"><span aria-hidden="true">${ico(icon)}</span>${label}</button>`).join("")}</div>
+  v.innerHTML = head("অ্যাকাউন্ট খুঁজুন", admin ? `<button class="btn" id="acf-imp">${ico("cam")} ছবি ইমপোর্ট</button><button class="btn pri" id="acf-add">${ico("plus")} নতুন অ্যাকাউন্ট</button>` : "") + `<div class="card tbar noprint">
+    ${searchBox("acf-q", "কোড, নাম, ব্যাংক, শাখা, A/C বা Routing নং — যেমন: 483, pubali")}
+    <div class="acf-filters">
+      <select class="in" id="acf-b" aria-label="${bi("ব্যাংক", "Bank")}"><option value="">সব ব্যাংক</option>${banks.map(b => `<option${selected(b, F.b)}>${esc(b)}</option>`).join("")}</select>
+      <select class="in" id="acf-h" aria-label="${bi("অ্যাকাউন্ট হোল্ডার", "Account holder")}"><option value="">সব হোল্ডার</option>${holders.map(h => `<option${selected(h, F.h)}>${esc(h)}</option>`).join("")}</select>
+      <select class="in" id="acf-s" aria-label="${bi("অ্যাকাউন্টের অবস্থা", "Account status")}"><option value="Active"${selected("Active", F.st)}>Active</option><option value=""${selected("", F.st)}>সব</option><option value="Closed"${selected("Closed", F.st)}>Closed</option></select>
+      <div class="acf-view" role="group" aria-label="${bi("অ্যাকাউন্ট দেখার ধরন", "Account view")}">${views.map(([key, icon, label]) => `<button type="button" class="btn" data-acf-view="${key}" aria-controls="acf-out" aria-pressed="${F.view === key}"><span aria-hidden="true">${ico(icon)}</span>${label}</button>`).join("")}</div>
     </div>
-    <div class="mchips" id="ad-m"></div></div>
-   <div class="ad-results"><span class="mut sm" id="ad-n" role="status"></span><button type="button" class="lnkb" id="ad-all">${bi("দেখানো সব নির্বাচন", "Select all shown")}</button></div>
-   <div id="ad-out"></div><div id="ad-selbar" class="selbar hide"></div>`;
-  const out = $("#ad-out", v), query = $("#ad-q", v), selectAll = $("#ad-all", v);
+    <div class="mchips" id="acf-m"></div></div>
+   <div class="acf-results"><span class="mut sm" id="acf-n" role="status"></span><button type="button" class="lnkb" id="acf-all">${bi("দেখানো সব নির্বাচন", "Select all shown")}</button></div>
+   <div id="acf-out"></div><div id="acf-selbar" class="selbar hide"></div>`;
+  const out = $("#acf-out", v), query = $("#acf-q", v), selectAll = $("#acf-all", v);
   query.value = F.q;
   query.setAttribute("aria-label", bi("অ্যাকাউন্ট খুঁজুন", "Search accounts"));
   const refresh = () => { if (out.isConnected) vAccounts(v, F, sel); };
   const base = () => S.accounts.filter(a => (!F.b || a.bank === F.b) && (!F.h || a.holder === F.h) && (!F.st || a.status === F.st));
   const mf = { mfs: a => isMFS(a), inc: a => !isMFS(a) && accMissing(a).length > 0, ok: a => !isMFS(a) && !accMissing(a).length, acno: a => accMissing(a).some(m => m.k === "acno"), routing: a => accMissing(a).some(m => m.k === "routing"), branch: a => accMissing(a).some(m => m.k === "branch"), type: a => accMissing(a).some(m => m.k === "type"), nophoto: a => !isMFS(a) && !a.book_photo };
-  const selbar = () => { const el = $("#ad-selbar", v); if (!sel.size) return el.classList.add("hide"); el.classList.remove("hide"); el.innerHTML = `<b>${sel.size}</b> <span>টি নির্বাচিত</span><button class="btn sm pri" id="sb-sh">${ico("share")} শেয়ার</button><button class="btn sm" id="sb-cp">${ico("copy")} কপি</button><button class="btn sm ghost" id="sb-x">✕</button>`;
+  const selbar = () => { const el = $("#acf-selbar", v); if (!sel.size) return el.classList.add("hide"); el.classList.remove("hide"); el.innerHTML = `<b>${sel.size}</b> <span>টি নির্বাচিত</span><button class="btn sm pri" id="sb-sh">${ico("share")} শেয়ার</button><button class="btn sm" id="sb-cp">${ico("copy")} কপি</button><button class="btn sm ghost" id="sb-x">✕</button>`;
     const list = () => S.accounts.filter(a => sel.has(a.code)); $("#sb-sh", el).onclick = () => shareAccounts(list()); $("#sb-cp", el).onclick = () => copyText(accText(list()), "✔ নির্বাচিত অ্যাকাউন্টের তথ্য কপি হয়েছে"); $("#sb-x", el).onclick = () => { sel.clear(); draw(); }; };
   const draw = () => {
     const q = chequeSearchKey(F.q), b0 = base(), cnt = k => b0.filter(mf[k]).length;
-    $("#ad-m", v).innerHTML = [["", "সব", b0.length], ["inc", "⚠ তথ্য অসম্পূর্ণ", cnt("inc")], ["ok", "✓ সম্পূর্ণ", cnt("ok")], ["acno", "A/C নং নেই", cnt("acno")], ["routing", "Routing নেই", cnt("routing")], ["branch", "শাখা নেই", cnt("branch")], ["type", "ধরন নেই", cnt("type")], ["nophoto", "📷 ছবি নেই", cnt("nophoto")], ["mfs", "📱 মোবাইল ব্যাংকিং", cnt("mfs")]].filter(([k, , n]) => !k || n || F.miss === k).map(([k, l, n]) => `<span class="chip ${F.miss === k ? "on" : ""} ${k && k !== "ok" ? "warn" : ""}" data-mf="${k}"><span>${l}</span> <b>${n}</b></span>`).join("");
-    $$("#ad-m [data-mf]", v).forEach(c => c.onclick = () => { F.miss = c.dataset.mf; draw(); });
+    $("#acf-m", v).innerHTML = [["", "সব", b0.length], ["inc", "⚠ তথ্য অসম্পূর্ণ", cnt("inc")], ["ok", "✓ সম্পূর্ণ", cnt("ok")], ["acno", "A/C নং নেই", cnt("acno")], ["routing", "Routing নেই", cnt("routing")], ["branch", "শাখা নেই", cnt("branch")], ["type", "ধরন নেই", cnt("type")], ["nophoto", "📷 ছবি নেই", cnt("nophoto")], ["mfs", "📱 মোবাইল ব্যাংকিং", cnt("mfs")]].filter(([k, , n]) => !k || n || F.miss === k).map(([k, l, n]) => `<span class="chip ${F.miss === k ? "on" : ""} ${k && k !== "ok" ? "warn" : ""}" data-mf="${k}"><span>${l}</span> <b>${n}</b></span>`).join("");
+    $$("#acf-m [data-mf]", v).forEach(c => c.onclick = () => { F.miss = c.dataset.mf; draw(); });
     const arr = b0.filter(a => (!F.miss || mf[F.miss](a)) && (!q || chequeSearchKey([a.code, a.holder, a.bank, a.branch, a.acno, a.type, a.routing, a.swift].join(" ")).includes(q)));
     const listView = F.view === "list", byBank = new Map(), chequeCounts = new Map();
     if (listView) {
@@ -2944,23 +2946,23 @@ async function vAccounts(v, F = { q: "", b: "", h: "", st: "Active", miss: "", v
       }
     } else arr.sort((a, b) => (a.sort || 0) - (b.sort || 0));
     for (const c of S.cheques) chequeCounts.set(c.code, (chequeCounts.get(c.code) || 0) + 1);
-    $("#ad-n", v).textContent = listView && arr.length
+    $("#acf-n", v).textContent = listView && arr.length
       ? bi(`${arr.length}টি অ্যাকাউন্ট · ${byBank.size}টি গ্রুপ · নাম অনুযায়ী A–Z`, `${arr.length} accounts · ${byBank.size} groups · Bank name A–Z`)
       : bi(`${arr.length}টি অ্যাকাউন্ট`, `${arr.length} accounts`);
     selectAll.hidden = !arr.length;
     const renderAccount = a => {
       const n = chequeCounts.get(a.code) || 0, br = brandOf(a), miss = accMissing(a), pct = accPct(a);
       return `<div class="card acc ${sel.has(a.code) ? "picked" : ""}" style="--b1:${br.c1};--b2:${br.c2}"><div class="hd"><label class="pick" title="নির্বাচন"><input type="checkbox" aria-label="${bi("নির্বাচন", "Select")} ${esc(a.code)}" data-sel="${esc(a.code)}" ${sel.has(a.code) ? "checked" : ""}><i></i></label><span class="blogo">${esc(br.s)}</span><span class="code">${esc(a.code)}</span>${a.status !== "Active" ? `<span class="tag cl">${esc(a.status)}</span>` : ""}<span style="flex:1"></span><span class="hacts">${a.book_photo ? `<button class="btn sm ghost" data-ph="${esc(a.code)}" title="Cheque ছবি">${ico("img")}</button>` : ""}<button class="btn sm ghost" data-sh="${esc(a.code)}" title="শেয়ার">${ico("share")}</button>${admin ? `<button class="btn sm ghost" data-e="${esc(a.code)}" title="এডিট">${ico("edit")}</button>` : ""}</span></div><div class="bd">
-      <div class="ad-id"><div class="b">${esc(a.holder || "")}${a.type ? ` <span class="tag typ">${esc(a.type)}</span>` : ""}</div><div class="bk">${esc(a.bank || "")}${a.branch ? " · " + esc(a.branch) : ""}</div></div><div class="ad-details">
+      <div class="acf-id"><div class="b">${esc(a.holder || "")}${a.type ? ` <span class="tag typ">${esc(a.type)}</span>` : ""}</div><div class="bk">${esc(a.bank || "")}${a.branch ? " · " + esc(a.branch) : ""}</div></div><div class="acf-details">
       ${a.acno ? `<div class="no"><span>${esc(fmtAcno(a.acno))}</span><button class="btn sm ghost" data-cp="${esc(a.acno)}" title="কপি">${ico("copy")} কপি</button></div>` : isMFS(a) ? `<div class="nomiss" style="color:var(--mut,#8b93a7)">📱 মোবাইল ব্যাংকিং (শাখা/Routing/SWIFT প্রযোজ্য নয়)</div>` : `<div class="nomiss">A/C নং দেওয়া নেই</div>`}
       ${a.routing || a.swift ? `<div class="rt">${a.routing ? `<span>Routing <b>${esc(a.routing)}</b> <button class="lnkb" data-cp="${esc(a.routing)}">কপি</button></span>` : ""}${a.swift ? `<span>SWIFT <b>${esc(a.swift)}</b></span>` : ""}</div>` : ""}
-      </div><div class="ad-meta">${miss.length ? `<div class="cmpl"><div class="bar"><i style="width:${pct}%"></i></div><div class="cmpl-t"><span class="am xs">${pct}% · <span>বাকি:</span> ${miss.map(m => `<span>${m.l}</span>`).join(", ")}</span>${admin ? `<button class="lnkb" data-e="${esc(a.code)}">পূরণ করুন</button>` : ""}</div></div>` : ""}
+      </div><div class="acf-meta">${miss.length ? `<div class="cmpl"><div class="bar"><i style="width:${pct}%"></i></div><div class="cmpl-t"><span class="am xs">${pct}% · <span>বাকি:</span> ${miss.map(m => `<span>${m.l}</span>`).join(", ")}</span>${admin ? `<button class="lnkb" data-e="${esc(a.code)}">পূরণ করুন</button>` : ""}</div></div>` : ""}
       <div class="mut sm">${n ? `${n}টি চেক · <a href="#/cheques" data-go="${esc(a.code)}">দেখুন</a>` : "এখনো চেক নেই"}${a.daily ? " · দৈনিক ক্লোজিং" : ""}${a.note ? ` · <span title="${esc(a.note)}">📝 ${esc(a.note.slice(0, 30))}</span>` : ""}</div></div></div></div></div>`;
     };
     const groups = [...byBank.values()].sort((a, b) => Number(!a.name) - Number(!b.name) || compare(a.name, b.name));
-    out.className = listView ? "ad-list" : "acc-grid ad-grid";
-    out.innerHTML = !arr.length ? `<div class="card empty ad-empty">${bi("ফিল্টারে কোনো অ্যাকাউন্ট মেলেনি", "No accounts match these filters")}</div>` :
-      listView ? groups.map(({name, accounts}) => `<section class="ad-bank"><h2>${esc(name || bi("ব্যাংকের নাম নেই", "Bank name missing"))} <span class="tag num" aria-label="${bi(`${accounts.length}টি অ্যাকাউন্ট`, `${accounts.length} accounts`)}">${accounts.length}</span></h2>${accounts.sort((a, b) => compare(a.code, b.code)).map(renderAccount).join("")}</section>`).join("") :
+    out.className = listView ? "acf-list" : "acc-grid acf-grid";
+    out.innerHTML = !arr.length ? `<div class="card empty acf-empty">${bi("ফিল্টারে কোনো অ্যাকাউন্ট মেলেনি", "No accounts match these filters")}</div>` :
+      listView ? groups.map(({name, accounts}) => `<section class="acf-bank"><h2>${esc(name || bi("ব্যাংকের নাম নেই", "Bank name missing"))} <span class="tag num" aria-label="${bi(`${accounts.length}টি অ্যাকাউন্ট`, `${accounts.length} accounts`)}">${accounts.length}</span></h2>${accounts.sort((a, b) => compare(a.code, b.code)).map(renderAccount).join("")}</section>`).join("") :
       arr.map(renderAccount).join("");
     $$("[data-cp]", v).forEach(x => x.onclick = () => copyText(x.dataset.cp, "✔ কপি হয়েছে"));
     $$("[data-e]", v).forEach(x => x.onclick = () => accountModal(S.accounts.find(a => a.code === x.dataset.e), refresh));
@@ -2971,16 +2973,16 @@ async function vAccounts(v, F = { q: "", b: "", h: "", st: "Active", miss: "", v
     selectAll.onclick = () => { arr.forEach(a => sel.add(a.code)); draw(); };
     selbar();
   };
-  const viewButtons = $$("[data-ad-view]", v);
+  const viewButtons = $$("[data-acf-view]", v);
   viewButtons.forEach(btn => btn.onclick = () => {
     if (btn.dataset.adView === F.view) return;
     F.view = btn.dataset.adView;
     viewButtons.forEach(item => item.setAttribute("aria-pressed", String(item.dataset.adView === F.view)));
     draw();
   });
-  query.oninput = e => { F.q = e.target.value; draw(); }; $("#ad-b", v).onchange = e => { F.b = e.target.value; draw(); }; $("#ad-h", v).onchange = e => { F.h = e.target.value; draw(); }; $("#ad-s", v).onchange = e => { F.st = e.target.value; draw(); };
-  $("#ad-imp", v) && ($("#ad-imp", v).onclick = () => bookImportModal(refresh));
-  $("#ad-add", v) && ($("#ad-add", v).onclick = () => accountModal(null, refresh));
+  query.oninput = e => { F.q = e.target.value; draw(); }; $("#acf-b", v).onchange = e => { F.b = e.target.value; draw(); }; $("#acf-h", v).onchange = e => { F.h = e.target.value; draw(); }; $("#acf-s", v).onchange = e => { F.st = e.target.value; draw(); };
+  $("#acf-imp", v) && ($("#acf-imp", v).onclick = () => bookImportModal(refresh));
+  $("#acf-add", v) && ($("#acf-add", v).onclick = () => accountModal(null, refresh));
   draw();
 }
 const MODULE_ACCESS = [
@@ -3185,20 +3187,20 @@ async function vAdmin(v) {
       $("#u-new", out).onclick = () => newUserModal(refresh);
       list();
     } else {
-      out.innerHTML = `<div class="adm-setup"><section class="card" id="ad-status" aria-labelledby="ad-status-title">
-        <div class="adm-setup-head"><h3 id="ad-status-title">🩺 ${bi("সিস্টেম অবস্থা","System status")}</h3><button type="button" class="btn sm" id="ad-recheck">${bi("আবার পরীক্ষা","Recheck status")}</button></div>
-        <div id="ad-offline"></div><div class="hcl" id="ad-health"></div>
+      out.innerHTML = `<div class="adm-setup"><section class="card" id="adm-status" aria-labelledby="adm-status-title">
+        <div class="adm-setup-head"><h3 id="adm-status-title">🩺 ${bi("সিস্টেম অবস্থা","System status")}</h3><button type="button" class="btn sm" id="adm-recheck">${bi("আবার পরীক্ষা","Recheck status")}</button></div>
+        <div id="adm-offline"></div><div class="hcl" id="adm-health"></div>
       </section>
-      <details class="card" id="ad-imports"><summary>${bi("পুরনো ডাটা ইমপোর্ট", "Historical imports")}</summary>
+      <details class="card" id="adm-imports"><summary>${bi("পুরনো ডাটা ইমপোর্ট", "Historical imports")}</summary>
       <p class="mut sm">${bi("মূল Bank balance archive বা Tally voucher export থেকে প্রথমবার ডাটা আনতে ব্যবহার করুন।", "Use these tools to import the original bank balance archive or a raw Tally voucher export.")}</p>
-      <section id="ad-history" aria-labelledby="ad-history-title"></section></details>
-      <section class="card adm-setup-links"><h3>⚡ দ্রুত লিংক</h3><div class="qlinks"><a href="#/admin?tab=backup">${ico("shield")} ${bi("ব্যাকআপ ও রিস্টোর", "Backup & Restore")}</a><a href="#/books">${ico("book")} চেক বই</a><a href="#/settings">${ico("gear")} সেটিংস</a><a href="https://supabase.com/dashboard/project/mtzxcwuojiajsanearsz" target="_blank" rel="noopener">${ico("bank")} Supabase ড্যাশবোর্ড ↗</a><a href="https://github.com/ruhulaminrevens/nabiad" target="_blank" rel="noopener">${ico("copyt")} GitHub কোড ↗</a><button type="button" class="btn" id="ad-go-users">${ico("users")} ${bi("ব্যবহারকারী ব্যবস্থাপনা","Manage users")}</button></div></section></div>`;
+      <section id="adm-history" aria-labelledby="adm-history-title"></section></details>
+      <section class="card adm-setup-links"><h3>⚡ দ্রুত লিংক</h3><div class="qlinks"><a href="#/admin?tab=backup">${ico("shield")} ${bi("ব্যাকআপ ও রিস্টোর", "Backup & Restore")}</a><a href="#/books">${ico("book")} চেক বই</a><a href="#/settings">${ico("gear")} সেটিংস</a><a href="https://supabase.com/dashboard/project/mtzxcwuojiajsanearsz" target="_blank" rel="noopener">${ico("bank")} Supabase ড্যাশবোর্ড ↗</a><a href="https://github.com/ruhulaminrevens/nabiad" target="_blank" rel="noopener">${ico("copyt")} GitHub কোড ↗</a><button type="button" class="btn" id="adm-go-users">${ico("users")} ${bi("ব্যবহারকারী ব্যবস্থাপনা","Manage users")}</button></div></section></div>`;
       if (!DEMO) {
-        $("#ad-history",out).insertAdjacentHTML("afterend", `<section class="adm-import-tally"><h3>${bi("Tally ভাউচার ইতিহাস","Tally voucher history")}</h3>
+        $("#adm-history",out).insertAdjacentHTML("afterend", `<section class="adm-import-tally"><h3>${bi("Tally ভাউচার ইতিহাস","Tally voucher history")}</h3>
           <p class="mut sm">${bi("একবার import করলে Cash Register-এর Tally vouchers-এ সেভ করা ইতিহাস পাবেন।","Import once to view saved history under Cash Register → Tally vouchers.")}</p>
-          <button type="button" class="btn" id="ad-tally-import">${ico("book")} ${bi("Tally ইতিহাস ইমপোর্ট","Import Tally history")}</button>
-          <input type="file" hidden accept=".json,application/json" id="ad-tally-file"><p class="mut sm" role="status" id="ad-tally-result"></p></section>`);
-        const input = $("#ad-tally-file",out), button = $("#ad-tally-import",out), status = $("#ad-tally-result",out);
+          <button type="button" class="btn" id="adm-tally-import">${ico("book")} ${bi("Tally ইতিহাস ইমপোর্ট","Import Tally history")}</button>
+          <input type="file" hidden accept=".json,application/json" id="adm-tally-file"><p class="mut sm" role="status" id="adm-tally-result"></p></section>`);
+        const input = $("#adm-tally-file",out), button = $("#adm-tally-import",out), status = $("#adm-tally-result",out);
         button.onclick = () => { if (navigator.onLine) input.click(); else toast(bi("ইন্টারনেট প্রয়োজন","Connect to the internet to import"),"err"); };
         input.onchange = async () => {
           const file = input.files[0]; input.value = ""; if (!file || button.disabled) return;
@@ -3213,8 +3215,8 @@ async function vAdmin(v) {
           } finally { button.disabled = false; }
         };
       }
-      $("#ad-go-users",out).onclick = () => open("usr");
-      const history = $("#ad-history",out), health = $("#ad-health",out), offline = $("#ad-offline",out), recheck = $("#ad-recheck",out);
+      $("#adm-go-users",out).onclick = () => open("usr");
+      const history = $("#adm-history",out), health = $("#adm-health",out), offline = $("#adm-offline",out), recheck = $("#adm-recheck",out);
       const row = (ok, l, sub) => `<div class="hc ${ok ? "ok" : "no"}"><i>${ok ? "✓" : "✗"}</i><div><b>${l}</b>${sub ? `<div class="mut xs">${sub}</div>` : ""}</div></div>`;
       const renderOffline = () => paintOfflineStatus(offline,row);
       const check = async () => {
@@ -3236,10 +3238,10 @@ async function vAdmin(v) {
       for (const event of ["pwa-state","online","offline"]) window.addEventListener(event, renderOffline, {signal:setupSignal});
       recheck.onclick = () => { if (navigator.onLine) preparePwa(true); check(); };
       check();
-      history.innerHTML = `<h3 id="ad-history-title">📥 ${bi("পুরনো ব্যাংক ব্যালেন্স ইতিহাস","Old bank balance history")}</h3><p class="mut sm">${bi("লোড হচ্ছে…","Loading…")}</p>`;
+      history.innerHTML = `<h3 id="adm-history-title">📥 ${bi("পুরনো ব্যাংক ব্যালেন্স ইতিহাস","Old bank balance history")}</h3><p class="mut sm">${bi("লোড হচ্ছে…","Loading…")}</p>`;
       const st = navigator.onLine || DEMO ? await API.balanceStats().catch(() => ({})) : {};
       if (!history.isConnected) return;
-      history.innerHTML = `<h3 id="ad-history-title">📥 ${bi("পুরনো ব্যাংক ব্যালেন্স ইতিহাস","Old bank balance history")}</h3>
+      history.innerHTML = `<h3 id="adm-history-title">📥 ${bi("পুরনো ব্যাংক ব্যালেন্স ইতিহাস","Old bank balance history")}</h3>
         ${!navigator.onLine && !DEMO ? `<p class="mut sm">${bi("ইতিহাস দেখতে ও ইমপোর্ট করতে ইন্টারনেট লাগবে।","Connect to the internet to view and import history.")}</p>` : ""}
         <div class="grid g3" style="margin:12px 0"><div class="kv"><span>ডাটাবেসে রেকর্ড</span><b class="num">${st.n == null ? "—" : money0(st.n)}</b></div><div class="kv"><span>সবচেয়ে পুরনো তারিখ</span><b>${st.first ? dmy(st.first) : "—"}</b></div><div class="kv"><span>সর্বশেষ তারিখ</span><b>${st.last ? dmy(st.last) : "—"}</b></div></div>
         ${DEMO ? `<div class="alert gr">${bi("DEMO মোডে পুরনো ডাটা আগে থেকেই লোড আছে।", "In DEMO mode the old data is already loaded.")}</div>` : `<div class="imopt"><div><b>২০২৬ ডাটা পুনরুদ্ধার</b><div class="mut xs">২০২৬-এর সব রেকর্ড + ২০২৬-এর ঠিক আগের শেষ দিনটি (ওটাই ১ জানুয়ারির Opening)</div></div><button class="btn pri" id="im-26">⬆ শুধু ২০২৬</button></div>
@@ -3417,7 +3419,7 @@ function photoPicker(root, st, ids, onChange) {
 }
 function addPhotoModal(c, after) {
   const st = { photo: null };
-  modal(`<h2>📷 চেকের ছবি · ${esc(c.code)} · ${c.no}</h2><div class="photo-in"><label class="btn" for="p-in-c">${ico("cam")} ছবি তুলুন</label><label class="btn" for="p-in">${ico("img")} গ্যালারি</label><input type="file" id="p-in-c" accept="image/*" capture="environment" hidden><input type="file" id="p-in" accept="image/*" hidden><img id="p-img" class="hide"><button class="btn sm ghost hide" id="p-x">✕</button></div>
+  modal(`<h2>📷 চেকের ছবি · ${esc(acLabel(c.code))} · ${c.no}</h2><div class="photo-in"><label class="btn" for="p-in-c">${ico("cam")} ছবি তুলুন</label><label class="btn" for="p-in">${ico("img")} গ্যালারি</label><input type="file" id="p-in-c" accept="image/*" capture="environment" hidden><input type="file" id="p-in" accept="image/*" hidden><img id="p-img" class="hide"><button class="btn sm ghost hide" id="p-x">✕</button></div>
    <div class="modal-actions"><button class="btn pri" id="p-ok">${ico("save")} সেভ</button><button class="btn" id="p-c">বাতিল</button></div>`, (root, close) => {
     photoPicker(root, st, { inp: "p-in", cam: "p-in-c", img: "p-img", x: "p-x" }); $("#p-c", root).onclick = close;
     $("#p-ok", root).onclick = async () => {

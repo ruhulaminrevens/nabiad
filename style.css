@@ -2137,43 +2137,43 @@ html:has(.bc-register .cbar) #toasts { pointer-events: none; }
 }
 
 /* Account Finder */
-.ad-filters {
+.acf-filters {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
   align-items: stretch;
   gap: 8px;
   margin-top: 8px;
 }
-.ad-filters .in { min-width: 0; }
-.ad-view { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface2); }
-.ad-view .btn { height: auto; min-height: 32px; min-width: 0; padding: 3px 9px; gap: 5px; border-color: transparent; background: transparent; box-shadow: none; }
-.ad-view .btn[aria-pressed="true"] { color: var(--pri-ink); border-color: var(--pri); background: var(--pri-soft); }
-.ad-view .btn span, .ad-view svg { display: block; width: 15px; height: 15px; }
-.ad-results { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-block: 8px; }
-.ad-results [hidden] { display: none; }
-.ad-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
-#ad-out .ad-empty { grid-column: 1 / -1; }
-#ad-out :is(.ad-id, .ad-details, .ad-meta) { display: grid; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
-#ad-out .no > span { min-width: 0; overflow-wrap: anywhere; }
-#ad-out .pick { position: relative; }
-#ad-out .pick input { display: block; position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: pointer; }
-#ad-out .pick input:focus-visible + i { outline: 2px solid #fff; outline-offset: 2px; }
-.ad-list, .ad-bank { display: grid; min-width: 0; }
-.ad-list { gap: 16px; }
-.ad-bank { gap: 6px; }
-.ad-bank h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 2px; margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
-.ad-list .acc { border-inline-start: 3px solid var(--b1, var(--pri)); }
-.ad-list .acc .hd { padding: 4px 12px; }
-.ad-list .acc:hover { transform: none; box-shadow: var(--sh2); }
-.ad-list .acc .bd { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: 10px 14px; align-items: start; padding: 9px 12px; }
+.acf-filters .in { min-width: 0; }
+.acf-view { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface2); }
+.acf-view .btn { height: auto; min-height: 32px; min-width: 0; padding: 3px 9px; gap: 5px; border-color: transparent; background: transparent; box-shadow: none; }
+.acf-view .btn[aria-pressed="true"] { color: var(--pri-ink); border-color: var(--pri); background: var(--pri-soft); }
+.acf-view .btn span, .acf-view svg { display: block; width: 15px; height: 15px; }
+.acf-results { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-block: 8px; }
+.acf-results [hidden] { display: none; }
+.acf-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+#acf-out .acf-empty { grid-column: 1 / -1; }
+#acf-out :is(.acf-id, .acf-details, .acf-meta) { display: grid; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+#acf-out .no > span { min-width: 0; overflow-wrap: anywhere; }
+#acf-out .pick { position: relative; }
+#acf-out .pick input { display: block; position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: pointer; }
+#acf-out .pick input:focus-visible + i { outline: 2px solid #fff; outline-offset: 2px; }
+.acf-list, .acf-bank { display: grid; min-width: 0; }
+.acf-list { gap: 16px; }
+.acf-bank { gap: 6px; }
+.acf-bank h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 2px; margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.acf-list .acc { border-inline-start: 3px solid var(--b1, var(--pri)); }
+.acf-list .acc .hd { padding: 4px 12px; }
+.acf-list .acc:hover { transform: none; box-shadow: var(--sh2); }
+.acf-list .acc .bd { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: 10px 14px; align-items: start; padding: 9px 12px; }
 @media (max-width: 760px) {
-  .ad-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ad-view .btn { min-height: 36px; padding-inline: 2px; }
-  .ad-list .acc .bd { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ad-list .ad-meta { grid-column: 1 / -1; }
+  .acf-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .acf-view .btn { min-height: 36px; padding-inline: 2px; }
+  .acf-list .acc .bd { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .acf-list .acf-meta { grid-column: 1 / -1; }
 }
 @media (max-width: 440px) {
-  .ad-list .acc .bd { grid-template-columns: 1fr; }
+  .acf-list .acc .bd { grid-template-columns: 1fr; }
 }
 
 /* Cash Register */
@@ -2214,8 +2214,8 @@ html:has(.bc-register .cbar) #toasts { pointer-events: none; }
 .adm-setup-links { grid-column: 1 / -1; }
 .adm-setup-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .adm-setup-head h3 { margin: 0; }
-#ad-offline { margin-bottom: 10px; }
-#ad-history .grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 122px), 1fr)); }
+#adm-offline { margin-bottom: 10px; }
+#adm-history .grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 122px), 1fr)); }
 .adm-account {
   display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, .75fr) auto;
   gap: 10px 15px; align-items: center; padding: 12px 14px;
@@ -2336,7 +2336,7 @@ button.as-kpi[aria-pressed="true"] { border-color: var(--pri); box-shadow: inset
   .adm-nav-wrap { display: none; }
 }
 
-#ad-imports > summary { cursor: pointer; font-weight: 700; }
+#adm-imports > summary { cursor: pointer; font-weight: 700; }
 .adm-import-tally { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
 #bk-upload-status:empty { display: none; }
 
