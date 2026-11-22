@@ -12,7 +12,7 @@
   --side-bg:linear-gradient(185deg,#1e1b4b 0%,#2e2a7a 55%,#4c1d95 100%);
   --r:14px; --r2:9px;
   --sh:0 1px 2px rgba(30,27,75,.06),0 4px 14px rgba(30,27,75,.05); --sh2:0 18px 44px rgba(30,27,75,.2); --sh-pri:0 6px 18px rgba(79,70,229,.32);
-  --side:244px; --top:60px; --ease:cubic-bezier(.2,.8,.2,1);
+  --side:244px; --top:60px; --ease:cubic-bezier(.2,.8,.2,1); --dur-fast:.14s; --dur:.2s; --glow:0 0 0 3px color-mix(in srgb,var(--pri) 22%,transparent);
   --font:"Inter","Hind Siliguri","Nirmala UI","Noto Sans Bengali",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   color-scheme:light;
 }
@@ -1156,9 +1156,9 @@ html[data-theme="dark"] .lk.blank{color:#fca5a5}html[data-theme="dark"] .lk.lost
 
 /* ===== v6.52 — compact, thumb-friendly entry forms (Cheque Posting, Bank closing, Cash, Collection) ===== */
 .ef .hint:empty{display:none}
-.dcx-b{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:10px}
-.dcx-b .btn{width:100%;justify-content:center}
-@media (min-width:901px){ .dcx-split .dcx-b{grid-template-columns:minmax(0,1fr) minmax(0,2fr)} }
+.dcx-b{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px}
+.dcx-b .btn{width:100%;justify-content:center;white-space:nowrap}
+@media (min-width:901px){ .dcx-split .dcx-b{grid-template-columns:max-content minmax(0,1fr)} }
 @media (max-width:900px){
   .top h1{flex:1 1 0;min-width:0}
   .top h1 .kbh{display:none}
@@ -2461,3 +2461,16 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 /* Standard amount size (v6.95): one size/weight for list amounts everywhere */
 :root{--amt-fs:15px;--amt-fw:700}
 .cp-activity-table td.r.num,.cp-activity-table td.r .num,.rg-table td.r.num,.cb-act-amt,.cb-act-amt.gr,.cb-act-amt.rd{font-size:var(--amt-fs);font-weight:var(--amt-fw);font-variant-numeric:tabular-nums}
+
+/* ---- UI polish (all pages): motion, depth, focus. Tokens: see UI_TOKENS.md ---- */
+.card, .btn, .tgl, .chip, .iconbtn, .dcx-stat { transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease), background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast); }
+.card:hover { box-shadow: var(--sh), 0 10px 28px color-mix(in srgb, var(--pri) 10%, transparent); transform: none; }
+.btn:not(:disabled):hover, .iconbtn:not(:disabled):hover, .cb-action.btn:not(:disabled):hover { transform: translateY(-1px); }
+.btn:not(:disabled):active, .iconbtn:not(:disabled):active, .tgl:active, .chip:active { transform: translateY(0) scale(.97); }
+:is(input, select, textarea):focus-visible, .in:focus { outline: none; border-color: var(--pri); box-shadow: var(--glow); }
+:is(input, select, textarea, .in) { transition: box-shadow var(--dur-fast), border-color var(--dur-fast); }
+.tw.cards tbody tr { transition: background var(--dur-fast); }
+.tw.cards tbody tr:not(.tot):hover td { background: color-mix(in srgb, var(--pri) 6%, var(--surface)); }
+:root[data-theme="dark"] .card { background: linear-gradient(180deg, color-mix(in srgb, var(--pri) 5%, var(--surface)), var(--surface)); border-color: color-mix(in srgb, var(--line) 80%, var(--pri) 20%); }
+:root[data-theme="dark"] .card:hover { box-shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 30px rgba(99,102,241,.16); }
+@media (hover: none) { .card:hover { box-shadow: var(--sh); } .btn:not(:disabled):hover, .iconbtn:not(:disabled):hover { transform: none; } }
