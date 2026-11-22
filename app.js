@@ -976,7 +976,9 @@ function installModal() {
 }
 
 /* ---------- login ---------- */
-function loginView() {
+function loginView(language = "en") {
+  LANG = language;
+  document.documentElement.lang = language;
   const demoBox = DEMO ? `<div class="alert am" style="margin-top:14px"><span>⚠ <b>${bi("DEMO মোড", "DEMO mode")}</b> — ${bi("Supabase সেট করা হয়নি, ডাটা শুধু এই ব্রাউজারে থাকবে।", "Supabase is not configured; data stays in this browser only.")}</span></div>
     <div class="chips" style="margin-top:12px">${[["admin", "Ruhul"], ["staff", "Foysal"], ["boss", "Boss"]].map(([r, n]) => `<span class="chip" data-demo="${r}|${n}">${r} (${n})</span>`).join("")}</div>` : "";
   $("#app").innerHTML = `<div class="login"><div class="tl-l"><button class="iconbtn th-ic" id="theme" title="Theme">${ico(getTheme() === "dark" ? "sun" : "moon")}</button></div><div class="tl">${langToggle()}</div>
@@ -990,8 +992,13 @@ function loginView() {
     <label class="f" style="margin-top:14px">পাসওয়ার্ড</label><input class="in" id="pw" type="password" autocomplete="current-password" required>
     <button class="btn pri lg" style="width:100%;margin-top:20px" id="lb">লগইন</button><div class="hint" id="le"></div></form>`}${demoBox}${isStandalone() ? "" : `<button class="inst-link" id="lg-inst" type="button">${ico("dl")} ${LANG === "en" ? "Install the app — Android · iPhone · Windows" : "অ্যাপ ইনস্টল করুন — Android · iPhone · Windows"}</button>`}</div></div></div>`;
   $("#theme").onclick = () => setTheme(getTheme() === "dark" ? "light" : "dark"); $("#lg-inst") && ($("#lg-inst").onclick = installModal);
-  $("#lang").onclick = () => setLang(LANG === "bn" ? "en" : "bn");
-  const done = async u => { S.me = u; await boot(); };
+  $("#lang").onclick = () => loginView(LANG === "bn" ? "en" : "bn");
+  const done = async u => {
+    LANG = savedAppLanguage();
+    document.documentElement.lang = LANG;
+    S.me = u;
+    await boot();
+  };
   if (DEMO) $$("[data-demo]").forEach(c => c.onclick = async () => { const [r, n] = c.dataset.demo.split("|"); await done(await API.login(r, n)); });
   else $("#lf").onsubmit = async e => { e.preventDefault(); $("#lb").disabled = true; try { const u = await API.login($("#em").value.trim(), $("#pw").value); if (!u) throw new Error("প্রোফাইল পাওয়া যায়নি বা নিষ্ক্রিয়"); await done(u); } catch (er) { $("#le").textContent = "লগইন হয়নি: " + (er.message || er); $("#le").className = "hint rd"; $("#lb").disabled = false; } };
 }
@@ -5943,7 +5950,7 @@ async function userSecModal(u, after) {
 
 /* ---------- boot ---------- */
 let inited = false;
-function onLangChange() { if (S.me && $("#view")) { shell(); route(); } else if (!S.me) loginView(); }
+function onLangChange() { if (S.me && $("#view")) { shell(); route(); } else if (!S.me) loginView(LANG); }
 async function boot() {
   try {
     if (!inited) { startI18n(); await API.init(); inited = true; }
