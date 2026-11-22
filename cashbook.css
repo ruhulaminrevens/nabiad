@@ -406,3 +406,15 @@
 @media (max-width: 450px) {
   .cb-party-edit .in { font-size: 16px; }
 }
+
+/* Ledger list modal (v6.91) */
+.modal.wide:has(#lg-l){width:min(1040px,96vw);max-width:none}
+.cblg-h:not(.cblg-map),.cblg-r:not(.cblg-map){grid-template-columns:minmax(0,1.7fr) minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,1fr) minmax(250px,auto)}
+.cblg-r .ln{text-align:left;font-weight:600}
+.cblg-r .act{gap:6px;flex-wrap:nowrap}
+.cblg-r .act .tag{white-space:nowrap}
+.cblg-r .act .btn.ld{color:var(--rd)}
+@media (max-width:720px){.cblg-r:not(.cblg-map){grid-template-columns:1fr 1fr;grid-template-areas:"n n" "r p" "a a" "o o"}.cblg-r .act{flex-wrap:wrap;justify-content:flex-start}}
+.modal-actions:has(#lg-close){display:flex;align-items:center;gap:10px}
+.modal-actions #lg-close{flex:0 0 auto;width:auto;min-width:120px;margin-left:auto}
+.cblg-h:not(.cblg-map),.cblg-r:not(.cblg-map){grid-template-columns:minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,1.3fr) minmax(0,.9fr) minmax(250px,auto)}

@@ -2435,3 +2435,8 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 .shclose:hover { background: var(--surface2) !important; color: var(--txt) !important; }
 /* icon-only row actions share the same role colours */
 .iconbtn.cpi.pri { color: var(--pri); } .iconbtn.cpi.am { color: var(--am); } .iconbtn.cpi.rd { color: var(--rd); }
+
+/* Cash Register ledger list (v6.91): stable columns */
+.rg-ledgers{table-layout:fixed;width:100%}
+.rg-ledgers .c-id{width:56px}.rg-ledgers .c-type{width:84px}.rg-ledgers .c-name{width:30%}.rg-ledgers .c-grp{width:26%}.rg-ledgers .c-date{width:150px}.rg-ledgers .c-st{width:190px}
+.rg-ledgers td:last-child{white-space:nowrap}

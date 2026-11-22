@@ -1177,9 +1177,10 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
        ${[["r", "Receipt"], ["p", "Payment"]].map(([side, label]) => `<optgroup label="${label}">${CB_CAT[side].map(k => `<option value="${side}:${k}">${esc(cbCatName(k))}</option>`).join("")}</optgroup>`).join("")}
      </select></div>
    </div>
-   <div class="cblg-h ${mappingOnly ? "cblg-map" : ""}"><span>${bi("লেজার", "Ledger")}</span><span>Receipt ${bi("খাত", "group")}</span><span>Payment ${bi("খাত", "group")}</span>${mappingOnly ? `<span>${bi("স্ট্যাটাস ও অ্যাকশন", "Status & actions")}</span>` : "<span>Bank A/C</span><span></span>"}</div>
+   <div class="cblg-h ${mappingOnly ? "cblg-map" : ""}"><span>${bi("লেজার", "Ledger")}</span><span>Receipt ${bi("খাত", "group")}</span><span>Payment ${bi("খাত", "group")}</span>${mappingOnly ? `<span>${bi("স্ট্যাটাস ও অ্যাকশন", "Status & actions")}</span>` : `<span>Bank A/C</span><span>${bi("স্ট্যাটাস ও অ্যাকশন", "Status & actions")}</span>`}</div>
    <div class="mut sm" id="lg-c" role="status"></div><div class="cblg" id="lg-l"></div>
    <button class="btn sm" type="button" id="lg-more" hidden>${bi("আরও দেখুন", "Show more")}</button>
+   ${!mappingOnly ? `<div class="modal-actions"><span class="mut sm">${bi("পরিবর্তন সঙ্গে সঙ্গে সেভ হয়।", "Changes save automatically.")}</span><button type="button" class="btn s-close" id="lg-close">${bi("বন্ধ", "Close")}</button></div>` : ""}
    ${mappingOnly ? `<div class="modal-actions"><span id="lg-status" class="mut sm" role="status"></span><button type="button" class="btn" id="lg-close">${bi("বন্ধ", "Close")}</button>${canEdit ? `<button type="button" class="btn" id="lg-edit" disabled>${ico("edit")} ${bi("এডিট", "Edit")}</button><button type="button" class="btn pri" id="lg-save" disabled>${ico("save")} ${bi("সেভ", "Save")}</button>` : ""}</div>` : ""}`, async (root, close) => {
     const panel = $(".modal", root), g = id => $("#" + id, panel);
     panel.classList.add("wide");
@@ -1260,7 +1261,7 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
         <span class="nm" title="${esc(m.name)}">${mappingOnly ? esc(m.name) : `<input class="cell ln" value="${esc(m.name)}">`}</span>
         <select class="in lr" aria-label="${esc(m.name)} · Receipt group" ${selectable ? "" : "disabled"}>${cbLgOpts("r", cbLedCat({ ...m, ...mappings.get(m.id) }, "r"))}</select>
         <select class="in lp" aria-label="${esc(m.name)} · Payment group" ${selectable ? "" : "disabled"}>${cbLgOpts("p", cbLedCat({ ...m, ...mappings.get(m.id) }, "p"))}</select>
-        ${mappingOnly ? mappingActions(m) : `<select class="in la">${acOpts(m.bank_code)}</select><span class="act"><label class="chk" title="${bi("চালু","Active")}"><input type="checkbox" class="lo" ${m.active === false ? "" : "checked"}></label>${admin ? `<button type="button" class="cbx2 ld" title="${bi("মুছুন","Delete")}">×</button>` : ""}</span>`}
+        ${mappingOnly ? mappingActions(m) : `<select class="in la" aria-label="${esc(m.name)} · Bank A/C">${acOpts(m.bank_code)}</select><span class="act"><span class="tag ${m.active === false ? "au-delete" : "au-insert"}">${m.active === false ? bi("নিষ্ক্রিয়", "Inactive") : bi("সক্রিয়", "Active")}</span><button type="button" class="btn sm lo" aria-label="${esc((m.active === false ? bi("সক্রিয় করুন", "Activate") : bi("নিষ্ক্রিয় করুন", "Disable")) + " · " + m.name)}">${m.active === false ? bi("সক্রিয় করুন", "Activate") : bi("নিষ্ক্রিয় করুন", "Disable")}</button>${admin ? `<button type="button" class="btn sm ld" aria-label="${esc(bi("মুছুন", "Delete") + " · " + m.name)}">${bi("মুছুন", "Delete")}</button>` : ""}</span>`}
       </div>`).join("") || `<div class="empty">${bi("কোনো লেজার মেলেনি", "No ledgers match")}</div>`;
     };
     const save = async (el, patch) => {
@@ -1377,11 +1378,18 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
       } else if (t.classList.contains("lr")) save(t, { cat_r: t.value || null });
       else if (t.classList.contains("lp")) save(t, { cat_p: t.value || null });
       else if (t.classList.contains("la")) save(t, { bank_code: t.value || null });
-      else if (t.classList.contains("lo")) save(t, { active: t.checked });
     };
     g("lg-l").onclick = async e => {
-      const button = e.target.closest(".ld, .lg-toggle");
+      const button = e.target.closest(".ld, .lg-toggle, .lo");
       if (!button || saving) return;
+      if (button.classList.contains("lo")) {
+        if (!canEdit) return;
+        const row = CBLED.list.find(x => x.id === Number(button.closest(".cblg-r").dataset.id)); if (!row) return;
+        const rid = row.id;
+        await save(button, { active: row.active === false });
+        if (panel.isConnected) { draw(); $(`.cblg-r[data-id="${rid}"] .lo`, panel)?.focus({ preventScroll: true }); }
+        return;
+      }
       const id = Number(button.closest(".cblg-r").dataset.id);
       const ledger = CBLED.list.find(row => row.id === id);
       if (!ledger || deleting.has(id)) return;
@@ -1433,6 +1441,7 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
       return;
     }
     const done = () => { close(); changed && !mappingOnly && after?.(); };
+    g("lg-close").onclick = done;
     const bk = $(".mback", root); bk.addEventListener("mousedown", e => { if (e.target === bk && changed && !mappingOnly) after?.(); });
     root.addEventListener("keydown", e => { if (e.key === "Escape") done(); });
     draw();
