@@ -99,16 +99,16 @@
 .cb-reg-totals td { font-weight: 700; }
 .cb-reg-table td small { display: block; margin-top: 1px; font-size: 10px; }
 .cb-narr { white-space: pre-wrap; overflow-wrap: anywhere; }
-.cb-reg-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.cb-reg-groups > section + section { border-left: 1px solid #a9b5c3; }
 .cb-reg-block { padding: 8px 12px; border-bottom: 1px solid #a9b5c3; }
-.cb-reg-block h3, .cb-reg-empty { margin: 0 0 3px; font-size: 12px; }
+.cb-reg-block h3 { margin: 0 0 3px; font-size: 12px; }
 .cb-reg-block > small { display: block; margin-top: 4px; }
+.cb-reg-signatures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 42px 12px 12px; text-align: center; font-size: 12px; font-weight: 700; }
+.cb-reg-signatures > div { width: min(100%, 185px); justify-self: center; border-top: 1px solid #8998a9; padding-top: 5px; }
 .cb-register .rep-ft { padding: 7px 12px; }
 @media print {
   .cb-register.rep { overflow: visible; }
   .cb-reg-table thead { display: table-header-group; }
-  .cb-reg-table tr, .cb-reg-totals, .cb-reg-groups, .cb-reg-block { break-inside: avoid; }
+  .cb-reg-table tr, .cb-reg-totals, .cb-reg-block, .cb-reg-signatures { break-inside: avoid; }
 }
 
 .csec.c-open .csh { flex-wrap: wrap; justify-content: space-between; }
@@ -216,7 +216,6 @@
   overflow-wrap: anywhere;
 }
 .cb-activity-lines li > div { min-width: 0; }
-.cb-activity-lines li > b { flex: 0 0 auto; max-width: 48%; text-align: end; }
 .cb-activity-lines small { display: block; color: var(--mut); margin-top: 2px; }
 #cb-activity-empty { text-align: center; margin: 8px 0 12px; padding: 16px 8px; }
 @media (max-width: 1100px) {
@@ -239,7 +238,8 @@
 .cb-export-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-bottom: 10px; }
 .cb-export-actions .btn { min-width: 0; min-height: 44px; justify-content: center; gap: 4px; padding-inline: 4px; font-size: .8rem; }
 .cb-export-actions .btn svg { width: 14px; flex: none; }
-.cb-record-actions { display: grid; justify-items: end; gap: 4px; flex: none; }
+.cb-record-actions { display: flex; align-items: center; gap: 4px; flex: none; white-space: nowrap; }
+.cb-record-actions .num { margin-inline-end: 3px; }
 .cb-record-actions .btn { min-height: 32px; }
 .cb-record-actions [data-cb-delete] { color: var(--rd); }
 .cb-export-stage { position: fixed; inset: 0 auto auto -10000px; width: 800px; pointer-events: none; }

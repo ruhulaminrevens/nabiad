@@ -257,22 +257,14 @@ const cbRegisterTitle = () => bi("দৈনিক ক্যাশ রেজি�
 const cbVoucherLabel = t => t === "r" ? bi("মানি রিসিট নং", "Money Receipt No.") : bi("ক্যাশ ভাউচার নং", "Cash Voucher No.");
 const cbSideLabel = t => t === "r" ? bi("প্রাপ্তি", "Receipt") : bi("পরিশোধ", "Payment");
 const cbNarrationLabel = () => bi("নোট / Tally Narration", "Note / Tally Narration");
-const cbRegisterLedgerTitle = side => bi(side === "r" ? "লেজারভিত্তিক প্রাপ্তি" : "লেজারভিত্তিক পরিশোধ",
-  side === "r" ? "Receipt totals by ledger" : "Payment totals by ledger");
+const cbRegisterSigners = () => [
+  bi("দাখিলকারী", "Submitted By"),
+  bi("রিপোর্ট ও নিরীক্ষা", "Report & Audit By"),
+  bi("অনুমোদনকারী", "Authorized By")
+];
 const cbRegisterLineLabel = (line, rawTally = false) =>
   (!rawTally && String(line?.reportLedger || "").trim()) || String(line?.n || "").trim();
 
-function cbRegisterLedgerTotals(lines) {
-  const amounts = new Map();
-  for (const line of lines || []) {
-    const label = cbRegisterLineLabel(line) || bi("নাম নেই", "Unnamed ledger");
-    const key = tallyLedgerKey(label);
-    const total = amounts.get(key) || {label, cents: 0};
-    total.cents += Math.round(Number(line.a) * 100);
-    amounts.set(key, total);
-  }
-  return [...amounts.values()].sort((a, b) => a.label.localeCompare(b.label)).map(({label, cents}) => [label, cents / 100]);
-}
 function cbRegisterClosingNote(book) {
   if (book.importedVouchersUnavailable) return bi("আমদানি করা Tally ভাউচার লোড হয়নি।", "Imported Tally vouchers could not load.");
   if (book.source === "tally") {
@@ -314,7 +306,6 @@ function cbRegisterSheet(book) {
       <td>${label(p, "p")}</td><td class="cb-reg-amount">${amt(p)}</td></tr>`;
   }).join("");
   const totals = values => values.map(([key, amount]) => `<div class="cb-reg-total"><span>${esc(key)}</span><b>${cbRegisterMoney(amount)}</b></div>`).join("");
-  const byLedger = side => totals(cbRegisterLedgerTotals(lines[side])) || `<p class="cb-reg-empty">—</p>`;
   const weekday = new Date(book.date + "T12:00:00+06:00").toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", {weekday:"long", timeZone:"Asia/Dhaka"});
   const status = tally ? cbRegisterSource(book) : book.status === "final" ? bi("ফাইনাল", "Final") : bi("দিন খোলা", "Day open");
   return `<div class="rep cb-register">
@@ -330,10 +321,6 @@ function cbRegisterSheet(book) {
       <tr><td></td><th scope="row">${bi("শুরুর নগদসহ মোট", "Opening cash + receipts")}</th><td class="cb-reg-amount">${cbRegisterMoney(opening == null ? null : Math.round((opening + receipt) * 100) / 100)}</td>
       <th scope="row">${bi("দিনশেষে হাতে নগদ", "Closing cash · counted")}</th><td class="cb-reg-amount">${cbRegisterMoney(counted)}</td></tr>
     </tbody></table>
-    ${rawTally ? "" : `<div class="cb-reg-groups">
-      <section class="cb-reg-block"><h3>${cbRegisterLedgerTitle("r")}</h3>${byLedger("r")}</section>
-      <section class="cb-reg-block"><h3>${cbRegisterLedgerTitle("p")}</h3>${byLedger("p")}</section>
-    </div>`}
     <section class="cb-reg-block"><h3>${bi("দিনশেষের সারাংশ", "Closing summary")}</h3>${totals([
       [movementLabel, movement],
       [bi("হিসাব অনুযায়ী হাতে নগদ", "Expected closing cash"), expected],
@@ -343,6 +330,9 @@ function cbRegisterSheet(book) {
     ])}
     <small>${esc(cbRegisterClosingNote(book))}</small></section>
     ${book.remarks ? `<section class="cb-reg-block cb-narr"><h3>${bi("মন্তব্য", "Remarks")}</h3>${esc(book.remarks)}</section>` : ""}
+    ${rawTally ? "" : `<div class="cb-reg-signatures">
+      ${cbRegisterSigners().map(label => `<div>${esc(label)}</div>`).join("")}
+    </div>`}
     <div class="rep-ft"><span>${[status, book.updated_at && cbRegisterDate(book.updated_at), esc(book.entered_by || "")].filter(Boolean).join(" · ")}</span><span>NABIAD Smart Finance Suite</span></div></div>`;
 }
 async function cbRegisterExcel(book) {
@@ -352,18 +342,25 @@ async function cbRegisterExcel(book) {
   const entry = l => [cbRegisterLineLabel(l, rawTally), l?.a ?? null, ...(!rawTally ? [l?.ref || ""] : []), l?.note || ""];
   const headings = side => [cbSideLabel(side), "৳", ...(!rawTally ? [cbVoucherLabel(side)] : []), cbNarrationLabel()];
   const rows = Array.from({ length: Math.max(lines.r?.length || 0, lines.p?.length || 0) }, (_, i) => [i + 1, ...entry(lines.r?.[i]), ...entry(lines.p?.[i])]);
-  const ws = XLSX.utils.aoa_to_sheet([
+  const cells = [
     [cbRegisterTitle(), book.date, cbRegisterSource(book), cbRegisterDate(book.updated_at), book.entered_by || ""],
     ["#", ...headings("r"), ...headings("p")],
     ...rows, [],
-    ...(rawTally ? [] : [
-      [cbRegisterLedgerTitle("r")], ...cbRegisterLedgerTotals(lines.r), [],
-      [cbRegisterLedgerTitle("p")], ...cbRegisterLedgerTotals(lines.p), []
-    ]),
     [bi("দিনশেষের সারাংশ", "Closing summary")], ...cbRegisterTotals(book), ...cbRegisterReferences(ref),
     [cbRegisterClosingNote(book)],
     [bi("মন্তব্য", "Remarks"), book.remarks || ""]
-  ]);
+  ];
+  const signers = rawTally ? [] : cbRegisterSigners();
+  const signatureRow = cells.length + 3;
+  if (signers.length) {
+    const spread = values => values.flatMap(value => [value, null, null]);
+    cells.push([], [], [], spread(signers.map(() => "____________________")), spread(signers));
+  }
+  const ws = XLSX.utils.aoa_to_sheet(cells);
+  if (signers.length) {
+    ws["!merges"] = [signatureRow, signatureRow + 1].flatMap(r => signers.map((_, i) =>
+      ({s: {r, c: i * 3}, e: {r, c: i * 3 + 2}})));
+  }
   const widths = rawTally ? [6, 38, 16, 42, 38, 16, 42] : [6, 38, 16, 22, 42, 38, 16, 22, 42];
   ws["!cols"] = widths.map(wch => ({ wch }));
   const wb = XLSX.utils.book_new();
@@ -399,7 +396,7 @@ async function cbRegisterVisual(el, format) {
   const canvas = await dcCanvas(el);
   if (format === "png") return cbCanvasBlob(canvas, "image/png");
   const scale = canvas.height / el.getBoundingClientRect().height, top = el.getBoundingClientRect().top;
-  const ends = $$("tr, .cb-reg-total, .rep-ft", el).map(node => Math.round((node.getBoundingClientRect().bottom - top) * scale));
+  const ends = $$("tr, .cb-reg-total, .cb-reg-block, .rep-ft", el).map(node => Math.round((node.getBoundingClientRect().bottom - top) * scale));
   const pages = [], maxHeight = Math.floor(canvas.width * 802 / 555);
   for (let y = 0; y < canvas.height;) {
     const limit = Math.min(y + maxHeight, canvas.height);
@@ -710,8 +707,8 @@ async function vCashBook(v) {
         ${item.ref || item.c ? `<small>${esc([item.ref && cbVoucherLabel(activitySide) + " " + item.ref, item.c].filter(Boolean).join(" · "))}</small>` : ""}
         ${item.note ? `<small class="cb-narr">${esc(item.note)}</small>` : ""}</div>
         <div class="cb-record-actions"><b class="num">${moneyText(item.a)}</b>
-          <div>${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="btn sm" data-cb-edit="${index}">${bi("এডিট", "Edit")}</button>` : ""}
-          ${!imported && admin ? `<button type="button" class="btn sm" data-cb-delete="${index}">${bi("মুছুন", "Delete")}</button>` : ""}</div>
+          ${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="btn sm" data-cb-edit="${index}">${bi("এডিট", "Edit")}</button>` : ""}
+          ${!imported && admin ? `<button type="button" class="btn sm" data-cb-delete="${index}">${bi("মুছুন", "Delete")}</button>` : ""}
         </div></li>`).join("");
       get("activity-lines").hidden = !entries.length;
       get("activity-empty").hidden = !activityBook || !!entries.length;
