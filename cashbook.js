@@ -245,7 +245,9 @@ const cbSideLabel = t => t === "r" ? bi("প্রাপ্তি", "Receipt") :
 const cbNarrationLabel = () => bi("নোট / Tally Narration", "Note / Tally Narration");
 const cbRegisterLedgerTitle = side => bi(side === "r" ? "লেজারভিত্তিক প্রাপ্তি" : "লেজারভিত্তিক পরিশোধ",
   side === "r" ? "Receipt totals by ledger" : "Payment totals by ledger");
-const cbRegisterLineLabel = line => String(line?.reportLedger || "").trim() || String(line?.n || "").trim();
+const cbIsTallyReport = book => book?.source === "tally" && !book.importedForCashBook;
+const cbRegisterLineLabel = (line, rawTally = false) =>
+  (!rawTally && String(line?.reportLedger || "").trim()) || String(line?.n || "").trim();
 
 function cbRegisterLedgerTotals(lines) {
   const amounts = new Map();
@@ -282,7 +284,8 @@ function cbRegisterSheet(book) {
   const openingLabel = bi("শুরুর নগদ", "Opening cash");
   const totalReceipt = bi("মোট প্রাপ্তি", "Total receipts");
   const totalPayment = bi("মোট পরিশোধ", "Total payments");
-  const label = (line, side) => line ? `<strong>${esc(cbRegisterLineLabel(line))}</strong>
+  const rawTally = cbIsTallyReport(book);
+  const label = (line, side) => line ? `<strong>${esc(cbRegisterLineLabel(line, rawTally))}</strong>
     ${line.c ? `<small>${esc(line.c)}</small>` : ""}
     ${line.ref && !tally ? `<small>${cbVoucherLabel(side)} · ${esc(line.ref)}</small>` : ""}
     ${line.note ? `<small class="cb-narr">${esc(line.note)}</small>` : ""}` : "";
@@ -310,10 +313,10 @@ function cbRegisterSheet(book) {
       <tr><td></td><th scope="row">${bi("শুরুর নগদসহ মোট", "Opening cash + receipts")}</th><td class="cb-reg-amount">${cbRegisterMoney(opening == null ? null : Math.round((opening + receipt) * 100) / 100)}</td>
       <th scope="row">${bi("দিনশেষে হাতে নগদ", "Closing cash · counted")}</th><td class="cb-reg-amount">${cbRegisterMoney(counted)}</td></tr>
     </tbody></table>
-    <div class="cb-reg-groups">
+    ${rawTally ? "" : `<div class="cb-reg-groups">
       <section class="cb-reg-block"><h3>${cbRegisterLedgerTitle("r")}</h3>${byLedger("r")}</section>
       <section class="cb-reg-block"><h3>${cbRegisterLedgerTitle("p")}</h3>${byLedger("p")}</section>
-    </div>
+    </div>`}
     <section class="cb-reg-block"><h3>${bi("দিনশেষের সারাংশ", "Closing summary")}</h3>${totals([
       [movementLabel, movement],
       [bi("হিসাব অনুযায়ী হাতে নগদ", "Expected closing cash"), expected],
@@ -329,15 +332,18 @@ async function cbRegisterExcel(book) {
   await loadScript("vendor/xlsx.min.js");
   const lines = book.lines || {}, ref = lines.register;
   const tally = book.source === "tally";
-  const entry = l => [cbRegisterLineLabel(l), l?.a ?? null, ...(!tally ? [l?.ref || ""] : []), l?.note || ""];
+  const rawTally = cbIsTallyReport(book);
+  const entry = l => [cbRegisterLineLabel(l, rawTally), l?.a ?? null, ...(!tally ? [l?.ref || ""] : []), l?.note || ""];
   const headings = side => [cbSideLabel(side), "৳", ...(!tally ? [cbVoucherLabel(side)] : []), cbNarrationLabel()];
   const rows = Array.from({ length: Math.max(lines.r?.length || 0, lines.p?.length || 0) }, (_, i) => [i + 1, ...entry(lines.r?.[i]), ...entry(lines.p?.[i])]);
   const ws = XLSX.utils.aoa_to_sheet([
     [cbRegisterTitle(), book.date, cbRegisterSource(book), cbRegisterDate(book.updated_at), book.entered_by || ""],
     ["#", ...headings("r"), ...headings("p")],
     ...rows, [],
-    [cbRegisterLedgerTitle("r")], ...cbRegisterLedgerTotals(lines.r), [],
-    [cbRegisterLedgerTitle("p")], ...cbRegisterLedgerTotals(lines.p), [],
+    ...(rawTally ? [] : [
+      [cbRegisterLedgerTitle("r")], ...cbRegisterLedgerTotals(lines.r), [],
+      [cbRegisterLedgerTitle("p")], ...cbRegisterLedgerTotals(lines.p), []
+    ]),
     [bi("দিনশেষের সারাংশ", "Closing summary")], ...cbRegisterTotals(book), ...cbRegisterReferences(ref),
     [cbRegisterClosingNote(book)],
     [bi("মন্তব্য", "Remarks"), book.remarks || ""]
@@ -647,12 +653,13 @@ async function vCashBook(v) {
     let activityBook = null;
     const drawActivity = () => {
       const imported = activityBook?.source === "tally";
+      const rawTally = cbIsTallyReport(activityBook);
       for (const button of $$("[data-cb-side]", body)) {
         button.setAttribute("aria-pressed", String(button.dataset.cbSide === activitySide));
         $(".cb-side-count", button).textContent = activityBook ? (activityBook.lines[button.dataset.cbSide]?.length || 0) : "—";
       }
       const entries = activityBook?.lines[activitySide] || [];
-      get("activity-lines").innerHTML = entries.map((item, index) => `<li><div><strong>${esc(cbRegisterLineLabel(item))}</strong>
+      get("activity-lines").innerHTML = entries.map((item, index) => `<li><div><strong>${esc(cbRegisterLineLabel(item, rawTally))}</strong>
         ${item.ref || item.c ? `<small>${esc([item.ref && cbVoucherLabel(activitySide) + " " + item.ref, item.c].filter(Boolean).join(" · "))}</small>` : ""}
         ${item.note ? `<small class="cb-narr">${esc(item.note)}</small>` : ""}</div>
         <div class="cb-record-actions"><b class="num">${moneyText(item.a)}</b>
