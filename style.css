@@ -2440,3 +2440,13 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 .rg-ledgers{table-layout:fixed;width:100%}
 .rg-ledgers .c-id{width:56px}.rg-ledgers .c-type{width:84px}.rg-ledgers .c-name{width:30%}.rg-ledgers .c-grp{width:26%}.rg-ledgers .c-date{width:150px}.rg-ledgers .c-st{width:190px}
 .rg-ledgers td:last-child{white-space:nowrap}
+
+/* Active/Inactive toggle pill + ledger type tags (v6.93) */
+.tgl{display:inline-flex;align-items:center;justify-content:center;min-width:84px;height:30px;padding:0 12px;border-radius:99px;border:1px solid transparent;font:inherit;font-size:12px;font-weight:800;cursor:pointer;transition:filter .12s,transform .05s}
+.tgl.on{background:var(--gr-soft);color:var(--gr);border-color:color-mix(in srgb,var(--gr) 40%,transparent)}
+.tgl.off{background:var(--rd-soft);color:var(--rd);border-color:color-mix(in srgb,var(--rd) 40%,transparent)}
+.tgl:hover:not(:disabled){filter:brightness(.95)}.tgl:active:not(:disabled){transform:scale(.97)}
+.tgl:disabled{opacity:.6;cursor:wait}
+.tag.ty-receipt{background:var(--gr-soft);color:var(--gr)}
+.tag.ty-payment{background:var(--rd-soft);color:var(--rd)}
+.tag.ty-both{background:var(--vi-soft);color:var(--vi)}

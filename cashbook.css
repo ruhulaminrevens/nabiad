@@ -441,3 +441,8 @@
 .cb-act-led{text-align:left}
 .cb-act-amt,.cb-act-h .r{min-width:96px}
 @media (max-width:560px){.cb-activity-lines li.cb-act-row{grid-template-columns:30px minmax(0,1fr) auto}}
+
+/* v6.93: no gap before actions; toggle pill + delete sit right after Bank A/C */
+.cblg-h:not(.cblg-map),.cblg-r:not(.cblg-map){grid-template-columns:minmax(0,1.5fr) minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,.9fr) max-content;justify-content:start}
+.cblg-r .act{justify-content:flex-start;min-width:170px}
+.cblg-h:not(.cblg-map) span{text-align:left;justify-self:start}

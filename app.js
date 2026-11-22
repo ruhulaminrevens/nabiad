@@ -4352,9 +4352,10 @@ async function vRegister(v) {
         const active = row.active !== false, status = ledgerStatus(active);
         const tag = active ? "au-insert" : "au-delete";
         const act = active ? bi("নিষ্ক্রিয় করুন", "Disable") : bi("সক্রিয় করুন", "Activate");
-        const control = `<span class="tag ${tag}">${esc(status)}</span>` + (canToggleLedger
-          ? ` <button type="button" class="btn sm" data-rg-ledger="${esc(row.id)}" aria-label="${esc(`${act} · ${row.name}`)}"${toggling.has(String(row.id)) ? " disabled" : ""}>${esc(act)}</button>` : "");
-        return `<tr><td class="num">${esc(id)}</td><td>${esc(typeLabel)}</td><td><b>${esc(row.name)}</b></td><td>${groups.length ? details(groups) : esc(ungrouped)}</td><td class="num sm">${details(dates)}</td><td>${control}</td></tr>`;
+        const control = canToggleLedger
+          ? `<button type="button" class="tgl ${active ? "on" : "off"}" data-rg-ledger="${esc(row.id)}" aria-pressed="${active}" title="${esc(active ? bi("নিষ্ক্রিয় করতে ক্লিক করুন", "Click to disable") : bi("সক্রিয় করতে ক্লিক করুন", "Click to activate"))}" aria-label="${esc(`${act} · ${row.name}`)}"${toggling.has(String(row.id)) ? " disabled" : ""}>${esc(status)}</button>`
+          : `<span class="tag ${tag}">${esc(status)}</span>`;
+        return `<tr><td class="num">${esc(id)}</td><td><span class="tag ty-${esc(row.kind || "both")}">${esc(typeLabel)}</span></td><td><b>${esc(row.name)}</b></td><td>${groups.length ? details(groups) : esc(ungrouped)}</td><td class="num sm">${details(dates)}</td><td>${control}</td></tr>`;
       }).join("")}
       </tbody></table></div>${shownLedgers.length ? "" : `<div class="empty">${bi("কোনো লেজার মেলেনি", "No ledgers match these filters")}</div>`}`;
   }
@@ -4401,7 +4402,7 @@ async function vRegister(v) {
     const ledger = bi("লেজার", "Ledger"), detail = bi("ভাউচার / নোট", "Voucher / note"), recordSource = bi("উৎস", "Source");
     out.innerHTML = shown.length ? `<div class="tw cards"><table class="rg-table"><thead><tr><th>তারিখ</th><th>ধরন</th><th>${ledger}</th><th>${bi("খাত","Purpose / Group")}</th><th class="r">টাকা</th><th>${detail}</th><th>${recordSource}</th></tr></thead><tbody>
       ${shown.slice(first, first + pageSize).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td>
-      <td>${l.led ? `<b>${esc(l.led)}</b>${l.source === "checker" ? `<div class="mut xs">${mappedCategoryTotal}</div>` : ""}` : `<span class="mut">${l.source === "checker" ? categoryTotal : bi("নাম দেওয়া হয়নি", "Unnamed entry")}</span>`}</td>
+      <td>${l.led ? `<b>${esc(l.led)}</b>${l.source === "checker" ? `<div class="mut xs">${mappedCategoryTotal}</div>` : ""}` : `<span class="mut" title="${esc(l.source === "checker" ? categoryTotal : bi("নাম দেওয়া হয়নি", "Unnamed entry"))}">—</span>`}</td>
       <td>${esc(l.k ? cashLabel(l.k) : ungrouped)}</td><td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td>
       <td class="sm">${[l.ref, l.accounts && "A/C " + l.accounts, l.n].filter(Boolean).map(x => `<div>${esc(x)}</div>`).join("") || "—"}</td>
       <td class="mut sm">${sources[l.source]}${l.st ? ` · ${l.st === "final" ? bi("ফাইনাল", "Final") : bi("ড্রাফট", "Draft")}` : ""}${l.by ? " · " + esc(l.by) : ""}</td></tr>`).join("")}
