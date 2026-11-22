@@ -286,7 +286,10 @@ function cbRegisterClosingNote(book) {
   return ref?.at ? bi("সারাংশ নেওয়া হয়েছে", "Summary captured") + " · " + cbRegisterDate(ref.at)
     : bi("সংরক্ষিত ব্যাংক ও কালেকশন সারাংশ নেই", "No saved bank and collection totals");
 }
-function cbRegisterSheet(book) {
+const cbRegisterNoteTitle = () => bi("নোট", "Note");
+const cbRegisterNoteRows = Array.from({length: 5}, (_, i) => [i + 1, i + 6]);
+
+function cbRegisterSheet(book, paper = false) {
   const lines = book.lines || {}, receipts = lines.r || [], payments = lines.p || [], ref = lines.register;
   const [[, opening], [, receipt], [, payment], [, expected], [, counted], [, difference], [movementLabel, movement]] = cbRegisterTotals(book);
   const tally = book.source === "tally";
@@ -308,7 +311,7 @@ function cbRegisterSheet(book) {
   const totals = values => values.map(([key, amount]) => `<div class="cb-reg-total"><span>${esc(key)}</span><b>${cbRegisterMoney(amount)}</b></div>`).join("");
   const weekday = new Date(book.date + "T12:00:00+06:00").toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", {weekday:"long", timeZone:"Asia/Dhaka"});
   const status = tally ? cbRegisterSource(book) : book.status === "final" ? bi("ফাইনাল", "Final") : bi("দিন খোলা", "Day open");
-  return `<div class="rep cb-register">
+  return `<div class="rep cb-register${paper ? " cb-register-paper" : ""}">
     <header class="cb-reg-head"><img src="icon-192.png" alt=""><div><b>NABIAD GROUP</b><h2>${cbRegisterTitle()}</h2></div></header>
     <div class="cb-reg-day"><span>${bi("বার", "Day")} · <b>${esc(weekday)}</b></span><span>${bi("তারিখ", "Date")} · <b>${dmy(book.date)}</b></span></div>
     <div class="cb-reg-day cb-reg-source"><strong>${cbRegisterSource(book)}</strong>
@@ -321,6 +324,10 @@ function cbRegisterSheet(book) {
       <tr><td></td><th scope="row">${bi("শুরুর নগদসহ মোট", "Opening cash + receipts")}</th><td class="cb-reg-amount">${cbRegisterMoney(opening == null ? null : Math.round((opening + receipt) * 100) / 100)}</td>
       <th scope="row">${bi("দিনশেষে হাতে নগদ", "Closing cash · counted")}</th><td class="cb-reg-amount">${cbRegisterMoney(counted)}</td></tr>
     </tbody></table>
+    <div class="cb-reg-end">
+    ${rawTally ? "" : `<section class="cb-reg-block cb-reg-notes"><h3>${cbRegisterNoteTitle()}</h3>
+      <ol>${cbRegisterNoteRows.flat().map(n => `<li><span>${n}.</span><span class="cb-note-line"></span></li>`).join("")}</ol>
+    </section>`}
     <section class="cb-reg-block"><h3>${bi("দিনশেষের সারাংশ", "Closing summary")}</h3>${totals([
       [movementLabel, movement],
       [bi("হিসাব অনুযায়ী হাতে নগদ", "Expected closing cash"), expected],
@@ -333,7 +340,7 @@ function cbRegisterSheet(book) {
     ${rawTally ? "" : `<div class="cb-reg-signatures">
       ${cbRegisterSigners().map(label => `<div>${esc(label)}</div>`).join("")}
     </div>`}
-    <div class="rep-ft"><span>${[status, book.updated_at && cbRegisterDate(book.updated_at), esc(book.entered_by || "")].filter(Boolean).join(" · ")}</span><span>NABIAD Smart Finance Suite</span></div></div>`;
+    <div class="rep-ft"><span>${[status, book.updated_at && cbRegisterDate(book.updated_at), esc(book.entered_by || "")].filter(Boolean).join(" · ")}</span><span>NABIAD Smart Finance Suite</span></div></div></div>`;
 }
 async function cbRegisterExcel(book) {
   await loadScript("vendor/xlsx.min.js");
@@ -346,6 +353,8 @@ async function cbRegisterExcel(book) {
     [cbRegisterTitle(), book.date, cbRegisterSource(book), cbRegisterDate(book.updated_at), book.entered_by || ""],
     ["#", ...headings("r"), ...headings("p")],
     ...rows, [],
+    ...(rawTally ? [] : [[cbRegisterNoteTitle()], ...cbRegisterNoteRows.map(([left, right]) =>
+      [left + ". ________________________", null, null, null, null, right + ". ________________________"]), []]),
     [bi("দিনশেষের সারাংশ", "Closing summary")], ...cbRegisterTotals(book), ...cbRegisterReferences(ref),
     [cbRegisterClosingNote(book)],
     [bi("মন্তব্য", "Remarks"), book.remarks || ""]
@@ -358,8 +367,11 @@ async function cbRegisterExcel(book) {
   }
   const ws = XLSX.utils.aoa_to_sheet(cells);
   if (signers.length) {
-    ws["!merges"] = [signatureRow, signatureRow + 1].flatMap(r => signers.map((_, i) =>
-      ({s: {r, c: i * 3}, e: {r, c: i * 3 + 2}})));
+    const noteStart = rows.length + 4;
+    ws["!merges"] = cbRegisterNoteRows.flatMap((_, i) => [[0, 3], [5, 8]].map(([first, last]) =>
+      ({s: {r: noteStart + i, c: first}, e: {r: noteStart + i, c: last}})));
+    ws["!merges"].push(...[signatureRow, signatureRow + 1].flatMap(r => signers.map((_, i) =>
+      ({s: {r, c: i * 3}, e: {r, c: i * 3 + 2}}))));
   }
   const widths = rawTally ? [6, 38, 16, 42, 38, 16, 42] : [6, 38, 16, 22, 42, 38, 16, 22, 42];
   ws["!cols"] = widths.map(wch => ({ wch }));
@@ -379,9 +391,10 @@ function cbRegisterPdf(pages) {
   obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
   obj(2, `<< /Type /Pages /Count ${pages.length} /Kids [${pages.map((_, i) => `${3 + i * 3} 0 R`).join(" ")}] >>`);
   pages.forEach(({ bytes, width, height }, i) => {
-    const page = 3 + i * 3, w = 555, h = w * height / width;
+    const page = 3 + i * 3, w = Math.min(555, 802 * width / height), h = w * height / width;
+    const left = (595 - w) / 2;
     obj(page, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Register ${page + 2} 0 R >> >> /Contents ${page + 1} 0 R >>`);
-    const commands = `q\n${w} 0 0 ${h.toFixed(4)} 20 ${(822 - h).toFixed(4)} cm\n/Register Do\nQ\n`;
+    const commands = `q\n${w.toFixed(4)} 0 0 ${h.toFixed(4)} ${left.toFixed(4)} ${(822 - h).toFixed(4)} cm\n/Register Do\nQ\n`;
     obj(page + 1, `<< /Length ${commands.length} >>\nstream\n${commands}endstream`);
     obj(page + 2, [`<< /Type /XObject /Subtype /Image /ColorSpace /DeviceRGB /BitsPerComponent 8 /Width ${width} /Height ${height} /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`, bytes, "\nendstream"]);
   });
@@ -393,20 +406,66 @@ function cbRegisterPdf(pages) {
 }
 async function cbRegisterVisual(el, format) {
   await document.fonts?.ready;
-  const canvas = await dcCanvas(el);
-  if (format === "png") return cbCanvasBlob(canvas, "image/png");
-  const scale = canvas.height / el.getBoundingClientRect().height, top = el.getBoundingClientRect().top;
-  const ends = $$("tr, .cb-reg-total, .cb-reg-block, .rep-ft", el).map(node => Math.round((node.getBoundingClientRect().bottom - top) * scale));
-  const pages = [], maxHeight = Math.floor(canvas.width * 802 / 555);
-  for (let y = 0; y < canvas.height;) {
-    const limit = Math.min(y + maxHeight, canvas.height);
-    const end = limit === canvas.height ? limit : Math.max(y, ...ends.filter(e => e > y && e <= limit));
-    const slice = document.createElement("canvas"); slice.width = canvas.width; slice.height = (end > y ? end : limit) - y;
-    slice.getContext("2d").drawImage(canvas, 0, y, slice.width, slice.height, 0, 0, slice.width, slice.height);
-    const bytes = new Uint8Array(await (await cbCanvasBlob(slice, "image/jpeg")).arrayBuffer());
-    pages.push({ bytes, width: slice.width, height: slice.height }); y += slice.height;
+  if (format === "png") return cbCanvasBlob(await dcCanvas(el), "image/png");
+
+  // Match paper layout across devices and capture complete table rows on every page.
+  const stage = document.createElement("div"), paper = el.cloneNode(true);
+  stage.className = "cb-export-stage";
+  paper.classList.add("cb-register-paper");
+  stage.append(paper);
+  document.body.append(stage);
+  try {
+    await document.fonts?.ready;
+    const pages = [];
+    const capture = async () => {
+      const canvas = await dcCanvas(paper);
+      const bytes = new Uint8Array(await (await cbCanvasBlob(canvas, "image/jpeg")).arrayBuffer());
+      pages.push({bytes, width: canvas.width, height: canvas.height});
+    };
+    const fits = () => {
+      const {width, height} = paper.getBoundingClientRect();
+      return height <= width * 802 / (555 * 0.90);
+    };
+    if (fits()) {
+      await capture();
+      return cbRegisterPdf(pages);
+    }
+
+    const table = $(".cb-reg-table", paper), body = table.tBodies[0];
+    const totals = $(".cb-reg-totals", table), end = $(".cb-reg-end", paper);
+    const rows = [...body.rows];
+    body.replaceChildren();
+    totals.remove();
+    end.remove();
+    for (const row of rows) {
+      body.append(row);
+      if (body.rows.length > 1 && !fits()) {
+        row.remove();
+        await capture();
+        body.replaceChildren(row);
+      }
+    }
+
+    table.append(totals);
+    paper.append(end);
+    if (body.rows.length && !fits()) {
+      const remaining = [...body.rows];
+      const last = remaining.at(-1);
+      body.replaceChildren(last);
+      const carryLast = remaining.length > 1 && fits();
+      totals.remove();
+      end.remove();
+      body.replaceChildren(...(carryLast ? remaining.slice(0, -1) : remaining));
+      await capture();
+      body.replaceChildren(...(carryLast ? [last] : []));
+      table.append(totals);
+      paper.append(end);
+    }
+    await capture();
+    return cbRegisterPdf(pages);
+  } finally {
+    stage.remove();
   }
-  return cbRegisterPdf(pages);
 }
 function cbRegisterModal(book) {
   const name = cbRegisterFilename(book), sheet = cbRegisterSheet(book);
@@ -420,7 +479,7 @@ function cbRegisterModal(book) {
     let file = null, loading = false;
     const share = $("[data-register-share]", root), status = $("[data-register-status]", root);
     $("[data-register-close]", root).onclick = close;
-    $("[data-register-print]", root).onclick = () => printSheet(sheet, name);
+    $("[data-register-print]", root).onclick = () => printSheet(cbRegisterSheet(book, true), name);
     share.onclick = async () => {
       try { if (file) await navigator.share({ files: [file], title: name }); }
       catch (e) { if (e.name !== "AbortError") toast(e.message, "err"); }
@@ -636,9 +695,6 @@ async function vCashBook(v) {
             </select>
           </label>
           <p id="cb-activity-source" class="mut sm" role="status"></p>
-          <div class="cb-export-actions" role="group" aria-label="${bi("ক্যাশ খাতা এক্সপোর্ট", "Cash Book export")}">
-            ${[["png", "img", bi("স্ক্রিনশট", "Screenshot")], ["print", "print", bi("প্রিন্ট", "Print")], ["share", "share", bi("শেয়ার", "Share")]].map(([key, icon, label]) => `<button type="button" class="btn" data-cb-export="${key}">${ico(icon)} <span>${label}</span></button>`).join("")}
-          </div>
           <dl class="cb-activity-totals"><div class="cb-stat-wide"><dt>${bi("শুরুর নগদ", "Opening cash")}</dt><dd id="cb-x1"></dd></div></dl>
           <div class="cb-activity-filters" role="group" aria-label="${bi("লেনদেনের ধরন", "Transaction type")}">
             ${sides.map(side => `<button type="button" class="btn sm" data-cb-side="${side}" aria-controls="cb-activity-lines" aria-pressed="false">${cbSideLabel(side)} <span class="cb-side-count">${(lines[side] || []).length}</span></button>`).join("")}
@@ -897,31 +953,6 @@ async function vCashBook(v) {
       showReferences();
     }, () => { if (current()) get("refs").textContent = bi("সারাংশ পাওয়া যায়নি।", "Reference totals unavailable."); });
 
-    for (const button of $$("[data-cb-export]", body)) button.onclick = withReport(button, async snapshot => {
-      const sheet = cbRegisterSheet(snapshot), filename = cbRegisterFilename(snapshot);
-      if (button.dataset.cbExport === "print") { printSheet(sheet, filename); return; }
-      const stage = document.createElement("div");
-      stage.className = "cb-export-stage";
-      stage.innerHTML = sheet;
-      document.body.append(stage);
-      try {
-        const blob = await cbRegisterVisual($(".cb-register", stage), "png");
-        const file = new File([blob], filename + ".png", { type: "image/png" });
-        if (button.dataset.cbExport === "share" && navigator.canShare?.({ files: [file] })) {
-          try { await navigator.share({ files: [file], title: cbRegisterTitle() }); }
-          catch (error) {
-            if (error.name !== "AbortError") {
-              modal(`<h2>${cbRegisterTitle()}</h2><div class="modal-actions"><button type="button" class="btn pri" id="cb-share-file">${bi("শেয়ার করুন", "Share image")}</button></div>`, root => {
-                $("#cb-share-file", root).onclick = async () => {
-                  try { await navigator.share({ files: [file], title: cbRegisterTitle() }); }
-                  catch (e) { if (e.name !== "AbortError") dlBlob(file, file.name); }
-                };
-              });
-            }
-          }
-        } else dlBlob(file, file.name);
-      } finally { stage.remove(); }
-    });
     preview(); showReferences(); loadActivity();
   }
   bindDateNav(v, "cb", () => { if (!saving && canSwitchDate()) draw(); });
