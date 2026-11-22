@@ -245,10 +245,12 @@ const cbSideLabel = t => t === "r" ? bi("প্রাপ্তি", "Receipt") :
 const cbNarrationLabel = () => bi("নোট / Tally Narration", "Note / Tally Narration");
 const cbRegisterLedgerTitle = side => bi(side === "r" ? "লেজারভিত্তিক প্রাপ্তি" : "লেজারভিত্তিক পরিশোধ",
   side === "r" ? "Receipt totals by ledger" : "Payment totals by ledger");
+const cbRegisterLineLabel = line => String(line?.reportLedger || "").trim() || String(line?.n || "").trim();
+
 function cbRegisterLedgerTotals(lines) {
   const amounts = new Map();
   for (const line of lines || []) {
-    const label = String(line.reportLedger || line.n || "").trim() || bi("নাম নেই", "Unnamed ledger");
+    const label = cbRegisterLineLabel(line) || bi("নাম নেই", "Unnamed ledger");
     const key = tallyLedgerKey(label);
     const total = amounts.get(key) || {label, cents: 0};
     total.cents += Math.round(Number(line.a) * 100);
@@ -280,7 +282,7 @@ function cbRegisterSheet(book) {
   const openingLabel = bi("শুরুর নগদ", "Opening cash");
   const totalReceipt = bi("মোট প্রাপ্তি", "Total receipts");
   const totalPayment = bi("মোট পরিশোধ", "Total payments");
-  const label = (line, side) => line ? `<strong>${esc(line.n)}</strong>
+  const label = (line, side) => line ? `<strong>${esc(cbRegisterLineLabel(line))}</strong>
     ${line.c ? `<small>${esc(line.c)}</small>` : ""}
     ${line.ref && !tally ? `<small>${cbVoucherLabel(side)} · ${esc(line.ref)}</small>` : ""}
     ${line.note ? `<small class="cb-narr">${esc(line.note)}</small>` : ""}` : "";
@@ -327,7 +329,7 @@ async function cbRegisterExcel(book) {
   await loadScript("vendor/xlsx.min.js");
   const lines = book.lines || {}, ref = lines.register;
   const tally = book.source === "tally";
-  const entry = l => [l?.n || "", l?.a ?? null, ...(!tally ? [l?.ref || ""] : []), l?.note || ""];
+  const entry = l => [cbRegisterLineLabel(l), l?.a ?? null, ...(!tally ? [l?.ref || ""] : []), l?.note || ""];
   const headings = side => [cbSideLabel(side), "৳", ...(!tally ? [cbVoucherLabel(side)] : []), cbNarrationLabel()];
   const rows = Array.from({ length: Math.max(lines.r?.length || 0, lines.p?.length || 0) }, (_, i) => [i + 1, ...entry(lines.r?.[i]), ...entry(lines.p?.[i])]);
   const ws = XLSX.utils.aoa_to_sheet([
@@ -650,7 +652,7 @@ async function vCashBook(v) {
         $(".cb-side-count", button).textContent = activityBook ? (activityBook.lines[button.dataset.cbSide]?.length || 0) : "—";
       }
       const entries = activityBook?.lines[activitySide] || [];
-      get("activity-lines").innerHTML = entries.map((item, index) => `<li><div><strong>${esc(item.reportLedger || item.n)}</strong>
+      get("activity-lines").innerHTML = entries.map((item, index) => `<li><div><strong>${esc(cbRegisterLineLabel(item))}</strong>
         ${item.ref || item.c ? `<small>${esc([item.ref && cbVoucherLabel(activitySide) + " " + item.ref, item.c].filter(Boolean).join(" · "))}</small>` : ""}
         ${item.note ? `<small class="cb-narr">${esc(item.note)}</small>` : ""}</div>
         <div class="cb-record-actions"><b class="num">${moneyText(item.a)}</b>
