@@ -5543,10 +5543,17 @@ const dcFoot = (extra = "") => `<div class="rep-ft"><span>Generated ${new Date()
 
 /* ---------- A4 standard sheet helpers (shared by every report) ---------- */
 /* print any A4 sheet html directly (used where the page itself is not a sheet) */
-function printSheet(html, name) {
+function printSheet(html, name, foot) {
   const w = document.createElement("div"); w.className = "rep-wrap printonly"; w.innerHTML = `<div class="rep-scroll">${html}</div>`;
   document.body.appendChild(w); document.body.classList.add("print-sheet"); const t = document.title; document.title = name;
-  const done = () => { window.removeEventListener("afterprint", done); w.remove(); document.body.classList.remove("print-sheet"); document.title = t; };
+  let st = null;
+  if (foot) { /* per-page footer via @page margin boxes: Cash Book | Date + Page No. | brand */
+    const q = s => `"${String(s).replace(/[\\"]/g, "").replace(/\s+/g, " ")}"`;
+    st = document.createElement("style");
+    st.textContent = `@page{margin:8mm 8mm 16mm;@bottom-left{content:${q(foot.left)};font:600 9px sans-serif;color:#6b7280}@bottom-center{content:${q(foot.center)} counter(page) " / " counter(pages);font:600 9px sans-serif;color:#374151}@bottom-right{content:${q(foot.right)};font:600 9px sans-serif;color:#6b7280}}.print-sheet .cb-reg-foot{display:none!important}`;
+    document.head.appendChild(st);
+  }
+  const done = () => { window.removeEventListener("afterprint", done); w.remove(); st?.remove(); document.body.classList.remove("print-sheet"); document.title = t; };
   window.addEventListener("afterprint", done); window.print();
 }
 const repKpi = a => `<div class="rep-kpi" style="grid-template-columns:repeat(${a.length},1fr)">${a.map(([l, v, c]) => `<div class="${c || ""}"><span>${l}</span><b>${v}</b></div>`).join("")}</div>`;
