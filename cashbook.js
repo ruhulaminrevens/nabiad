@@ -259,7 +259,7 @@ const cbSideLabel = t => t === "r" ? bi("প্রাপ্তি", "Receipt") :
 const cbNarrationLabel = () => bi("নোট / Tally Narration", "Note / Tally Narration");
 const cbRegisterSigners = () => [
   bi("দাখিলকারী", "Submitted By"),
-  bi("রিপোর্ট ও নিরীক্ষা", "Report & Audit By"),
+  bi("যাচাইকারী", "Reviewed By"),
   bi("অনুমোদনকারী", "Authorized By")
 ];
 const cbRegisterLineLabel = (line, rawTally = false) =>
