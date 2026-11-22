@@ -727,7 +727,6 @@ async function vCashBook(v) {
         <label>${cbVoucherLabel(side)}<input class="in cbref" autocomplete="off"></label>
         <label class="cb-compose-account" hidden>${bi("ব্যাংক A/C", "Bank account")}<select class="in cbac"><option value="">${bi("A/C বাছুন", "Select A/C")}</option>
         ${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)} · ${esc(a.holder || "")}</option>`).join("")}</select></label>
-        <details class="cb-compose-note"><summary>${cbNarrationLabel()}</summary><textarea class="in cbnote" aria-label="${cbNarrationLabel()}" rows="2"></textarea></details>
         <div class="cb-row-actions"><button type="button" class="btn cb-cancel" hidden>${bi("বাতিল", "Cancel")}</button>
           <button type="submit" class="btn pri cbadd">${ico("plus")} <span>${bi("যোগ করুন", "Add")}</span></button></div>
       </form></section>`;
@@ -859,8 +858,7 @@ async function vCashBook(v) {
       state.name.value = item.n || "";
       state.amount.value = item.x ?? (item.a == null ? "" : fmtIn(item.a));
       state.ref.value = item.ref ?? importedItem?.sourceRef ?? "";
-      state.note.value = item.note || "";
-      state.note.closest("details").open = !!item.note;
+      state.note = item.note ?? "";
       state.category = importedItem ? "" : item.k || cbGuess(item.n, side)?.k || "";
       state.account.value = item.c || "";
       state.account.parentElement.hidden = !CB_BANK.includes(state.category);
@@ -870,7 +868,7 @@ async function vCashBook(v) {
     };
     for (const side of sides) {
       const section = $(`[data-cb-form="${side}"]`, body), form = $("form", section);
-      const state = formState[side] = {section, name: $(".cbname", form), amount: $(".cbamt2", form), ref: $(".cbref", form), note: $(".cbnote", form), account: $(".cbac", form), cancel: $(".cb-cancel", form)};
+      const state = formState[side] = {section, name: $(".cbname", form), amount: $(".cbamt2", form), ref: $(".cbref", form), account: $(".cbac", form), cancel: $(".cb-cancel", form)};
       const guess = () => {
         if (state.importedItem) return;
         const mapping = cbGuess(state.name.value, side), oldCategory = state.category;
@@ -881,7 +879,7 @@ async function vCashBook(v) {
       suggest(state.name, () => cbLedItems(side), guess, { free: true, max: 30 });
       state.name.addEventListener("picked", () => state.amount.focus());
       state.name.oninput = guess;
-      const read = () => ({ n: state.name.value.trim(), x: state.amount.value.trim(), ref: state.ref.value.trim(), note: state.note.value.trim(), k: state.category, c: state.account.value });
+      const read = () => ({ n: state.name.value.trim(), x: state.amount.value.trim(), ref: state.ref.value.trim(), note: state.note, k: state.category, c: state.account.value });
       form.oninput = form.onchange = () => {
         if (!current()) return;
         if (state.index == null) { pending[side] = read(); storePending(); }
