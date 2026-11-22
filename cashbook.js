@@ -915,7 +915,7 @@ async function vCashBook(v) {
         ${item.note ? `<small class="cb-narr">${esc(item.note)}</small>` : ""}</div>
         <b class="num cb-act-amt ${activitySide === "r" ? "gr" : "rd"}">${moneyText(item.a)}</b>
         <div class="cb-record-actions">
-          ${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="btn sm" data-cb-edit="${index}">${bi("এডিট", "Edit")}</button>` : ""}
+          ${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="btn sm" data-cb-edit="${index}">${bi("এডিট", "Edit")}</button>` : `<button type="button" class="btn sm" disabled title="${esc(bi("এডিটের অনুমতি বা সময় নেই", "No edit permission or edit window closed"))}">${bi("এডিট", "Edit")}</button>`}
           ${!imported && admin ? `<button type="button" class="btn sm" data-cb-delete="${index}">${bi("মুছুন", "Delete")}</button>` : ""}
         </div></li>`).join("");
       get("act-h").hidden = !entries.length;
