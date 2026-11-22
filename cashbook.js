@@ -179,9 +179,9 @@ function cbRegisterReferences(snapshot) {
     [bi("এর মধ্যে অনুমোদিত Cash", "Of which approved Cash"), snapshot?.cash ?? null]
   ];
 }
-const cbRegisterSource = book => book.importedForCashBook
-  ? bi("ক্যাশ খাতা · আমদানি করা Tally ভাউচার", "Cash Book · Imported Tally vouchers")
-  : book.source === "tally" ? bi("Tally ভাউচার", "Tally vouchers") : bi("ক্যাশ খাতা", "Cash Book");
+const cbIsTallyReport = book => book?.source === "tally" && !book.importedForCashBook;
+const cbRegisterSource = book => cbIsTallyReport(book)
+  ? bi("Tally ভাউচার", "Tally vouchers") : bi("ক্যাশ খাতা", "Cash Book");
 const cbHasSavedLines = lines => !!(lines?.r?.length || lines?.p?.length);
 async function cbActivitySnapshot(source, nativeBook, loadTally) {
   if (source === "tally") return loadTally();
@@ -193,30 +193,44 @@ async function cbActivitySnapshot(source, nativeBook, loadTally) {
     return { ...nativeBook, importedVouchersUnavailable: true };
   }
 }
-const cbRegisterFilename = book => "Nabiad_Cash_Register_" + book.date + (book.source === "tally" ? "_Tally" : "");
-async function cbTallyReportLedgers(date) {
-  if (DEMO) return [];
-  const {data, error} = await sb.from("cash_tally_vouchers")
-    .select("type,ref,report_ledger").eq("date", date).not("report_ledger", "is", null);
-  if (error) {
-    if (error.code === "42703" || error.code === "PGRST204") return [];
-    throw error;
+const cbRegisterFilename = book => "Nabiad_Cash_Register_" + book.date + (cbIsTallyReport(book) ? "_Tally" : "");
+const cbMissingColumn = error => ["42703", "PGRST204"].includes(error?.code);
+async function cbTallyReportDetails(date, forCashBook) {
+  if (DEMO) return {rows: [], editable: false};
+  const columns = "type,ref,report_ledger";
+  const read = select => sb.from("cash_tally_vouchers").select(select).eq("date", date)
+    .order("type").order("ref");
+  const rows = [];
+  let editable = forCashBook, fields = columns + (editable ? ",cashbook_edit" : "");
+  for (let offset = 0; ; offset += 1000) {
+    let {data, error} = await read(fields).range(offset, offset + 999);
+    if (offset === 0 && editable && cbMissingColumn(error)) {
+      editable = false;
+      fields = columns;
+      ({data, error} = await read(fields).range(0, 999));
+    }
+    if (cbMissingColumn(error)) return {rows: [], editable: false};
+    if (error) throw error;
+    rows.push(...data);
+    if (data.length < 1000) return {rows, editable};
   }
-  return data;
 }
-function cbTallyRegister(date, vouchers, ledgerList, names, cash, references, previousCash) {
+function cbTallyRegister(date, vouchers, ledgerList, details, cash, references, previousCash) {
   const ledgers = new Map(ledgerList.map(ledger => [tallyLedgerKey(ledger.name), ledger]));
-  const labels = new Map(names.map(row => [row.type + ":" + row.ref, row.report_ledger]));
+  const metadata = new Map(details.rows.map(row => [row.type + ":" + row.ref, row]));
   const lines = {r: [], p: [], register: references};
   for (const voucher of vouchers) {
     const side = voucher.type === "receipt" ? "r" : "p";
     const category = tallyPurpose(voucher, ledgers);
     const ledger = ledgers.get(tallyLedgerKey(voucher.led));
-    lines[side].push({n: voucher.led, a: voucher.a, reportLedger: labels.get(voucher.type + ":" + voucher.ref),
-      c: CB_BANK.includes(category) ? ledger?.bank_code : undefined});
+    const meta = metadata.get(voucher.type + ":" + voucher.ref);
+    const edit = details.editable ? meta?.cashbook_edit : null;
+    lines[side].push({n: voucher.led, a: edit?.a ?? voucher.a, reportLedger: edit?.n ?? meta?.report_ledger,
+      c: CB_BANK.includes(category) ? ledger?.bank_code : undefined,
+      ref: edit?.ref, note: edit?.note, sourceRef: voucher.ref, editVersion: edit?.updated_at});
   }
   const carriedOpening = cash?.opening_cash == null && previousCash?.cash_in_hand != null;
-  return {date, source: "tally", lines,
+  return {date, source: "tally", lines, importedEditable: details.editable,
     opening_cash: carriedOpening ? previousCash.cash_in_hand : cash?.opening_cash,
     opening_source_date: carriedOpening ? previousCash.date : null,
     cash_in_hand: cash?.cash_in_hand};
@@ -245,7 +259,6 @@ const cbSideLabel = t => t === "r" ? bi("প্রাপ্তি", "Receipt") :
 const cbNarrationLabel = () => bi("নোট / Tally Narration", "Note / Tally Narration");
 const cbRegisterLedgerTitle = side => bi(side === "r" ? "লেজারভিত্তিক প্রাপ্তি" : "লেজারভিত্তিক পরিশোধ",
   side === "r" ? "Receipt totals by ledger" : "Payment totals by ledger");
-const cbIsTallyReport = book => book?.source === "tally" && !book.importedForCashBook;
 const cbRegisterLineLabel = (line, rawTally = false) =>
   (!rawTally && String(line?.reportLedger || "").trim()) || String(line?.n || "").trim();
 
@@ -268,10 +281,14 @@ function cbRegisterClosingNote(book) {
       `শুরুর নগদ ${dmy(sourceDate)}-এর সর্বশেষ ফাইনাল রেকর্ডে গুনে পাওয়া নগদ থেকে আনা হয়েছে।`,
       `Opening cash is carried forward from the final counted cash on ${dmy(sourceDate)}.`
     ) : "";
-    return [openingNote, bi(
+    const closingNote = cbIsTallyReport(book) ? bi(
       "হিসাবের ক্লোজিংয়ে Tally প্রাপ্তি ও পরিশোধ ব্যবহার করা হয়েছে। গুনে পাওয়া নগদ রিপোর্টের তারিখের রেকর্ড থেকে নেওয়া হয়।",
       "Expected closing uses Tally receipts and payments. Counted cash comes from the record for the report date."
-    )].filter(Boolean).join(" ");
+    ) : bi(
+      "হিসাবের ক্লোজিংয়ে Cash Book-এর প্রাপ্তি ও পরিশোধ ব্যবহার করা হয়েছে। গুনে পাওয়া নগদ রিপোর্টের তারিখের রেকর্ড থেকে নেওয়া হয়।",
+      "Expected closing uses Cash Book receipts and payments. Counted cash comes from the record for the report date."
+    );
+    return [openingNote, closingNote].filter(Boolean).join(" ");
   }
   const ref = book.lines?.register;
   return ref?.at ? bi("সারাংশ নেওয়া হয়েছে", "Summary captured") + " · " + cbRegisterDate(ref.at)
@@ -287,7 +304,7 @@ function cbRegisterSheet(book) {
   const rawTally = cbIsTallyReport(book);
   const label = (line, side) => line ? `<strong>${esc(cbRegisterLineLabel(line, rawTally))}</strong>
     ${line.c ? `<small>${esc(line.c)}</small>` : ""}
-    ${line.ref && !tally ? `<small>${cbVoucherLabel(side)} · ${esc(line.ref)}</small>` : ""}
+    ${line.ref && !rawTally ? `<small>${cbVoucherLabel(side)} · ${esc(line.ref)}</small>` : ""}
     ${line.note ? `<small class="cb-narr">${esc(line.note)}</small>` : ""}` : "";
   const amt = line => line ? cbRegisterMoney(line.a) : "";
   const rows = Array.from({ length: Math.max(5, receipts.length + 1, payments.length) }, (_, i) => {
@@ -331,10 +348,9 @@ function cbRegisterSheet(book) {
 async function cbRegisterExcel(book) {
   await loadScript("vendor/xlsx.min.js");
   const lines = book.lines || {}, ref = lines.register;
-  const tally = book.source === "tally";
   const rawTally = cbIsTallyReport(book);
-  const entry = l => [cbRegisterLineLabel(l, rawTally), l?.a ?? null, ...(!tally ? [l?.ref || ""] : []), l?.note || ""];
-  const headings = side => [cbSideLabel(side), "৳", ...(!tally ? [cbVoucherLabel(side)] : []), cbNarrationLabel()];
+  const entry = l => [cbRegisterLineLabel(l, rawTally), l?.a ?? null, ...(!rawTally ? [l?.ref || ""] : []), l?.note || ""];
+  const headings = side => [cbSideLabel(side), "৳", ...(!rawTally ? [cbVoucherLabel(side)] : []), cbNarrationLabel()];
   const rows = Array.from({ length: Math.max(lines.r?.length || 0, lines.p?.length || 0) }, (_, i) => [i + 1, ...entry(lines.r?.[i]), ...entry(lines.p?.[i])]);
   const ws = XLSX.utils.aoa_to_sheet([
     [cbRegisterTitle(), book.date, cbRegisterSource(book), cbRegisterDate(book.updated_at), book.entered_by || ""],
@@ -348,7 +364,7 @@ async function cbRegisterExcel(book) {
     [cbRegisterClosingNote(book)],
     [bi("মন্তব্য", "Remarks"), book.remarks || ""]
   ]);
-  const widths = tally ? [6, 38, 16, 42, 38, 16, 42] : [6, 38, 16, 22, 42, 38, 16, 22, 42];
+  const widths = rawTally ? [6, 38, 16, 42, 38, 16, 42] : [6, 38, 16, 22, 42, 38, 16, 22, 42];
   ws["!cols"] = widths.map(wch => ({ wch }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Cash Register");
@@ -435,11 +451,29 @@ function cbWorkflowError(error) {
   const message = error.message || String(error);
   if (/cashbook_conflict/.test(message)) return bi("অন্য কেউ হিসাব বদলেছেন। তারিখটি আবার খুলে মিলিয়ে নিন।", "Another user updated this day. Reopen the date and review before retrying.");
   if (/cashbook_permission/.test(message)) return bi("এই এন্ট্রি বদলানোর অনুমতি বা সময়সীমা নেই।", "Permission denied or the edit window has closed.");
-  if (/cashbook_write|PGRST202/.test(message)) return bi("Cash Book-এর database update এখনো প্রয়োগ করা হয়নি।", "The Cash Book database update is required.");
+  if (/cashbook_write|cashbook_edit_imported|PGRST202/.test(message)) return bi("Cash Book-এর database update এখনো প্রয়োগ করা হয়নি।", "The Cash Book database update is required.");
+  if (/cashbook_invalid_line/.test(message)) return bi("বিবরণ, অঙ্ক, রেফারেন্স ও নোট যাচাই করুন।", "Check the particulars, amount, reference and note.");
   return message;
 }
 
 Object.assign(SbAPI, {
+  async lastCashActivityDates(through) {
+    const results = await Promise.allSettled(["cashbook_days", "cash_records", "cash_tally_vouchers"].map(async table => {
+      const {data, error} = await sb.from(table).select("date").lte("date", through)
+        .order("date", {ascending: false}).limit(1);
+      if (error) throw error;
+      return data?.[0]?.date;
+    }));
+    return results.map(result => result.value).filter(Boolean);
+  },
+  async cbEditImported(date, side, item, data) {
+    const {data: saved, error} = await sb.rpc("cashbook_edit_imported", {
+      p_date: date, p_type: side === "r" ? "receipt" : "payment", p_ref: item.sourceRef,
+      p_version: item.editVersion ?? null, p_data: {n: data.n, a: data.a, ref: data.ref, note: data.note}
+    });
+    if (error) throw error;
+    return saved;
+  },
   async cbMutate(date, version, action, side, index, data) {
     const result = await sb.rpc("cashbook_write", { p_date: date, p_version: version, p_action: action, p_side: side, p_index: index, p_data: data });
     if (result.error) throw result.error;
@@ -448,6 +482,13 @@ Object.assign(SbAPI, {
 });
 
 Object.assign(DemoAPI, {
+  async lastCashActivityDates(through) {
+    const [books, records, vouchers] = await Promise.all([
+      this.cbRange("0001-01-01", through), this.cashRange("0001-01-01", through),
+      this.cashTallyRange("0001-01-01", through)
+    ]);
+    return [books, records, vouchers].map(rows => rows.map(row => row.date).sort().pop()).filter(Boolean);
+  },
   async cbMutate(date, version, action, side, index, data) {
     const previous = await this.cbOn(date);
     if ((previous?.updated_at ?? null) !== version) throw new Error("cashbook_conflict");
@@ -470,11 +511,12 @@ Object.assign(DemoAPI, {
 
 async function vCashBook(v) {
   const token = ROUTE_TOK;
-  await cashGroupLoad();
-  if (token !== ROUTE_TOK) return;
   const localDay = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Dhaka" });
-  const last = [S.lastBook, S.lastCash].filter(Boolean).sort().pop();
-  const initial = sessionStorage.getItem("nabiad_cash_date") || (last && last < localDay ? stepDay(last, 1) : localDay);
+  const handoff = sessionStorage.getItem("nabiad_cash_date");
+  const [latest] = await Promise.all([handoff ? [] : API.lastCashActivityDates(localDay), cashGroupLoad()]);
+  if (token !== ROUTE_TOK) return;
+  const last = [...latest, S.lastBook, S.lastCash].filter(date => date && date <= localDay).sort().pop();
+  const initial = handoff || last || localDay;
   sessionStorage.removeItem("nabiad_cash_date");
   v.innerHTML = head(ROUTES[CUR].t, `<button type="button" class="btn" id="cb-led">${ico("list")} ${bi("লেজার", "Ledgers")}</button>
     <a class="btn" href="#/cashchk" id="cb-checker">${ico("check")} ${bi("ক্যাশ চেকার", "Cash Checker")}</a>
@@ -547,13 +589,13 @@ async function vCashBook(v) {
     let tallyRequest;
     const tallyVouchers = () => tallyRequest ||= API.cashTallyRange(date, date)
       .catch(error => { tallyRequest = null; throw error; });
-    const tallySnapshot = async () => {
-      const [vouchers, ledgers, names, legacy, savedReferences] = await Promise.all([
-        tallyVouchers(), cbLedLoad(), cbTallyReportLedgers(date), API.cashOn(date).catch(() => null),
+    const tallySnapshot = async forCashBook => {
+      const [vouchers, ledgers, details, legacy, savedReferences] = await Promise.all([
+        tallyVouchers(), cbLedLoad(), cbTallyReportDetails(date, forCashBook), API.cashOn(date).catch(() => null),
         cbRegisterSummary(date, true)
       ]);
       const cash = cashUseBook(book, legacy) ? book : legacy;
-      return cbTallyRegister(date, vouchers, ledgers.list, names, cash, savedReferences, previous);
+      return cbTallyRegister(date, vouchers, ledgers.list, details, cash, savedReferences, previous);
     };
     const controls = (side, cls) => `<section class="card csec ${cls}" data-cb-form="${side}" hidden><div class="csh"><h3>${cbSideLabel(side)}</h3><b id="cb-T${side}"></b></div>
       <form class="cb-compose"><label>${bi("বিবরণ", "Particulars")}<input class="in cbname" autocomplete="off" required></label>
@@ -626,7 +668,7 @@ async function vCashBook(v) {
       dateInput.value = date;
       return false;
     };
-    const post = async (action, side = null, index = null, data = {}, onSuccess) => {
+    const post = async (action, side = null, index = null, data = {}, onSuccess, importedItem = null) => {
       if (saving || !current()) return;
       if (hasEditedLine(action === "edit" ? side : null)) {
         return fail(new Error(bi("চলতি এডিট আগে আপডেট বা বাতিল করুন।", "Update or cancel the current edit first.")));
@@ -637,7 +679,11 @@ async function vCashBook(v) {
       saving = true;
       get("err").textContent = "";
       let changed;
-      try { changed = await API.cbMutate(date, book?.updated_at ?? null, action, side, index, data); }
+      try {
+        changed = importedItem
+          ? await API.cbEditImported(date, side, importedItem, data)
+          : await API.cbMutate(date, book?.updated_at ?? null, action, side, index, data);
+      }
       catch (error) { if (current()) fail(error); }
       finally { buttons.forEach((button, i) => { button.disabled = disabled[i]; }); saving = false; }
       if (!changed) return;
@@ -651,6 +697,7 @@ async function vCashBook(v) {
     };
 
     let activityBook = null;
+    const mayUpdateImported = () => admin && activityBook?.importedForCashBook && activityBook.importedEditable;
     const drawActivity = () => {
       const imported = activityBook?.source === "tally";
       const rawTally = cbIsTallyReport(activityBook);
@@ -663,7 +710,7 @@ async function vCashBook(v) {
         ${item.ref || item.c ? `<small>${esc([item.ref && cbVoucherLabel(activitySide) + " " + item.ref, item.c].filter(Boolean).join(" · "))}</small>` : ""}
         ${item.note ? `<small class="cb-narr">${esc(item.note)}</small>` : ""}</div>
         <div class="cb-record-actions"><b class="num">${moneyText(item.a)}</b>
-          <div>${!imported && mayUpdate(item) ? `<button type="button" class="btn sm" data-cb-edit="${index}">${bi("এডিট", "Edit")}</button>` : ""}
+          <div>${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="btn sm" data-cb-edit="${index}">${bi("এডিট", "Edit")}</button>` : ""}
           ${!imported && admin ? `<button type="button" class="btn sm" data-cb-delete="${index}">${bi("মুছুন", "Delete")}</button>` : ""}</div>
         </div></li>`).join("");
       get("activity-lines").hidden = !entries.length;
@@ -676,17 +723,18 @@ async function vCashBook(v) {
         : moneyText(Math.abs(diff)) + " · " + (diff > 0 ? bi("ক্যাশ বেশি", "Cash over") : bi("ক্যাশ কম", "Cash short"));
       get("activity-empty").textContent = activitySide === "r" ? bi("কোনো প্রাপ্তি নেই।", "No receipts.") : bi("কোনো পরিশোধ নেই।", "No payments.");
     };
-    const loadForm = (side, item = {}, index = null, focus = false) => {
+    const loadForm = (side, item = {}, index = null, focus = false, importedItem = null) => {
       const state = formState[side];
       state.index = index;
+      state.importedItem = importedItem;
       state.dirtyEdit = false;
       state.section.hidden = !mayAdd && index == null;
       state.name.value = item.n || "";
       state.amount.value = item.x ?? (item.a == null ? "" : fmtIn(item.a));
-      state.ref.value = item.ref || "";
+      state.ref.value = item.ref ?? importedItem?.sourceRef ?? "";
       state.note.value = item.note || "";
       state.note.closest("details").open = !!item.note;
-      state.category = item.k || cbGuess(item.n, side)?.k || "";
+      state.category = importedItem ? "" : item.k || cbGuess(item.n, side)?.k || "";
       state.account.value = item.c || "";
       state.account.parentElement.hidden = !CB_BANK.includes(state.category);
       state.cancel.hidden = index == null;
@@ -697,6 +745,7 @@ async function vCashBook(v) {
       const section = $(`[data-cb-form="${side}"]`, body), form = $("form", section);
       const state = formState[side] = {section, name: $(".cbname", form), amount: $(".cbamt2", form), ref: $(".cbref", form), note: $(".cbnote", form), account: $(".cbac", form), cancel: $(".cb-cancel", form)};
       const guess = () => {
+        if (state.importedItem) return;
         const mapping = cbGuess(state.name.value, side), oldCategory = state.category;
         state.category = mapping?.k || "";
         state.account.parentElement.hidden = !CB_BANK.includes(state.category);
@@ -731,12 +780,15 @@ async function vCashBook(v) {
         const data = read(), value = evalAmt(data.x);
         if (!data.n || !Number.isFinite(value) || !value) return fail(new Error(bi("বিবরণ ও সঠিক অঙ্ক লিখুন।", "Enter particulars and a valid nonzero amount.")));
         if (CB_BANK.includes(data.k) && !data.c) { state.account.focus(); return fail(new Error(bi("ব্যাংক A/C বাছুন।", "Select a bank account."))); }
-        const index = state.index;
-        if (index == null ? !mayAdd : !mayUpdate(lines[side]?.[index])) return;
+        const { index, importedItem } = state, amount = Math.round(value * 100) / 100;
+        if (importedItem) {
+          if (!admin) return;
+          if (amount <= 0) return fail(new Error(bi("শূন্যের বেশি অঙ্ক লিখুন।", "Enter an amount greater than zero.")));
+        } else if (index == null ? !mayAdd : !mayUpdate(lines[side]?.[index])) return;
         activitySide = side;
-        post(index == null ? "add" : "edit", side, index, { ...data, a: Math.round(value * 100) / 100 }, () => {
+        post(index == null ? "add" : "edit", side, index, { ...data, a: amount }, () => {
           if (index == null) delete pending[side];
-        });
+        }, importedItem);
       };
       state.cancel.onclick = () => loadForm(side, pending[side]);
       loadForm(side, pending[side], null, side === focusSide && mayAdd);
@@ -744,14 +796,16 @@ async function vCashBook(v) {
     for (const button of $$("[data-cb-side]", body)) button.onclick = () => { activitySide = button.dataset.cbSide; drawActivity(); };
     get("activity-lines").onclick = event => {
       const target = event.target.closest("[data-cb-edit], [data-cb-delete]");
-      if (!target || !activityBook || activityBook.source === "tally") return;
-      const side = activitySide;
-      const index = Number(target.dataset.cbEdit ?? target.dataset.cbDelete), item = lines[side]?.[index];
+      if (!target || !activityBook || cbIsTallyReport(activityBook)) return;
+      const side = activitySide, imported = activityBook.importedForCashBook;
+      const index = Number(target.dataset.cbEdit ?? target.dataset.cbDelete);
+      const item = activityBook.lines[side]?.[index];
       if (!item) return;
-      if (target.hasAttribute("data-cb-edit") && mayUpdate(item)) {
+      if (target.hasAttribute("data-cb-edit")) {
+        if (imported ? !mayUpdateImported() : !mayUpdate(item)) return;
         if (hasEditedLine()) return fail(new Error(bi("চলতি এডিট আগে আপডেট বা বাতিল করুন।", "Update or cancel the current edit first.")));
-        loadForm(side, item, index, true);
-      } else if (admin && ask(bi("এই লেনদেনটি মুছে ফেলবেন?", "Delete this transaction?"))) post("delete", side, index);
+        loadForm(side, imported ? { ...item, n: cbRegisterLineLabel(item) } : item, index, true, imported ? item : null);
+      } else if (!imported && admin && ask(bi("এই লেনদেনটি মুছে ফেলবেন?", "Delete this transaction?"))) post("delete", side, index);
     };
     for (const button of $$("[data-cb-recover]", body)) button.onclick = () => {
       const {side, item} = recoverable[Number(button.dataset.cbRecover)];
@@ -811,16 +865,17 @@ async function vCashBook(v) {
       const note = get("activity-source");
       note.textContent = bi("ভাউচার লোড হচ্ছে…", "Loading vouchers…");
       const nativeBook = { ...book, date, opening_cash: opening, lines: { ...lines, register: reference.value } };
-      const requested = cbActivitySnapshot(reportSource.value, nativeBook, tallySnapshot);
+      const source = reportSource.value;
+      const requested = cbActivitySnapshot(source, nativeBook, () => tallySnapshot(source === "app"));
       sourceRequest = requested;
       requested.then(snapshot => {
         if (!current() || sourceRequest !== requested) return;
         activityBook = snapshot;
         if (snapshot.source !== "tally") snapshot.lines.register = reference.value;
-        note.textContent = snapshot.importedForCashBook
-          ? bi("এই দিনের আমদানি করা Tally ভাউচার দেখানো হচ্ছে।", "Showing imported Tally vouchers for this date.")
-          : snapshot.source === "tally" ? bi("আমদানি করা Tally ভাউচার", "Imported Tally vouchers")
-          : snapshot.importedVouchersUnavailable ? bi("আমদানি করা Tally ভাউচার লোড হয়নি।", "Imported Tally vouchers could not load.") : "";
+        note.textContent = cbIsTallyReport(snapshot) ? bi("আমদানি করা Tally ভাউচার", "Imported Tally vouchers")
+          : snapshot.importedVouchersUnavailable ? bi("আমদানি করা লেনদেন লোড হয়নি।", "Imported transactions could not load.")
+          : admin && snapshot.importedForCashBook && !snapshot.importedEditable
+            ? bi("এই লেনদেন এডিট করতে ডাটাবেস আপডেট প্রয়োজন।", "A database update is required to edit these entries.") : "";
         drawActivity();
       }, () => {
         if (!current() || sourceRequest !== requested) return;
