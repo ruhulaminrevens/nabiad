@@ -446,3 +446,7 @@
 .cblg-h:not(.cblg-map),.cblg-r:not(.cblg-map){grid-template-columns:minmax(0,1.5fr) minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,.9fr) max-content;justify-content:start}
 .cblg-r .act{justify-content:flex-start;min-width:170px}
 .cblg-h:not(.cblg-map) span{text-align:left;justify-self:start}
+/* v6.95: Cash Book amounts styled like Cheque activity amounts */
+.cb-act-amt,.cb-act-amt.gr,.cb-act-amt.rd{color:var(--ink,var(--tx,inherit));font-size:1rem;font-weight:750;font-variant-numeric:tabular-nums}
+.cb-act-h,.cb-activity-lines li.cb-act-row{grid-template-columns:42px minmax(0,1fr) minmax(120px,auto) minmax(120px,auto)}
+.cb-act-amt,.cb-act-h .r{min-width:120px;text-align:right}
