@@ -59,6 +59,7 @@ jobs:
           [ "$(date -u +%d)" = "01" ] && tag="monthly-$stamp"
           gh release create "$tag" out/nabiad-*.tar.age out/nabiad-*.tar.age.sha256 out/manifest.json \
             -R "$BACKUP_REPO" --title "$tag" --notes "Encrypted Nabiad DB backup. Restore: scripts/backup/README.md"
+          echo "STAMP=$stamp" >> "$GITHUB_ENV"
 
       - name: Prune old backups (30 daily, 13 months monthly)
         run: |
@@ -71,3 +72,17 @@ jobs:
               monthly-*) [ "$age" -gt 400 ] && gh release delete "$tag" -R "$BACKUP_REPO" --cleanup-tag -y ;;
             esac
           done || true
+
+      - name: Record result for the app's Backup page
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PG_BIN: /usr/lib/postgresql/17/bin
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" = "success" ]; then
+            bytes="$(stat -c %s out/nabiad-*.tar.age 2>/dev/null | head -1)"
+            bash scripts/backup/record-run.sh db ok "${STAMP:-}" "$bytes" "run ${GITHUB_RUN_ID}"
+          else
+            bash scripts/backup/record-run.sh db fail "" "" "run ${GITHUB_RUN_ID}: see GitHub Actions"
+          fi
