@@ -6012,6 +6012,30 @@ async function userSecModal(u, after) {
   });
 }
 
+/* admin/boss must have 2FA: a full-page gate that cannot be dismissed (sign out is the only other way out).
+   Fails open if the enrolment API itself is unavailable, so a Supabase hiccup never locks the owner out of the app. */
+function mfaForceEnroll() {
+  return new Promise(async res => {
+    const en = LANG === "en";
+    let d;
+    try {
+      const all = (await sb.auth.mfa.listFactors()).data?.all || [];
+      for (const f of all) if (f.factor_type === "totp" && f.status !== "verified") { try { await sb.auth.mfa.unenroll({ factorId: f.id }); } catch { } }
+      const r = await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "Nabiad " + Date.now().toString(36) }); if (r.error) throw r.error; d = r.data;
+    } catch (e) { console.warn("mfa enroll", e); toast(bi("2FA চালু করা যায়নি — পরে সেটিংস থেকে চালু করুন", "Could not start 2FA setup — turn it on later in Settings"), "err"); return res(); }
+    $("#app").innerHTML = `<div class="login"><div class="card lkc"><div class="logo" style="margin:0 auto 10px"><img src="icon.svg" alt="Nabiad"></div><h2>🔐 ${en ? "2FA is required for your role" : "আপনার রোলের জন্য 2FA বাধ্যতামূলক"}</h2>
+      <ol class="mut sm" style="margin:8px 0 10px 18px;line-height:1.7;text-align:left"><li>${en ? "Install Google Authenticator or Microsoft Authenticator on your phone." : "ফোনে Google Authenticator বা Microsoft Authenticator ইনস্টল করুন।"}</li><li>${en ? "Scan this QR code (or type the key)." : "এই QR কোড স্ক্যান করুন (বা নিচের কী টাইপ করুন)।"}</li><li>${en ? "Enter the 6-digit code it shows." : "অ্যাপে যে ৬ অঙ্কের কোড দেখাবে সেটি দিন।"}</li></ol>
+      <div style="display:grid;place-items:center;margin:8px 0"><img src="${esc(d.totp.qr_code)}" alt="QR" style="width:200px;height:200px;background:#fff;border-radius:12px;padding:6px"></div>
+      <div class="mono xs" style="text-align:center;word-break:break-all;margin-bottom:10px">${esc(d.totp.secret)}</div>
+      <input class="in big" id="mf-c" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="${en ? "6-digit code" : "৬ অঙ্কের কোড"}" style="text-align:center;letter-spacing:.4em;font-size:22px"><div class="hint rd" id="mf-e"></div>
+      <div class="row"><button class="btn pri" id="mf-ok" style="flex:1">${en ? "Verify" : "ভেরিফাই"}</button><button class="btn" id="mf-out">${en ? "Sign out" : "লগআউট"}</button></div></div></div>`;
+    const c = $("#mf-c"); c.focus();
+    const go = async () => { const code = c.value.replace(/\D/g, ""); if (code.length !== 6) return $("#mf-e").textContent = en ? "Enter the 6-digit code" : "৬ অঙ্কের কোড দিন"; const b = $("#mf-ok"); b.disabled = true;
+      try { const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: d.id, code }); if (error) throw error; toast(en ? "✔ 2FA is on" : "✔ 2FA চালু হয়েছে"); res(); } catch (e) { $("#mf-e").textContent = en ? "Wrong code — check your phone's clock and try again" : "কোড ভুল — ফোনের সময় ঠিক আছে কি না দেখুন"; c.select(); b.disabled = false; } };
+    $("#mf-ok").onclick = go; c.oninput = () => { if (c.value.replace(/\D/g, "").length === 6) go(); }; c.onkeydown = e => { if (e.key === "Enter") go(); };
+    $("#mf-out").onclick = async () => { await API.logout(); try { localStorage.removeItem(CACHE_KEY); } catch { } location.hash = ""; location.reload(); };
+  });
+}
 /* ---------- boot ---------- */
 let inited = false;
 function onLangChange() { if (S.me && $("#view")) { shell(); route(); } else if (!S.me) loginView(LANG); }
@@ -6021,6 +6045,7 @@ async function boot() {
     if (!S.me) S.me = await API.session();
     if (!S.me) return loginView();
     if (!DEMO && navigator.onLine) { try { if (await API.mfaNeeded()) await mfaGate(); } catch (e) { console.warn("mfa", e); } }
+    if (!DEMO && navigator.onLine && ["admin", "boss"].includes(S.me.role)) { try { if (!(await API.mfaFactor())) await mfaForceEnroll(); } catch (e) { console.warn("mfa force", e); } }
     lockInit();
     loadAvatars();
     let mo = null;
