@@ -941,14 +941,42 @@ async function route() {
   window.scrollTo(0, 0);
 }
 let ROUTE_TOK = 0;
-/* ---------- accessibility: icon-only buttons take their accessible name from the title tooltip ---------- */
+/* ---------- button roles: ONE look per purpose, everywhere (see .btn.s-* in style.css) ----------
+   Close/Cancel, Save, Edit, View, Delete, Print, Share are recognised from the label (EN + BN) and given
+   the same colour/pattern on every page. Add data-role="edit|view|del|close|print|share|save" to force one. */
 (function () {
+  const ROLE_RX = [
+    ["close", /^(close|cancel|dismiss|বন্ধ|বন্ধ করুন|বাতিল|বাতিল করুন)$/i],
+    ["del",   /^(delete|remove|মুছুন|মুছে ফেলুন|মুছবেন)(\s|$)/i],
+    ["edit",  /^(edit|এডিট|সম্পাদনা)(\s|$)/i],
+    ["view",  /^(view|দেখুন|বিস্তারিত)(\s|$)/i],
+    ["print", /^(print|প্রিন্ট)(\s|$)/i],
+    ["share", /^(share|শেয়ার)(\s|$)/i],
+    ["photo", /^(add photo|replace photo|ছবি যোগ|ছবি বদলান)(\s|$)/i],
+    ["remind", /^(reminders?|রিমাইন্ডার)(\s|$)/i],
+    ["save",  /^(save|সেভ)(\s|$)/i]
+  ];
+  const VARIANT = /\b(pri|ok|bad|rdo|ghost|s-close|s-del|s-edit|s-view|s-print|s-share|s-photo|s-remind)\b/;
+  const SKIP = ".dnav, .chips, .chip, .cp-header, .bk-tabs, .nav, .mnav, .sheet2, .topbar, .tabs";
   let queued = false;
-  const label = () => {
+  const decorate = () => {
     queued = false;
     document.querySelectorAll("button[title]:not([aria-label]),a[title]:not([aria-label])").forEach(el => { if (!el.textContent.trim()) el.setAttribute("aria-label", el.getAttribute("title")); });
+    document.querySelectorAll(".btn:not([data-role-done]):not(.iconbtn)").forEach(el => {
+      el.setAttribute("data-role-done", "1");
+      if (el.closest(SKIP)) return;
+      let role = el.dataset.role;
+      if (!role) {
+        if (VARIANT.test(el.className)) return;
+        const label = el.textContent.replace(/[^\p{L}\s]/gu, " ").replace(/\s+/g, " ").trim();
+        if (!label || label.split(" ").length > 3) return;
+        role = (ROLE_RX.find(([, rx]) => rx.test(label)) || [])[0];
+      }
+      if (!role) return;
+      el.classList.add(role === "save" ? "pri" : "s-" + role);
+    });
   };
-  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(label); } };
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(decorate); } };
   new MutationObserver(queue).observe(document.documentElement, { childList: true, subtree: true });
   queue();
 })();
@@ -1617,7 +1645,7 @@ function chequeModal(c, after) {
    ${(S.reminders || []).filter(r => r.cheque_id === c.id && !r.done).map(r => `<div class="alert vi" style="margin-top:10px">⏰ <span>${esc(r.title)} — ${new Date(remDue(r)).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span></div>`).join("")}
    <h3 style="margin:16px 0 8px;font-size:13px;color:var(--mut)">স্ট্যাটাস ইতিহাস</h3>
    ${c.events.length ? c.events.map(e => `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">${stTag(e.status)} <span>${dmy(e.date)}</span> <span class="mut sm">${esc(e.by || "")} ${esc(e.remarks || "")}</span>${admin ? `<button class="btn ghost sm evdel" style="margin-left:auto" data-de="${e.id}" type="button" title="${bi("এই স্ট্যাটাস এন্ট্রি মুছুন", "Delete this status entry")}" aria-label="${bi("স্ট্যাটাস এন্ট্রি মুছুন", "Delete status entry")}">${ico("x")}</button>` : ""}</div>`).join("") : `<div class="mut sm">কোনো আপডেট নেই (ডিফল্ট: ${c.status})</div>`}
-   <div class="modal-actions">${moduleCan("cheque", "edit") ? `<button class="btn pri" id="c-st">স্ট্যাটাস দিন</button>` : ""}<button class="btn" id="c-rm">${ico("bell")} রিমাইন্ডার</button>${moduleCan("cheque", "edit", S.me.role === "staff" && (!c.photo || canEditChq(c))) ? `<button class="btn" id="c-ap">${ico("cam")} ${c.photo ? "ছবি বদলান" : "ছবি যোগ"}</button>` : ""}${canEditChq(c) ? `<button class="btn" id="c-ed">✎ ${bi("এডিট","Edit")}</button>` : ""}${canDeleteChq(c) ? `<button class="btn bad" id="c-dl">🗑 ${bi("চেক মুছুন", "Delete cheque")}</button>` : ""}<button class="btn rdo cq-close-btn" id="c-x" type="button">✕ ${bi("বন্ধ", "Close")}</button></div>${!admin && canEditChq(c) ? `<div class="mut xs" style="margin-top:8px">⏳ ${LANG === "en" ? "You can edit this entry for another " : "এই এন্ট্রি আরও এডিট করতে পারবেন: "}${leftTxt(chqEditLeft(c))}</div>` : ""}`, (root, close) => {
+   <div class="modal-actions">${moduleCan("cheque", "edit") ? `<button class="btn pri" id="c-st">স্ট্যাটাস দিন</button>` : ""}<button class="btn" id="c-rm">${ico("bell")} রিমাইন্ডার</button>${moduleCan("cheque", "edit", S.me.role === "staff" && (!c.photo || canEditChq(c))) ? `<button class="btn" id="c-ap">${ico("cam")} ${c.photo ? "ছবি বদলান" : "ছবি যোগ"}</button>` : ""}${canEditChq(c) ? `<button class="btn" id="c-ed">✎ ${bi("এডিট","Edit")}</button>` : ""}${canDeleteChq(c) ? `<button class="btn bad" id="c-dl">🗑 ${bi("চেক মুছুন", "Delete cheque")}</button>` : ""}<button class="btn s-close" id="c-x" type="button">✕ ${bi("বন্ধ", "Close")}</button></div>${!admin && canEditChq(c) ? `<div class="mut xs" style="margin-top:8px">⏳ ${LANG === "en" ? "You can edit this entry for another " : "এই এন্ট্রি আরও এডিট করতে পারবেন: "}${leftTxt(chqEditLeft(c))}</div>` : ""}`, (root, close) => {
     $("#c-x", root).onclick = close; showPhoto($("#c-ph", root), c);
     $("#c-rm", root).onclick = () => { close(); reminderModal(null, { title: bi(`চেক ${c.code} · ${c.no} পাস হয়েছে কি না দেখুন`, `Check whether cheque ${c.code} · ${c.no} has cleared`), note: `৳ ${money(c.amount)}${c.party ? " · " + c.party : ""} · ${bi("চেকের তারিখ", "Cheque date")} ${dmy(c.date)}`, due: (() => { const d = new Date(addDays(c.date < today() ? today() : c.date, 3) + "T10:00"); return d; })(), kind: "cheque", cheque_id: c.id, for_role: "all" }, after); };
     $("#c-ap", root) && ($("#c-ap", root).onclick = () => { close(); addPhotoModal(c, after); });
