@@ -645,7 +645,7 @@ async function vCashBook(v) {
     let activityBook = null;
     const drawActivity = () => {
       const imported = activityBook?.source === "tally";
-      for (const button of $("[data-cb-side]", body)) {
+      for (const button of $$("[data-cb-side]", body)) {
         button.setAttribute("aria-pressed", String(button.dataset.cbSide === activitySide));
         $(".cb-side-count", button).textContent = activityBook ? (activityBook.lines[button.dataset.cbSide]?.length || 0) : "—";
       }
