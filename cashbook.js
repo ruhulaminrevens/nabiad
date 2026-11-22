@@ -761,18 +761,21 @@ async function vCashBook(v) {
       </div><div class="cb-review"><section class="card flush cb-activity" aria-labelledby="cb-activity-title">
         <div class="ch cb-activity-head"><h3 id="cb-activity-title">${bi("দিনের ক্যাশ লেনদেন", "Cash Book activity")}</h3><time datetime="${date}">${dmy(date)}</time></div>
         <div class="cb-activity-body">
-          <div class="cb-report-controls"><label class="cb-report-source">${bi("রিপোর্টের উৎস", "Report source")}
-            <select class="in" id="cb-report-source">
-              <option value="app">${bi("ক্যাশ খাতা", "Cash Book")}</option>
-              <option value="tally">${bi("Tally ভাউচার", "Tally vouchers")}</option>
-            </select>
-          </label><button type="button" id="cb-register" class="btn pri">${ico("table")}<span>${bi("দেখুন / Export", "View / Export")}</span></button></div>
+          <div class="cb-report-controls">
+            <div class="cb-activity-filters" role="group" aria-label="${bi("লেনদেনের ধরন", "Transaction type")}">
+              ${sides.map(side => `<button type="button" class="btn sm" data-cb-side="${side}" aria-controls="cb-activity-lines" aria-pressed="false">${cbSideLabel(side)} <span class="cb-side-count">${(lines[side] || []).length}</span></button>`).join("")}
+            </div>
+            <label class="cb-report-source">${bi("রিপোর্টের উৎস", "Report source")}
+              <select class="in" id="cb-report-source">
+                <option value="app">${bi("ক্যাশ খাতা", "Cash Book")}</option>
+                <option value="tally">${bi("Tally ভাউচার", "Tally vouchers")}</option>
+              </select>
+            </label>
+            <button type="button" id="cb-register" class="btn pri">${ico("table")}<span>${bi("দেখুন / Export", "View / Export")}</span></button>
+          </div>
           <p id="cb-activity-source" class="mut sm" role="status"></p>
           <dl class="cb-activity-totals"><div class="cb-stat-wide"><dt>${bi("শুরুর নগদ", "Opening cash")}</dt><dd id="cb-x1"></dd></div></dl>
-          <div class="cb-activity-filters" role="group" aria-label="${bi("লেনদেনের ধরন", "Transaction type")}">
-            ${sides.map(side => `<button type="button" class="btn sm" data-cb-side="${side}" aria-controls="cb-activity-lines" aria-pressed="false">${cbSideLabel(side)} <span class="cb-side-count">${(lines[side] || []).length}</span></button>`).join("")}
-          </div>
-          <ul id="cb-activity-lines" class="cb-activity-lines"></ul><p id="cb-activity-empty" class="mut sm" hidden></p>
+          <ol id="cb-activity-lines" class="cb-activity-lines" role="list"></ol><p id="cb-activity-empty" class="mut sm" hidden></p>
           <dl class="cb-activity-totals">
             <div class="cb-stat-receipt"><dt>${bi("মোট প্রাপ্তি", "Total Receipt")}</dt><dd id="cb-x2"></dd></div>
             <div class="cb-stat-payment"><dt>${bi("মোট পরিশোধ", "Total Payment")}</dt><dd id="cb-x3"></dd></div>
@@ -830,10 +833,10 @@ async function vCashBook(v) {
         $(".cb-side-count", button).textContent = activityBook ? (activityBook.lines[button.dataset.cbSide]?.length || 0) : "—";
       }
       const entries = activityBook?.lines[activitySide] || [];
-      get("activity-lines").innerHTML = entries.map((item, index) => `<li><div><strong>${esc(cbRegisterLineLabel(item, rawTally))}</strong>
+      get("activity-lines").innerHTML = entries.map((item, index) => `<li><div class="cb-activity-entry"><span class="cb-entry-number" aria-hidden="true">${index + 1}.</span><div><strong>${esc(cbRegisterLineLabel(item, rawTally))}</strong>
         ${item.ref || item.c ? `<small>${esc([item.ref && cbVoucherLabel(activitySide) + " " + item.ref, item.c].filter(Boolean).join(" · "))}</small>` : ""}
         ${cbPendingPartyRef(item, rawTally) ? `<small class="am">${esc(cbPendingPartyRef(item, rawTally))}</small>` : ""}
-        ${item.note ? `<small class="cb-narr">${esc(item.note)}</small>` : ""}</div>
+        ${item.note ? `<small class="cb-narr">${esc(item.note)}</small>` : ""}</div></div>
         <div class="cb-record-actions"><b class="num">${moneyText(item.a)}</b>
           ${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="btn sm" data-cb-edit="${index}">${bi("এডিট", "Edit")}</button>` : ""}
           ${!imported && admin ? `<button type="button" class="btn sm" data-cb-delete="${index}">${bi("মুছুন", "Delete")}</button>` : ""}
