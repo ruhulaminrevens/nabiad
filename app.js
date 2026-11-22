@@ -1115,7 +1115,7 @@ async function vEntry(v) {
   v.innerHTML = head("চেক পোস্টিং", `<a class="btn" href="#/books">${ico("book")} ${bi("চেক বই", "Cheque Book")}</a>${moduleCan("cheque", "edit") ? `<a class="btn" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a>` : ""}<a class="btn" href="#/cheques">${ico("list")} ${bi("রেজিস্টার", "Register")}</a>`, "tc cp-header") + `
   <div class="split cq-posting">
    <div class="card tbar navcard cp-date-card"><div class="cp-period"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true" aria-controls="e-list">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false" aria-controls="e-list">${bi("চেকের তারিখে", "By cheque date")}</button></div>
-       <time id="e-period" class="mut sm num"></time><input class="in" type="date" id="e-activity-date" aria-label="${dateLabel}" hidden></div>
+       <time id="e-period" class="mut sm num"></time><button type="button" class="btn sm" id="e-dprev" title="${bi("আগের দিন (শুক্রবার বাদ)", "Previous day (skips Friday)")}" hidden>${bi("‹ আগের", "‹ Prev")}</button><input class="in" type="date" id="e-activity-date" aria-label="${dateLabel}" hidden><button type="button" class="btn sm" id="e-dnext" title="${bi("পরের দিন (শুক্রবার বাদ)", "Next day (skips Friday)")}" hidden>${bi("পরের ›", "Next ›")}</button></div>
     <dl class="cp-activity-stats">
          <div><dt>${bi("এন্ট্রি", "Entries")}</dt><dd id="e-cnt" class="num"></dd></div>
          <div><dt>${bi("কার্যকর মোট", "Live amount")}</dt><dd id="e-total" class="num"></dd></div>
@@ -1295,6 +1295,7 @@ async function vEntry(v) {
     $e("e-period").hidden = mode === "date";
     const activityDate = $e("e-activity-date");
     activityDate.hidden = mode !== "date";
+    $e("e-dprev").hidden = $e("e-dnext").hidden = mode !== "date";
     if (mode === "date" && !activityDate.value) {
       const postingDate = $e("e-date").value;
       activityDate.value = validChequeDate(postingDate) ? postingDate : today();
@@ -1318,6 +1319,13 @@ async function vEntry(v) {
     if (!validChequeDate($e("e-activity-date").value)) $e("e-activity-date").value = today();
     resetActivity("date");
   };
+  const stepActivityDate = dir => {
+    const d = $e("e-activity-date"), next = stepDay(d.value || today(), dir);
+    if (!validChequeDate(next)) return;
+    d.value = next; resetActivity("date");
+  };
+  $e("e-dprev").onclick = () => stepActivityDate(-1);
+  $e("e-dnext").onclick = () => stepActivityDate(1);
   $e("e-find").oninput = () => { activityLimit = activityPageSize; list(); };
   $e("e-activity-filters").onclick = event => {
     const btn = event.target.closest("[data-activity-status]");

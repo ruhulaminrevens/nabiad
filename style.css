@@ -2388,3 +2388,4 @@ button.as-kpi[aria-pressed="true"] { border-color: var(--pri); box-shadow: inset
 .cq-posting .cp-date-card { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 18px; padding: 12px 14px; }
 .cp-date-card .cp-period { justify-content: flex-start; }
 .cp-date-card .cp-activity-stats { flex: 1 1 22rem; max-width: 46rem; margin: 0; }
+.cp-period [hidden] { display: none !important; }
