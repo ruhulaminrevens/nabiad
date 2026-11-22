@@ -5430,7 +5430,7 @@ async function vDcol(v) {
      <div class="dcx-b entry-actions"><button class="btn big" type="button" id="dc-clear">${ico("x")} ${bi("পরিষ্কার", "Clear")}</button><button class="btn pri big" id="dc-add">${ico("plus")} যোগ করুন</button></div>
     </div><div class="hint rd" id="dc-err" style="min-height:0;margin-top:8px"></div><datalist id="dc-dl-a"></datalist></div>
    <div class="card flush dcx-list"><div class="ch"><h3>এই তারিখের কালেকশন</h3><span class="tag" id="dc-cnt">0</span></div>
-    <div class="noprint dcx-tools"><div class="chips dcx-tabs" id="dc-sc"></div>${searchBox("dc-q", "খুঁজুন — পার্টি, ASM, Account, টাকা…")}</div>
+    <div class="noprint dcx-tools"><div class="chips dcx-tabs" id="dc-sc"></div>${searchBox("dc-q", "খুঁজুন — পার্টি, ASM, Account, টাকা…")}<button type="button" id="dc-register" class="btn pri">${ico("table")}<span>${bi("দেখুন / Export", "View / Export")}</span></button></div>
     <div class="chips dcx-acc noprint" id="dc-ac"></div>
     <div id="dc-list"></div></div></div><div id="dc-selbar" class="selbar hide"></div>`;
   const list = $("#dc-list", v), err = m => $("#dc-err", v).textContent = m || "";
@@ -5516,10 +5516,84 @@ async function vDcol(v) {
     selbar(); qa();
   }
   $("#dc-q", v).oninput = e => { F.q = e.target.value; draw(); };
+  $("#dc-register", v).onclick = () => dcRegisterModal(rows, date);
   bindDateNav(v, "dc", load);
   window.__dcolRefresh = () => { if (CUR === "dcol" && !busy) load(); };
   await load(); if (innerWidth > 800 && moduleCan("collection", "entry")) pIn.focus();
   return () => { window.__dcolRefresh = null; };
+}
+
+/* ---------- Collection register: View / Export (Excel · PDF · Image · Print) ---------- */
+const dcRegName = date => `Collection_Register_${dmy(date)}`;
+function dcRegisterSheet(rows, date) {
+  const gm = dpGeoMap(), live = rows.filter(r => r.status !== "cancelled"), by = k => rows.filter(r => r.status === k);
+  const kpi = repKpi([[bi("মোট", "Total"), "৳ " + money0(dcSum(live)) + ` · ${live.length}`, "t"], ["Approved", "৳ " + money0(dcSum(by("approved"))) + ` · ${by("approved").length}`, "a"], ["Pending", "৳ " + money0(dcSum(by("pending"))) + ` · ${by("pending").length}`, "p"]]);
+  const body = rows.length ? rows.map((r, i) => `<tr class="${r.status}"><td class="n">${i + 1}</td><td><b>${esc(r.party)}</b><div class="mut xs">${esc([r.asm || "—", dpGeoOf(gm, r).district].filter(Boolean).join(" · "))}</div></td><td class="cd"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account || "—")}</td><td class="r num"><b>${money0(r.amount)}</b></td><td>${DC_ST[r.status] || esc(r.status)}</td><td class="rm">${esc(r.remarks || "")}</td></tr>`).join("") : `<tr><td colspan="6" class="z" style="text-align:center">${bi("এই তারিখে কোনো এন্ট্রি নেই", "No entries on this date")}</td></tr>`;
+  const tot = `<tr class="tot"><td></td><td colspan="2">${bi(`মোট (${live.length}টি, Cancelled বাদে)`, `Total (${live.length} entries, excl. Cancelled)`)}</td><td class="r num">${money0(dcSum(live))}</td><td colspan="2"></td></tr>`;
+  return `<div class="rep dc-register">${dcHead("Daily Collection Register · " + bi("দৈনিক কালেকশন রেজিস্টার", "Daily Collection Register"), date, date, "NABIAD DISTRIBUTION")}${kpi}
+   <div class="dcs-one"><table class="rep-t dc-reg-table"><thead><tr><th class="r">#</th><th>${bi("পার্টি", "Party")}</th><th>Account</th><th class="r">${bi("টাকা", "Amount")}</th><th>${bi("অবস্থা", "Status")}</th><th>${bi("মন্তব্য", "Remarks")}</th></tr></thead><tbody>${body}${rows.length ? tot : ""}</tbody></table></div>
+   <div class="rep-ft cb-reg-foot"><span>${bi("কালেকশন", "Collection")}</span><span>${bi("তারিখ", "Date")}: <b>${dmy(date)}</b> | ${bi("পৃষ্ঠা নং", "Page No.")}: <b class="cb-pg">1</b></span><span>NABIAD Smart Finance Suite</span></div></div>`;
+}
+async function dcRegisterExcel(rows, date) {
+  await loadScript("vendor/xlsx.min.js"); const gm = dpGeoMap(), live = rows.filter(r => r.status !== "cancelled");
+  const cells = [["Daily Collection Register", date], [], ["#", "Party", "ASM", "District", "Account", "Amount", "Status", "Remarks"],
+    ...rows.map((r, i) => [i + 1, r.party, r.asm || "", dpGeoOf(gm, r).district || "", r.account || "", Number(r.amount) || 0, DC_ST[r.status] || r.status, r.remarks || ""]),
+    [], ["", "Total (excl. Cancelled)", "", "", "", dcSum(live), `${live.length} entries`]];
+  const ws = XLSX.utils.aoa_to_sheet(cells);
+  for (let r = 3; r < rows.length + 3; r++) { const c = ws[XLSX.utils.encode_cell({ r, c: 5 })]; if (c?.t === "n") c.z = "#,##0"; }
+  const tc = ws[XLSX.utils.encode_cell({ r: rows.length + 4, c: 5 })]; if (tc) tc.z = "#,##0";
+  ws["!cols"] = [6, 38, 24, 16, 16, 14, 12, 34].map(wch => ({ wch }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Collection");
+  return new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+async function dcRegisterVisual(el, format) {
+  await document.fonts?.ready;
+  const stage = document.createElement("div"), paper = el.cloneNode(true);
+  stage.className = "cb-export-stage"; stage.setAttribute("aria-hidden", "true"); stage.append(paper); document.body.append(stage);
+  try {
+    const blobOf = (cv, type) => new Promise((ok, no) => cv.toBlob(b => b ? ok(b) : no(new Error("render failed")), type, 0.92));
+    if (format === "png") return blobOf(await dcCanvas(paper), "image/png");
+    const pages = []; let pageNo = 0;
+    const capture = async () => { const pg = $(".cb-pg", paper); if (pg) pg.textContent = String(++pageNo); const cv = await dcCanvas(paper); pages.push({ bytes: new Uint8Array(await (await blobOf(cv, "image/jpeg")).arrayBuffer()), width: cv.width, height: cv.height }); };
+    const fits = () => { const { width, height } = paper.getBoundingClientRect(); return height <= width * 802 / (555 * 0.90); };
+    const body = $(".dc-reg-table", paper).tBodies[0], all = [...body.rows], tot = all.find(r => r.classList.contains("tot")), rows = all.filter(r => r !== tot);
+    if (fits()) { await capture(); return cbRegisterPdf(pages); }
+    body.replaceChildren(); let n = 0;
+    for (const row of rows) { body.append(row); if (n && !fits()) { row.remove(); await capture(); body.replaceChildren(row); n = 1; } else n++; }
+    if (tot) { body.append(tot); if (n && !fits()) { tot.remove(); await capture(); body.replaceChildren(tot); } }
+    await capture();
+    return cbRegisterPdf(pages);
+  } finally { stage.remove(); }
+}
+function dcRegisterModal(rows, date) {
+  const name = dcRegName(date), closeLabel = bi("বন্ধ", "Close"), title = bi("কালেকশন রেজিস্টার", "Collection Register");
+  const formats = [["xlsx", "table", "Excel"], ["pdf", "list", "PDF"], ["png", "img", bi("ছবি", "Image")]];
+  modal(`<h2 aria-label="${title}"><span>${title}</span><button type="button" class="cb-register-close" data-register-close aria-label="${closeLabel}" title="${closeLabel}">${ico("x")}</button></h2>
+    <div class="modal-body cb-register-preview">${dcRegisterSheet(rows, date)}</div>
+    <div class="modal-actions cb-register-actions">
+      ${formats.map(([f, ic, l]) => `<button type="button" class="btn cb-action" data-register-format="${f}">${ico(ic)}<span>${l}</span></button>`).join("")}
+      <button type="button" class="btn cb-action" data-register-print>${ico("print")}<span>${bi("প্রিন্ট", "Print")}</span></button>
+      <button type="button" class="btn cb-action" data-register-share hidden>${ico("share")}<span>${bi("ফাইল শেয়ার", "Share file")}</span></button>
+      <span class="mut sm" data-register-status role="status"></span>
+    </div>`, (root, close) => {
+    root.querySelector(".modal").classList.add("cb-register-dialog");
+    let file = null, loading = false;
+    const exports = $$("[data-register-format], [data-register-print]", root), share = $("[data-register-share]", root), status = $("[data-register-status]", root);
+    $("[data-register-close]", root).onclick = close;
+    $("[data-register-print]", root).onclick = () => printSheet(dcRegisterSheet(rows, date), name, { left: bi("কালেকশন", "Collection"), center: `${bi("তারিখ", "Date")}: ${dmy(date)}  |  ${bi("পৃষ্ঠা নং", "Page No.")}: `, right: "NABIAD Smart Finance Suite" });
+    share.onclick = async () => { try { if (file) await navigator.share({ files: [file], title: name }); } catch (e) { if (e.name !== "AbortError") toast(e.message, "err"); } };
+    $$("[data-register-format]", root).forEach(btn => btn.onclick = async () => {
+      if (loading) return; loading = true; exports.forEach(c => { c.disabled = true; }); share.hidden = true; file = null;
+      status.textContent = bi("ফাইল তৈরি হচ্ছে…", "Preparing file…");
+      try {
+        const f = btn.dataset.registerFormat, blob = await (f === "xlsx" ? dcRegisterExcel(rows, date) : dcRegisterVisual($(".dc-register", root), f));
+        if (!btn.isConnected) return;
+        file = new File([blob], name + "." + f, { type: blob.type }); dlBlob(file, file.name);
+        share.hidden = !navigator.canShare?.({ files: [file] }); status.textContent = file.name;
+      } catch (e) { status.textContent = e.message; }
+      finally { loading = false; exports.forEach(c => { c.disabled = false; }); }
+    });
+  });
 }
 
 /* ---------- period bar shared by Summary and Report ---------- */

@@ -466,3 +466,9 @@
 .cb-reg-closing,.cb-reg-signatures{break-inside:avoid}
 .cb-reg-foot{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
 .cb-reg-foot>span:first-child{text-align:left}.cb-reg-foot>span:nth-child(2){text-align:center;color:#374151;font-weight:600}.cb-reg-foot>span:last-child{text-align:right}
+
+/* Collection register preview (View / Export) */
+.cb-register-preview > .dc-register { width: 100%; min-width: 0; max-width: 794px; min-height: 0; }
+.dc-register .rep-t td, .dc-register .rep-t th { padding: 5px 8px; }
+.dc-register tr.cancelled td { color: #9ca3af !important; text-decoration: line-through; }
+.dcx-tools > #dc-register { flex: none; }
