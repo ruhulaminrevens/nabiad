@@ -2414,3 +2414,16 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 @media (max-width: 640px) { .iconbtn.cpi { width: 36px; height: 36px; } .iconbtn.cpi svg { width: 17px; height: 17px; } }
 /* Cheque Posting: give the activity list the room — the entry form does not need 1.45fr */
 @media (min-width: 1181px) { .split.cq-posting { grid-template-columns: minmax(380px, 0.8fr) minmax(0, 1.2fr); } }
+
+/* Cheque Posting v6.86: coloured header actions, dropdowns beside search, Close at the bottom-right of the detail modal */
+.cp-header .cqh { font-weight: 700; border-width: 1px; }
+.cp-header .cqh.pri { background: var(--pri-soft); color: var(--pri-ink); border-color: color-mix(in srgb, var(--pri) 35%, var(--line)); }
+.cp-header .cqh.am  { background: var(--am-soft);  color: var(--am);      border-color: color-mix(in srgb, var(--am) 35%, var(--line)); }
+.cp-header .cqh.gr  { background: var(--gr-soft);  color: var(--gr);      border-color: color-mix(in srgb, var(--gr) 35%, var(--line)); }
+.cp-header .cqh:hover { filter: brightness(.96); transform: translateY(-1px); }
+#e-review-tools [hidden] { display: none !important; }
+#e-review-tools .cp-sel { flex: 0 1 auto; width: auto; min-width: 8.5rem; max-width: 100%; font-weight: 600; }
+#e-review-tools .cp-search { flex: 1 1 11rem; }
+.modal-actions > .btn.cq-close-btn { grid-column: 1 / -1 !important; justify-self: end; width: auto; min-width: 9rem; }
+.modal-actions > .btn.cq-close-btn { background: var(--surface) !important; color: var(--rd) !important; border: 1px solid var(--rd) !important; font-weight: 700; }
+.modal-actions > .btn.cq-close-btn:hover { background: var(--rd-soft) !important; }
