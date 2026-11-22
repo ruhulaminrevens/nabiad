@@ -241,7 +241,7 @@
 .cb-activity-totals .cb-stat-receipt { background: var(--gr-soft); color: var(--gr); }
 .cb-activity-totals .cb-stat-payment { background: var(--rd-soft); color: var(--rd); }
 .cb-activity-totals .cb-stat-counted { background: var(--pri-soft); }
-.cb-activity-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.cb-activity-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cb-activity-filters .btn { border-radius: 99px; }
 .cb-activity-filters .btn[aria-pressed="true"] { background: var(--grad); color: #fff; border-color: transparent; }
 .cb-side-count { font-variant-numeric: tabular-nums; padding-inline: 5px; border-radius: 99px; background: color-mix(in srgb, currentColor 12%, transparent); }
@@ -261,6 +261,9 @@
   overflow-wrap: anywhere;
 }
 .cb-activity-lines li > div { min-width: 0; }
+.cb-activity-entry { display: flex; align-items: baseline; gap: 6px; }
+.cb-activity-entry > div { min-width: 0; }
+.cb-entry-number { flex: 0 0 3ch; text-align: end; color: var(--mut); font-size: .82rem; font-variant-numeric: tabular-nums; }
 .cb-activity-lines small { display: block; color: var(--mut); margin-top: 2px; }
 #cb-activity-empty { text-align: center; margin: 8px 0 12px; padding: 16px 8px; }
 @media (max-width: 1100px) {
@@ -272,10 +275,11 @@
 .cb-compose label { min-width: 0; font-size: .82rem; font-weight: 650; }
 .cb-compose label > :is(input, select) { display: block; width: 100%; margin-top: 4px; }
 .cb-compose .cb-compose-account { grid-column: 1 / -1; }
-.cb-compose .cb-row-actions { grid-area: 2 / 2; align-self: end; margin-top: 0; }
-.cb-compose .cbadd { width: 100%; max-width: 180px; }
+.cb-compose .cb-row-actions { display: grid; grid-area: 2 / 2; grid-template-columns: repeat(2, minmax(0, 110px)); align-self: end; gap: 6px; margin-top: 0; }
+.cb-compose .cb-row-actions > .btn { width: 100%; min-height: 44px; height: auto; justify-content: center; gap: 4px; padding: 5px 4px; white-space: normal; line-height: 1.2; overflow-wrap: anywhere; }
+.cb-compose .cbadd { grid-column: 2; }
 .cb-recovery summary { cursor: pointer; color: var(--mut); font-weight: 650; }
-.cb-compose .cb-row-actions, .c-close .cb-row-actions { gap: 8px; flex-wrap: wrap; }
+.c-close .cb-row-actions { gap: 8px; flex-wrap: wrap; }
 .cb-recovery li { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
 .cb-count-input { min-width: 0; }
 .cb-count-input .cell { width: 100%; }
@@ -290,7 +294,12 @@
 @media (max-width: 450px) {
   .cb-compose { grid-template-columns: minmax(0, 1fr) minmax(105px, .65fr); }
   .cb-compose label:has(.cbname, .cbamt2) { grid-column: 1 / -1; }
-  .cb-compose .cb-row-actions { grid-row: 3; }
+  .cb-compose .cb-row-actions { grid-row: 3; grid-template-columns: 84px; }
+  .cb-compose .cbadd { grid-column: auto; }
+  .cb-compose:has(.cb-cancel:not([hidden])) .cb-row-actions {
+    grid-area: auto / 1 / auto / -1;
+    grid-template-columns: repeat(2, 84px);
+  }
   .cb-compose .in { font-size: 16px; }
   .cb-activity-body { padding-inline: 10px; }
 }
@@ -355,8 +364,9 @@
 .cb-date-stats dt { color: var(--mut); font-size: .78rem; overflow-wrap: anywhere; }
 .cb-date-stats dd { margin: 2px 0 0; font-weight: 750; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
-.cb-report-controls { display: flex; align-items: end; gap: 8px; margin-bottom: 8px; }
-.cb-report-source { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; font-size: .8rem; font-weight: 600; }
+.cb-report-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cb-report-controls .cb-activity-filters { flex: 0 0 auto; max-width: 100%; }
+.cb-report-source { display: flex; flex: 1 1 165px; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; font-size: .8rem; font-weight: 600; }
 .cb-report-source .in { flex: 1 1 125px; width: auto; min-width: 0; min-height: 44px; }
 .cb-report-controls #cb-register { flex: 0 1 auto; min-height: 44px; height: auto; max-width: 46%; padding-block: 6px; white-space: normal; line-height: 1.2; }
 
@@ -372,4 +382,8 @@
 @media (max-width: 460px) {
   .cb-date-stats > div { padding-inline: 6px; }
   .cb-note-fields { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .cb-report-controls .cb-activity-filters { flex-basis: 100%; }
 }
