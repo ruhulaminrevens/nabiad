@@ -534,13 +534,20 @@ function readCache() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) |
 const isNetErr = e => !navigator.onLine || /fetch|network|load failed|timed? ?out|ERR_/i.test(String(e?.message || e || ""));
 
 /* ---------- offline outbox: entries made without internet are kept here and synced automatically ---------- */
-const OB_KEY = "nabiad_outbox_v1";
+const OB_KEY = "nabiad_outbox_v1", DEAD_KEY = "nabiad_outbox_dead_v1";
 const Outbox = {
   list() { try { return JSON.parse(localStorage.getItem(OB_KEY) || "[]"); } catch { return []; } },
   save(a) { localStorage.setItem(OB_KEY, JSON.stringify(a)); syncBadge(); },
   add(kind, payload) { const a = this.list(); a.push({ k: kind, p: payload, at: Date.now(), u: S.me?.id }); this.save(a); },
   has(chequeId) { return this.list().some(x => x.k === "cheque" && x.p.id === chequeId); },
   count() { return this.list().length; },
+  /* dead-letter: entries the server refused are parked here (never silently dropped) until a person retries or discards them */
+  dead() { try { return JSON.parse(localStorage.getItem(DEAD_KEY) || "[]"); } catch { return []; } },
+  saveDead(a) { localStorage.setItem(DEAD_KEY, JSON.stringify(a)); syncBadge(); },
+  kill(it, why) { const a = this.dead(); a.push({ ...it, why: String(why || "").slice(0, 300), dead_at: Date.now() }); this.saveDead(a); },
+  deadCount() { return this.dead().filter(x => !x.u || x.u === S.me?.id).length; },
+  retry(i) { const d = this.dead(), it = d[i]; if (!it) return; d.splice(i, 1); const { why, dead_at, ...orig } = it; const a = this.list(); a.push(orig); this.save(a); this.saveDead(d); },
+  discard(i) { const d = this.dead(); d.splice(i, 1); this.saveDead(d); },
   busy: false,
   async flush() {
     if (DEMO || this.busy || !navigator.onLine || !sb) return;
@@ -552,9 +559,10 @@ const Outbox = {
         const it = a[0], tbl = { cheque: "cheques", status: "cheque_status", bal: "balances", dcol: "dist_collections" }[it.k];
         const { error } = await sb.from(tbl).insert(it.p);
         if (error && isNetErr(error)) break;
-        if (error && error.code !== "23505" && !/foreign key/i.test(error.message)) { if (/JWT|auth|permission|policy/i.test(error.message)) break; dropped.push(`${it.k}: ${error.message}`); }
+        if (error && error.code !== "23505" && !/foreign key/i.test(error.message)) { if (/JWT|auth|permission|policy/i.test(error.message)) break; dropped.push(`${it.k}: ${error.message}`); this.kill(it, error.message); }
+        else if (error && error.code !== "23505") { dropped.push(`${it.k}: ${error.message}`); this.kill(it, error.message); }   // foreign-key etc.: a real rejection, never mislabel as "already saved"
         else if (error) {
-          if (it.k === "cheque") { dropped.push(`${it.p.code} · ${it.p.chq_no} — আগেই অন্য কেউ এন্ট্রি করেছে`); a = a.filter((x, i) => i === 0 || !(x.k === "status" && x.p.cheque_id === it.p.id)); }
+          if (it.k === "cheque") { dropped.push(`${it.p.code} · ${it.p.chq_no} — আগেই অন্য কেউ এন্ট্রি করেছে`); this.kill(it, "duplicate cheque (already entered by someone else)"); a.filter((x, i) => i > 0 && x.k === "status" && x.p.cheque_id === it.p.id).forEach(x => this.kill(x, "its cheque was a duplicate")); a = a.filter((x, i) => i === 0 || !(x.k === "status" && x.p.cheque_id === it.p.id)); }
           else if (it.k === "bal") dropped.push(`${it.p[0]?.date} ব্যালেন্স — আগেই সেভ করা আছে`);
           else if (it.k === "dcol") dropped.push(`${it.p.party} ${bi("কালেকশন — আগেই সেভ হয়েছে", "collection — already saved")}`);
         } else done++;
@@ -565,10 +573,33 @@ const Outbox = {
     dropped.forEach(m => toast(bi("সিঙ্ক হয়নি: ", "Not synced: ") + m, "err"));
   }
 };
+const DEAD_LABEL = { cheque: ["চেক", "Cheque"], status: ["স্ট্যাটাস", "Status"], bal: ["ব্যালেন্স", "Balance"], dcol: ["কালেকশন", "Collection"] };
+function deadTitle(it) {
+  const p = it.p || {};
+  return it.k === "cheque" ? `${p.code || ""} · ${p.chq_no || ""}` : it.k === "bal" ? `${p[0]?.date || ""}` : it.k === "dcol" ? `${p.party || ""} · ${p.amount ?? ""}` : `${p.status || ""} · ${p.date || ""}`;
+}
+function deadModal() {
+  const html = () => {
+    const list = Outbox.dead().map((it, i) => ({ it, i })).filter(({ it }) => !it.u || it.u === S.me?.id);
+    return `<h2>${bi("সার্ভার যেসব এন্ট্রি নেয়নি", "Entries the server rejected")}</h2>
+      <div class="mut xs">${bi("এগুলো হারায়নি — এই ডিভাইসে রাখা আছে। কারণ ঠিক করে আবার চেষ্টা করুন, নয়তো কপি করে রেখে বাদ দিন।", "These were not lost — they are kept on this device. Fix the cause and retry, or copy them and discard.")}</div>
+      ${list.length ? list.map(({ it, i }) => `<div class="card" style="margin:8px 0"><b>${esc((DEAD_LABEL[it.k] || [it.k, it.k])[LANG === "en" ? 1 : 0])}</b> · ${esc(deadTitle(it))}
+        <div class="mut xs">${esc(new Date(it.at).toLocaleString())} — ${esc(it.why || "")}</div>
+        <div class="row" style="margin-top:6px"><button class="btn fix" data-r="${i}">↻ ${bi("আবার চেষ্টা", "Retry")}</button><button class="btn fix" data-c="${i}">${bi("কপি", "Copy")}</button><button class="btn fix" data-d="${i}">${bi("বাদ দিন", "Discard")}</button></div></div>`).join("") : `<div class="mut" style="margin:12px 0">${bi("কিছু নেই ✔", "Nothing here ✔")}</div>`}
+      <div class="modal-actions"><button class="btn" data-x="close">${bi("বন্ধ করুন", "Close")}</button></div>`;
+  };
+  const open = () => modal(html(), (root, close) => {
+    $("[data-x=close]", root).onclick = close;
+    $$("[data-r]", root).forEach(b => b.onclick = async () => { Outbox.retry(+b.dataset.r); open(); await Outbox.flush(); open(); });
+    $$("[data-c]", root).forEach(b => b.onclick = () => copyText(JSON.stringify(Outbox.dead()[+b.dataset.c], null, 2), bi("কপি হয়েছে", "Copied")));
+    $$("[data-d]", root).forEach(b => b.onclick = () => { if (!ask(bi("এই এন্ট্রি চিরতরে বাদ যাবে। নিশ্চিত?", "This entry will be permanently discarded. Sure?"))) return; Outbox.discard(+b.dataset.d); open(); });
+  });
+  open();
+}
 function syncBadge() {
   const el = $("#sync"); if (!el) return; const n = Outbox.count(), on = navigator.onLine;
   el.className = "sync " + (!on ? "off" : n ? "wait" : "ok");
-  el.innerHTML = `<i></i><span>${!on ? "অফলাইন" : Outbox.busy ? "সিঙ্ক হচ্ছে…" : n ? "সিঙ্ক বাকি" : "অনলাইন"}${n ? ` · ${n}` : ""}</span>`;
+  el.innerHTML = `<i></i><span>${!on ? "অফলাইন" : Outbox.busy ? "সিঙ্ক হচ্ছে…" : n ? "সিঙ্ক বাকি" : "অনলাইন"}${n ? ` · ${n}` : ""}${Outbox.deadCount() ? ` · ⚠${Outbox.deadCount()}` : ""}</span>`;
   el.title = !on ? "ইন্টারনেট নেই — এন্ট্রি এই ডিভাইসে জমা থাকবে, নেট এলে নিজে থেকে সিঙ্ক হবে" : n ? `${n}টি এন্ট্রি সার্ভারে যাওয়া বাকি — চাপলে এখনই সিঙ্ক` : "সব ডাটা সার্ভারে সেভ আছে";
 }
 window.addEventListener("online", () => { syncBadge(); toast("ইন্টারনেট ফিরে এসেছে — সিঙ্ক হচ্ছে"); Outbox.flush(); });
@@ -3382,6 +3413,7 @@ function sysAlerts() {
     if (S.lastBal) { const g = workGap(S.lastBal, t); if (g > 0) o.push({ k: "am", ic: "bank", t: LANG === "en" ? `${g} working day${g > 1 ? "s" : ""} of closing pending (last saved: ${dmy(S.lastBal)})` : `${g} কর্মদিবসের ক্লোজিং বাকি (শেষ সেভ: ${dmy(S.lastBal)})`, go: "#/closing" }); }
     const dd = Draft.localDates().filter(d => !S.lastBal || d > S.lastBal); if (dd.length) o.push({ k: "vi", ic: "edit", t: `ড্রাফট আছে, ফাইনাল সেভ বাকি: ${dd.map(dmy).join(", ")}`, go: "#/closing" });
     if (!DEMO && Outbox.count()) o.push({ k: "am", ic: "clock", t: `${Outbox.count()}টি অফলাইন এন্ট্রি সিঙ্ক বাকি`, go: "" });
+    if (!DEMO && Outbox.deadCount()) o.push({ k: "rd", ic: "alert", t: bi(`${Outbox.deadCount()}টি অফলাইন এন্ট্রি সার্ভার নেয়নি — সেটিংস-এ দেখুন`, `${Outbox.deadCount()} offline ${Outbox.deadCount() === 1 ? "entry was" : "entries were"} rejected by the server — see Settings`), go: "#/settings" });
   }
   const old = pendingOld(); if (old.length) o.push({ k: "am", ic: "clock", t: bi(`${old.length}টি চেক ${CFG.PENDING_ALERT_DAYS ?? 3} দিনের বেশি Pending`, `${old.length} cheques pending for more than ${CFG.PENDING_ALERT_DAYS ?? 3} days`), go: "#/status" });
   const miss = allMissing(); if (miss.length) o.push({ k: "am", ic: "book", t: bi(`মিসিং চেক পাতা আছে: ${miss.slice(0, 3).map(x => x.b.code).join(", ")}`, `Missing cheque leaves: ${miss.slice(0, 3).map(x => x.b.code).join(", ")}`), go: "#/books" });
@@ -4491,6 +4523,7 @@ async function vSettings(v) {
      <div class="kv"><span>সংস্করণ</span><b>v6 · ${esc(document.querySelector('script[src^="app.js"]')?.getAttribute("src")?.split("v=")[1] || "")}</b></div>
      <div class="kv"><span>ইন্টারনেট</span><b class="${navigator.onLine ? "gr" : "rd"}">${navigator.onLine ? "অনলাইন" : "অফলাইন"}</b></div>
      <div class="kv"><span>সিঙ্ক বাকি</span><b>${DEMO ? "—" : Outbox.count()}</b></div>
+     ${!DEMO && Outbox.deadCount() ? `<div class="kv"><span>${bi("সিঙ্ক ব্যর্থ (আটকে আছে)", "Rejected entries")}</span><b class="rd">${Outbox.deadCount()} <button class="btn fix" id="st-dead">${bi("দেখুন", "Review")}</button></b></div>` : ""}
      <div class="kv"><span>এই ডিভাইসে জমা ডাটা</span><b>${(used / 1024).toFixed(0)} KB</b></div>
      <div class="row" style="margin-top:6px"><button class="btn fix" id="st-sync">${ico("clock")} এখনই সিঙ্ক</button><button class="btn fix" id="st-upd">↻ আপডেট দেখুন</button>${isStandalone() ? "" : `<button class="btn pri fix" id="st-inst">⬇ অ্যাপ ইনস্টল</button>`}<button class="btn bad fix" id="st-clr">ক্যাশ মুছে রিলোড</button></div>
      <div class="mut xs">"ক্যাশ মুছে রিলোড" শুধু এই ডিভাইসের জমা কপি মোছে — সার্ভারের ডাটা ঠিক থাকে। সিঙ্ক বাকি থাকলে আগে সিঙ্ক করুন।</div></div></div>
@@ -4522,6 +4555,7 @@ async function vSettings(v) {
   g("st-pd").onchange = e => { savePrefs({ pendDays: +e.target.value }); refreshBadges(); }; g("st-snd").onchange = e => savePrefs({ sound: e.target.value === "1" }); g("st-fri").onchange = e => savePrefs({ skipFri: e.target.value === "1" });
   g("st-np").onclick = async () => { await Notification.requestPermission(); vSettings(v); };
   g("st-nt").onclick = () => { if (PREFS.sound) beep(); sysNotify(bi("🔔 পরীক্ষা — Nabiad", "🔔 Test — Nabiad"), bi("নোটিফিকেশন ঠিকমতো কাজ করছে", "Notifications are working"), "test"); toast(bi("পরীক্ষার নোটিফিকেশন পাঠানো হয়েছে", "Test notification sent")); };
+  g("st-dead") && (g("st-dead").onclick = deadModal);
   g("st-sync").onclick = async () => { if (DEMO) return toast(bi("DEMO মোড", "DEMO mode")); await Outbox.flush(); await reload(); toast("✔ সিঙ্ক ও রিফ্রেশ হয়েছে"); };
   g("st-upd").onclick = async () => { try { const reg = await navigator.serviceWorker?.getRegistration(); await reg?.update(); } catch { } toast("নতুন সংস্করণ থাকলে রিলোড হচ্ছে…"); setTimeout(() => location.reload(), 900); };
   g("st-inst") && (g("st-inst").onclick = installModal);
