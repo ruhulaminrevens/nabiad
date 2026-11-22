@@ -451,3 +451,11 @@
 .cb-act-h,.cb-activity-lines li.cb-act-row{grid-template-columns:42px minmax(0,1fr) minmax(120px,auto) minmax(120px,auto)}
 .cb-act-amt,.cb-act-h .r{min-width:120px;text-align:right}
 .cb-act-amt,.cb-act-amt.gr,.cb-act-amt.rd{font-size:var(--amt-fs,15px);font-weight:var(--amt-fw,700)}
+
+/* v6.96: Cash Book activity is a real table, identical look to Cheque activity */
+.cb-act-table{margin:10px 0 12px;max-height:560px;overflow:auto}
+.cb-act-table table{font-size:inherit}
+.cb-act-table td:first-child,.cb-act-table th:first-child{width:52px;text-align:center;color:var(--mut)}
+.cb-act-table .cb-led-name{display:inline-block;min-height:0;padding:3px 2px;cursor:default}
+.cb-act-table .cb-record-actions{justify-content:flex-start}
+.cb-act-table td.r.num,.cb-act-table th.r{white-space:nowrap}
