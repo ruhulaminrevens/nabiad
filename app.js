@@ -1114,6 +1114,13 @@ async function vEntry(v) {
   const activitySearchLabel = bi("এই তালিকায় চেক খুঁজুন", "Search this activity");
   v.innerHTML = head("চেক পোস্টিং", `<a class="btn" href="#/books">${ico("book")} ${bi("চেক বই", "Cheque Book")}</a>${moduleCan("cheque", "edit") ? `<a class="btn" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a>` : ""}<a class="btn" href="#/cheques">${ico("list")} ${bi("রেজিস্টার", "Register")}</a>`, "tc cp-header") + `
   <div class="split cq-posting">
+   <div class="card tbar navcard cp-date-card"><div class="cp-period"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true" aria-controls="e-list">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false" aria-controls="e-list">${bi("চেকের তারিখে", "By cheque date")}</button></div>
+       <time id="e-period" class="mut sm num"></time><input class="in" type="date" id="e-activity-date" aria-label="${dateLabel}" hidden></div>
+    <dl class="cp-activity-stats">
+         <div><dt>${bi("এন্ট্রি", "Entries")}</dt><dd id="e-cnt" class="num"></dd></div>
+         <div><dt>${bi("কার্যকর মোট", "Live amount")}</dt><dd id="e-total" class="num"></dd></div>
+         <div><dt>${bi("অপেক্ষমাণ অঙ্ক", "Pending amount")}</dt><dd id="e-pending-total" class="num"></dd></div>
+       </dl></div>
    <section class="card efc" aria-labelledby="e-title">
     <h2 class="cp-title" id="e-title">${bi("নতুন চেক এন্ট্রি", "New cheque entry")}</h2>
     <div class="fgrid ef">
@@ -1145,13 +1152,6 @@ async function vEntry(v) {
    <section class="card flush cp-activity" aria-labelledby="e-activity-title">
      <div class="ch"><h3 id="e-activity-title">${bi("চেক এন্ট্রি", "Cheque activity")}</h3></div>
      <div class="cp-activity-controls">
-       <div class="cp-period"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true" aria-controls="e-list">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false" aria-controls="e-list">${bi("চেকের তারিখে", "By cheque date")}</button></div>
-       <time id="e-period" class="mut sm num"></time><input class="in" type="date" id="e-activity-date" aria-label="${dateLabel}" hidden></div>
-       <dl class="cp-activity-stats">
-         <div><dt>${bi("এন্ট্রি", "Entries")}</dt><dd id="e-cnt" class="num"></dd></div>
-         <div><dt>${bi("কার্যকর মোট", "Live amount")}</dt><dd id="e-total" class="num"></dd></div>
-         <div><dt>${bi("অপেক্ষমাণ অঙ্ক", "Pending amount")}</dt><dd id="e-pending-total" class="num"></dd></div>
-       </dl>
        <div id="e-review-tools">
          <label class="cp-search"><span aria-hidden="true">${ico("search")}</span><input class="in" type="search" id="e-find" aria-label="${activitySearchLabel}" placeholder="${bi("চেক নং, A/C, ব্যাংক বা অঙ্ক", "Cheque no, A/C, bank or amount")}" autocomplete="off"></label>
          <div class="chips cp-status-chips" id="e-activity-filters" role="group" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}"></div>
