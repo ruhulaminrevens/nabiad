@@ -154,7 +154,8 @@ function cbChecksHtml(L) {
 }
 
 /* ---------- daily register: source totals are references, never cash lines ---------- */
-const cbRegisterMoney = n => n == null ? "—" : Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const cbRegisterMoney = n => n == null ? "—" : (Math.abs(n) < 0.5 ? 0 : Number(n))
+  .toLocaleString("en-IN", {maximumFractionDigits: 0});
 const cbRegisterDate = at => at ? new Date(at).toLocaleString("en-GB", { timeZone: "Asia/Dhaka", dateStyle: "medium", timeStyle: "short" }) + " (Dhaka)" : "—";
 async function cbRegisterSummary(date, allowPartial = false) {
   const sources = [API.balancesOn(date), API.dcolRange(date, date)];
@@ -175,8 +176,7 @@ async function cbRegisterSummary(date, allowPartial = false) {
 function cbRegisterReferences(snapshot) {
   return [
     [bi("মোট ব্যাংক ক্লোজিং", "Total Bank Closing"), snapshot?.bank ?? null],
-    [bi("নাবিয়াদ ডিস্ট্রিবিউশন · মোট অনুমোদিত কালেকশন", "Nabiad Distribution · All approved collections"), snapshot?.collection ?? null],
-    [bi("এর মধ্যে অনুমোদিত Cash", "Of which approved Cash"), snapshot?.cash ?? null]
+    [bi("নাবিয়াদ ডিস্ট্রিবিউশন · মোট অনুমোদিত কালেকশন", "Nabiad Distribution · All approved collections"), snapshot?.collection ?? null]
   ];
 }
 const cbIsTallyReport = book => book?.source === "tally" && !book.importedForCashBook;
@@ -265,27 +265,8 @@ const cbRegisterSigners = () => [
 const cbRegisterLineLabel = (line, rawTally = false) =>
   (!rawTally && String(line?.reportLedger || "").trim()) || String(line?.n || "").trim();
 
-function cbRegisterClosingNote(book) {
-  if (book.importedVouchersUnavailable) return bi("আমদানি করা Tally ভাউচার লোড হয়নি।", "Imported Tally vouchers could not load.");
-  if (book.source === "tally") {
-    const sourceDate = book.opening_source_date;
-    const openingNote = sourceDate ? bi(
-      `শুরুর নগদ ${dmy(sourceDate)}-এর সর্বশেষ ফাইনাল রেকর্ডে গুনে পাওয়া নগদ থেকে আনা হয়েছে।`,
-      `Opening cash is carried forward from the final counted cash on ${dmy(sourceDate)}.`
-    ) : "";
-    const closingNote = cbIsTallyReport(book) ? bi(
-      "হিসাবের ক্লোজিংয়ে Tally প্রাপ্তি ও পরিশোধ ব্যবহার করা হয়েছে। গুনে পাওয়া নগদ রিপোর্টের তারিখের রেকর্ড থেকে নেওয়া হয়।",
-      "Expected closing uses Tally receipts and payments. Counted cash comes from the record for the report date."
-    ) : bi(
-      "হিসাবের ক্লোজিংয়ে Cash Book-এর প্রাপ্তি ও পরিশোধ ব্যবহার করা হয়েছে। গুনে পাওয়া নগদ রিপোর্টের তারিখের রেকর্ড থেকে নেওয়া হয়।",
-      "Expected closing uses Cash Book receipts and payments. Counted cash comes from the record for the report date."
-    );
-    return [openingNote, closingNote].filter(Boolean).join(" ");
-  }
-  const ref = book.lines?.register;
-  return ref?.at ? bi("সারাংশ নেওয়া হয়েছে", "Summary captured") + " · " + cbRegisterDate(ref.at)
-    : bi("সংরক্ষিত ব্যাংক ও কালেকশন সারাংশ নেই", "No saved bank and collection totals");
-}
+const cbRegisterWarning = book => book.importedVouchersUnavailable
+  ? bi("আমদানি করা Tally ভাউচার লোড হয়নি।", "Imported Tally vouchers could not load.") : "";
 const cbRegisterNoteTitle = () => bi("নোট", "Note");
 const cbRegisterNoteRows = Array.from({length: 5}, (_, i) => [i + 1, i + 6]);
 
@@ -311,11 +292,11 @@ function cbRegisterSheet(book, paper = false) {
   const totals = values => values.map(([key, amount]) => `<div class="cb-reg-total"><span>${esc(key)}</span><b>${cbRegisterMoney(amount)}</b></div>`).join("");
   const weekday = new Date(book.date + "T12:00:00+06:00").toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", {weekday:"long", timeZone:"Asia/Dhaka"});
   const status = tally ? cbRegisterSource(book) : book.status === "final" ? bi("ফাইনাল", "Final") : bi("দিন খোলা", "Day open");
+  const warning = cbRegisterWarning(book);
   return `<div class="rep cb-register${paper ? " cb-register-paper" : ""}">
     <header class="cb-reg-head"><img src="icon-192.png" alt=""><div><b>NABIAD GROUP</b><h2>${cbRegisterTitle()}</h2></div></header>
-    <div class="cb-reg-day"><span>${bi("বার", "Day")} · <b>${esc(weekday)}</b></span><span>${bi("তারিখ", "Date")} · <b>${dmy(book.date)}</b></span></div>
-    <div class="cb-reg-day cb-reg-source"><strong>${cbRegisterSource(book)}</strong>
-      ${receipts.length || payments.length ? "" : bi("এই তারিখে কোনো লেনদেন নেই।", "No transactions for this date.")}</div>
+    <div class="cb-reg-day"><strong>${cbRegisterSource(book)}</strong><span>${esc(weekday)} · <b>${dmy(book.date)}</b></span></div>
+    ${warning || !(receipts.length || payments.length) ? `<p class="cb-reg-message">${esc(warning || bi("এই তারিখে কোনো লেনদেন নেই।", "No transactions for this date."))}</p>` : ""}
     <table class="rep-t cb-reg-table"><colgroup><col class="cb-reg-col-index"><col class="cb-reg-col-name"><col class="cb-reg-col-amount"><col class="cb-reg-col-name"><col class="cb-reg-col-amount"></colgroup>
     <thead><tr><th scope="col">#</th><th scope="col">${cbSideLabel("r")}</th><th scope="col" class="cb-reg-amount">${bi("টাকা", "Amount (Tk.)")}</th><th scope="col">${cbSideLabel("p")}</th><th scope="col" class="cb-reg-amount">${bi("টাকা", "Amount (Tk.)")}</th></tr></thead>
     <tbody>${rows}</tbody>
@@ -328,14 +309,13 @@ function cbRegisterSheet(book, paper = false) {
       <ol>${cbRegisterNoteRows.flat().map(n => `<li><span>${n}.</span><span class="cb-note-line"></span></li>`).join("")}</ol>
     </section>`}
     <div class="cb-reg-end">
-    <section class="cb-reg-block"><h3>${bi("দিনশেষের সারাংশ", "Closing summary")}</h3>${totals([
+    <section class="cb-reg-block cb-reg-closing"><h3>${bi("দিনশেষের সারাংশ", "Closing summary")}</h3><div class="cb-reg-closing-grid">${totals([
       [movementLabel, movement],
       [bi("হিসাব অনুযায়ী হাতে নগদ", "Expected closing cash"), expected],
       [bi("গুনে পাওয়া নগদ", "Counted cash"), counted],
       [bi("গুনে পাওয়া নগদের পার্থক্য", "Counted cash difference"), difference],
       ...cbRegisterReferences(ref)
-    ])}
-    <small>${esc(cbRegisterClosingNote(book))}</small></section>
+    ])}</div></section>
     ${book.remarks ? `<section class="cb-reg-block cb-narr"><h3>${bi("মন্তব্য", "Remarks")}</h3>${esc(book.remarks)}</section>` : ""}
     ${rawTally ? "" : `<div class="cb-reg-signatures">
       ${cbRegisterSigners().map(label => `<div>${esc(label)}</div>`).join("")}
@@ -354,9 +334,9 @@ async function cbRegisterExcel(book) {
     ["#", ...headings("r"), ...headings("p")],
     ...rows, [],
     ...(rawTally ? [] : [[cbRegisterNoteTitle()], ...cbRegisterNoteRows.map(([left, right]) =>
-      [left + ". ________________________", null, null, null, null, right + ". ________________________"]), []]),
+      [left + ". ____________________________________", null, null, null, null, right + ". ____________________________________"]), []]),
     [bi("দিনশেষের সারাংশ", "Closing summary")], ...cbRegisterTotals(book), ...cbRegisterReferences(ref),
-    [cbRegisterClosingNote(book)],
+    ...(cbRegisterWarning(book) ? [[cbRegisterWarning(book)]] : []),
     [bi("মন্তব্য", "Remarks"), book.remarks || ""]
   ];
   const signers = rawTally ? [] : cbRegisterSigners();
@@ -366,8 +346,21 @@ async function cbRegisterExcel(book) {
     cells.push([], [], [], spread(signers.map(() => "____________________")), spread(signers));
   }
   const ws = XLSX.utils.aoa_to_sheet(cells);
+  const summaryTitleRow = rows.length + 3 + (rawTally ? 0 : cbRegisterNoteRows.length + 2);
+  const summaryEnd = summaryTitleRow + cbRegisterTotals(book).length + cbRegisterReferences(ref).length;
+  const formatAmount = (r, c) => {
+    const cell = ws[XLSX.utils.encode_cell({r, c})];
+    if (cell?.t === "n") cell.z = "#,##0";
+  };
+  for (let r = 2; r < rows.length + 2; r++) {
+    formatAmount(r, 2);
+    formatAmount(r, rawTally ? 5 : 6);
+  }
+  for (let r = summaryTitleRow + 1; r <= summaryEnd; r++) formatAmount(r, 1);
   if (signers.length) {
     const noteStart = rows.length + 4;
+    ws["!rows"] = [];
+    for (let i = 0; i < cbRegisterNoteRows.length; i++) ws["!rows"][noteStart + i] = {hpt: 24};
     ws["!merges"] = cbRegisterNoteRows.flatMap((_, i) => [[0, 3], [5, 8]].map(([first, last]) =>
       ({s: {r: noteStart + i, c: first}, e: {r: noteStart + i, c: last}})));
     ws["!merges"].push(...[signatureRow, signatureRow + 1].flatMap(r => signers.map((_, i) =>
@@ -377,7 +370,7 @@ async function cbRegisterExcel(book) {
   ws["!cols"] = widths.map(wch => ({ wch }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Cash Register");
-  return new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  return new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array", cellStyles: true })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
 const cbCanvasBlob = (canvas, type) => new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error(bi("রেজিস্টার ফাইল তৈরি হয়নি", "Could not render the register file"))), type, 0.92));
 
