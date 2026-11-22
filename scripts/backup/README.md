@@ -1,4 +1,4 @@
-# Nabiad off-site backup (Step 1 — Database)
+# Nabiad off-site backup (Step 1 — Database, Step 2 — Storage ছবি)
 
 প্রতিদিন রাত ০১:০০ (ঢাকা) GitHub Actions Supabase DB dump করে, যাচাই করে, **age দিয়ে encrypt** করে একটা **private** repo-র Release-এ রাখে। Public repo বা workflow artifact-এ কখনো নয়।
 
@@ -8,7 +8,8 @@
 | `.github/workflows/offsite-backup.yml` | দৈনিক schedule + manual run, upload, পুরনো মোছা (৩০ দিন daily, ১৩ মাস monthly) |
 
 **কী কী ব্যাকআপ হয়:** `public` schema (table, data, function, policy, trigger) + `auth.users`/`auth.identities` (লগইন)।
-**হয় না (Step 2):** Storage ছবি (`cheque-photos`), Supabase Secrets, Edge Function সোর্স, pg_cron job — নিচে "পুনরুদ্ধারে হাতে করতে হবে" দেখুন।
+**Storage ছবি (`cheque-photos`):** Step 2 — নিচে।
+**হয় না:** Supabase Secrets, Edge Function সোর্স, pg_cron job — Restore → C-তে হাতে বসানোর তালিকা আছে।
 
 **Safety alarm (workflow ব্যর্থ হয় → GitHub ইমেইল পাঠায়):** dump খুব ছোট; `accounts/balances/profiles` খালি; আগের backup-এর চেয়ে কোনো table ২০%-এর বেশি কমে গেছে (ডেটা হারানোর সংকেত); decrypt অযোগ্য key।
 
@@ -73,6 +74,38 @@ age -d -i nabiad-backup.key nabiad-<stamp>.tar.age | tar -xf -
 
 ---
 
+## Step 2 — Storage ছবি (`cheque-photos`)
+
+`offsite-storage-backup.yml` প্রতি সোমবার ০২:০০ (ঢাকা) bucket-টা Supabase-এর S3-compatible endpoint দিয়ে sync করে, প্রতিটি ফাইলের SHA-256 সহ manifest বানায়, একই age key দিয়ে encrypt করে একই private repo-তে রাখে (`storage-*` release; ৫টি সাপ্তাহিক + ১৩ মাসের মাসের প্রথম রবিবারের কপি)। সময় বদলাতে workflow-র `cron` দিন (দৈনিক চাইলে `0 20 * * *`)।
+
+**Alarm:** bucket খালি; ফাইল সংখ্যা ১০%-এর বেশি কমেছে; আগের কোনো ছবির content বদলেছে (ছবি write-once, তাই এটা অস্বাভাবিক)। আলাদা মোছা ছবি শুধু log-এ জানায়।
+
+**সেটআপ (আপনি — ৫ মিনিট):**
+1. Supabase Dashboard → Storage → **S3 Connection**: Endpoint ও Region কপি করুন; **New access key** বানান (service_role key নয়, এই আলাদা key-ই যথেষ্ট)।
+2. GitHub Secrets যোগ করুন (`ruhulaminrevens/nabiad`):
+   | Name | Value |
+   |---|---|
+   | `SUPABASE_S3_ENDPOINT` | যেমন `https://<ref>.storage.supabase.co/storage/v1/s3` |
+   | `SUPABASE_S3_REGION` | যেমন `ap-southeast-1` |
+   | `SUPABASE_S3_ACCESS_KEY_ID` | access key id |
+   | `SUPABASE_S3_SECRET_ACCESS_KEY` | secret |
+   (`BACKUP_AGE_RECIPIENT`, `BACKUP_REPO`, `BACKUP_REPO_TOKEN` Step 1-এর একই।)
+3. Actions → "Off-site storage backup" → Run workflow।
+
+> 🔎 আসল Supabase S3 endpoint-এ এখনো চালানো হয়নি (লোকালে fake S3 দিয়ে পরীক্ষিত)। প্রথম run ব্যর্থ হলে error log দেখে endpoint/region মিলিয়ে নিন; Supabase-এর S3 endpoint path-style ব্যবহার করে।
+> প্রথম run-এ bucket খালি হলে (`ALLOW_EMPTY`) workflow ব্যর্থ হবে — সেটা ইচ্ছাকৃত।
+
+**Restore (ছবি):**
+```bash
+sha256sum -c nabiad-storage-<stamp>.tar.age.sha256
+age -d -i nabiad-backup.key nabiad-storage-<stamp>.tar.age | tar -xf -   # → files/…, manifest.json
+# ফাইল যাচাই: manifest.json-এর sha256 বনাম sha256sum files/<path>
+# নতুন bucket-এ ফেরত (S3 key দিয়ে):
+aws s3 sync files s3://cheque-photos --endpoint-url "$S3_ENDPOINT"
+```
+ছবির path DB-র `cheques.photo`, `reminders.photo`, `accounts.book_photo`, `leaf_marks.photo`-এ আছে, তাই একই path-এ ফেরত দিলে সব লিংক আবার কাজ করবে।
+
+---
+
 ## পরের ধাপ
-- **Step 2:** Storage ছবির সাপ্তাহিক/দৈনিক sync (একই private repo/অন্য storage)।
 - **Step 3:** `dumpAll`/snapshot table registry একীকরণ + Backup পাতায় "শেষ off-site সফল" KPI।

@@ -39,7 +39,7 @@ jobs:
       - name: Fetch previous manifest (shrink alarm)
         run: |
           mkdir -p prev
-          tag="$(gh release list -R "$BACKUP_REPO" -L 1 --json tagName -q '.[0].tagName' || true)"
+          tag="$(gh release list -R "$BACKUP_REPO" -L 100 --json tagName -q '[.[] | select(.tagName | test("^(backup|monthly)-"))][0].tagName // empty' || true)"
           if [ -n "$tag" ]; then gh release download "$tag" -R "$BACKUP_REPO" -p manifest.json -D prev || true; fi
           ls -la prev
 
