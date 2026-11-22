@@ -414,7 +414,7 @@ const SbAPI = {
   async upsertAccount(a) { const { error } = await sb.from("accounts").upsert(a, { onConflict: "code" }); if (error) throw error; },
   async upsertBook(b) {
     const row = { code: b.code, series: b.series || null, first_leaf: b.first, last_leaf: b.last, track_from: b.track, status: b.status, note: b.note || null }; if (b.id) row.id = b.id;
-    const { data, error } = await sb.from("books").upsert(row).select().single(); if (error) throw error; return data.id;
+    const q = sb.from("books"), { data, error } = await (b.id ? q.upsert(row) : q.insert(row)).select().single(); if (error) throw error; return data.id;
   },
   async marks() { const { data, error } = await sb.from("leaf_marks").select("*").order("created_at", { ascending: false }).limit(5000); if (error) throw error; return data.map(markFrom); },
   async addMarks(rows) { const { error } = await sb.from("leaf_marks").insert(rows.map(r => ({ code: r.code, leaf_no: r.no, kind: r.kind, note: r.note || null, photo: r.photo || null, entered_by: S.me.name, user_id: S.me.id }))); if (error) throw error; },
@@ -657,6 +657,8 @@ function bookForLeaf(code, no) {
   }
   return latest && (latest.last == null || no <= latest.last) ? latest : null;
 }
+const canAddBook = () => S.me.role === "admin" || (S.me.role === "staff" && moduleCan("cheque", "entry"));
+const noBookMsg = (code, no) => bi(`${code} · ${no} কোনো রেজিস্টার্ড চেক বইয়ে নেই — আগে চেক বই যোগ করুন।`, `${code} · ${no} is not in any registered cheque book — register the cheque book first.`);
 const leafLabel = (code, no) => { const b = bookForLeaf(code, no); return (b?.series ? b.series + " " : "") + no; };
 function bookLedger() {
   const accounts = new Map();
@@ -939,14 +941,42 @@ async function route() {
   window.scrollTo(0, 0);
 }
 let ROUTE_TOK = 0;
-/* ---------- accessibility: icon-only buttons take their accessible name from the title tooltip ---------- */
+/* ---------- button roles: ONE look per purpose, everywhere (see .btn.s-* in style.css) ----------
+   Close/Cancel, Save, Edit, View, Delete, Print, Share are recognised from the label (EN + BN) and given
+   the same colour/pattern on every page. Add data-role="edit|view|del|close|print|share|save" to force one. */
 (function () {
+  const ROLE_RX = [
+    ["close", /^(close|cancel|dismiss|বন্ধ|বন্ধ করুন|বাতিল|বাতিল করুন)$/i],
+    ["del",   /^(delete|remove|মুছুন|মুছে ফেলুন|মুছবেন)(\s|$)/i],
+    ["edit",  /^(edit|এডিট|সম্পাদনা)(\s|$)/i],
+    ["view",  /^(view|দেখুন|বিস্তারিত)(\s|$)/i],
+    ["print", /^(print|প্রিন্ট)(\s|$)/i],
+    ["share", /^(share|শেয়ার)(\s|$)/i],
+    ["photo", /^(add photo|replace photo|ছবি যোগ|ছবি বদলান)(\s|$)/i],
+    ["remind", /^(reminders?|রিমাইন্ডার)(\s|$)/i],
+    ["save",  /^(save|সেভ)(\s|$)/i]
+  ];
+  const VARIANT = /\b(pri|ok|bad|rdo|ghost|s-close|s-del|s-edit|s-view|s-print|s-share|s-photo|s-remind)\b/;
+  const SKIP = ".dnav, .chips, .chip, .cp-header, .bk-tabs, .nav, .mnav, .sheet2, .topbar, .tabs";
   let queued = false;
-  const label = () => {
+  const decorate = () => {
     queued = false;
     document.querySelectorAll("button[title]:not([aria-label]),a[title]:not([aria-label])").forEach(el => { if (!el.textContent.trim()) el.setAttribute("aria-label", el.getAttribute("title")); });
+    document.querySelectorAll(".btn:not([data-role-done]):not(.iconbtn)").forEach(el => {
+      el.setAttribute("data-role-done", "1");
+      if (el.closest(SKIP)) return;
+      let role = el.dataset.role;
+      if (!role) {
+        if (VARIANT.test(el.className)) return;
+        const label = el.textContent.replace(/[^\p{L}\s]/gu, " ").replace(/\s+/g, " ").trim();
+        if (!label || label.split(" ").length > 3) return;
+        role = (ROLE_RX.find(([, rx]) => rx.test(label)) || [])[0];
+      }
+      if (!role) return;
+      el.classList.add(role === "save" ? "pri" : "s-" + role);
+    });
   };
-  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(label); } };
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(decorate); } };
   new MutationObserver(queue).observe(document.documentElement, { childList: true, subtree: true });
   queue();
 })();
@@ -1113,10 +1143,9 @@ async function vEntry(v) {
   const dateLabel = bi("চেকের তারিখ", "Cheque date");
   const postedLabel = bi("পোস্ট করা হয়েছে", "Posted");
   const activitySearchLabel = bi("এই তালিকায় চেক খুঁজুন", "Search this activity");
-  v.innerHTML = head("চেক পোস্টিং", `<a class="btn" href="#/books">${ico("book")} ${bi("চেক বই", "Cheque Book")}</a>${moduleCan("cheque", "edit") ? `<a class="btn" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a>` : ""}<a class="btn" href="#/cheques">${ico("list")} ${bi("রেজিস্টার", "Register")}</a>`, "tc cp-header") + `
+  v.innerHTML = head("চেক পোস্টিং", `<a class="btn cqh pri" href="#/books">${ico("book")} ${bi("চেক বই", "Cheque Book")}</a>${moduleCan("cheque", "edit") ? `<a class="btn cqh am" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a>` : ""}<a class="btn cqh gr" href="#/cheques">${ico("list")} ${bi("রেজিস্টার", "Register")}</a>`, "tc cp-header") + `
   <div class="split cq-posting">
-   <div class="card tbar navcard cp-date-card"><div class="cp-period"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true" aria-controls="e-list">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false" aria-controls="e-list">${bi("চেকের তারিখে", "By cheque date")}</button></div>
-       <div class="dnav cp-dnav"><button type="button" class="btn" id="e-dprev" title="${bi("আগের দিন (শুক্রবার বাদ)", "Previous day (skips Friday)")}">${bi("‹ আগের", "‹ Prev")}</button><input class="in big" type="date" id="e-activity-date" value="${today()}" aria-label="${dateLabel}"><button type="button" class="btn" id="e-dnext" title="${bi("পরের দিন (শুক্রবার বাদ)", "Next day (skips Friday)")}">${bi("পরের ›", "Next ›")}</button></div></div>
+   <div class="card tbar navcard cp-date-card"><div class="dnav cp-dnav"><button type="button" class="btn" id="e-dprev" title="${bi("আগের দিন (শুক্রবার বাদ)", "Previous day (skips Friday)")}">${bi("‹ আগের", "‹ Prev")}</button><input class="in big" type="date" id="e-activity-date" value="${today()}" aria-label="${dateLabel}"><button type="button" class="btn" id="e-dnext" title="${bi("পরের দিন (শুক্রবার বাদ)", "Next day (skips Friday)")}">${bi("পরের ›", "Next ›")}</button></div>
     <dl class="cp-activity-stats">
          <div><dt>${bi("এন্ট্রি", "Entries")}</dt><dd id="e-cnt" class="num"></dd></div>
          <div><dt>${bi("কার্যকর মোট", "Live amount")}</dt><dd id="e-total" class="num"></dd></div>
@@ -1155,7 +1184,8 @@ async function vEntry(v) {
      <div class="cp-activity-controls">
        <div id="e-review-tools">
          <label class="cp-search"><span aria-hidden="true">${ico("search")}</span><input class="in" type="search" id="e-find" aria-label="${activitySearchLabel}" placeholder="${bi("চেক নং, A/C, ব্যাংক বা অঙ্ক", "Cheque no, A/C, bank or amount")}" autocomplete="off"></label>
-         <div class="chips cp-status-chips" id="e-activity-filters" role="group" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}"></div>
+         <select class="in cp-sel" id="e-period-sel" aria-label="${bi("এন্ট্রির সময়", "Activity period")}" aria-controls="e-list"><option value="today">${bi("আজ পোস্ট করা", "Posted today")}</option><option value="date">${bi("চেকের তারিখে", "By cheque date")}</option></select>
+         <select class="in cp-sel" id="e-activity-filters" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filter")}" aria-controls="e-list"></select>
        </div>
      </div>
      <div id="e-list"></div>
@@ -1214,8 +1244,9 @@ async function vEntry(v) {
     $e("e-amthint").textContent = amt ? "৳ " + money(amt) : ""; const el = $e("e-sum");
     if (code && no) {
       const dup = S.cheques.find(c => c.code === code && c.no === +no);
-      el.style.display = ""; el.className = "s4 sumbox" + (dup ? " dup" : "");
-      el.innerHTML = dup ? `⛔ <b>${esc(code)} · ${no}</b> আগেই এন্ট্রি আছে (${dmy(dup.date)}, ৳ ${money(dup.amount)}, ${dup.status})` : `<span class="tag">${esc(code)}</span><span>চেক নং <b>${no}</b></span><span class="big num">৳ ${Number.isFinite(amt) ? money(amt) : "—"}</span><span class="mut">${esc((st.purpose || "খাত বাছুন").split(" (")[0])}</span>`;
+      const nobk = !dup && !bookForLeaf(code, +no);
+      el.style.display = ""; el.className = "s4 sumbox" + (dup || nobk ? " dup" : "");
+      el.innerHTML = dup ? `⛔ <b>${esc(code)} · ${no}</b> আগেই এন্ট্রি আছে (${dmy(dup.date)}, ৳ ${money(dup.amount)}, ${dup.status})` : nobk ? `⛔ <b>${esc(code)} · ${no}</b> ${bi("কোনো রেজিস্টার্ড চেক বইয়ে নেই — আগে বই যোগ করুন", "is not in any registered cheque book — register the book first")}` : `<span class="tag">${esc(code)}</span><span>চেক নং <b>${no}</b></span><span class="big num">৳ ${Number.isFinite(amt) ? money(amt) : "—"}</span><span class="mut">${esc((st.purpose || "খাত বাছুন").split(" (")[0])}</span>`;
     } else el.style.display = "none";
   }
   ["e-no", "e-amt"].forEach(i => $e(i).addEventListener("input", sum));
@@ -1255,14 +1286,12 @@ async function vEntry(v) {
     $e("e-total").textContent = "৳ " + money(liveTotal);
     $e("e-pending-total").textContent = "৳ " + money(pendingTotal);
     const toolsVisible = records.length > 0 || !!activityStatus || $e("e-find").value !== "";
-    $e("e-review-tools").hidden = !toolsVisible;
+    $e("e-review-tools").hidden = false;
+    $e("e-find").closest(".cp-search").hidden = $e("e-activity-filters").hidden = !toolsVisible;
     const filters = [["", records.length], ...STATUSES.filter(status => counts.has(status) || status === activityStatus).map(status => [status, counts.get(status) || 0])];
-    const filtersHtml = filters.map(([status, count]) => `<button class="chip${status === activityStatus ? " on" : ""}" type="button" data-activity-status="${status}" aria-pressed="${status === activityStatus}" aria-controls="e-list">${status ? esc(status) : bi("সব", "All")} <span class="cp-count num">${count}</span></button>`).join("");
-    if (filtersHtml !== renderedFilters) {
-      const previous = $e("e-activity-filters").contains(document.activeElement) ? document.activeElement.dataset.activityStatus : null;
-      $e("e-activity-filters").innerHTML = renderedFilters = filtersHtml;
-      if (previous != null) $$("[data-activity-status]", posting).find(btn => btn.dataset.activityStatus === previous)?.focus();
-    }
+    const filtersHtml = filters.map(([status, count]) => `<option value="${esc(status)}">${status ? esc(status) : bi("সব স্ট্যাটাস", "All status")} (${count})</option>`).join("");
+    if (filtersHtml !== renderedFilters) $e("e-activity-filters").innerHTML = renderedFilters = filtersHtml;
+    $e("e-activity-filters").value = activityStatus;
     $e("e-more").hidden = visible.length >= filtered.length;
     const countText = records.length ? bi(`${filtered.length}টির মধ্যে ${visible.length}টি দেখানো হয়েছে`, `Showing ${visible.length} of ${filtered.length} matches`) : "";
     if ($e("e-visible").textContent !== countText) $e("e-visible").textContent = countText;
@@ -1293,11 +1322,7 @@ async function vEntry(v) {
     activityMode = mode;
     if (mode === "today") $e("e-activity-date").value = today();
     resetActivityFilters();
-    for (const [id, key] of [["e-today", "today"], ["e-bydate", "date"]]) {
-      const btn = $e(id);
-      btn.classList.toggle("on", mode === key);
-      btn.setAttribute("aria-pressed", String(mode === key));
-    }
+    $e("e-period-sel").value = mode;
     list();
   }
   function resetActivityFilters() {
@@ -1305,8 +1330,7 @@ async function vEntry(v) {
     activityLimit = activityPageSize;
     $e("e-find").value = "";
   }
-  $e("e-today").onclick = () => resetActivity("today");
-  $e("e-bydate").onclick = () => resetActivity("date");
+  $e("e-period-sel").onchange = () => resetActivity($e("e-period-sel").value);
   $e("e-activity-date").onchange = () => {
     if (!validChequeDate($e("e-activity-date").value)) $e("e-activity-date").value = today();
     resetActivity("date");
@@ -1319,10 +1343,8 @@ async function vEntry(v) {
   $e("e-dprev").onclick = () => stepActivityDate(-1);
   $e("e-dnext").onclick = () => stepActivityDate(1);
   $e("e-find").oninput = () => { activityLimit = activityPageSize; list(); };
-  $e("e-activity-filters").onclick = event => {
-    const btn = event.target.closest("[data-activity-status]");
-    if (!btn) return;
-    activityStatus = btn.dataset.activityStatus;
+  $e("e-activity-filters").onchange = () => {
+    activityStatus = $e("e-activity-filters").value;
     activityLimit = activityPageSize;
     list();
   };
@@ -1356,6 +1378,11 @@ async function vEntry(v) {
     if (k === "own" && !toac.get()) return err.textContent = "কোন A/C তে জমা — বাছুন", $e("e-toac").focus();
     if (k === "own" && toac.get().value === code) return err.textContent = "From ও To একই A/C হতে পারে না";
     if (S.cheques.some(c => c.code === code && c.no === no)) return err.textContent = "এই চেক আগেই এন্ট্রি আছে";
+    if (!bookForLeaf(code, no)) {
+      err.textContent = noBookMsg(code, no) + (canAddBook() ? "" : bi(" Admin-কে চেক বই যোগ করতে বলুন।", " Ask an admin to add the book."));
+      if (canAddBook() && ask(bi("এখনই নতুন চেক বই যোগ করবেন?", "Register a new cheque book now?"))) bookModal({ code, series: "", first: "", last: "", track: "", status: "Active", note: "" }, () => sum());
+      return;
+    }
     const diff = daysBetween(date, today());
     if ((diff > 7 || diff < 0) && !ask(bi(`তারিখ ${dmy(date)} — আজ থেকে ${Math.abs(diff)} দিন ${diff > 0 ? "আগের" : "পরের"}। ঠিক আছে?`, `Date ${dmy(date)} is ${Math.abs(diff)} day(s) ${diff > 0 ? "before" : "after"} today. Is that right?`))) return;
     if (amount >= 1000000 && !ask(bi(`৳ ${money(amount)} — অঙ্ক ঠিক আছে?`, `৳ ${money(amount)} — is the amount right?`))) return;
@@ -1608,7 +1635,7 @@ async function deleteChequeEntry(c, after) {
 }
 function chequeModal(c, after) {
   const admin = S.me.role === "admin"; const a = accMap()[c.code] || {};
-  modal(`<h2><span class="cq-detail-ref">${esc(c.code)} · ${c.no}</span> ${stTag(c.status)} ${statementBadge(c)}<button class="shclose" id="c-x" type="button">✕ ${bi("বন্ধ", "Close")}</button></h2>
+  modal(`<h2><span class="cq-detail-ref">${esc(c.code)} · ${c.no}</span> ${stTag(c.status)} ${statementBadge(c)}</h2>
    <div class="grid g2 cq-detail" style="gap:8px;font-size:14px"><div><span class="mut sm">তারিখ</span><br>${dmy(c.date)}</div><div><span class="mut sm">টাকা</span><br><b class="num">৳ ${money(c.amount)}</b></div>
    <div><span class="mut sm">A/C</span><br>${esc(a.holder || "")}<div class="mut sm">${esc(a.bank || "")}</div></div><div><span class="mut sm">খাত</span><br>${esc(c.purpose)}</div>
    ${c.taker ? `<div><span class="mut sm">কে তুলেছে</span><br>${esc(c.taker)}</div>` : ""}${c.toac ? `<div><span class="mut sm">To A/C</span><br>${esc(c.toac)}</div>` : ""}${c.party ? `<div><span class="mut sm">পার্টি</span><br>${esc(c.party)}</div>` : ""}${c.remarks ? `<div><span class="mut sm">মন্তব্য</span><br>${esc(c.remarks)}</div>` : ""}
@@ -1618,7 +1645,7 @@ function chequeModal(c, after) {
    ${(S.reminders || []).filter(r => r.cheque_id === c.id && !r.done).map(r => `<div class="alert vi" style="margin-top:10px">⏰ <span>${esc(r.title)} — ${new Date(remDue(r)).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span></div>`).join("")}
    <h3 style="margin:16px 0 8px;font-size:13px;color:var(--mut)">স্ট্যাটাস ইতিহাস</h3>
    ${c.events.length ? c.events.map(e => `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">${stTag(e.status)} <span>${dmy(e.date)}</span> <span class="mut sm">${esc(e.by || "")} ${esc(e.remarks || "")}</span>${admin ? `<button class="btn ghost sm evdel" style="margin-left:auto" data-de="${e.id}" type="button" title="${bi("এই স্ট্যাটাস এন্ট্রি মুছুন", "Delete this status entry")}" aria-label="${bi("স্ট্যাটাস এন্ট্রি মুছুন", "Delete status entry")}">${ico("x")}</button>` : ""}</div>`).join("") : `<div class="mut sm">কোনো আপডেট নেই (ডিফল্ট: ${c.status})</div>`}
-   <div class="modal-actions">${moduleCan("cheque", "edit") ? `<button class="btn pri" id="c-st">স্ট্যাটাস দিন</button>` : ""}<button class="btn" id="c-rm">${ico("bell")} রিমাইন্ডার</button>${moduleCan("cheque", "edit", S.me.role === "staff" && (!c.photo || canEditChq(c))) ? `<button class="btn" id="c-ap">${ico("cam")} ${c.photo ? "ছবি বদলান" : "ছবি যোগ"}</button>` : ""}${canEditChq(c) ? `<button class="btn" id="c-ed">✎ ${bi("এডিট","Edit")}</button>` : ""}${canDeleteChq(c) ? `<button class="btn bad" id="c-dl">🗑 ${bi("চেক মুছুন", "Delete cheque")}</button>` : ""}</div>${!admin && canEditChq(c) ? `<div class="mut xs" style="margin-top:8px">⏳ ${LANG === "en" ? "You can edit this entry for another " : "এই এন্ট্রি আরও এডিট করতে পারবেন: "}${leftTxt(chqEditLeft(c))}</div>` : ""}`, (root, close) => {
+   <div class="modal-actions">${moduleCan("cheque", "edit") ? `<button class="btn pri" id="c-st">স্ট্যাটাস দিন</button>` : ""}<button class="btn" id="c-rm">${ico("bell")} রিমাইন্ডার</button>${moduleCan("cheque", "edit", S.me.role === "staff" && (!c.photo || canEditChq(c))) ? `<button class="btn" id="c-ap">${ico("cam")} ${c.photo ? "ছবি বদলান" : "ছবি যোগ"}</button>` : ""}${canEditChq(c) ? `<button class="btn" id="c-ed">✎ ${bi("এডিট","Edit")}</button>` : ""}${canDeleteChq(c) ? `<button class="btn bad" id="c-dl">🗑 ${bi("চেক মুছুন", "Delete cheque")}</button>` : ""}<button class="btn s-close" id="c-x" type="button">✕ ${bi("বন্ধ", "Close")}</button></div>${!admin && canEditChq(c) ? `<div class="mut xs" style="margin-top:8px">⏳ ${LANG === "en" ? "You can edit this entry for another " : "এই এন্ট্রি আরও এডিট করতে পারবেন: "}${leftTxt(chqEditLeft(c))}</div>` : ""}`, (root, close) => {
     $("#c-x", root).onclick = close; showPhoto($("#c-ph", root), c);
     $("#c-rm", root).onclick = () => { close(); reminderModal(null, { title: bi(`চেক ${c.code} · ${c.no} পাস হয়েছে কি না দেখুন`, `Check whether cheque ${c.code} · ${c.no} has cleared`), note: `৳ ${money(c.amount)}${c.party ? " · " + c.party : ""} · ${bi("চেকের তারিখ", "Cheque date")} ${dmy(c.date)}`, due: (() => { const d = new Date(addDays(c.date < today() ? today() : c.date, 3) + "T10:00"); return d; })(), kind: "cheque", cheque_id: c.id, for_role: "all" }, after); };
     $("#c-ap", root) && ($("#c-ap", root).onclick = () => { close(); addPhotoModal(c, after); });
@@ -1648,6 +1675,7 @@ function editChequeModal(c, after) {
       const purpose = get("p").value, kind = purposeKey(purpose), rawAmount = get("a").value.trim();
       const amount = kind === "cancel" && !rawAmount ? 0 : chequeAmount(rawAmount);
       const taker = get("t").value.trim(), toac = get("o").value.trim();
+      if ((code !== c.code || no !== c.no) && !bookForLeaf(code, no)) { error.textContent = noBookMsg(code, no); return; }
       const fail = (field, message) => { error.textContent = message; get(field).focus(); };
       if (!validChequeDate(date)) return fail("d", bi("সঠিক তারিখ দিন।", "Enter a valid cheque date."));
       if (!code) return fail("c", bi("A/C Code বাছুন।", "Choose an A/C code."));
@@ -2389,7 +2417,7 @@ async function vBooks(v) {
       ["open", bi("ফলো-আপ বাকি", "Open follow-ups"), open]
     ];
     const current = BK_TAB === "books" ? filters.mode : LF_F.st === "open" ? "open" : "";
-    v.innerHTML = head(bi("চেক বই ও মিসিং পাতা", "Cheque Books & Missing Leaves"), (canMark ? `<button class="btn ${admin ? "" : "pri"}" id="bk-mk">${ico("flag")} ${bi("পাতা মার্ক করুন", "Mark leaves")}</button>` : "") + (admin ? `<button class="btn pri" id="bk-add">${ico("plus")} ${bi("নতুন বই", "New book")}</button>` : "")) +
+    v.innerHTML = head(bi("চেক বই ও মিসিং পাতা", "Cheque Books & Missing Leaves"), (canMark ? `<button class="btn ${admin ? "" : "pri"}" id="bk-mk">${ico("flag")} ${bi("পাতা মার্ক করুন", "Mark leaves")}</button>` : "") + (canAddBook() ? `<button class="btn pri" id="bk-add">${ico("plus")} ${bi("নতুন বই", "New book")}</button>` : "")) +
       `<div class="bk-overview" aria-label="${bi("চেক বইয়ের সারাংশ", "Cheque book overview")}">${groups.map(([id, label, n]) => `<button type="button" class="bk-stat" data-bk-mode="${id}" aria-pressed="${id === current}" ${S.marksOff && ["low", "missing", "open"].includes(id) ? "disabled" : ""}><span>${label}</span><strong class="num">${["open", "missing", "low"].includes(id) && S.marksOff ? "—" : money0(n)}</strong></button>`).join("")}</div>
       <div class="pbm bk-tabs"><button type="button" class="chip ${BK_TAB === "books" ? "on" : ""}" data-t="books" aria-pressed="${BK_TAB === "books"}">${bi("চেক বই", "Books")}</button><button type="button" class="chip ${BK_TAB === "leaves" ? "on" : ""}" data-t="leaves" aria-pressed="${BK_TAB === "leaves"}">${bi("পাতার রেজিস্টার", "Leaf register")}</button></div><div id="bk-body"></div>`;
     const show = (tab, focus) => { BK_TAB = tab; draw(); $(focus, v)?.focus({ preventScroll: true }); };

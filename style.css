@@ -1740,14 +1740,6 @@ body:has(#modal-root .mback) { overflow: hidden; }
 }
 .entry-actions > .hint { grid-column: 1 / -1; }
 .entry-error:empty { display: none; }
-#c-x {
-  margin-left: auto;
-  background: rgba(0,0,0,.22);
-  box-shadow: none;
-  color: #fff;
-}
-#c-x:hover { background: rgba(0,0,0,.38); }
-.modal h2:has(#c-x) { flex-wrap: wrap; }
 #b-q button { font-family: inherit; }
 .sheet2 .box { max-height: min(82vh, 88dvh); }
 .sheet2.out { pointer-events: none; }
@@ -2414,3 +2406,32 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 @media (max-width: 640px) { .iconbtn.cpi { width: 36px; height: 36px; } .iconbtn.cpi svg { width: 17px; height: 17px; } }
 /* Cheque Posting: give the activity list the room — the entry form does not need 1.45fr */
 @media (min-width: 1181px) { .split.cq-posting { grid-template-columns: minmax(380px, 0.8fr) minmax(0, 1.2fr); } }
+
+/* Cheque Posting v6.86: coloured header actions, dropdowns beside search, Close at the bottom-right of the detail modal */
+.cp-header .cqh { font-weight: 700; border-width: 1px; }
+.cp-header .cqh.pri { background: var(--pri-soft); color: var(--pri-ink); border-color: color-mix(in srgb, var(--pri) 35%, var(--line)); }
+.cp-header .cqh.am  { background: var(--am-soft);  color: var(--am);      border-color: color-mix(in srgb, var(--am) 35%, var(--line)); }
+.cp-header .cqh.gr  { background: var(--gr-soft);  color: var(--gr);      border-color: color-mix(in srgb, var(--gr) 35%, var(--line)); }
+.cp-header .cqh:hover { filter: brightness(.96); transform: translateY(-1px); }
+#e-review-tools [hidden] { display: none !important; }
+#e-review-tools .cp-sel { flex: 0 1 auto; width: auto; min-width: 8.5rem; max-width: 100%; font-weight: 600; }
+#e-review-tools .cp-search { flex: 1 1 11rem; }
+
+/* ===== Button role system (v6.88) — same purpose = same look on every page =====
+   close slate · edit amber · view indigo · delete red · print teal · share green · save/primary gradient (.btn.pri) */
+.btn.s-close, .btn.s-edit, .btn.s-view, .btn.s-del, .btn.bad, .btn.rdo, .btn.s-print, .btn.s-share { font-weight: 650; }
+.btn.s-close { --rc: var(--txt2); background: var(--surface2); }
+.btn.s-edit  { --rc: var(--am);   background: var(--am-soft); }
+.btn.s-view  { --rc: var(--pri);  background: var(--pri-soft); }
+.btn.s-del, .btn.bad, .btn.rdo { --rc: var(--rd); background: var(--rd-soft); box-shadow: none; }
+.btn.s-print { --rc: #0f766e;     background: color-mix(in srgb, #14b8a6 12%, var(--surface)); }
+.btn.s-share { --rc: var(--gr);   background: var(--gr-soft); }
+.btn.s-photo { --rc: #0369a1;     background: color-mix(in srgb, #0ea5e9 11%, var(--surface)); }
+.btn.s-remind { --rc: #6d28d9;    background: color-mix(in srgb, #8b5cf6 11%, var(--surface)); }
+:is(.btn.s-close, .btn.s-edit, .btn.s-view, .btn.s-del, .btn.bad, .btn.rdo, .btn.s-print, .btn.s-share, .btn.s-photo, .btn.s-remind) { color: var(--rc); border-color: color-mix(in srgb, var(--rc) 32%, var(--line)); }
+:is(.btn.s-close, .btn.s-edit, .btn.s-view, .btn.s-del, .btn.bad, .btn.rdo, .btn.s-print, .btn.s-share, .btn.s-photo, .btn.s-remind):hover { background: color-mix(in srgb, var(--rc) 16%, var(--surface)); color: var(--rc); border-color: color-mix(in srgb, var(--rc) 55%, var(--line)); filter: none; transform: translateY(-1px); }
+/* the header "✕ Close" pill on gradient modal headers uses the same close role */
+.shclose { background: var(--surface) !important; color: var(--txt2) !important; border: 1px solid var(--line) !important; box-shadow: none !important; font-weight: 650; }
+.shclose:hover { background: var(--surface2) !important; color: var(--txt) !important; }
+/* icon-only row actions share the same role colours */
+.iconbtn.cpi.pri { color: var(--pri); } .iconbtn.cpi.am { color: var(--am); } .iconbtn.cpi.rd { color: var(--rd); }
