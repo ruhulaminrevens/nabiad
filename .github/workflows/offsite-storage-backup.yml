@@ -1,0 +1,83 @@
+name: Off-site storage backup
+
+# Weekly (Monday 02:00 Asia/Dhaka = Sunday 20:00 UTC) + manual run. Syncs the
+# cheque-photos bucket through Supabase's S3 endpoint, verifies, encrypts with
+# the same age public key and stores it in the PRIVATE backup repo's Releases.
+# Change the cron to daily if you want a shorter photo RPO.
+on:
+  schedule:
+    - cron: "0 20 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: offsite-storage-backup
+  cancel-in-progress: false
+
+jobs:
+  storage:
+    if: github.repository == 'ruhulaminrevens/nabiad'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+      BACKUP_REPO: ${{ secrets.BACKUP_REPO }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install age and PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age jq postgresql-client
+
+      - name: Fetch previous storage manifest (change alarm)
+        run: |
+          mkdir -p prev
+          tag="$(gh release list -R "$BACKUP_REPO" -L 100 --json tagName -q '[.[] | select(.tagName | test("^storage-"))][0].tagName // empty' || true)"
+          if [ -n "$tag" ]; then gh release download "$tag" -R "$BACKUP_REPO" -p storage-manifest.json -D prev || true; fi
+          ls -la prev
+
+      - name: Sync, verify, encrypt
+        env:
+          S3_ENDPOINT: ${{ secrets.SUPABASE_S3_ENDPOINT }}
+          S3_REGION: ${{ secrets.SUPABASE_S3_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.SUPABASE_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SUPABASE_S3_SECRET_ACCESS_KEY }}
+          AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          PREV_MANIFEST: prev/storage-manifest.json
+          OUT_DIR: out
+        run: bash scripts/backup/storage-backup.sh
+
+      - name: Upload to private repo release
+        run: |
+          stamp="$(ls out/nabiad-storage-*.tar.age | sed -E 's/.*nabiad-storage-(.*)\.tar\.age/\1/')"
+          tag="storage-$stamp"
+          [ "$(date -u +%d)" -le 7 ] && [ "$(date -u +%u)" = "7" ] && tag="storage-monthly-$stamp"
+          gh release create "$tag" out/nabiad-storage-*.tar.age out/nabiad-storage-*.tar.age.sha256 out/storage-manifest.json \
+            -R "$BACKUP_REPO" --title "$tag" --notes "Encrypted Nabiad storage (cheque photos) backup. Restore: scripts/backup/README.md"
+          echo "STAMP=$stamp" >> "$GITHUB_ENV"
+
+      - name: Prune old storage backups (5 weekly, 13 months first-Sunday)
+        run: |
+          now=$(date -u +%s)
+          gh release list -R "$BACKUP_REPO" -L 500 --json tagName,createdAt | jq -r '.[] | "\(.tagName) \(.createdAt)"' |
+          while read -r tag created; do
+            age=$(( (now - $(date -u -d "$created" +%s)) / 86400 ))
+            case "$tag" in
+              storage-monthly-*) [ "$age" -gt 400 ] && gh release delete "$tag" -R "$BACKUP_REPO" --cleanup-tag -y ;;
+              storage-*)         [ "$age" -gt 35 ]  && gh release delete "$tag" -R "$BACKUP_REPO" --cleanup-tag -y ;;
+            esac
+          done || true
+
+      - name: Record result for the app's Backup page
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" = "success" ]; then
+            bytes="$(stat -c %s out/nabiad-storage-*.tar.age 2>/dev/null | head -1)"
+            bash scripts/backup/record-run.sh storage ok "${STAMP:-}" "$bytes" "run ${GITHUB_RUN_ID}"
+          else
+            bash scripts/backup/record-run.sh storage fail "" "" "run ${GITHUB_RUN_ID}: see GitHub Actions"
+          fi
