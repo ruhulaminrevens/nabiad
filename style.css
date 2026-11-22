@@ -2457,3 +2457,7 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 .cq-va-bot{display:flex;gap:8px;padding-top:8px;border-top:1px solid var(--line2)}
 .cq-va-bot>.btn{flex:1 1 0;min-width:0;justify-content:center}
 .cq-va .btn{width:auto}
+
+/* Standard amount size (v6.95): one size/weight for list amounts everywhere */
+:root{--amt-fs:15px;--amt-fw:700}
+.cp-activity-table td.r.num,.cp-activity-table td.r .num,.rg-table td.r.num,.cb-act-amt,.cb-act-amt.gr,.cb-act-amt.rd{font-size:var(--amt-fs);font-weight:var(--amt-fw);font-variant-numeric:tabular-nums}
