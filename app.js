@@ -938,6 +938,18 @@ async function route() {
   window.scrollTo(0, 0);
 }
 let ROUTE_TOK = 0;
+/* ---------- accessibility: icon-only buttons take their accessible name from the title tooltip ---------- */
+(function () {
+  let queued = false;
+  const label = () => {
+    queued = false;
+    document.querySelectorAll("button[title]:not([aria-label]),a[title]:not([aria-label])").forEach(el => { if (!el.textContent.trim()) el.setAttribute("aria-label", el.getAttribute("title")); });
+  };
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(label); } };
+  new MutationObserver(queue).observe(document.documentElement, { childList: true, subtree: true });
+  queue();
+})();
+
 /* ---------- command palette (Ctrl+K) ---------- */
 function palette() {
   if ($(".pal")) return;
@@ -1263,7 +1275,7 @@ async function vEntry(v) {
         <td><div class="cp-row-actions">
           <button type="button" class="btn sm" data-recent="${esc(c.id)}" data-activity-action="view">${bi("দেখুন","View")}</button>
           ${canEditChq(c) ? `<button type="button" class="btn sm" data-recent="${esc(c.id)}" data-activity-action="edit">${bi("এডিট","Edit")}</button>` : ""}
-          ${canDeleteChq(c) ? `<button type="button" class="btn sm bad" data-recent="${esc(c.id)}" data-activity-action="delete">${bi("মুছুন","Delete")}</button>` : ""}
+          ${canDeleteChq(c) ? `<button type="button" class="btn sm rdo" data-recent="${esc(c.id)}" data-activity-action="delete">${bi("মুছুন","Delete")}</button>` : ""}
         </div></td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty cp-empty"><strong>${records.length ? bi("ফিল্টারে কোনো চেক মেলেনি", "No cheques match these filters") : byDate ? bi("এই তারিখে কোনো চেক নেই", "No cheques for this date") : bi("আজ কোনো চেক পোস্ট হয়নি", "No cheques posted today")}</strong>${records.length ? `<button class="btn sm" type="button" id="e-reset-activity">${bi("ফিল্টার মুছুন", "Clear filters")}</button>` : ""}</div>`;
     if (html !== renderedActivity) {
