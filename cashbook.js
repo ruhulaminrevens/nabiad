@@ -225,7 +225,11 @@ function cbTallyRegister(date, vouchers, ledgerList, details, cash, references, 
     const ledger = ledgers.get(tallyLedgerKey(voucher.led));
     const meta = metadata.get(voucher.type + ":" + voucher.ref);
     const edit = details.editable ? meta?.cashbook_edit : null;
-    lines[side].push({n: voucher.led, a: edit?.a ?? voucher.a, reportLedger: edit?.n ?? meta?.report_ledger,
+    const reportLedger = edit?.n?.trim() || meta?.report_ledger?.trim();
+    const controlLedger = tallyLedgerKey(voucher.led);
+    const needsPartyName = side === "r" && controlLedger === "nabiad-chawkbazar-2026"
+      && (!reportLedger || tallyLedgerKey(reportLedger) === controlLedger);
+    lines[side].push({n: voucher.led, a: edit?.a ?? voucher.a, reportLedger, needsPartyName,
       c: CB_BANK.includes(category) ? ledger?.bank_code : undefined,
       ref: edit?.ref, note: edit?.note, sourceRef: voucher.ref, editVersion: edit?.updated_at});
   }
@@ -265,8 +269,19 @@ const cbRegisterSigners = () => [
 const cbRegisterLineLabel = (line, rawTally = false) =>
   (!rawTally && String(line?.reportLedger || "").trim()) || String(line?.n || "").trim();
 
+const cbPendingParty = () => bi("পার্টির নাম যাচাই বাকি", "Party name pending");
+function cbPartyWarning(book) {
+  if (!book.importedForCashBook) return "";
+  const count = book.lines.r.filter(line => line.needsPartyName).length;
+  return count ? bi(
+    `${count}টি প্রাপ্তির পার্টির নাম যাচাই বাকি। ভাউচার নম্বর দিয়ে মূল রেকর্ড মিলিয়ে নিন।`,
+    `${count} receipt(s) need party names. Check the original records using the voucher numbers.`
+  ) : "";
+}
 const cbRegisterWarning = book => book.importedVouchersUnavailable
-  ? bi("আমদানি করা Tally ভাউচার লোড হয়নি।", "Imported Tally vouchers could not load.") : "";
+  ? bi("আমদানি করা Tally ভাউচার লোড হয়নি।", "Imported Tally vouchers could not load.") : cbPartyWarning(book);
+const cbPendingPartyRef = (line, rawTally) =>
+  !rawTally && line?.needsPartyName ? cbPendingParty() + " · " + line.sourceRef : "";
 const cbRegisterNoteTitle = () => bi("নোট", "Note");
 const cbRegisterNoteRows = Array.from({length: 5}, (_, i) => [i + 1, i + 6]);
 
@@ -281,6 +296,7 @@ function cbRegisterSheet(book, paper = false) {
   const label = (line, side) => line ? `<strong>${esc(cbRegisterLineLabel(line, rawTally))}</strong>
     ${line.c ? `<small>${esc(line.c)}</small>` : ""}
     ${line.ref && !rawTally ? `<small>${cbVoucherLabel(side)} · ${esc(line.ref)}</small>` : ""}
+    ${cbPendingPartyRef(line, rawTally) ? `<small>${esc(cbPendingPartyRef(line, rawTally))}</small>` : ""}
     ${line.note ? `<small class="cb-narr">${esc(line.note)}</small>` : ""}` : "";
   const amt = line => line ? cbRegisterMoney(line.a) : "";
   const rows = Array.from({ length: Math.max(5, receipts.length + 1, payments.length) }, (_, i) => {
@@ -326,7 +342,9 @@ async function cbRegisterExcel(book) {
   await loadScript("vendor/xlsx.min.js");
   const lines = book.lines || {}, ref = lines.register;
   const rawTally = cbIsTallyReport(book);
-  const entry = l => [cbRegisterLineLabel(l, rawTally), l?.a ?? null, ...(!rawTally ? [l?.ref || ""] : []), l?.note || ""];
+  const entry = l => [cbRegisterLineLabel(l, rawTally), l?.a ?? null,
+    ...(!rawTally ? [l?.ref || (l?.needsPartyName ? l.sourceRef : "")] : []),
+    [cbPendingPartyRef(l, rawTally), l?.note].filter(Boolean).join(" · ")];
   const headings = side => [cbSideLabel(side), "৳", ...(!rawTally ? [cbVoucherLabel(side)] : []), cbNarrationLabel()];
   const rows = Array.from({ length: Math.max(lines.r?.length || 0, lines.p?.length || 0) }, (_, i) => [i + 1, ...entry(lines.r?.[i]), ...entry(lines.p?.[i])]);
   const cells = [
@@ -775,6 +793,7 @@ async function vCashBook(v) {
       const entries = activityBook?.lines[activitySide] || [];
       get("activity-lines").innerHTML = entries.map((item, index) => `<li><div><strong>${esc(cbRegisterLineLabel(item, rawTally))}</strong>
         ${item.ref || item.c ? `<small>${esc([item.ref && cbVoucherLabel(activitySide) + " " + item.ref, item.c].filter(Boolean).join(" · "))}</small>` : ""}
+        ${cbPendingPartyRef(item, rawTally) ? `<small class="am">${esc(cbPendingPartyRef(item, rawTally))}</small>` : ""}
         ${item.note ? `<small class="cb-narr">${esc(item.note)}</small>` : ""}</div>
         <div class="cb-record-actions"><b class="num">${moneyText(item.a)}</b>
           ${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="btn sm" data-cb-edit="${index}">${bi("এডিট", "Edit")}</button>` : ""}
@@ -942,7 +961,7 @@ async function vCashBook(v) {
         note.textContent = cbIsTallyReport(snapshot) ? bi("আমদানি করা Tally ভাউচার", "Imported Tally vouchers")
           : snapshot.importedVouchersUnavailable ? bi("আমদানি করা লেনদেন লোড হয়নি।", "Imported transactions could not load.")
           : admin && snapshot.importedForCashBook && !snapshot.importedEditable
-            ? bi("এই লেনদেন এডিট করতে ডাটাবেস আপডেট প্রয়োজন।", "A database update is required to edit these entries.") : "";
+            ? bi("এই লেনদেন এডিট করতে ডাটাবেস আপডেট প্রয়োজন।", "A database update is required to edit these entries.") : cbPartyWarning(snapshot);
         drawActivity();
       }, () => {
         if (!current() || sourceRequest !== requested) return;
