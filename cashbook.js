@@ -727,7 +727,7 @@ async function vCashBook(v) {
         <label>${cbVoucherLabel(side)}<input class="in cbref" autocomplete="off"></label>
         <label class="cb-compose-account" hidden>${bi("ব্যাংক A/C", "Bank account")}<select class="in cbac"><option value="">${bi("A/C বাছুন", "Select A/C")}</option>
         ${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)} · ${esc(a.holder || "")}</option>`).join("")}</select></label>
-        <label class="cb-compose-note">${cbNarrationLabel()}<textarea class="in cbnote" rows="2"></textarea></label>
+        <details class="cb-compose-note"><summary>${cbNarrationLabel()}</summary><textarea class="in cbnote" aria-label="${cbNarrationLabel()}" rows="2"></textarea></details>
         <div class="cb-row-actions"><button type="button" class="btn cb-cancel" hidden>${bi("বাতিল", "Cancel")}</button>
           <button type="submit" class="btn pri cbadd">${ico("plus")} <span>${bi("যোগ করুন", "Add")}</span></button></div>
       </form></section>`;
@@ -742,11 +742,12 @@ async function vCashBook(v) {
       <div class="cb-entry-sides">${controls("r", "c-rec")}${controls("p", "c-pay")}</div>
       ${recoverable.length && mayAdd ? `<details class="card cb-recovery"><summary>${bi("এই ডিভাইসের আগের অসম্পূর্ণ লাইন", "Previous unsaved lines on this device")} (${recoverable.length})</summary>
         <ul>${recoverable.map(({side, item}, index) => `<li><span>${cbSideLabel(side)} · ${esc(item.n)} · ${moneyText(item.a)}</span><button type="button" class="btn sm" data-cb-recover="${index}">${bi("ফর্মে নিন", "Load into form")}</button></li>`).join("")}</ul></details>` : ""}
+      <section class="card csec"><div class="csh"><h3>${bi("খাত অনুযায়ী যোগফল", "Totals by category")}</h3></div><div id="cb-sum"></div></section>
       <section class="card csec c-close"><div class="csh"><h3>${bi("হিসাব মেলানো", "Balance")}</h3></div>
         <div class="crow hl"><label for="cb-ch">${bi("হাতে ক্যাশ (গুনে লিখুন)", "Cash in hand (count and enter)")}</label><div class="cb-count-input">
           <input class="cell" id="cb-ch" inputmode="decimal" aria-describedby="cb-inline-closing cb-inline-diff" value="${esc(pending.balance?.cash_in_hand ?? (book?.cash_in_hand == null ? "" : fmtIn(book.cash_in_hand)))}" ${mayBalance ? "" : "disabled"}>
           <div class="cb-inline-balance"><strong id="cb-inline-closing"></strong><strong id="cb-inline-diff"></strong></div></div></div>
-        <div class="cb-balance-actions"><details class="cb-day-notes"${reopenNotes ? " open" : ""}>
+        <details class="cb-day-notes"${reopenNotes ? " open" : ""}>
           <summary>${ico("list")} <span>${cbRegisterNoteTitle()}</span></summary>
           <div class="cb-note-fields">
             ${notes.map((note, i) => `<label><span>${i + 1}</span><textarea class="in" rows="2" id="cb-note-${i + 1}" aria-label="${cbRegisterNoteTitle()} ${i + 1}" ${mayBalance ? "" : "readonly"}>${esc(note)}</textarea></label>`).join("")}
@@ -755,9 +756,8 @@ async function vCashBook(v) {
         </details>
         ${mayBalance ? `<div class="cb-row-actions">${final
           ? `<button type="button" class="btn" id="cb-balance">${bi("নগদের হিসাব আপডেট", "Update cash count")}</button>`
-          : `<button type="button" class="btn pri" id="cb-close-day">${ico("check")} ${bi("দিন বন্ধ করুন", "Close day")}</button>`}</div>` : ""}</div>
+          : `<button type="button" class="btn pri" id="cb-close-day">${ico("check")} ${bi("দিন বন্ধ করুন", "Close day")}</button>`}</div>` : ""}
       </section>
-      <section class="card csec"><div class="csh"><h3>${bi("খাত অনুযায়ী যোগফল", "Totals by category")}</h3></div><div id="cb-sum"></div></section>
       <div class="hint rd" id="cb-err" role="alert"></div>
       </div><div class="cb-review"><section class="card flush cb-activity" aria-labelledby="cb-activity-title">
         <div class="ch cb-activity-head"><h3 id="cb-activity-title">${bi("দিনের ক্যাশ লেনদেন", "Cash Book activity")}</h3><time datetime="${date}">${dmy(date)}</time></div>
@@ -860,6 +860,7 @@ async function vCashBook(v) {
       state.amount.value = item.x ?? (item.a == null ? "" : fmtIn(item.a));
       state.ref.value = item.ref ?? importedItem?.sourceRef ?? "";
       state.note.value = item.note || "";
+      state.note.closest("details").open = !!item.note;
       state.category = importedItem ? "" : item.k || cbGuess(item.n, side)?.k || "";
       state.account.value = item.c || "";
       state.account.parentElement.hidden = !CB_BANK.includes(state.category);
