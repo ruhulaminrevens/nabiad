@@ -269,6 +269,7 @@ const ICON = {
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   wallet: '<path d="M3 7a2 2 0 0 1 2-2h13v4M3 7v10a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2zM16 14h.01"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/>',
+  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   copyt: '<path d="M8 4h8M8 4a2 2 0 0 0-2 2v14h12V6a2 2 0 0 0-2-2M9 10h6M9 14h6"/>',
   bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
   share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>',
@@ -1115,7 +1116,7 @@ async function vEntry(v) {
   v.innerHTML = head("চেক পোস্টিং", `<a class="btn" href="#/books">${ico("book")} ${bi("চেক বই", "Cheque Book")}</a>${moduleCan("cheque", "edit") ? `<a class="btn" href="#/status">${ico("flag")} ${bi("স্ট্যাটাস", "Status")}</a>` : ""}<a class="btn" href="#/cheques">${ico("list")} ${bi("রেজিস্টার", "Register")}</a>`, "tc cp-header") + `
   <div class="split cq-posting">
    <div class="card tbar navcard cp-date-card"><div class="cp-period"><div class="chips" role="group" aria-label="${bi("এন্ট্রির সময়", "Activity period")}"><button type="button" class="chip on" id="e-today" aria-pressed="true" aria-controls="e-list">${bi("আজ পোস্ট করা", "Posted today")}</button><button type="button" class="chip" id="e-bydate" aria-pressed="false" aria-controls="e-list">${bi("চেকের তারিখে", "By cheque date")}</button></div>
-       <time id="e-period" class="mut sm num"></time><button type="button" class="btn sm" id="e-dprev" title="${bi("আগের দিন (শুক্রবার বাদ)", "Previous day (skips Friday)")}" hidden>${bi("‹ আগের", "‹ Prev")}</button><input class="in" type="date" id="e-activity-date" aria-label="${dateLabel}" hidden><button type="button" class="btn sm" id="e-dnext" title="${bi("পরের দিন (শুক্রবার বাদ)", "Next day (skips Friday)")}" hidden>${bi("পরের ›", "Next ›")}</button></div>
+       <div class="dnav cp-dnav"><button type="button" class="btn" id="e-dprev" title="${bi("আগের দিন (শুক্রবার বাদ)", "Previous day (skips Friday)")}">${bi("‹ আগের", "‹ Prev")}</button><input class="in big" type="date" id="e-activity-date" value="${today()}" aria-label="${dateLabel}"><button type="button" class="btn" id="e-dnext" title="${bi("পরের দিন (শুক্রবার বাদ)", "Next day (skips Friday)")}">${bi("পরের ›", "Next ›")}</button></div></div>
     <dl class="cp-activity-stats">
          <div><dt>${bi("এন্ট্রি", "Entries")}</dt><dd id="e-cnt" class="num"></dd></div>
          <div><dt>${bi("কার্যকর মোট", "Live amount")}</dt><dd id="e-total" class="num"></dd></div>
@@ -1250,8 +1251,6 @@ async function vEntry(v) {
     const filtered = records.filter(({c}) => (!activityStatus || c.status === activityStatus) && matches(c));
     filtered.sort((a, b) => (b.at || 0) - (a.at || 0) || b.c.no - a.c.no);
     const visible = filtered.slice(0, activityLimit);
-    $e("e-period").dateTime = t;
-    $e("e-period").textContent = dmy(t);
     $e("e-cnt").textContent = records.length;
     $e("e-total").textContent = "৳ " + money(liveTotal);
     $e("e-pending-total").textContent = "৳ " + money(pendingTotal);
@@ -1273,9 +1272,9 @@ async function vEntry(v) {
         <td><div class="stc">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}</div></td>
         <td><div class="cp-row-date mut sm"><span>${byDate ? postedLabel : dateLabel} ${dmy(byDate ? posted : c.date) || "—"}</span><span>${esc(c.by || "—")}</span></div></td>
         <td><div class="cp-row-actions">
-          <button type="button" class="btn sm" data-recent="${esc(c.id)}" data-activity-action="view">${bi("দেখুন","View")}</button>
-          ${canEditChq(c) ? `<button type="button" class="btn sm" data-recent="${esc(c.id)}" data-activity-action="edit">${bi("এডিট","Edit")}</button>` : ""}
-          ${canDeleteChq(c) ? `<button type="button" class="btn sm rdo" data-recent="${esc(c.id)}" data-activity-action="delete">${bi("মুছুন","Delete")}</button>` : ""}
+          <button type="button" class="iconbtn sm cpi pri" data-recent="${esc(c.id)}" data-activity-action="view" title="${bi("দেখুন","View")}" aria-label="${bi("দেখুন","View")}">${ico("eye")}</button>
+          ${canEditChq(c) ? `<button type="button" class="iconbtn sm cpi am" data-recent="${esc(c.id)}" data-activity-action="edit" title="${bi("এডিট","Edit")}" aria-label="${bi("এডিট","Edit")}">${ico("edit")}</button>` : ""}
+          ${canDeleteChq(c) ? `<button type="button" class="iconbtn sm cpi rd" data-recent="${esc(c.id)}" data-activity-action="delete" title="${bi("মুছুন","Delete")}" aria-label="${bi("মুছুন","Delete")}">${ico("trash")}</button>` : ""}
         </div></td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty cp-empty"><strong>${records.length ? bi("ফিল্টারে কোনো চেক মেলেনি", "No cheques match these filters") : byDate ? bi("এই তারিখে কোনো চেক নেই", "No cheques for this date") : bi("আজ কোনো চেক পোস্ট হয়নি", "No cheques posted today")}</strong>${records.length ? `<button class="btn sm" type="button" id="e-reset-activity">${bi("ফিল্টার মুছুন", "Clear filters")}</button>` : ""}</div>`;
     if (html !== renderedActivity) {
@@ -1292,14 +1291,7 @@ async function vEntry(v) {
   }
   function resetActivity(mode) {
     activityMode = mode;
-    $e("e-period").hidden = mode === "date";
-    const activityDate = $e("e-activity-date");
-    activityDate.hidden = mode !== "date";
-    $e("e-dprev").hidden = $e("e-dnext").hidden = mode !== "date";
-    if (mode === "date" && !activityDate.value) {
-      const postingDate = $e("e-date").value;
-      activityDate.value = validChequeDate(postingDate) ? postingDate : today();
-    }
+    if (mode === "today") $e("e-activity-date").value = today();
     resetActivityFilters();
     for (const [id, key] of [["e-today", "today"], ["e-bydate", "date"]]) {
       const btn = $e(id);
