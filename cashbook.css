@@ -271,7 +271,9 @@
 .cb-compose { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 10px; }
 .cb-compose label { min-width: 0; font-size: .82rem; font-weight: 650; }
 .cb-compose label > :is(input, select) { display: block; width: 100%; margin-top: 4px; }
-.cb-compose .cb-compose-note, .cb-compose .cb-row-actions { grid-column: 1 / -1; }
+.cb-compose :is(.cb-compose-note, .cb-compose-account) { grid-column: 1 / -1; }
+.cb-compose .cb-row-actions { grid-area: 2 / 2; align-self: end; margin-top: 0; }
+.cb-compose .cbadd { width: 100%; max-width: 180px; }
 .cb-compose-note summary, .cb-recovery summary { cursor: pointer; color: var(--mut); font-weight: 650; }
 .cb-compose-note textarea.in { width: 100%; height: auto; margin-top: 6px; }
 .cb-compose .cb-row-actions, .c-close .cb-row-actions { gap: 8px; flex-wrap: wrap; }
@@ -287,7 +289,9 @@
 .cb-export-stage { position: fixed; inset: 0 auto auto -10000px; width: 800px; pointer-events: none; }
 #cb-err:empty { display: none; }
 @media (max-width: 450px) {
-  .cb-compose { grid-template-columns: minmax(0, 1fr); }
+  .cb-compose { grid-template-columns: minmax(0, 1fr) minmax(105px, .65fr); }
+  .cb-compose label:has(.cbname, .cbamt2) { grid-column: 1 / -1; }
+  .cb-compose .cb-row-actions { grid-row: 3; }
   .cb-compose .in { font-size: 16px; }
   .cb-activity-body { padding-inline: 10px; }
 }
