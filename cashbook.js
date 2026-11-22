@@ -999,14 +999,14 @@ function cbLedgerModal(after, {mappingOnly = false} = {}) {
   const canAdd = !mappingOnly || moduleCan("cash","entry"), canEdit = !mappingOnly || moduleCan("cash","edit");
   const title = mappingOnly ? bi("লেজার খাত নির্ধারণ", "Ledger → Purpose/Group") : bi("লেজার তালিকা", "Ledger list");
   modal(`<h2>📒 ${title}</h2>
-   ${mappingOnly ? `<p class="mut sm">${bi("Tally voucher ও নতুন Cash Book এন্ট্রির Receipt এবং Payment খাত নির্ধারণ করুন। কোনো খাতে একটিমাত্র সক্রিয় লেজার ম্যাপ করা থাকলে Cash Checker-এর খাতের মোটে সেই নাম দেখা যাবে।","Set receipt and payment groups for Tally vouchers and future Cash Book entries. Cash Checker category totals show a ledger label where one active ledger is mapped.")}</p>` : ""}
+   ${mappingOnly ? `<p class="mut sm">${bi("Tally voucher ও নতুন Cash Book এন্ট্রির Receipt এবং Payment খাত নির্ধারণ করুন। কোনো খাতে একটিমাত্র সক্রিয় লেজার ম্যাপ করা থাকলে Cash Checker-এর খাতের মোটে সেই নাম দেখা যাবে।","Set receipt and payment groups for Tally vouchers and future Cash Book entries. Cash Checker category totals show a ledger label where one active ledger is mapped.")}</p>` : `<p class="mut sm">${bi("এখানে ক্যাশ এন্ট্রির লেজার, প্রাপ্তি ও পরিশোধের খাত এবং ব্যাংক অ্যাকাউন্ট নির্ধারণ করুন।", "Set up the ledgers, receipt and payment categories, and bank accounts used for Cash Book entry.")}</p>`}
    <div id="lg-err" aria-live="polite"></div>
    ${mappingOnly && canEdit ? `<fieldset class="cblg-group-editor" id="lg-head-editor" hidden disabled>
      <legend>${bi("খাতের নাম", "Purpose / Group name")}</legend>
      <div class="cblg-filters-map"><label class="f">${bi("খাত", "Group")}<select class="in" id="lg-head"></select></label>
      <label class="f">${bi("প্রদর্শিত নাম", "Display name")}<input class="in" id="lg-head-name" maxlength="120" autocomplete="off"></label></div>
    </fieldset>` : ""}
-   ${canAdd ? `<div class="cblg-new"><input class="in" id="lg-n" placeholder="${bi("নতুন লেজারের নাম", "New ledger name")}" autocomplete="off"><select class="in" id="lg-r">${cbLgOpts("r")}</select><select class="in" id="lg-p">${cbLgOpts("p")}</select><button class="btn pri" id="lg-add">${ico("plus")} ${bi("যোগ", "Add")}</button></div>` : ""}
+   ${canAdd ? `<div class="cblg-new"><input class="in" id="lg-n" placeholder="${bi("নতুন লেজারের নাম", "New ledger name")}" autocomplete="off"><select class="in" id="lg-r">${cbLgOpts("r")}</select><select class="in" id="lg-p">${cbLgOpts("p")}</select><button class="btn pri" id="lg-add">${ico("plus")} ${bi("লেজার যোগ করুন", "Add ledger")}</button></div>` : ""}
    <div class="cblg-filters cblg-filters-map">
      <div><label class="f" for="lg-q">${bi("লেজার খুঁজুন", "Search ledgers")}</label><input class="in" id="lg-q" type="search" placeholder="${bi("খুঁজুন…", "Search…")}" autocomplete="off"></div>
      <div><label class="f" for="lg-group">${bi("খাত", "Purpose / Group")}</label><select class="in" id="lg-group">
