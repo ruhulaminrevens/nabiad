@@ -2412,3 +2412,5 @@ button.as-kpi[aria-pressed="true"] { border-color: var(--pri); box-shadow: inset
 td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 .cp-row-actions .iconbtn.cpi + .iconbtn.cpi { margin-inline-start: 0; }
 @media (max-width: 640px) { .iconbtn.cpi { width: 36px; height: 36px; } .iconbtn.cpi svg { width: 17px; height: 17px; } }
+/* Cheque Posting: give the activity list the room — the entry form does not need 1.45fr */
+@media (min-width: 1181px) { .split.cq-posting { grid-template-columns: minmax(380px, 0.8fr) minmax(0, 1.2fr); } }
