@@ -271,13 +271,30 @@ const cbRegisterLineLabel = (line, rawTally = false) =>
   (!rawTally && String(line?.reportLedger || "").trim()) || String(line?.n || "").trim();
 
 const cbPendingParty = () => bi("পার্টির নাম যাচাই বাকি", "Party name pending");
+const cbPendingReceipts = book => book?.importedForCashBook
+  ? (book.lines?.r || []).filter(line => line.needsPartyName) : [];
 function cbPartyWarning(book) {
-  if (!book.importedForCashBook) return "";
-  const count = book.lines.r.filter(line => line.needsPartyName).length;
+  const count = cbPendingReceipts(book).length;
   return count ? bi(
     `${count}টি প্রাপ্তির পার্টির নাম যাচাই বাকি। ভাউচার নম্বর দিয়ে মূল রেকর্ড মিলিয়ে নিন।`,
     `${count} receipt(s) need party names. Check the original records using the voucher numbers.`
   ) : "";
+}
+function cbPendingReceiptsModal(book) {
+  const rows = cbPendingReceipts(book);
+  if (!rows.length) return;
+  modal(`<h2>${bi("পার্টির নাম যাচাই বাকি", "Receipts needing party names")}</h2>
+    <div class="modal-body">
+      <p class="mut sm">${esc(dmy(book.date))} · ${bi("ভাউচার নম্বর দিয়ে মূল রেকর্ড মিলিয়ে নিন।", "Check the original records using the voucher numbers.")}</p>
+      <table class="cb-party-vouchers">
+        <thead><tr><th scope="col">${bi("ভাউচার নম্বর", "Voucher no.")}</th><th scope="col">${bi("অঙ্ক", "Amount")}</th></tr></thead>
+        <tbody>${rows.map(row => `<tr><td>${esc(row.sourceRef)}</td><td>৳ ${money(row.a)}</td></tr>`).join("")}</tbody>
+      </table>
+    </div>
+    <div class="modal-actions"><button type="button" class="btn" id="cb-party-close">${bi("বন্ধ", "Close")}</button></div>`, (root, close) => {
+    $(".modal", root).classList.add("cb-party-dialog");
+    $("#cb-party-close", root).onclick = close;
+  });
 }
 const cbRegisterWarning = book => book.importedVouchersUnavailable
   ? bi("আমদানি করা Tally ভাউচার লোড হয়নি।", "Imported Tally vouchers could not load.") : cbPartyWarning(book);
@@ -773,7 +790,12 @@ async function vCashBook(v) {
             </label>
             <button type="button" id="cb-register" class="btn pri">${ico("table")}<span>${bi("দেখুন / Export", "View / Export")}</span></button>
           </div>
-          <p id="cb-activity-source" class="mut sm" role="status"></p>
+          <div class="cb-activity-status">
+            <p id="cb-activity-source" class="mut sm" role="status"></p>
+            <button type="button" class="btn sm cb-party-open" id="cb-party-open" aria-haspopup="dialog"
+              aria-label="${bi("যাচাই বাকি ভাউচার দেখুন", "View receipts needing party names")}"
+              title="${bi("যাচাই বাকি ভাউচার দেখুন", "View receipts needing party names")}" hidden>${ico("list")}</button>
+          </div>
           <dl class="cb-activity-totals"><div class="cb-stat-wide"><dt>${bi("শুরুর নগদ", "Opening cash")}</dt><dd id="cb-x1"></dd></div></dl>
           <ol id="cb-activity-lines" class="cb-activity-lines" role="list"></ol><p id="cb-activity-empty" class="mut sm" hidden></p>
           <dl class="cb-activity-totals">
@@ -1023,8 +1045,11 @@ async function vCashBook(v) {
       }
       return snapshot;
     });
+    const partyButton = get("party-open");
+    partyButton.onclick = () => cbPendingReceiptsModal(activityBook);
     let sourceRequest;
     const loadActivity = () => {
+      partyButton.hidden = true;
       activityBook = null;
       drawActivity();
       const note = get("activity-source");
@@ -1036,6 +1061,7 @@ async function vCashBook(v) {
       requested.then(snapshot => {
         if (!current() || sourceRequest !== requested) return;
         activityBook = snapshot;
+        partyButton.hidden = !cbPendingReceipts(snapshot).length;
         note.textContent = cbIsTallyReport(snapshot) ? bi("আমদানি করা Tally ভাউচার", "Imported Tally vouchers")
           : snapshot.importedVouchersUnavailable ? bi("আমদানি করা লেনদেন লোড হয়নি।", "Imported transactions could not load.")
           : admin && snapshot.importedForCashBook && !snapshot.importedEditable
