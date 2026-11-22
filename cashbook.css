@@ -459,3 +459,10 @@
 .cb-act-table .cb-led-name{display:inline-block;min-height:0;padding:3px 2px;cursor:default}
 .cb-act-table .cb-record-actions{justify-content:flex-start}
 .cb-act-table td.r.num,.cb-act-table th.r{white-space:nowrap}
+
+/* v6.99: more signing space; footer = Cash Book | Date + Page No. | brand */
+.cb-reg-signatures{padding-top:72px}
+.cb-register-paper .cb-reg-signatures{padding-top:60px}
+.cb-reg-closing,.cb-reg-signatures{break-inside:avoid}
+.cb-reg-foot{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
+.cb-reg-foot>span:first-child{text-align:left}.cb-reg-foot>span:nth-child(2){text-align:center;color:#374151;font-weight:600}.cb-reg-foot>span:last-child{text-align:right}

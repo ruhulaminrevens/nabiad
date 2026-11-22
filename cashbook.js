@@ -427,7 +427,8 @@ function cbRegisterSheet(book, paper = false) {
     ${rawTally ? "" : `<div class="cb-reg-signatures">
       ${cbRegisterSigners().map(label => `<div>${esc(label)}</div>`).join("")}
     </div>`}
-    <div class="rep-ft"><span>${[status, book.updated_at && cbRegisterDate(book.updated_at), esc(book.entered_by || "")].filter(Boolean).join(" · ")}</span><span>NABIAD Smart Finance Suite</span></div></div></div>`;
+    </div>
+    <div class="rep-ft cb-reg-foot"><span>${bi("ক্যাশ বুক", "Cash Book")}</span><span>${bi("তারিখ", "Date")}: <b>${dmy(book.date)}</b> &nbsp;|&nbsp; ${bi("পৃষ্ঠা নং", "Page No.")}: <b class="cb-pg">1</b></span><span>NABIAD Smart Finance Suite</span></div></div>`;
 }
 async function cbRegisterExcel(book) {
   await loadScript("vendor/xlsx.min.js");
@@ -519,7 +520,9 @@ async function cbRegisterVisual(el, format) {
     await document.fonts?.ready;
     if (format === "png") return cbCanvasBlob(await dcCanvas(paper), "image/png");
     const pages = [];
+    let pageNo = 0;
     const capture = async () => {
+      const pg = $(".cb-pg", paper); if (pg) pg.textContent = String(++pageNo);
       const canvas = await dcCanvas(paper);
       const bytes = new Uint8Array(await (await cbCanvasBlob(canvas, "image/jpeg")).arrayBuffer());
       pages.push({bytes, width: canvas.width, height: canvas.height});
@@ -602,7 +605,7 @@ function cbRegisterModal(book) {
     const exports = $$("[data-register-format], [data-register-print]", root);
     const share = $("[data-register-share]", root), status = $("[data-register-status]", root);
     $("[data-register-close]", root).onclick = close;
-    $("[data-register-print]", root).onclick = () => printSheet(cbRegisterSheet(book, true), name);
+    $("[data-register-print]", root).onclick = () => printSheet(cbRegisterSheet(book, true), name, { left: bi("ক্যাশ বুক", "Cash Book"), center: `${bi("তারিখ", "Date")}: ${dmy(book.date)}  |  ${bi("পৃষ্ঠা নং", "Page No.")}: `, right: "NABIAD Smart Finance Suite" });
     share.onclick = async () => {
       try { if (file) await navigator.share({ files: [file], title: name }); }
       catch (e) { if (e.name !== "AbortError") toast(e.message, "err"); }
