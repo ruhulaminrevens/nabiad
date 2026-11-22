@@ -851,7 +851,7 @@ async function vCashBook(v) {
               title="${bi("যাচাই বাকি ভাউচার দেখুন", "View receipts needing party names")}" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 5h6v6m0-6-9 9m6-2v6H6V8h6"/></svg></button>
           </div>
           <dl class="cb-activity-totals"><div class="cb-stat-wide"><dt>${bi("শুরুর নগদ", "Opening cash")}</dt><dd id="cb-x1"></dd></div></dl>
-          <ol id="cb-activity-lines" class="cb-activity-lines" role="list"></ol><p id="cb-activity-empty" class="mut sm" hidden></p>
+          <div class="cb-act-h" id="cb-act-h" aria-hidden="true"><span>SL</span><span>${bi("লেজার", "Ledger")}</span><span class="r">${bi("টাকা", "Amount")}</span><span>${bi("অ্যাকশন", "Action")}</span></div><ol id="cb-activity-lines" class="cb-activity-lines" role="list"></ol><p id="cb-activity-empty" class="mut sm" hidden></p>
           <dl class="cb-activity-totals">
             <div class="cb-stat-receipt"><dt>${bi("মোট প্রাপ্তি", "Total Receipt")}</dt><dd id="cb-x2"></dd></div>
             <div class="cb-stat-payment"><dt>${bi("মোট পরিশোধ", "Total Payment")}</dt><dd id="cb-x3"></dd></div>
@@ -909,14 +909,16 @@ async function vCashBook(v) {
         $(".cb-side-count", button).textContent = activityBook ? (activityBook.lines[button.dataset.cbSide]?.length || 0) : "—";
       }
       const entries = activityBook?.lines[activitySide] || [];
-      get("activity-lines").innerHTML = entries.map((item, index) => `<li><div class="cb-activity-entry"><span class="cb-entry-number" aria-hidden="true">${index + 1}.</span><div><strong>${esc(cbRegisterLineLabel(item, rawTally))}</strong>
+      get("activity-lines").innerHTML = entries.map((item, index) => `<li class="cb-act-row"><span class="cb-entry-number" aria-hidden="true">${index + 1}</span><div class="cb-act-led"><strong>${esc(cbRegisterLineLabel(item, rawTally))}</strong>
         ${item.ref || item.c ? `<small>${esc([item.ref && cbVoucherLabel(activitySide) + " " + item.ref, item.c].filter(Boolean).join(" · "))}</small>` : ""}
         ${cbPendingPartyRef(item, rawTally) ? `<small class="am">${esc(cbPendingPartyRef(item, rawTally))}</small>` : ""}
-        ${item.note ? `<small class="cb-narr">${esc(item.note)}</small>` : ""}</div></div>
-        <div class="cb-record-actions"><b class="num">${moneyText(item.a)}</b>
+        ${item.note ? `<small class="cb-narr">${esc(item.note)}</small>` : ""}</div>
+        <b class="num cb-act-amt ${activitySide === "r" ? "gr" : "rd"}">${moneyText(item.a)}</b>
+        <div class="cb-record-actions">
           ${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="btn sm" data-cb-edit="${index}">${bi("এডিট", "Edit")}</button>` : ""}
           ${!imported && admin ? `<button type="button" class="btn sm" data-cb-delete="${index}">${bi("মুছুন", "Delete")}</button>` : ""}
         </div></li>`).join("");
+      get("act-h").hidden = !entries.length;
       get("activity-lines").hidden = !entries.length;
       get("activity-empty").hidden = !activityBook || !!entries.length;
       const values = activityBook ? cbRegisterTotals(activityBook).map(row => row[1]) : [];

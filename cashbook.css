@@ -418,3 +418,26 @@
 .modal-actions:has(#lg-close){display:flex;align-items:center;gap:10px}
 .modal-actions #lg-close{flex:0 0 auto;width:auto;min-width:120px;margin-left:auto}
 .cblg-h:not(.cblg-map),.cblg-r:not(.cblg-map){grid-template-columns:minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,1.3fr) minmax(0,.9fr) minmax(250px,auto)}
+
+/* Cash Book activity table look (v6.92) */
+@media (min-width:1101px){.cb-workspace{grid-template-columns:minmax(380px,.9fr) minmax(0,1.25fr)}}
+.cb-act-h,.cb-act-row{display:grid;grid-template-columns:42px minmax(0,1fr) auto minmax(110px,auto);gap:10px;align-items:center}
+.cb-act-h{padding:8px 10px;margin-top:10px;background:var(--pri-soft);border-radius:10px 10px 0 0;font-size:.72rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--pri-ink)}
+.cb-act-h .r{text-align:right}
+.cb-activity-lines{margin-top:0;border:1px solid var(--line2);border-top:0;border-radius:0 0 10px 10px;overflow:hidden}
+.cb-activity-lines li.cb-act-row{padding:9px 10px;border-bottom:1px solid var(--line2);transition:background .12s}
+.cb-activity-lines li.cb-act-row:nth-child(even){background:color-mix(in srgb,var(--pri-soft) 35%,transparent)}
+.cb-activity-lines li.cb-act-row:hover{background:var(--pri-soft)}
+.cb-activity-lines li.cb-act-row:last-child{border-bottom:0}
+.cb-act-row .cb-entry-number{flex:none;text-align:center;font-weight:700;color:var(--mut)}
+.cb-act-led strong{display:block;font-size:.9rem;line-height:1.3}
+.cb-act-amt{text-align:right;font-size:.95rem;white-space:nowrap}
+.cb-act-amt.gr{color:var(--gr)}.cb-act-amt.rd{color:var(--rd)}
+.cb-act-row .cb-record-actions{justify-content:flex-start;gap:6px}
+.cb-act-h[hidden]{display:none}
+@media (max-width:560px){.cb-act-h{display:none}.cb-act-row{grid-template-columns:30px minmax(0,1fr) auto;grid-template-areas:"n l a" ". b b"}.cb-act-row .cb-entry-number{grid-area:n}.cb-act-row .cb-act-led{grid-area:l}.cb-act-row .cb-act-amt{grid-area:a}.cb-act-row .cb-record-actions{grid-area:b}}
+.cb-activity-lines li.cb-act-row{display:grid;grid-template-columns:42px minmax(0,1fr) auto minmax(120px,auto);gap:10px;align-items:center;justify-content:normal}
+.cb-act-h{grid-template-columns:42px minmax(0,1fr) auto minmax(120px,auto)}
+.cb-act-led{text-align:left}
+.cb-act-amt,.cb-act-h .r{min-width:96px}
+@media (max-width:560px){.cb-activity-lines li.cb-act-row{grid-template-columns:30px minmax(0,1fr) auto}}
