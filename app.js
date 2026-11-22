@@ -2944,7 +2944,7 @@ async function vAccounts(v, F = { q: "", b: "", h: "", st: "Active", miss: "", v
         if (!byBank.has(key)) byBank.set(key, { name, accounts: [] });
         byBank.get(key).accounts.push(account);
       }
-    } else arr.sort((a, b) => (a.sort || 0) - (b.sort || 0));
+    } else arr.sort((a, b) => Number(!bankName(a)) - Number(!bankName(b)) || compare(bankName(a), bankName(b)) || compare(a.code || "", b.code || ""));
     for (const c of S.cheques) chequeCounts.set(c.code, (chequeCounts.get(c.code) || 0) + 1);
     $("#acf-n", v).textContent = listView && arr.length
       ? bi(`${arr.length}টি অ্যাকাউন্ট · ${byBank.size}টি গ্রুপ · নাম অনুযায়ী A–Z`, `${arr.length} accounts · ${byBank.size} groups · Bank name A–Z`)
@@ -2975,9 +2975,9 @@ async function vAccounts(v, F = { q: "", b: "", h: "", st: "Active", miss: "", v
   };
   const viewButtons = $$("[data-acf-view]", v);
   viewButtons.forEach(btn => btn.onclick = () => {
-    if (btn.dataset.adView === F.view) return;
-    F.view = btn.dataset.adView;
-    viewButtons.forEach(item => item.setAttribute("aria-pressed", String(item.dataset.adView === F.view)));
+    if (btn.dataset.acfView === F.view) return;
+    F.view = btn.dataset.acfView;
+    viewButtons.forEach(item => item.setAttribute("aria-pressed", String(item.dataset.acfView === F.view)));
     draw();
   });
   query.oninput = e => { F.q = e.target.value; draw(); }; $("#acf-b", v).onchange = e => { F.b = e.target.value; draw(); }; $("#acf-h", v).onchange = e => { F.h = e.target.value; draw(); }; $("#acf-s", v).onchange = e => { F.st = e.target.value; draw(); };
