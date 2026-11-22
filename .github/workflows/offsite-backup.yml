@@ -1,0 +1,73 @@
+name: Off-site backup
+
+# Daily 01:00 Asia/Dhaka (19:00 UTC) + manual run. Output is an age-encrypted
+# archive stored in a PRIVATE repo's Releases. Needs the secrets listed in
+# scripts/backup/README.md. Never store backups in this (public) repo or as
+# workflow artifacts - artifacts of public repos are downloadable by anyone.
+on:
+  schedule:
+    - cron: "0 19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: offsite-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.repository == 'ruhulaminrevens/nabiad'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+      BACKUP_REPO: ${{ secrets.BACKUP_REPO }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL 17 client and age
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17 age jq
+          /usr/lib/postgresql/17/bin/pg_dump --version
+
+      - name: Fetch previous manifest (shrink alarm)
+        run: |
+          mkdir -p prev
+          tag="$(gh release list -R "$BACKUP_REPO" -L 1 --json tagName -q '.[0].tagName' || true)"
+          if [ -n "$tag" ]; then gh release download "$tag" -R "$BACKUP_REPO" -p manifest.json -D prev || true; fi
+          ls -la prev
+
+      - name: Dump, verify, encrypt
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+          AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          PG_BIN: /usr/lib/postgresql/17/bin
+          PREV_MANIFEST: prev/manifest.json
+          OUT_DIR: out
+        run: bash scripts/backup/offsite-backup.sh
+
+      - name: Upload to private repo release
+        run: |
+          stamp="$(ls out/nabiad-*.tar.age | sed -E 's/.*nabiad-(.*)\.tar\.age/\1/')"
+          tag="backup-$stamp"
+          [ "$(date -u +%d)" = "01" ] && tag="monthly-$stamp"
+          gh release create "$tag" out/nabiad-*.tar.age out/nabiad-*.tar.age.sha256 out/manifest.json \
+            -R "$BACKUP_REPO" --title "$tag" --notes "Encrypted Nabiad DB backup. Restore: scripts/backup/README.md"
+
+      - name: Prune old backups (30 daily, 13 months monthly)
+        run: |
+          now=$(date -u +%s)
+          gh release list -R "$BACKUP_REPO" -L 500 --json tagName,createdAt | jq -r '.[] | "\(.tagName) \(.createdAt)"' |
+          while read -r tag created; do
+            age=$(( (now - $(date -u -d "$created" +%s)) / 86400 ))
+            case "$tag" in
+              backup-*)  [ "$age" -gt 30 ]  && gh release delete "$tag" -R "$BACKUP_REPO" --cleanup-tag -y ;;
+              monthly-*) [ "$age" -gt 400 ] && gh release delete "$tag" -R "$BACKUP_REPO" --cleanup-tag -y ;;
+            esac
+          done || true

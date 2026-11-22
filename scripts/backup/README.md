@@ -1,0 +1,78 @@
+# Nabiad off-site backup (Step 1 — Database)
+
+প্রতিদিন রাত ০১:০০ (ঢাকা) GitHub Actions Supabase DB dump করে, যাচাই করে, **age দিয়ে encrypt** করে একটা **private** repo-র Release-এ রাখে। Public repo বা workflow artifact-এ কখনো নয়।
+
+| ফাইল | কাজ |
+|---|---|
+| `scripts/backup/offsite-backup.sh` | dump → verify → encrypt (লোকালেও চলে) |
+| `.github/workflows/offsite-backup.yml` | দৈনিক schedule + manual run, upload, পুরনো মোছা (৩০ দিন daily, ১৩ মাস monthly) |
+
+**কী কী ব্যাকআপ হয়:** `public` schema (table, data, function, policy, trigger) + `auth.users`/`auth.identities` (লগইন)।
+**হয় না (Step 2):** Storage ছবি (`cheque-photos`), Supabase Secrets, Edge Function সোর্স, pg_cron job — নিচে "পুনরুদ্ধারে হাতে করতে হবে" দেখুন।
+
+**Safety alarm (workflow ব্যর্থ হয় → GitHub ইমেইল পাঠায়):** dump খুব ছোট; `accounts/balances/profiles` খালি; আগের backup-এর চেয়ে কোনো table ২০%-এর বেশি কমে গেছে (ডেটা হারানোর সংকেত); decrypt অযোগ্য key।
+
+---
+
+## একবারের সেটআপ (আপনি করবেন — ১৫ মিনিট)
+
+> কোনো password/token/private key এই chat-এ পেস্ট করবেন না।
+
+1. **Private repo বানান:** GitHub → New repository → নাম `nabiad-backups` → **Private** → "Add a README" টিক দিন (খালি repo-তে release হয় না)।
+2. **age key বানান (আপনার PC-তে):**
+   ```bash
+   age-keygen -o nabiad-backup.key
+   ```
+   - Terminal-এ `Public key: age1...` লাইন দেখাবে → এটা Secret-এ যাবে।
+   - `nabiad-backup.key` ফাইল (private) **কমপক্ষে ২ জায়গায়** রাখুন (password manager + পেনড্রাইভ)। হারালে সব backup অপাঠ্য; চুরি গেলে কেউ পড়তে পারবে। এটা GitHub-এ দেবেন না।
+3. **Fine-grained token:** GitHub → Settings → Developer settings → Fine-grained tokens → Repository access: **শুধু `nabiad-backups`** → Permissions: **Contents: Read and write** → মেয়াদ ১ বছর (ক্যালেন্ডারে রিমাইন্ডার)।
+4. **Supabase connection string:** Dashboard → Connect → **Session pooler** (port 5432, IPv4-সমর্থিত; GitHub runner IPv6 পায় না, তাই direct string চলবে না; Transaction pooler 6543-ও চলবে না) → `postgresql://postgres.<ref>:<password>@aws-…pooler.supabase.com:5432/postgres`।
+5. **Secrets যোগ করুন:** `ruhulaminrevens/nabiad` → Settings → Secrets and variables → Actions → New repository secret:
+   | Name | Value |
+   |---|---|
+   | `SUPABASE_DB_URL` | ধাপ ৪-এর string |
+   | `BACKUP_AGE_RECIPIENT` | `age1…` (public key) |
+   | `BACKUP_REPO` | `ruhulaminrevens/nabiad-backups` |
+   | `BACKUP_REPO_TOKEN` | ধাপ ৩-এর token |
+6. **প্রথম run:** Actions → "Off-site backup" → Run workflow। সবুজ হলে `nabiad-backups` → Releases-এ `backup-YYYYMMDD-HHMM` দেখবেন (৩টি ফাইল: `.tar.age`, `.sha256`, `manifest.json`)।
+7. **প্রথম restore পরীক্ষা** (নিচে) — backup তখনই "আছে" বলা যায় যখন একবার ফেরত আনা গেছে।
+
+> Hardening (ঐচ্ছিক, 🔎 Supabase-এ যাচাই হয়নি): `postgres` role-এর বদলে আলাদা read-only role। RLS-এর কারণে `pg_dump` তখন `BYPASSRLS` ছাড়া ব্যর্থ হতে পারে; তাই শুরুতে `postgres` role ব্যবহার করুন এবং password পরিবর্তনের পর secret হালনাগাদ করুন।
+
+---
+
+## Restore (ফেরত আনা)
+
+### A. Decrypt
+```bash
+# Release থেকে nabiad-<stamp>.tar.age ডাউনলোড করুন
+sha256sum -c nabiad-<stamp>.tar.age.sha256
+age -d -i nabiad-backup.key nabiad-<stamp>.tar.age | tar -xf -
+# → public.dump, auth.dump, manifest.json
+```
+
+### B. পরীক্ষা (মাসে একবার, **staging** project-এ)
+1. নতুন একটা Supabase project (staging) খুলুন; তার Session pooler string `STAGING_URL`।
+2. ```bash
+   pg_restore -d "$STAGING_URL" --no-owner --no-privileges --clean --if-exists public.dump
+   ```
+   (`schema "public" already exists` সতর্কতা ঠিক আছে।)
+3. Auth ডেটা (staging-এর `auth.users` খালি/পরীক্ষামূলক হলে):
+   ```bash
+   pg_restore -d "$STAGING_URL" --data-only --no-owner auth.dump
+   ```
+4. **মেলান:** `manifest.json`-এর প্রতিটি সংখ্যা বনাম staging-এ `select count(*)`; সাথে বিজনেস-চেক: সর্বশেষ cash closing, balances-এর শেষ তারিখ, collection মোট, inventory মোট ৳। চেকলিস্টে তারিখ ও সই রাখুন।
+
+### C. আসল বিপর্যয়ে (নতুন project)
+1. নতুন Supabase project (Singapore) → B-এর ধাপ ২–৩।
+2. হাতে বসান: **Auth settings** (Site URL `https://app.nabiad.com`, sign-up বন্ধ, password ≥১০, MFA), **Storage bucket** `cheque-photos` (private, ৩MB, image) ও ফাইল (Step 2), **Edge Function `notify`** + Secrets (`VAPID_*`, `CRON_SECRET`, ঐচ্ছিক Resend/WhatsApp), **pg_cron** job (`nabiad-daily-backup` `0 18 * * *`, `nabiad-daily-summary` `0 14 * * *`) ও Vault secret `notify_cron_secret`।
+3. `config.js`-এ নতুন `SUPABASE_URL` ও anon key → version bump → push; DNS অপরিবর্তিত (GitHub Pages)।
+4. সব ইউজারকে একবার আবার লগইন; 2FA factor থাকলে `auth.factor*` সারি আলাদা — না থাকলে Admin → Users → 🛡 থেকে reset।
+
+> 🔎 সীমা: Supabase-এ `auth` schema-র restore (বিশেষ করে `auth.mfa_factors`/sessions) এবং নতুন project-এ পূর্ণ drill এখনো করা হয়নি। প্রথম staging drill-এই এটা যাচাই হবে।
+
+---
+
+## পরের ধাপ
+- **Step 2:** Storage ছবির সাপ্তাহিক/দৈনিক sync (একই private repo/অন্য storage)।
+- **Step 3:** `dumpAll`/snapshot table registry একীকরণ + Backup পাতায় "শেষ off-site সফল" KPI।
