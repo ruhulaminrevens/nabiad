@@ -311,11 +311,23 @@ let sb = null;
 async function fetchAll(table, order = "id", columns = "*") {
   let out = [], from = 0; const step = 1000;
   for (;;) {
-    const { data, error } = await sb.from(table).select(columns).order(order).range(from, from + step - 1);
+    let q = sb.from(table).select(columns);
+    for (const col of [].concat(order)) q = q.order(col);
+    const { data, error } = await q.range(from, from + step - 1);
     if (error) throw error; out = out.concat(data); if (data.length < step) break; from += step;
   }
   return out;
 }
+/* BACKUP_TABLES:start - table -> stable order column(s). Keep equal to public.nabiad_restore_tables() + profiles, leaf_marks (run scripts/check-backup-tables.py) */
+const BACKUP_TABLES = {
+  accounts: "code", dist_asms: "id", dist_parties: "id", inv_items: "id", rm_products: "code", cheque_purposes: "id",
+  cheques: "id", cheque_status: "id", cheque_statement_verifications: "cheque_id", books: "id", balances: ["date", "code"],
+  balance_drafts: "date", reminders: "id", cash_records: "date", cashbook_days: "date", cashbook_ledgers: "id",
+  cash_group_names: "group_key", cash_tally_vouchers: ["date", "type", "ref"], dist_collections: "id", dist_opening: "id",
+  dist_sales_reg: "id", inv_demand: ["ch", "month"], inv_orders: "id", rm_daily: ["date", "product"], rm_ledger: "id",
+  inv_locks: "month", profiles: "id", leaf_marks: "id"
+};
+/* BACKUP_TABLES:end */
 const SbAPI = {
   async init() { await loadScript("vendor/supabase.js"); sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY); },
   async session() {
@@ -3461,6 +3473,7 @@ Object.assign(SbAPI, {
   async cbRange(from, to) { const { data, error } = await sb.from("cashbook_days").select("*").gte("date", from).lte("date", to).order("date").limit(3000); if (error) throw error; return data; },
   async lastBookDate() { const { data, error } = await sb.from("cashbook_days").select("date").eq("status", "final").order("date", { ascending: false }).limit(1); if (error) throw error; return data?.[0]?.date || null; },
   async backups() { const { data, error } = await sb.from("backups").select("id,at,kind,size_rows").order("at", { ascending: false }).limit(60); if (error) throw error; return data; },
+  async offsiteRuns() { const { data, error } = await sb.from("offsite_backup_runs").select("id,kind,ok,stamp,bytes,detail,at").order("at", { ascending: false }).limit(60); if (error) { if (tallySchemaMissing(error)) return null; throw error; } return data; },
   async backupData(id) { const { data, error } = await sb.from("backups").select("data").eq("id", id).single(); if (error) throw error; return data.data; },
   async restoreSnapshot(id, apply = false, tables = null) {
     const { data, error } = await sb.rpc("nabiad_restore_snapshot", {p_backup_id: id, p_apply: apply, p_tables: tables});
@@ -3476,7 +3489,7 @@ Object.assign(SbAPI, {
   async setMyName(n) { const { error } = await sb.rpc("set_my_name", { n }); if (error) throw error; },
   async changePassword(p) { const { error } = await sb.auth.updateUser({ password: p }); if (error) throw error; },
   async signOutOthers() { const { error } = await sb.auth.signOut({ scope: "others" }); if (error) throw error; },
-  async dumpAll() { const T = ["accounts", "cheques", "cheque_status", "balances", "books", "reminders", "cash_records", "balance_drafts", "dist_parties", "dist_collections", "inv_items", "inv_orders", "inv_demand", "rm_products", "rm_daily", "rm_ledger", "inv_locks", "dist_opening", "dist_sales_reg", "cashbook_days", "cash_group_names"], o = {}; for (const t of T) { try { o[t] = await fetchAll(t, t === "cash_group_names" ? "group_key" : t === "accounts" ? "code" : t === "balances" ? "date" : t === "balance_drafts" || t === "cash_records" || t === "cashbook_days" ? "date" : t === "dist_parties" ? "name" : t === "inv_demand" || t === "inv_locks" ? "month" : t === "rm_products" ? "code" : t === "rm_daily" ? "date" : "id"); } catch (e) { o[t] = { error: e.message }; } } return o; }
+  async dumpAll() { const o = {}; for (const [t, order] of Object.entries(BACKUP_TABLES)) { try { o[t] = await fetchAll(t, order); } catch (e) { o[t] = { error: e.message }; } } return o; }
 });
 Object.assign(DemoAPI, {
   async balancesRange(from, to, { preserveMissing = false } = {}) { const h = await this.hist(), out = []; for (const [d, m] of h) if (d >= from && d <= to) for (const c in m) out.push({ date: d, code: c, total: preserveMissing && m[c].total == null ? null : Number(m[c].total) || 0, block: Number(m[c].block) || 0 }); return out.sort((a, b) => a.date.localeCompare(b.date)); },
@@ -3491,6 +3504,7 @@ Object.assign(DemoAPI, {
   async cbRange(from, to) { const c = demoStore.cb ||= {}; return Object.values(c).filter(r => r.date >= from && r.date <= to).sort((a, b) => a.date.localeCompare(b.date)); },
   async lastBookDate() { const c = demoStore.cb ||= {}; return Object.keys(c).filter(k => c[k].status === "final").sort().pop() || null; },
   async backups() { return (demoStore.backups ||= []).map(({ data, ...b }) => b); },
+  async offsiteRuns() { return []; },
   async backupData(id) { return (demoStore.backups || []).find(b => b.id === id)?.data; },
   async backupNow() { const b = { id: Date.now(), at: new Date().toISOString(), kind: "manual", size_rows: demoStore.cheques.length, data: { cheques: demoStore.cheques, cash: demoStore.cash } }; (demoStore.backups ||= []).unshift(b); this.save(); return b.id; },
   async setMyName(n) { S.me.name = n; sessionStorage.setItem("nabiad_demo_user", JSON.stringify(S.me)); },
@@ -4835,6 +4849,19 @@ function backupRestoreModal(snapshot, preview, refresh, applyRestore = tables =>
     };
   });
 }
+/* Off-site backup status for the Backup page. runs: array (newest first) | null (log table not installed) | undefined (could not load) */
+const OFFSITE_STALE_H = { db: 36, storage: 9 * 24 };
+function offsiteStatus(runs, kind) {
+  const label = kind === "db" ? bi("শেষ off-site (ডেটাবেস)", "Last off-site (database)") : bi("শেষ off-site (ছবি)", "Last off-site (photos)");
+  if (runs === undefined) return { card: [label, asUnavailable(), ""], warn: "" };
+  if (runs === null) return { card: [label, bi("সেটআপ হয়নি", "Not set up"), bi("schema_offsite_backup_runs.sql প্রয়োগ ও workflow চালু করুন", "Apply schema_offsite_backup_runs.sql and enable the workflow")], warn: kind === "db" ? bi("Off-site backup এখনো চালু নেই — ডেটাবেস নষ্ট হলে এই Backup-ও হারাবে।", "Off-site backup is not set up yet. If the database is lost, these backups are lost with it.") : "" };
+  const mine = runs.filter(r => r.kind === kind), ok = mine.find(r => r.ok), last = mine[0];
+  const failedLast = !!last && !last.ok;
+  if (!ok) return { card: [label, "—", failedLast ? bi("শেষ run ব্যর্থ", "Last run failed") : bi("এখনো সফল run নেই", "No successful run yet")], warn: failedLast ? bi("শেষ off-site run ব্যর্থ হয়েছে।", "The last off-site run failed.") : "" };
+  const hours = (Date.now() - Date.parse(ok.at)) / 36e5, stale = hours > OFFSITE_STALE_H[kind];
+  const sub = [relTime(ok.at), stale ? "⚠ " + bi("পুরনো", "stale") : "", failedLast ? bi("শেষ run ব্যর্থ", "last run failed") : ""].filter(Boolean).join(" · ");
+  return { card: [label, auditStamp(ok.at), sub], warn: stale || failedLast ? bi(`${kind === "db" ? "ডেটাবেস" : "ছবি"} off-site backup ${stale ? "সময়মতো হয়নি" : "শেষবার ব্যর্থ হয়েছে"} — GitHub Actions দেখুন।`, `${kind === "db" ? "Database" : "Photo"} off-site backup ${stale ? "is overdue" : "failed on its last run"}. Check GitHub Actions.`) : "" };
+}
 async function vBackup(out) {
   out.innerHTML = head(bi("ব্যাকআপ ও রিস্টোর", "Backup & Restore"), `${!DEMO ? `<button class="btn" type="button" id="bk-upload">${ico("plus")} ${bi("ব্যাকআপ আপলোড ও রিস্টোর", "Upload backup & restore")}</button>` : ""}<button class="btn pri" type="button" id="bk-now">${ico("save")} ${bi("এখনই Backup","Backup now")}</button><button class="btn" type="button" id="bk-dl">${ico("dl")} ${bi("বর্তমান ডাটা (Excel)","Current data (Excel)")}</button>`) +
     `${!DEMO ? `<input type="file" hidden id="bk-upload-file" accept=".json,application/json">
@@ -4846,16 +4873,18 @@ async function vBackup(out) {
       <div id="bk-list"></div></div>`;
   const g = id => $("#" + id,out), list = g("bk-list");
   const kind = value => ({auto:bi("স্বয়ংক্রিয়","Automatic"),manual:bi("ম্যানুয়াল","Manual"),restore_point:bi("রিস্টোরের আগের ব্যাকআপ","Pre-restore snapshot"),other:bi("অন্যান্য","Other")})[value] || bi("অন্যান্য","Other");
-  let rows = [], selected = "", busy = false;
+  let rows = [], selected = "", busy = false, offsite;
   const timestamp = row => row ? auditStamp(row.at) : "—";
   function draw() {
     const auto = rows.filter(r => r.kind === "auto"), manual = rows.filter(r => r.kind === "manual");
     const fresh = auto[0] && Date.now() - Date.parse(auto[0].at) < 36 * 3600000;
-    g("bk-kpi").innerHTML = securityMetrics([
+    const offDb = offsiteStatus(offsite, "db"), offSt = offsiteStatus(offsite, "storage"), warns = [offDb.warn, offSt.warn].filter(Boolean);
+    g("bk-kpi").innerHTML = warns.map(w => `<div class="alert rd" role="alert">${esc(w)}</div>`).join("") + securityMetrics([
       [bi("শেষ স্বয়ংক্রিয়","Latest automatic"),timestamp(auto[0]),auto[0] ? (fresh ? relTime(auto[0].at) : bi("৩৬ ঘণ্টা পেরিয়েছে","Older than 36 hours")) : bi("স্বয়ংক্রিয় snapshot পাওয়া যায়নি","No automatic snapshot found")],
       [bi("শেষ ম্যানুয়াল","Latest manual"),timestamp(manual[0]),manual[0] ? bi("রেকর্ড ","Records ") + money0(manual[0].size_rows) : ""],
       [bi("সংরক্ষিত snapshot","Stored snapshots"),String(rows.length),bi("স্বয়ংক্রিয় ","Automatic ") + auto.length + " · " + bi("ম্যানুয়াল ","Manual ") + manual.length + " · " + bi("অন্যান্য ","Other ") + (rows.length-auto.length-manual.length)],
-      [bi("নির্ধারিত সময়","Configured schedule"),bi("প্রতিদিন ০০:০০","Daily at 00:00"),bi("ঢাকা সময়","Dhaka time")]
+      [bi("নির্ধারিত সময়","Configured schedule"),bi("প্রতিদিন ০০:০০","Daily at 00:00"),bi("ঢাকা সময়","Dhaka time")],
+      offDb.card, offSt.card
     ]);
     const visible = rows.filter(r => !selected || (["auto","manual"].includes(r.kind) ? r.kind : "other") === selected);
     g("bk-count").textContent = String(visible.length);
@@ -4875,8 +4904,9 @@ async function vBackup(out) {
     busy = true; g("bk-refresh").disabled = true;
     list.innerHTML = `<div class="empty">${bi("লোড হচ্ছে…","Loading…")}</div>`;
     try {
-      const data = await API.backups();
+      const [data, runs] = await Promise.all([API.backups(), API.offsiteRuns().catch(() => undefined)]);
       if (!out.isConnected) return;
+      offsite = runs;
       rows = [...data].sort((a,b) => Date.parse(b.at)-Date.parse(a.at)); draw();
     } catch {
       if (out.isConnected) {

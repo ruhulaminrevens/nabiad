@@ -107,5 +107,13 @@ aws s3 sync files s3://cheque-photos --endpoint-url "$S3_ENDPOINT"
 
 ---
 
+## Step 3 — Registry একীকরণ ও Backup পাতার KPI
+
+- **Table registry:** `app.js`-এর `BACKUP_TABLES` এখন DB snapshot (`nabiad_restore_tables()` + `profiles`, `leaf_marks`) ও off-site script-এর তালিকার সঙ্গে মিলে। `python3 scripts/check-backup-tables.py` না মিললে fail করে (CI-তে চলে)। নতুন table যোগ করলে তিন জায়গাতেই যোগ করুন।
+- **Stable paging:** `fetchAll` এখন একাধিক order column নেয় (যেমন `balances` → `date, code`), তাই 1000-row পাতায় row বাদ/দ্বিগুণ হয় না।
+- **Run log:** `schema_offsite_backup_runs.sql` একবার Supabase SQL editor-এ চালান (admin/boss শুধু দেখতে পারে; লেখে workflow)। না চালালে workflow ব্যর্থ হয় না, শুধু Backup পাতায় "Not set up" দেখায়।
+- **Backup পাতা:** "Last off-site (database/photos)" কার্ড। DB ৩৬ ঘণ্টা, photos ৯ দিনের বেশি পুরনো বা শেষ run ব্যর্থ হলে লাল সতর্কতা।
+- **CI:** `.github/workflows/checks.yml` — JS syntax, shell syntax, registry ও version check।
+
 ## পরের ধাপ
-- **Step 3:** `dumpAll`/snapshot table registry একীকরণ + Backup পাতায় "শেষ off-site সফল" KPI।
+- Outbox dead-letter + IndexedDB, admin/boss-এর জন্য 2FA বাধ্যতামূলক, restore drill।

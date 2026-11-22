@@ -27,8 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install age
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq age jq
+      - name: Install age and PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age jq postgresql-client
 
       - name: Fetch previous storage manifest (change alarm)
         run: |
@@ -55,6 +55,7 @@ jobs:
           [ "$(date -u +%d)" -le 7 ] && [ "$(date -u +%u)" = "7" ] && tag="storage-monthly-$stamp"
           gh release create "$tag" out/nabiad-storage-*.tar.age out/nabiad-storage-*.tar.age.sha256 out/storage-manifest.json \
             -R "$BACKUP_REPO" --title "$tag" --notes "Encrypted Nabiad storage (cheque photos) backup. Restore: scripts/backup/README.md"
+          echo "STAMP=$stamp" >> "$GITHUB_ENV"
 
       - name: Prune old storage backups (5 weekly, 13 months first-Sunday)
         run: |
@@ -67,3 +68,16 @@ jobs:
               storage-*)         [ "$age" -gt 35 ]  && gh release delete "$tag" -R "$BACKUP_REPO" --cleanup-tag -y ;;
             esac
           done || true
+
+      - name: Record result for the app's Backup page
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ "$JOB_STATUS" = "success" ]; then
+            bytes="$(stat -c %s out/nabiad-storage-*.tar.age 2>/dev/null | head -1)"
+            bash scripts/backup/record-run.sh storage ok "${STAMP:-}" "$bytes" "run ${GITHUB_RUN_ID}"
+          else
+            bash scripts/backup/record-run.sh storage fail "" "" "run ${GITHUB_RUN_ID}: see GitHub Actions"
+          fi
