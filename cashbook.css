@@ -497,3 +497,7 @@
   .cb-report-controls #cb-register{flex:none;max-width:none;white-space:nowrap}
   .cb-report-source{flex:1 1 120px}
 }
+
+/* v6.107: Cash Difference = amount on one line, status below */
+.cb-df-n{display:block;white-space:nowrap}
+.cb-df-s{display:block;font-size:.72rem;font-weight:700;opacity:.85}

@@ -928,8 +928,8 @@ async function vCashBook(v) {
       for (const [id, value] of Object.entries({x1: open, x2: receipts, x3: payments, x4: expected, counted, movement})) get(id).textContent = moneyText(value);
       get("movement").className = movement == null ? "" : movement < 0 ? "rd" : movement > 0 ? "gr" : "";
       dateStat("df").className = diff == null ? "mut" : diff === 0 ? "gr" : diff > 0 ? "am" : "rd";
-      dateStat("df").textContent = diff == null ? "—" : diff === 0 ? bi("৳ ০ · মিলেছে", "৳ 0 · Matches")
-        : moneyText(Math.abs(diff)) + " · " + (diff > 0 ? bi("ক্যাশ বেশি", "Cash over") : bi("ক্যাশ কম", "Cash short"));
+      dateStat("df").innerHTML = diff == null ? "—" : diff === 0 ? `<span class="cb-df-n">${bi("৳ ০", "৳ 0")}</span><small class="cb-df-s">${bi("মিলেছে", "Matches")}</small>`
+        : `<span class="cb-df-n">${moneyText(Math.abs(diff))}</span><small class="cb-df-s">${diff > 0 ? bi("ক্যাশ বেশি", "Cash over") : bi("ক্যাশ কম", "Cash short")}</small>`;
       get("activity-empty").textContent = activitySide === "r" ? bi("কোনো প্রাপ্তি নেই।", "No receipts.") : bi("কোনো পরিশোধ নেই।", "No payments.");
     };
     const loadForm = (side, item = {}, index = null, focus = false, importedItem = null) => {
