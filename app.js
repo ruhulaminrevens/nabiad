@@ -2061,6 +2061,7 @@ async function vCheques(v) {
   ];
   v.innerHTML = head("চেক তালিকা ও এনকোয়ারি", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>${S.me.role !== "boss" && moduleCan("cheque", "edit") ? `<button class="btn" id="k-verify">${ico("check")} ${bi("স্টেটমেন্ট যাচাই", "Verify statement")}</button>` : ""}`) + `<div class="card tbar noprint">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
    <div class="k-sw" style="flex:2 1 220px"><label class="f" for="k-q">${bi("চেক খুঁজুন", "Search cheques")} <kbd>/</kbd></label><input class="in" id="k-q" type="search" autocomplete="off" placeholder="${bi("চেক নং, A/C, নাম… বা >50000 status:pending", "Cheque no, A/C, name… or >50000 status:pending")}"><div class="k-tips" id="k-tips" aria-hidden="true"><span>${bi("স্মার্ট সার্চ:", "Smart search:")}</span>${[[">=1l", bi("≥ ১ লাখ", "≥ 1 lakh")], ["<10k", bi("< ১০ হাজার", "< 10k")], ["status:pending", "status:pending"], ["status:bounced", "status:bounced"], ["by:", "by:name"], ["ac:", "ac:code"]].map(([t, l]) => `<button type="button" tabindex="-1" data-tip="${t}">${l}</button>`).join("")}</div></div>
+   <button type="button" class="btn sm k-more" id="k-more" aria-expanded="false" aria-controls="k-c">${ico("sliders")}<span>${bi("আরও ফিল্টার", "More filters")}</span><b id="k-moren"></b></button>
    <div style="flex:1 1 220px"><label class="f" for="k-c">A/C</label><select class="in" id="k-c"><option value="">সব</option>${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)}${a.holder ? " · " + esc(a.holder) : ""}${a.bank ? " · " + esc(a.bank) : ""}</option>`).join("")}</select></div>
    <div><label class="f" for="k-s">স্ট্যাটাস</label><select class="in" id="k-s"></select></div>
    <div><label class="f" for="k-u">খাত</label><select class="in" id="k-u"><option value="">সব</option>${allPurposes(true).map(p => `<option value="${esc(p)}">${esc(p.split(" (")[0])}</option>`).join("")}</select></div>
@@ -2294,6 +2295,9 @@ async function vCheques(v) {
   if ($("#k-verify", v)) $("#k-verify", v).onclick = () => S.statementReady
     ? statementModal(draw)
     : toast(bi("স্টেটমেন্ট যাচাই চালু নেই। ডাটাবেস সেটআপ ও সংযোগ দেখুন।", "Statement verification is unavailable. Check the database setup and connection."), "err");
+  { const flt = $(".cflt", v), more = $("#k-more", v), cnt = () => { const n = ["k-c", "k-s", "k-u", "k-vf"].filter(id => { const el = $("#" + id, v); return el && el.value; }).length; $("#k-moren", v).textContent = n || ""; };
+    more.onclick = () => { const on = !flt.classList.contains("k-open"); flt.classList.toggle("k-open", on); more.setAttribute("aria-expanded", String(on)); };
+    flt.addEventListener("change", cnt); new MutationObserver(cnt).observe($("#k-chips", v), { childList: true }); cnt(); }
   $("#k-x", v).onclick = () => exportChequesXlsx(sorted(withStatus(filt())), `Cheques_${PF.m === "all" ? today() : pbRange(PF).join("_to_")}.xlsx`, $("#k-x", v));
   $("#k-p", v).onclick = () => {
     const arr = withStatus(filt()).sort((x, y) => x.date.localeCompare(y.date) || x.code.localeCompare(y.code)), live = arr.filter(isLive), am = accMap(); if (!arr.length) return toast("ডাটা নেই", "err");
@@ -3691,6 +3695,7 @@ async function vAdmin(v) {
       <nav id="adm-nav" class="card adm-nav" aria-label="${bi("অ্যাডমিন বিভাগ", "Admin sections")}">${nav}</nav></div>
       <div id="ad" class="adm-content" tabindex="-1"></div></div>`;
     const out = $("#ad", v), navToggle = $("#adm-nav-toggle", v);
+    { const nv = $("#adm-nav", v), cur = $('[aria-current="page"]', nv); if (cur && nv.scrollWidth > nv.clientWidth) nv.scrollLeft = cur.offsetLeft - 12; }
     navToggle.onclick = () => {
       const expanded = navToggle.getAttribute("aria-expanded") !== "true";
       navToggle.setAttribute("aria-expanded", expanded);
@@ -3795,7 +3800,7 @@ async function vAdmin(v) {
       const accessReady = DEMO || us.some(u => Object.hasOwn(u, "module_access"));
       const F = userFilters;
       out.innerHTML = metrics([[bi("ব্যবহারকারী", "Users"), us.length], [bi("সক্রিয়", "Active"), us.filter(u => u.active).length], [bi("কাস্টম অ্যাক্সেস", "Custom access"), us.filter(u => u.role !== "admin" && u.module_access != null).length]]) +
-        `<div class="card adm-tools"><div class="adm-toolbar">${searchBox("u-find", bi("নাম বা ইমেইল", "Name or email"))}<button class="btn pri" id="u-new">${ico("plus")} ${bi("নতুন ব্যবহারকারী", "New user")}</button></div>
+        `<div class="card adm-tools"><div class="adm-toolbar">${searchBox("u-find", bi("নাম বা ইমেইল", "Name or email"))}<button class="btn pri" id="u-new">${ico("plus")}<span>${bi("নতুন ব্যবহারকারী", "New user")}</span></button></div>
           <div class="adm-actions"><select class="in" id="u-role" aria-label="${bi("রোল", "Role")}"><option value="">${bi("সব রোল", "All roles")}</option><option value="admin">Admin</option><option value="staff">Staff</option><option value="boss">Boss</option></select><select class="in" id="u-state" aria-label="${bi("অবস্থা", "Status")}"><option value="">${all}</option><option value="active">${bi("সক্রিয়", "Active")}</option><option value="inactive">${bi("নিষ্ক্রিয়", "Inactive")}</option></select></div></div>
           ${accessReady ? "" : `<div class="alert am adm-count">${bi("মডিউল অ্যাক্সেস চালু করতে schema_module_access.sql প্রয়োগ করুন।", "Apply schema_module_access.sql to enable module access.")}</div>`}
           <div class="mut sm adm-count" id="u-count" role="status"></div><div class="ulist" id="u-results"></div>`;

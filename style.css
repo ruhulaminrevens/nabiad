@@ -3402,3 +3402,28 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .dpx-dup{margin-top:6px;font-size:12px;line-height:1.45;color:#92400e;background:#fef3c7;border-radius:8px;padding:0 8px}
 .dpx-dup:empty{display:none}.dpx-dup:not(:empty){padding:6px 9px}.dpx-dup small{color:#b45309}
 @media (max-width:640px){.fgrid .dpx-h{grid-column:span 1!important}.fgrid{gap:10px}}
+
+/* Cheque list + Admin phone polish (v6.164) */
+.k-more{display:none;align-items:center;gap:6px}.k-more b{min-width:18px;padding:0 5px;border-radius:99px;background:var(--pri);color:#fff;font-size:11px;line-height:18px;text-align:center}.k-more b:empty{display:none}
+@media (max-width:640px){
+  .k-more{display:inline-flex;align-self:flex-start}
+  .cflt:not(.k-open)>div:not(.k-sw){display:none}
+  .cflt.k-open .k-more{background:var(--pri-soft);border-color:var(--pri)}
+  .k-quick{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.k-quick::-webkit-scrollbar{display:none}.k-quick>*{flex:none}
+  .enquiry-actions{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:4px 8px!important}
+  .enquiry-actions label{grid-row:1;font-size:11px;color:var(--mut);font-weight:700}
+  .enquiry-actions .in{grid-row:2}
+  .enquiry-actions .cq-clear,.enquiry-actions .btn{grid-row:3;grid-column:1/-1}
+}
+@media (max-width:900px){
+  .adm-nav-toggle{display:none!important}
+  .adm-nav{display:flex!important;flex-wrap:nowrap;gap:4px;margin:0;padding:5px;max-height:none;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+  .adm-nav::-webkit-scrollbar{display:none}
+  .adm-nav-group{display:contents}.adm-nav-label{display:none}
+  .adm-nav a{flex:none;white-space:nowrap;min-height:36px;padding:6px 12px}
+  .adm-nav-wrap{padding-block:6px}
+}
+@media (max-width:640px){
+  .adm-toolbar{grid-template-columns:minmax(0,1fr) auto!important}
+  .adm-toolbar #u-new span{display:none}.adm-toolbar #u-new{padding-inline:12px}
+}
