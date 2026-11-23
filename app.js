@@ -3438,7 +3438,7 @@ function openMore(keys, mob, bd, lo) {
   const cur = (location.hash.match(/^#\/(\w+)/) || [])[1], dark = getTheme() === "dark";
   const groups = []; keys.filter(k => !mob.includes(k)).forEach(k => { const s = secOf(k); let g = groups.find(x => x.s === s); if (!g) groups.push(g = { s, ks: [] }); g.ks.push(k); });
   groups.sort((a, b) => (a.s === "more" ? 0 : 1) - (b.s === "more" ? 0 : 1));
-  const MORE_ORDER = ["dash", "accounts", "books", "register", "dparty", "tax", "rem", "settings", "audit", "admin"]; const mg = groups.find(g => g.s === "more"); if (mg) mg.ks.sort((a, b) => (MORE_ORDER.indexOf(a) + 1 || 99) - (MORE_ORDER.indexOf(b) + 1 || 99));
+  const MORE_ORDER = ["dash", "accounts", "books", "register", "dparty", "rem", "settings", "audit", "admin"]; const mg = groups.find(g => g.s === "more"); if (mg) mg.ks.sort((a, b) => (MORE_ORDER.indexOf(a) + 1 || 99) - (MORE_ORDER.indexOf(b) + 1 || 99));
   const el = document.createElement("div"); el.className = "sheet sheet2";
   el.innerHTML = `<div class="box" role="dialog" aria-modal="true" aria-labelledby="drawer-title" tabindex="-1"><div class="sh-hd"><div class="grab"></div><b id="drawer-title">সব পাতা</b><button class="iconbtn sh-x" data-x="close" title="বন্ধ">✕</button></div><div class="sh-body">
     ${groups.map(g => `<div class="sh-sec">${g.s === "more" ? "আরও" : SECS[g.s] || "মেনু"}</div><div class="sh-grid">${g.ks.map(k => `<a href="#/${k}" class="${k === cur ? "on" : ""}"><span class="ti">${ico(ROUTES[k].ic)}${bd[k] ? `<span class="badge">${bd[k]}</span>` : ""}</span><span class="tl">${k === "dash" ? "হোম" : ROUTES[k].t}</span></a>`).join("")}</div>`).join("")}
