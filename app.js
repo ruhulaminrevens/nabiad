@@ -407,6 +407,7 @@ const SbAPI = {
     const { error } = await q; if (error && isNetErr(error) && !overwrite) { Outbox.add("bal", payload); return; }
     if (error) { if (error.code === "23505") throw new Error("এই তারিখের ব্যালেন্স আগেই সেভ করা আছে — শুধু Admin বদলাতে পারবে"); throw error; }
   },
+  async historyAll(from, to) { const out = []; for (let i = 0; ; i += 1000) { const { data, error } = await sb.from("balances").select("date,code,total,block").gte("date", from).lte("date", to).order("date").order("code").range(i, i + 999); if (error) throw error; data.forEach(r => out.push({ date: r.date, code: r.code, total: r.total == null ? null : Number(r.total), block: r.block == null ? null : Number(r.block) })); if (data.length < 1000) break; } return out; },
   async history(code, from, to) { const { data, error } = await sb.from("balances").select("date,total,block,remark").eq("code", code).gte("date", from).lte("date", to).order("date"); if (error) throw error; return data.map(r => ({ date: r.date, total: Number(r.total), block: r.block == null ? null : Number(r.block), remark: r.remark })); },
   async balanceCount() { const { count } = await sb.from("balances").select("date", { count: "exact", head: true }); return count || 0; },
   async balanceStats() {
@@ -501,6 +502,7 @@ const DemoAPI = {
     if (overwrite) rows.forEach(r => { const o = h.get(d)?.[r.code]; if (o && (o.total !== r.total || (o.block || 0) !== (r.block || 0))) this.aud("balances", "update", `${d} · ${r.code}`, { total: o.total, block: o.block }, { total: r.total, block: r.block }); });
     const m = {}; rows.forEach(r => { m[r.code] = { total: r.total, block: r.block, remark: r.remark, od: r.od, odp: r.odp, by: S.me.name }; demoStore.balances[d + "|" + r.code] = m[r.code]; }); h.set(d, { ...(h.get(d) || {}), ...m }); this.save();
   },
+  async historyAll(from, to) { const h = await this.hist(), out = []; for (const [d, m] of [...h.entries()].sort()) if (d >= from && d <= to) for (const c in m) out.push({ date: d, code: c, total: m[c].total, block: m[c].block }); return out; },
   async history(code, from, to) { const h = await this.hist(); const out = []; for (const [d, m] of [...h.entries()].sort()) if (d >= from && d <= to && m[code]) out.push({ date: d, total: m[code].total, block: m[code].block, remark: m[code].remark }); return out; },
   async balanceCount() { const h = await this.hist(); let n = 0; h.forEach(m => n += Object.keys(m).length); return n; },
   async balanceStats() { const h = await this.hist(), ds = [...h.keys()].sort(); return { first: ds[0] || null, last: ds.at(-1) || null, n: await this.balanceCount() }; },
@@ -2255,12 +2257,75 @@ function bankRepHtml(id, date, rows, by, filteredOf) {
       <tr class="tot"><td></td><td colspan="2">GRAND TOTAL</td><td class="r num">${money0(T.t)}</td><td class="r num">${money0(T.b)}</td><td class="r num">${money0(T.t - T.b)}</td><td></td></tr></tbody></table>
       ${dcFoot(by ? " · Entered by " + esc(by) : "")}</div>`;
 }
+/* ---------- Account history helpers (period grouping, KPIs, chart) ---------- */
+const H_MODES = [["daily", "দৈনিক", "Daily"], ["weekly", "সাপ্তাহিক", "Weekly"], ["monthly", "মাসিক", "Monthly"], ["yearly", "বার্ষিক", "Yearly"], ["fy", "অর্থবছর", "Financial Year"]];
+const fyStart = d => { const y = +d.slice(0, 4); return +d.slice(5, 7) >= 7 ? y : y - 1; };   /* Bangladesh financial year: 1 Jul – 30 Jun */
+const hKey = (m, d) => m === "daily" ? d : m === "weekly" ? addDays(d, -((new Date(d + "T00:00:00").getDay() + 1) % 7)) : m === "monthly" ? d.slice(0, 7) : m === "yearly" ? d.slice(0, 4) : String(fyStart(d));   /* weeks run Sat–Fri */
+function hRange(m) {
+  const t = today(), y = +t.slice(0, 4);
+  const from = m === "daily" ? addDays(t, -29) : m === "weekly" ? hKey("weekly", addDays(t, -77)) : m === "monthly" ? (() => { const d = new Date(t + "T00:00:00"); d.setMonth(d.getMonth() - 11, 1); return iso(d); })() : m === "yearly" ? `${y - 4}-01-01` : `${fyStart(t) - 4}-07-01`;
+  return { from, to: t };
+}
+const mon3 = d => new Date(d + "T00:00:00").toLocaleDateString("en-GB", { month: "short" }), dm3 = d => `${d.slice(8, 10)} ${mon3(d)}`;
+function hLabel(m, k) {
+  if (m === "daily") return `${dmy(k)} <i>${new Date(k + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short" })}</i>`;
+  if (m === "weekly") return `${dm3(k)} – ${dm3(addDays(k, 6))}`;
+  if (m === "monthly") return `${mon3(k + "-01")} ${k.slice(0, 4)}`;
+  if (m === "yearly") return k;
+  return `FY ${k}-${String(+k + 1).slice(2)}`;
+}
+const compactN = n => { const a = Math.abs(n), s = n < 0 ? "-" : ""; return a >= 1e7 ? s + (a / 1e7).toFixed(2).replace(/\.?0+$/, "") + "Cr" : a >= 1e5 ? s + (a / 1e5).toFixed(1).replace(/\.0$/, "") + "L" : a >= 1e3 ? s + (a / 1e3).toFixed(1).replace(/\.0$/, "") + "k" : s + Math.round(a); };
+/* rows: [{date,total,block,remark}] ascending → grouped periods + overall stats. A "txn" = a saved day on which the balance moved. */
+function hGroup(rows, m) {
+  const gs = [], map = new Map(); let prev = null, moves = 0;
+  rows.forEach(r => {
+    const k = hKey(m, r.date); let g = map.get(k);
+    if (!g) { g = { k, rows: [], moves: 0, hi: -Infinity, lo: Infinity, sum: 0 }; map.set(k, g); gs.push(g); }
+    const mv = prev !== null && r.total !== prev ? 1 : 0; g.moves += mv; moves += mv; prev = r.total;
+    g.rows.push(r); g.hi = Math.max(g.hi, r.total); g.lo = Math.min(g.lo, r.total); g.sum += r.total;
+  });
+  gs.forEach((g, i) => { const last = g.rows[g.rows.length - 1]; g.date = last.date; g.total = last.total; g.block = last.block || 0; g.remark = last.remark || ""; g.avg = g.sum / g.rows.length; g.chg = g.total - (i ? gs[i - 1].total : g.rows[0].total); });
+  const tot = rows.map(r => r.total), hi = Math.max(...tot), lo = Math.min(...tot), first = rows[0], last = rows[rows.length - 1];
+  return { gs, moves, hi, lo, hiD: rows.find(r => r.total === hi).date, loD: rows.find(r => r.total === lo).date, avg: tot.reduce((a, b) => a + b, 0) / tot.length, first, last, chg: last.total - first.total, pct: first.total ? (last.total - first.total) / Math.abs(first.total) * 100 : null, days: rows.length };
+}
+const H_G = { W: 640, H: 210, L: 46, R: 12, T: 12, B: 26 };
+/* inline SVG area chart over the grouped closings; hover tooltip is wired by hChartBind */
+function hChart(gs, m) {
+  const { W, H, L, R, T, B } = H_G, n = gs.length, vals = gs.map(g => g.total), use = gs.map(g => g.total - g.block), showUse = gs.some(g => g.block > 0), all = showUse ? vals.concat(use) : vals;
+  let lo = Math.min(...all), hi = Math.max(...all); const pad = (hi - lo) * .1 || Math.abs(hi) * .05 || 1; hi += pad; lo -= pad; if (lo < 0 && Math.min(...all) >= 0) lo = 0;
+  const X = i => L + (n === 1 ? (W - L - R) / 2 : i / (n - 1) * (W - L - R)), Y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const line = a => a.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+  const grid = [0, .25, .5, .75, 1].map(f => { const v = lo + (hi - lo) * f, y = Y(v).toFixed(1); return `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" class="hg"/><text x="${L - 6}" y="${(+y + 3.5).toFixed(1)}" class="ht" text-anchor="end">${compactN(v)}</text>`; }).join("");
+  const xl = [...new Set([0, Math.floor((n - 1) / 2), n - 1])].map(i => `<text x="${X(i).toFixed(1)}" y="${H - 7}" class="ht" text-anchor="${n > 1 && i === 0 ? "start" : n > 1 && i === n - 1 ? "end" : "middle"}">${esc(m === "daily" ? dm3(gs[i].k) : hLabel(m, gs[i].k).replace(/<[^>]+>/g, ""))}</text>`).join("");
+  const iHi = vals.indexOf(Math.max(...vals)), iLo = vals.indexOf(Math.min(...vals));
+  const dots = n > 1 && iHi !== iLo ? `<circle cx="${X(iHi).toFixed(1)}" cy="${Y(vals[iHi]).toFixed(1)}" r="4" class="hdh"/><circle cx="${X(iLo).toFixed(1)}" cy="${Y(vals[iLo]).toFixed(1)}" r="4" class="hdl"/>` : "";
+  const area = n > 1 ? `<path d="${line(vals)}L${X(n - 1).toFixed(1)},${H - B}L${X(0).toFixed(1)},${H - B}Z" fill="url(#hga)"/>` : "";
+  return `<div class="sn-chart" data-lo="${lo}" data-hi="${hi}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${bi("ব্যালেন্সের গ্রাফ", "Balance chart")}"><defs><linearGradient id="hga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7c3aed" stop-opacity=".28"/><stop offset="1" stop-color="#7c3aed" stop-opacity="0"/></linearGradient><linearGradient id="hgl" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>${grid}${area}${n > 1 ? `<path d="${line(vals)}" class="hl"/>` : ""}${showUse && n > 1 ? `<path d="${line(use)}" class="hu"/>` : ""}${dots}${n === 1 ? `<circle cx="${X(0)}" cy="${Y(vals[0]).toFixed(1)}" r="5" class="hdh"/>` : ""}${xl}<line class="hcur" x1="0" x2="0" y1="${T}" y2="${H - B}"/><circle class="hcd" r="5" cx="0" cy="0"/><rect class="hov" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg><div class="hq" hidden></div>${showUse ? `<div class="hlg"><span><i class="l1"></i>${bi("টোটাল", "Total")}</span><span><i class="l2"></i>${bi("ব্যবহারযোগ্য", "Usable")}</span></div>` : ""}</div>`;
+}
+function hChartBind(root, gs, m) {
+  const box = $(".sn-chart", root); if (!box) return;
+  const svg = $("svg", box), tip = $(".hq", box), cur = $(".hcur", svg), cd = $(".hcd", svg), { W, H, L, R, T, B } = H_G, n = gs.length, lo = +box.dataset.lo, hi = +box.dataset.hi;
+  const move = e => {
+    const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, i = n === 1 ? 0 : Math.round(Math.min(1, Math.max(0, (x - L) / (W - L - R))) * (n - 1)), g = gs[i];
+    const cx = L + (n === 1 ? (W - L - R) / 2 : i / (n - 1) * (W - L - R)), cy = T + (1 - (g.total - lo) / (hi - lo)) * (H - T - B);
+    cur.setAttribute("x1", cx); cur.setAttribute("x2", cx); cd.setAttribute("cx", cx); cd.setAttribute("cy", cy); cur.style.opacity = cd.style.opacity = 1;
+    tip.hidden = false; tip.innerHTML = `<b>${hLabel(m, g.k)}</b><span>${bi("টোটাল", "Total")} <strong>৳ ${money0(g.total)}</strong></span>${g.block ? `<span>${bi("ব্লক", "Block")} ${money0(g.block)}</span><span>${bi("ব্যবহারযোগ্য", "Usable")} ${money0(g.total - g.block)}</span>` : ""}`;
+    const tw = tip.offsetWidth; tip.style.left = Math.min(r.width - tw - 4, Math.max(4, cx / W * r.width - tw / 2)) + "px";
+  };
+  const out = () => { tip.hidden = true; cur.style.opacity = cd.style.opacity = 0; };
+  const ov = $(".hov", svg); ov.addEventListener("pointermove", move); ov.addEventListener("pointerdown", move); ov.addEventListener("pointerleave", out);
+}
+
 async function vCrep(v) {
   let date = sessionStorage.getItem("nabiad_crep_date") || S.lastBal || today(); sessionStorage.removeItem("nabiad_crep_date");
   const canShare = !!navigator.share;
   v.innerHTML = head("ব্যাংক ক্লোজিং রিপোর্ট", `<button class="btn cb-action sn-png" id="r-png">${ico("img")}<span class="lb">${bi("ছবি", "Image")}</span></button><button class="btn cb-action sn-pdf" id="r-pdf">${ico("print")}<span class="lb">PDF</span></button><button class="btn cb-action sn-xl" id="r-xl">${ico("dl")}<span class="lb">Excel</span></button>${canShare ? `<button class="btn cb-action sn-sh" id="r-sh">${ico("share")}<span class="lb">${bi("শেয়ার", "Share")}</span></button>` : ""}`, "sn-head") + `
    <div class="sn-split">
-   <div class="card noprint sn-hist"><h3>${bi("অ্যাকাউন্ট ইতিহাস", "Account history")}</h3><div class="sn-hrow"><div class="sn-hac"><label class="f">A/C</label><div><input class="in" id="h-ac" placeholder="${bi("কোড টাইপ করুন", "Type a code")}"></div></div><div><label class="f">${bi("থেকে", "From")}</label><input class="in" type="date" id="h-f" value="${addDays(today(), -60)}"></div><div><label class="f">${bi("পর্যন্ত", "To")}</label><input class="in" type="date" id="h-t" value="${today()}"></div></div><div id="h-out" class="sn-hout"></div></div>
+   <div class="card noprint sn-hist"><div class="sn-hh"><div><h3>${bi("অ্যাকাউন্ট ইতিহাস", "Account history")}</h3><p class="mut sm">${bi("যেকোনো অ্যাকাউন্টের ব্যালেন্সের ধারা", "Balance trend of any account")}</p></div><button type="button" class="btn sm sn-hx" id="h-xl" title="Excel">${ico("dl")}<span>Excel</span></button></div>
+    <div class="sn-acw">${ico("search")}<input class="in" id="h-ac" autocomplete="off" placeholder="${bi("A/C কোড, হোল্ডার বা ব্যাংক খুঁজুন", "Search A/C code, holder or bank")}"><button type="button" class="sn-clr" id="h-clr" hidden aria-label="${bi("মুছুন", "Clear")}">${ico("xmark")}</button></div>
+    <div class="sn-top" id="h-top"></div>
+    <div class="sn-hrow"><div class="sn-hp"><label class="f" for="h-m">${bi("সময়কাল", "Period")}</label><select class="in" id="h-m">${H_MODES.map(([k, b, e]) => `<option value="${k}">${bi(b, e)}</option>`).join("")}</select></div><div><label class="f" for="h-f">${bi("থেকে", "From")}</label><input class="in" type="date" id="h-f" value="${hRange("daily").from}"></div><div><label class="f" for="h-t">${bi("পর্যন্ত", "To")}</label><input class="in" type="date" id="h-t" value="${today()}"></div></div>
+    <div id="h-out" class="sn-hout"></div></div>
    <div class="card rep-wrap"><div class="sn-pc noprint"><div class="sn-ph">${bi("অ্যাকাউন্ট প্রিভিউ", "Account Preview")}</div><div class="sn-ctl">${dateNav("r", date)}${searchBox("r-q", bi("খুঁজুন — কোড, হোল্ডার, ব্যাংক…", "Search code, holder, bank"))}</div></div><div class="rep-scroll"><div id="crep"></div></div></div></div>`;
   let data = null, bm = {};
   async function load() { date = $("#r-d", v).value; bm = await balancesOn(date); draw(); }
@@ -2287,16 +2352,50 @@ async function vCrep(v) {
     try { if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: `Bank Closing ${dmy(date)}`, text: txt }); else await navigator.share({ title: `Bank Closing ${dmy(date)}`, text: txt }); } catch (e) { if (e.name !== "AbortError") toast("শেয়ার করা যায়নি: " + e.message, "err"); }
   });
   $("#r-xl", v).onclick = () => data?.rows.length ? exportXlsx({ Closing: [[dmy2(date), "A/C", "Code", "TOTAL", "BLOCK", "USABLE", "REMARKS"], ...data.rows.map(r => [r.n, r.a.holder, r.a.code, r.total, r.block, r.total - r.block, r.remark]), ["", "TOTAL", "", data.T.t, data.T.b, data.T.t - data.T.b, ""]] }, `Closing_${date}.xlsx`) : toast("ডাটা নেই", "err");
-  const hAc = suggest($("#h-ac", v), () => acItems(true), () => hist());
-  async function hist() {
-    const c = hAc.get()?.value; if (!c) return; const rows = await API.history(c, $("#h-f", v).value, $("#h-t", v).value);
-    if (!rows.length) { $("#h-out", v).innerHTML = `<div class="empty">ডাটা নেই</div>`; return; }
-    const max = Math.max(...rows.map(r => r.total)), min = Math.min(...rows.map(r => r.total)), W = 700, H = 120, rg = max - min || 1;
-    const pts = rows.map((r, i) => `${(i / Math.max(1, rows.length - 1) * W).toFixed(1)},${(H - 8 - (r.total - min) / rg * (H - 16)).toFixed(1)}`).join(" ");
-    $("#h-out", v).innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:120px"><defs><linearGradient id="lg" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><polyline fill="none" stroke="url(#lg)" stroke-width="2.5" points="${pts}"/></svg>
-     <div class="mut sm">সর্বোচ্চ ${money0(max)} · সর্বনিম্ন ${money0(min)} · ${rows.length} ${bi("দিন", "days")}</div><div class="tw" style="max-height:300px;margin-top:8px"><table><thead><tr><th>তারিখ</th><th class="r">Total</th><th class="r">Block</th><th class="r">Usable</th><th>মন্তব্য</th></tr></thead><tbody>${[...rows].reverse().map(r => `<tr><td>${dmy(r.date)}</td><td class="r num">${money0(r.total)}</td><td class="r num">${r.block ? money0(r.block) : ""}</td><td class="r num">${money0(r.total - (r.block || 0))}</td><td class="mut sm">${esc(r.remark || "")}</td></tr>`).join("")}</tbody></table></div>`;
+  let hSeq = 0, hData = null, topList = null;
+  const hAcItems = () => acItems(true).map(it => { const a = S.accounts.find(x => x.code === it.value), br = brandOf(a); return { ...it, html: `<span class="sgb" style="background:linear-gradient(135deg,${br.c1},${br.c2})"></span><span class="sgn"><b>${esc(it.value)}</b><em>${esc(it.label)}</em></span>` }; });
+  const hAc = suggest($("#h-ac", v), hAcItems, it => { if (it) hist(); });
+  const hOut = () => $("#h-out", v), mode = () => $("#h-m", v).value;
+  async function loadTop() {
+    try {
+      const rows = await API.historyAll(addDays(today(), -90), today()), by = new Map();
+      rows.forEach(r => { if (r.total == null) return; let o = by.get(r.code); if (!o) by.set(r.code, o = { code: r.code, prev: null, moves: 0, flow: 0 }); if (o.prev !== null && r.total !== o.prev) { o.moves++; o.flow += Math.abs(r.total - o.prev); } o.prev = r.total; });
+      topList = [...by.values()].filter(o => o.moves > 0 && S.accounts.some(a => a.code === o.code)).sort((a, b) => b.moves - a.moves || b.flow - a.flow).slice(0, 5);
+    } catch { topList = []; }
   }
-  $("#h-f", v).onchange = hist; $("#h-t", v).onchange = hist; await load();
+  function renderTop() {
+    const box = $("#h-top", v); if (!box) return; const cur = hAc.get()?.value;
+    box.innerHTML = topList && topList.length ? `<span class="sn-tl">${ico("trend")}${bi("সবচেয়ে সক্রিয় ৫টি · ৯০ দিন", "Top 5 most active · 90 days")}</span>${topList.map(o => { const br = brandOf(S.accounts.find(a => a.code === o.code)); return `<button type="button" class="sn-chip${o.code === cur ? " on" : ""}" data-c="${esc(o.code)}" aria-pressed="${o.code === cur}" title="${o.moves} ${bi("বার ব্যালেন্স বদলেছে", "balance changes")}"><i style="background:linear-gradient(135deg,${br.c1},${br.c2})"></i><b>${esc(o.code)}</b><em>${o.moves}</em></button>`; }).join("")}` : "";
+  }
+  function pickAcc(code) { const a = S.accounts.find(x => x.code === code); if (a) hAc.set({ value: a.code, label: a.holder || "", sub: a.bank || "" }); }
+  const hMsg = (cls, html) => { hOut().innerHTML = `<div class="sn-hmsg ${cls}">${html}</div>`; };
+  async function hist() {
+    const my = ++hSeq, it = hAc.get(); $("#h-clr", v).hidden = !$("#h-ac", v).value; renderTop();
+    if (!it) { hData = null; return hMsg("", `${ico("search")}<b>${bi("একটি অ্যাকাউন্ট বেছে নিন", "Pick an account")}</b><span>${bi("কোড, হোল্ডার বা ব্যাংকের নাম লিখে খুঁজুন", "Search by code, holder or bank")}</span>`); }
+    const a = S.accounts.find(x => x.code === it.value) || { code: it.value }, br = brandOf(a), m = mode();
+    hMsg("load", bi("লোড হচ্ছে…", "Loading…"));
+    let rows; try { rows = await API.history(a.code, $("#h-f", v).value, $("#h-t", v).value); } catch (e) { if (my === hSeq && hOut()) hMsg("err", esc(e.message || String(e))); return; }
+    if (my !== hSeq || !hOut()) return;
+    rows = rows.filter(r => r.total != null);
+    const strip = `<div class="sn-sel"><span class="sn-bd" style="background:linear-gradient(135deg,${br.c1},${br.c2})">${esc(br.s)}</span><div class="sn-si"><b>${esc(a.code)}</b><span>${esc(a.holder || "")}</span><em>${esc([a.bank, a.branch, a.type].filter(Boolean).join(" · "))}</em></div></div>`;
+    if (!rows.length) { hData = null; hOut().innerHTML = strip + `<div class="sn-hmsg">${bi("এই সময়ে কোনো ডাটা নেই", "No data in this period")}</div>`; return; }
+    const G = hGroup(rows, m), up = G.chg > 0 ? "up" : G.chg < 0 ? "dn" : "", sg = n => n > 0 ? "+" + money0(n) : n < 0 ? "−" + money0(-n) : "—", usable = G.last.total - (G.last.block || 0);
+    const kp = [["sn-k1", bi("সর্বশেষ ব্যালেন্স", "Closing"), "৳ " + money0(G.last.total), dmy(G.last.date), ""], ["sn-k2", bi("পরিবর্তন", "Change"), sg(G.chg), (G.pct == null ? "" : (G.pct > 0 ? "+" : "") + G.pct.toFixed(1) + "% · ") + bi("শুরু থেকে", "since start"), up], ["sn-k3", bi("সর্বোচ্চ", "Highest"), money0(G.hi), dmy(G.hiD), "up"], ["sn-k4", bi("সর্বনিম্ন", "Lowest"), money0(G.lo), dmy(G.loD), "dn"], ["sn-k5", bi("গড়", "Average"), money0(G.avg), `${G.days} ${bi("দিন", "days")}`, ""], ["sn-k6", bi("লেনদেন", "Txns"), String(G.moves), bi("ব্যালেন্স বদলেছে", "balance moved"), ""], ["sn-k7", bi("ব্লক", "Block"), money0(G.last.block || 0), bi("সর্বশেষ", "latest"), ""], ["sn-k8", bi("ব্যবহারযোগ্য", "Usable"), money0(usable), bi("সর্বশেষ", "latest"), ""]];
+    const mx = Math.max(...G.gs.map(g => g.total), 1), list = [...G.gs].reverse();
+    hData = { a, m, G };
+    hOut().innerHTML = strip + `<div class="sn-kpis">${kp.map(([c, l, val, sub, t]) => `<div class="sn-kp ${c} ${t}"><span>${l}</span><b>${val}</b><em>${sub}</em></div>`).join("")}</div>` + hChart(G.gs, m) +
+      `<div class="tw sn-ht"><table><thead><tr><th>${bi("সময়", "Period")}</th><th class="r">${bi("ক্লোজিং", "Closing")}</th><th class="r">${bi("পরিবর্তন", "Change")}</th><th class="r">${bi("ব্লক", "Block")}</th><th class="r">${bi("ব্যবহারযোগ্য", "Usable")}</th><th class="r" title="${bi("যতবার ব্যালেন্স বদলেছে", "How many times the balance changed")}">${bi("লেনদেন", "Txns")}</th></tr></thead><tbody>${list.map(g => `<tr><td class="sn-pd">${hLabel(m, g.k)}${m === "daily" && g.remark ? `<small>${esc(g.remark)}</small>` : ""}</td><td class="r num sn-cb" style="--w:${Math.max(2, Math.round(Math.max(0, g.total) / mx * 100))}%">${money0(g.total)}</td><td class="r num ${g.chg > 0 ? "up" : g.chg < 0 ? "dn" : "z"}">${sg(g.chg)}</td><td class="r num">${g.block ? money0(g.block) : "—"}</td><td class="r num">${money0(g.total - g.block)}</td><td class="r num">${g.moves || "—"}</td></tr>`).join("")}</tbody></table></div>`;
+    hChartBind(hOut(), G.gs, m);
+  }
+  $("#h-m", v).onchange = () => { const r = hRange(mode()); $("#h-f", v).value = r.from; $("#h-t", v).value = r.to; hist(); };
+  $("#h-f", v).onchange = hist; $("#h-t", v).onchange = hist;
+  $("#h-clr", v).onclick = () => { hAc.set(null); $("#h-ac", v).focus(); hist(); };
+  $("#h-ac", v).addEventListener("input", () => { $("#h-clr", v).hidden = !$("#h-ac", v).value; });
+  $("#h-top", v).onclick = e => { const b = e.target.closest("[data-c]"); if (b) pickAcc(b.dataset.c); };
+  $("#h-xl", v).onclick = () => { if (!hData) return toast(bi("আগে একটি অ্যাকাউন্ট বেছে নিন", "Pick an account first"), "err"); const { a, m, G } = hData; exportXlsx({ History: [[a.code + " · " + (a.holder || ""), "Closing", "Change", "Block", "Usable", "Txns"], ...G.gs.map(g => [hLabel(m, g.k).replace(/<[^>]+>/g, ""), g.total, g.chg, g.block, g.total - g.block, g.moves]), ["TOTAL / LATEST", G.last.total, G.chg, G.last.block || 0, G.last.total - (G.last.block || 0), G.moves]] }, `History_${a.code}_${$("#h-f", v).value}_${$("#h-t", v).value}.xlsx`); };
+  await load();
+  hist();   /* empty prompt first, then default to the most active account */
+  loadTop().then(() => { if (!$("#h-top", v)) return; renderTop(); if (!hAc.get() && topList.length) pickAcc(topList[0].code); });
   return () => window.removeEventListener("resize", onRs);
 }
 
