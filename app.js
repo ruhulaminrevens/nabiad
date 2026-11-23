@@ -2340,14 +2340,14 @@ function hChart(gs, m) {
   const area = n > 1 ? `<path d="${line(vals)}L${X(n - 1).toFixed(1)},${H - B}L${X(0).toFixed(1)},${H - B}Z" fill="url(#hga)"/>` : "";
   return `<div class="sn-chart" data-lo="${lo}" data-hi="${hi}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${bi("ব্যালেন্সের গ্রাফ", "Balance chart")}"><defs><linearGradient id="hga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7c3aed" stop-opacity=".28"/><stop offset="1" stop-color="#7c3aed" stop-opacity="0"/></linearGradient><linearGradient id="hgl" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>${grid}${area}${n > 1 ? `<path d="${line(vals)}" class="hl"/>` : ""}${showUse && n > 1 ? `<path d="${line(use)}" class="hu"/>` : ""}${dots}${n === 1 ? `<circle cx="${X(0)}" cy="${Y(vals[0]).toFixed(1)}" r="5" class="hdh"/>` : ""}${xl}<line class="hcur" x1="0" x2="0" y1="${T}" y2="${H - B}"/><circle class="hcd" r="5" cx="0" cy="0"/><rect class="hov" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg><div class="hq" hidden></div>${showUse ? `<div class="hlg"><span><i class="l1"></i>${bi("টোটাল", "Total")}</span><span><i class="l2"></i>${bi("ব্যবহারযোগ্য", "Usable")}</span></div>` : ""}</div>`;
 }
-function hChartBind(root, gs, m, lbl) {
+function hChartBind(root, gs, m, lbl, pre) {
   const box = $(".sn-chart", root); if (!box) return;
   const svg = $("svg", box), tip = $(".hq", box), cur = $(".hcur", svg), cd = $(".hcd", svg), { W, H, L, R, T, B } = H_G, n = gs.length, lo = +box.dataset.lo, hi = +box.dataset.hi;
   const move = e => {
     const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, i = n === 1 ? 0 : Math.round(Math.min(1, Math.max(0, (x - L) / (W - L - R))) * (n - 1)), g = gs[i];
     const cx = L + (n === 1 ? (W - L - R) / 2 : i / (n - 1) * (W - L - R)), cy = T + (1 - (g.total - lo) / (hi - lo)) * (H - T - B);
     cur.setAttribute("x1", cx); cur.setAttribute("x2", cx); cd.setAttribute("cx", cx); cd.setAttribute("cy", cy); cur.style.opacity = cd.style.opacity = 1;
-    tip.hidden = false; tip.innerHTML = `<b>${hLabel(m, g.k)}</b><span>${lbl || bi("ব্যালেন্স", "Balance")} <strong>৳ ${money0(g.total)}</strong></span>${g.deb ? `<span>${bi("ডেবিট", "Debit")} ${money0(g.deb)}</span>` : ""}${g.cre ? `<span>${bi("ক্রেডিট", "Credit")} ${money0(g.cre)}</span>` : ""}`;
+    tip.hidden = false; tip.innerHTML = `<b>${hLabel(m, g.k)}</b><span>${lbl || bi("ব্যালেন্স", "Balance")} <strong>${pre ?? "৳ "}${money0(g.total)}</strong></span>${g.deb ? `<span>${bi("ডেবিট", "Debit")} ${money0(g.deb)}</span>` : ""}${g.cre ? `<span>${bi("ক্রেডিট", "Credit")} ${money0(g.cre)}</span>` : ""}`;
     const tw = tip.offsetWidth; tip.style.left = Math.min(r.width - tw - 4, Math.max(4, cx / W * r.width - tw / 2)) + "px";
   };
   const out = () => { tip.hidden = true; cur.style.opacity = cd.style.opacity = 0; };
@@ -4069,10 +4069,126 @@ function brBind(root, c, F) {
   drawTable();
 }
 
+/* =================== v6.134: Cheque report — interactive dashboard =================== */
+const CQ_CLR = { Pending: "#f59e0b", Cleared: "#10b981", Bounced: "#e11d48", "Returned-Cash": "#06b6d4", Cancelled: "#94a3b8", Stopped: "#8b5cf6" };
+const cqSt = s => `<span class="cq-st" style="--c:${CQ_CLR[s] || "#64748b"}">${esc(s)}</span>`;
+const cqPurpose = c => String(c.purpose || "").split(" (")[0] || "—";
+function cqGroup(arr, kf) { const m = new Map(); arr.forEach(c => { const k = kf(c); if (k === "" || k == null) return; const o = m.get(k) || { k, n: 0, amt: 0 }; o.n++; o.amt += c.amount; m.set(k, o); }); return [...m.values()].sort((a, b) => b.amt - a.amt || b.n - a.n); }
+function cqInsights(c) {
+  const { live, real, all, byTaker, byBank, pend, oldest, blank, rate, busiest, bad } = c, out = [], tot = sumAmt(live);
+  if (pend.length) out.push([oldest > 7 ? "warn" : "info", bi(`${pend.length}টি চেক পেন্ডিং (৳ ${money0(sumAmt(pend))}) — সবচেয়ে পুরনোটি ${oldest} দিনের`, `${pend.length} pending cheque(s) worth ৳ ${money0(sumAmt(pend))} — oldest is ${oldest} day(s) old`)]);
+  else if (all.length) out.push(["up", bi("কোনো চেক পেন্ডিং নেই", "No pending cheques")]);
+  if (bad.length) out.push(["dn", bi(`${bad.length}টি চেক বাউন্স/বাতিল/স্টপ (৳ ${money0(sumAmt(bad))})`, `${bad.length} cheque(s) bounced / cancelled / stopped (৳ ${money0(sumAmt(bad))})`)]);
+  if (rate != null) out.push([rate >= 90 ? "up" : "info", bi(`ক্লিয়ারেন্স হার ${rate.toFixed(1)}% (বাতিল ও ব্ল্যাংক বাদে)`, `Clearance rate ${rate.toFixed(1)}% (excluding cancelled and blank stubs)`)]);
+  if (byTaker[0] && sumAmt(live.filter(x => x.taker)) > 0) { const t = sumAmt(live.filter(x => x.taker)); out.push(["info", bi(`সবচেয়ে বেশি নগদ নিয়েছেন ${byTaker[0].k} — মোটের ${brPct(byTaker[0].amt, t).toFixed(1)}% (${byTaker[0].n}টি চেক)`, `Top cash taker ${byTaker[0].k} — ${brPct(byTaker[0].amt, t).toFixed(1)}% of cash taken (${byTaker[0].n} cheques)`)]); }
+  if (byBank[0] && tot > 0) out.push(["info", bi(`সবচেয়ে বেশি চেক ${byBank[0].k} থেকে — ${brPct(byBank[0].amt, tot).toFixed(1)}%`, `Most value drawn on ${byBank[0].k} — ${brPct(byBank[0].amt, tot).toFixed(1)}%`)]);
+  if (busiest && real.length > 1) out.push(["info", bi(`সবচেয়ে ব্যস্ত দিন ${dmy(busiest.k)}: ${busiest.n}টি চেক, ৳ ${money0(busiest.amt)}`, `Busiest day ${dmy(busiest.k)}: ${busiest.n} cheques, ৳ ${money0(busiest.amt)}`)]);
+  if (blank) out.push(["info", bi(`${blank}টি ব্ল্যাংক স্টাব (টাকা ০)`, `${blank} blank stub(s) (zero amount)`)]);
+  return out;
+}
+function cqDash(c, F) {
+  const { from, to, all, live, real, am, hold, by } = c;
+  const tot = sumAmt(live), cashL = live.filter(x => purposeKey(x.purpose) === "cash"), cl = by("Cleared"), pend = by("Pending");
+  const badAll = all.filter(x => ["Bounced", "Cancelled", "Stopped"].includes(x.status));
+  const blank = all.filter(x => !x.amount).length, avg = real.length ? tot / real.length : 0, big = real.reduce((a, b) => b.amount > a.amount ? b : a, real[0] || { amount: 0 });
+  const oldest = pend.length ? Math.max(...pend.map(x => daysBetween(x.date, today()))) : 0;
+  const den = all.filter(x => x.amount > 0 && x.status !== "Cancelled"), rate = den.length ? den.filter(x => x.status === "Cleared").length / den.length * 100 : null;
+  const byDay = cqGroup(live, x => x.date), busiest = byDay.sort((a, b) => b.n - a.n || b.amt - a.amt)[0];
+  const byTaker = cqGroup(live.filter(x => x.taker), x => x.taker), byBank = cqGroup(live, x => am[x.code]?.bank || ""), byPur = cqGroup(live, cqPurpose), byAcc = cqGroup(live, x => x.code);
+  const dayAmt = [...new Map(cqGroup(live, x => x.date).map(r => [r.k, r])).values()].sort((a, b) => a.k.localeCompare(b.k)).map(r => r.amt);
+  const stm = S.statementReady ? statementSummary(real) : null;
+  const kpi = (cls, ic, lab, val, sub, sp) => `<div class="br-k ${cls}"><div class="br-kt"><span class="br-ki">${ico(ic)}</span><span class="br-kl">${lab}</span></div><div class="br-kv num">${val}</div><div class="br-ks">${sub}</div>${sp || ""}</div>`;
+  const kpis = [
+    kpi("k1", "list", bi("লাইভ চেক", "Live cheques"), "৳ " + money0(tot), `${real.length} ${bi("চেক", "cheques")}${blank ? ` · ${blank} ${bi("ব্ল্যাংক", "blank")}` : ""}`, brSpark(dayAmt)),
+    kpi("", "wallet", bi("নগদ উত্তোলন", "Cash withdrawal"), "৳ " + money0(sumAmt(cashL)), `${cashL.length} ${bi("চেক", "cheques")} · ${brPct(sumAmt(cashL), tot).toFixed(1)}%`),
+    kpi("k3", "shield", bi("ক্লিয়ার্ড", "Cleared"), "৳ " + money0(sumAmt(cl)), `${cl.length} ${bi("চেক", "cheques")}${rate == null ? "" : ` · ${rate.toFixed(1)}%`}`),
+    kpi("k4", "clock", bi("পেন্ডিং", "Pending"), "৳ " + money0(sumAmt(pend)), pend.length ? `${pend.length} ${bi("চেক · সবচেয়ে পুরনো", "cheques · oldest")} ${oldest} ${bi("দিন", "d")}` : bi("কিছু পেন্ডিং নেই", "Nothing pending")),
+    kpi(badAll.length ? "k2" : "", "flag", bi("সমস্যাযুক্ত চেক", "Problem cheques"), `${badAll.length}`, `${bi("বাউন্স", "Bounced")} ${all.filter(x => x.status === "Bounced").length} · ${bi("বাতিল", "Cancelled")} ${all.filter(x => x.status === "Cancelled").length} · ${bi("স্টপ", "Stopped")} ${all.filter(x => x.status === "Stopped").length}`),
+    kpi("", "chart", bi("গড় চেক", "Average cheque"), "৳ " + money0(avg), `${real.length} ${bi("টাকার চেক", "paid cheques")}`),
+    kpi("", "trend", bi("সবচেয়ে বড় চেক", "Largest cheque"), "৳ " + money0(big.amount), big.code ? `${esc(big.code)} · ${dmy(big.date)}` : "—"),
+    stm ? kpi("k3", "shield", bi("স্টেটমেন্ট যাচাই", "Statement verified"), `${stm.count}<span class="mut"> / ${real.length}</span>`, `${brPct(stm.count, real.length).toFixed(1)}% · ৳ ${money0(stm.amount)}`) : kpi("", "cal", bi("সবচেয়ে ব্যস্ত দিন", "Busiest day"), busiest ? dmy(busiest.k) : "—", busiest ? `${busiest.n} ${bi("চেক", "cheques")} · ৳ ${money0(busiest.amt)}` : "")
+  ].join("");
+  const ins = cqInsights({ live, real, all, byTaker, byBank, pend, oldest, blank, rate, busiest, bad: badAll }).map(([k, t]) => `<li class="br-in ${k}"><i></i><span>${esc(t)}</span></li>`).join("");
+  const stRows = STATUSES.map(s => ({ s, n: all.filter(x => x.status === s).length, amt: sumAmt(all.filter(x => x.status === s)) })).filter(r => r.n);
+  const nAll = all.length || 1;
+  const pipe = `<div class="cq-pipe" role="img" aria-label="${bi("স্ট্যাটাস অনুযায়ী চেক", "Cheques by status")}">${stRows.map(r => `<u style="width:${(r.n / nAll * 100).toFixed(2)}%;background:${CQ_CLR[r.s]}" title="${esc(r.s)} · ${r.n}"></u>`).join("")}</div><div class="cq-pl">${stRows.map(r => `<span><i style="background:${CQ_CLR[r.s]}"></i><b>${esc(r.s)}</b> ${r.n}<em>৳ ${money0(r.amt)}</em></span>`).join("")}</div>`;
+  const bar = (rows, clr) => rows.length ? rows.map((r, i) => { const p = brPct(r.amt, tot); return `<div class="br-row"><div class="br-rt"><i style="background:${clr(r, i)}"></i><b title="${esc(r.k)}">${esc(r.k)}</b><span class="mut">${r.n} ${bi("চেক", "chq")}</span><span class="num br-ra">${money0(r.amt)}</span></div><div class="br-bar"><u style="width:${Math.min(100, p).toFixed(1)}%;background:${clr(r, i)}"></u></div><div class="br-rs"><span>${p.toFixed(1)}%</span><span></span></div></div>`; }).join("") : `<div class="mut sm">—</div>`;
+  const pRows = [...pend].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8).map(x => { const d = daysBetween(x.date, today()); return `<div class="br-mv"><i class="bdot" style="background:${brandOf(am[x.code]).c1}"></i><span class="br-mn"><b>${esc(x.code)} · #${esc(x.no)}</b><em>${esc(am[x.code]?.holder || "")}${x.taker ? " · " + esc(x.taker) : ""}</em></span><span class="cq-age ${d > 7 ? "old" : ""}">${d} ${bi("দিন", "d")}</span><span class="num">${money0(x.amount)}</span></div>`; }).join("");
+  const bRows = [...real].sort((a, b) => b.amount - a.amount).slice(0, 6).map(x => `<div class="br-mv"><i class="bdot" style="background:${brandOf(am[x.code]).c1}"></i><span class="br-mn"><b>${esc(x.code)} · #${esc(x.no)}</b><em>${dmy(x.date)} · ${esc(cqPurpose(x))}${x.taker ? " · " + esc(x.taker) : ""}</em></span>${cqSt(x.status)}<span class="num">${money0(x.amount)}</span></div>`).join("");
+  const sg = (k, l) => `<button type="button" class="chip${F.cs === k ? " on" : ""}" data-cs="${k}">${l}</button>`, gg = (k, l) => `<button type="button" class="chip${F.cg === k ? " on" : ""}" data-cg="${k}">${l}</button>`, dd = (k, l) => `<button type="button" class="chip${F.cd === k ? " on" : ""}" data-cd="${k}">${l}</button>`;
+  return `<div class="br-chips"><span>${ico("cal")}${dmy(from)} → ${dmy(to)}</span><span>${ico("list")}${all.length} ${bi("চেক এন্ট্রি", "entries")}</span><span>${ico("card")}${byAcc.length} A/C</span><span>${ico("bank")}${byBank.length} ${bi("ব্যাংক", "banks")}</span>${hold ? `<span class="on">${ico("eye")}${hold}</span>` : ""}</div>
+   <div class="br-kpis">${kpis}</div>
+   <ul class="br-ins">${ins}</ul>
+   <section class="card br-card"><div class="br-h"><h3>${bi("স্ট্যাটাস পাইপলাইন", "Status pipeline")}</h3><span class="mut sm">${all.length}</span></div>${pipe}</section>
+   <div class="br-g2">
+    <section class="card br-card br-chartc"><div class="br-h"><h3>${bi("চেক ট্রেন্ড", "Cheque trend")}</h3><div class="br-ctl"><div class="seg">${sg("a", bi("টাকা", "Amount"))}${sg("n", bi("সংখ্যা", "Count"))}</div><div class="seg">${gg("daily", bi("দিন", "Day"))}${gg("weekly", bi("সপ্তাহ", "Week"))}${gg("monthly", bi("মাস", "Month"))}</div></div></div><div id="cq-chart"></div></section>
+    <section class="card br-card"><div class="br-h"><h3>${bi("ভাগ", "Share")}</h3><div class="br-ctl"><div class="seg">${dd("pur", bi("খাত", "Purpose"))}${dd("st", bi("স্ট্যাটাস", "Status"))}${dd("bank", bi("ব্যাংক", "Bank"))}</div></div></div><div class="br-dw" id="cq-donut"></div></section>
+   </div>
+   <div class="br-g2">
+    <section class="card br-card"><div class="br-h"><h3>${bi("খাত অনুযায়ী", "By purpose")}</h3><span class="mut sm">${byPur.length}</span></div><div class="br-list">${bar(byPur, (r, i) => BR_PAL[i % BR_PAL.length])}</div></section>
+    <section class="card br-card"><div class="br-h"><h3>${bi("কে নগদ নিয়েছেন", "Cash taken by")}</h3><span class="mut sm">${byTaker.length}</span></div><div class="br-list">${bar(byTaker, (r, i) => BR_PAL[(i + 2) % BR_PAL.length])}</div></section>
+   </div>
+   <div class="br-g2">
+    <section class="card br-card"><div class="br-h"><h3>${bi("ব্যাংক অনুযায়ী", "By bank")}</h3><span class="mut sm">${byBank.length}</span></div><div class="br-list">${bar(byBank, r => brBankClr(r.k))}</div></section>
+    <section class="card br-card"><div class="br-h"><h3>${bi("অ্যাকাউন্ট অনুযায়ী (শীর্ষ ১০)", "By account (top 10)")}</h3><span class="mut sm">${byAcc.length}</span></div><div class="br-list">${bar(byAcc.slice(0, 10), r => brandOf(am[r.k]).c1)}</div></section>
+   </div>
+   <div class="br-g2">
+    <section class="card br-card"><div class="br-h"><h3>${ico("clock")}${bi("পেন্ডিং ওয়াচলিস্ট", "Pending watchlist")}</h3></div>${pRows || `<div class="mut sm">${bi("কোনো চেক পেন্ডিং নেই ✓", "No pending cheques ✓")}</div>`}</section>
+    <section class="card br-card"><div class="br-h"><h3>${ico("trend")}${bi("সবচেয়ে বড় চেক", "Largest cheques")}</h3></div>${bRows || `<div class="mut sm">—</div>`}</section>
+   </div>
+   <section class="card br-card br-acc"><div class="br-h"><h3>${bi("সব চেক", "All cheques")}</h3><span class="mut sm" id="cq-cnt"></span></div>
+    <div class="br-tools"><label class="br-s">${ico("search")}<input class="in" id="cq-q" type="search" placeholder="${bi("A/C, হোল্ডার, চেক নং, পার্টি, নাম খুঁজুন…", "Search A/C, holder, cheque no, party, name…")}" value="${esc(F.qq || "")}" autocomplete="off"></label><select class="in cq-sel" id="cq-sf" aria-label="Status"><option value="">${bi("সব স্ট্যাটাস", "All statuses")}</option>${STATUSES.map(s => `<option ${F.qf === s ? "selected" : ""}>${s}</option>`).join("")}</select><label class="keep"><input type="checkbox" id="cq-z" ${F.qz ? "checked" : ""}> ${bi("ব্ল্যাংক স্টাব লুকাও", "Hide blank stubs")}</label></div>
+    <div class="br-tw"><table class="br-t"><thead id="cq-th"></thead><tbody id="cq-tb"></tbody><tfoot id="cq-tf"></tfoot></table></div></section>`;
+}
+function cqBind(root, c, F) {
+  const { live, all, am } = c, hasStm = !!S.statementReady;
+  const drawChart = () => {
+    const m = F.cg, mp = new Map();
+    live.forEach(x => { const k = hKey(m, x.date), o = mp.get(k) || { k, rows: [], total: 0, block: 0, deb: 0, cre: 0 }; o.total += F.cs === "a" ? x.amount : 1; mp.set(k, o); });
+    const g = [...mp.values()].sort((a, b) => a.k.localeCompare(b.k)), box = $("#cq-chart", root);
+    box.innerHTML = g.length ? hChart(g, m) : `<div class="mut sm" style="padding:24px;text-align:center">—</div>`;
+    if (g.length) hChartBind(box, g, m, F.cs === "a" ? bi("টাকা", "Amount") : bi("চেক", "Cheques"), F.cs === "a" ? "৳ " : "");
+    $$("[data-cs]", root).forEach(b => b.classList.toggle("on", b.dataset.cs === F.cs)); $$("[data-cg]", root).forEach(b => b.classList.toggle("on", b.dataset.cg === F.cg));
+  };
+  $$("[data-cs]", root).forEach(b => b.onclick = () => { F.cs = b.dataset.cs; drawChart(); });
+  $$("[data-cg]", root).forEach(b => b.onclick = () => { F.cg = F.cgU = b.dataset.cg; drawChart(); });
+  drawChart();
+  const dsets = () => {
+    const k = F.cd, rows = k === "st" ? cqGroup(all.filter(x => x.amount > 0), x => x.status).map(r => ({ ...r, c: CQ_CLR[r.k] })) : k === "bank" ? cqGroup(live, x => am[x.code]?.bank || "").map(r => ({ ...r, c: brBankClr(r.k) })) : cqGroup(live, cqPurpose).map((r, i) => ({ ...r, c: BR_PAL[i % BR_PAL.length] }));
+    const pos = rows.filter(r => r.amt > 0), top = pos.slice(0, 6), rest = pos.slice(6).reduce((s, r) => s + r.amt, 0);
+    return top.concat(rest > 0 ? [{ k: bi("অন্যান্য", "Others"), amt: rest, c: "#94a3b8" }] : []);
+  };
+  const drawDonut = () => {
+    const it = dsets(), t = it.reduce((s, r) => s + r.amt, 0);
+    $("#cq-donut", root).innerHTML = t > 0 ? `${brDonut(it, t)}<ul class="br-lg">${it.map(r => `<li><i style="background:${r.c}"></i><span>${esc(r.k)}</span><b>${brPct(r.amt, t).toFixed(1)}%</b></li>`).join("")}</ul>` : `<div class="mut sm">—</div>`;
+    $$("[data-cd]", root).forEach(b => b.classList.toggle("on", b.dataset.cd === F.cd));
+  };
+  $$("[data-cd]", root).forEach(b => b.onclick = () => { F.cd = b.dataset.cd; drawDonut(); });
+  drawDonut();
+  const COLS = [["date", bi("তারিখ", "Date"), 0], ["code", bi("অ্যাকাউন্ট", "Account"), 0], ["no", bi("চেক নং", "Cheque no"), 1, "hm"], ["amount", bi("টাকা", "Amount"), 1], ["purpose", bi("খাত", "Purpose"), 0, "hm"], ["taker", bi("গ্রহীতা", "Taken by"), 0, "hm"], ["status", bi("স্ট্যাটাস", "Status"), 0]];
+  const val = (r, k) => k === "purpose" ? cqPurpose(r) : k === "taker" ? (r.taker || r.party || "") : r[k];
+  const drawTable = () => {
+    const q = (F.qq || "").trim().toLowerCase(), k = F.qss, d = F.qsd;
+    let list = all.filter(r => (!F.qz || r.amount > 0) && (!F.qf || r.status === F.qf) && (!q || `${r.code} ${am[r.code]?.holder || ""} ${am[r.code]?.bank || ""} ${r.no} ${r.party || ""} ${r.taker || ""} ${r.purpose || ""} ${r.remarks || ""}`.toLowerCase().includes(q)));
+    list = [...list].sort((a, b) => { const x = val(a, k), y = val(b, k); return (typeof x === "string" ? String(x).localeCompare(y) : (x ?? 0) - (y ?? 0)) * d || b.date.localeCompare(a.date); });
+    const shown = list.slice(0, 500);
+    $("#cq-th", root).innerHTML = `<tr>${COLS.map(([key, l, r, hm]) => `<th class="${r ? "r" : ""} ${hm || ""} srt${key === k ? " on" : ""}" data-k="${key}" tabindex="0" role="button" aria-sort="${key === k ? (d > 0 ? "ascending" : "descending") : "none"}">${l}<i>${key === k ? (d > 0 ? "▲" : "▼") : ""}</i></th>`).join("")}</tr>`;
+    $("#cq-tb", root).innerHTML = shown.length ? shown.map(r => `<tr><td>${dmy(r.date)}</td><td class="cd"><i class="bdot" style="background:${brandOf(am[r.code]).c1}"></i><b>${esc(r.code)}</b> <span class="mut">${esc(am[r.code]?.holder || "")}</span></td><td class="r num hm">${esc(r.no)}</td><td class="r num"><b>${r.amount ? money0(r.amount) : "—"}</b></td><td class="hm">${esc(cqPurpose(r))}</td><td class="hm">${esc(r.taker || r.party || "")}</td><td>${cqSt(r.status)}${hasStm && statementVerification(r) ? ' <span class="cq-ok" title="Statement verified">✓</span>' : ""}</td></tr>`).join("") : `<tr><td colspan="7" class="z" style="text-align:center">${bi("কোনো চেক মেলেনি", "No matching cheques")}</td></tr>`;
+    const S2 = list.reduce((s, r) => ({ n: s.n + 1, a: s.a + r.amount }), { n: 0, a: 0 });
+    $("#cq-tf", root).innerHTML = list.length ? `<tr><td colspan="2">${bi("মোট", "TOTAL")} · ${S2.n}</td><td class="hm"></td><td class="r num">${money0(S2.a)}</td><td class="hm"></td><td class="hm"></td><td></td></tr>` : "";
+    $("#cq-cnt", root).textContent = `${list.length} / ${all.length}${list.length > shown.length ? " · 500" : ""}`;
+    $$("#cq-th th", root).forEach(th => { const go = () => { const key = th.dataset.k; if (F.qss === key) F.qsd = -F.qsd; else { F.qss = key; F.qsd = ["code", "purpose", "taker", "status"].includes(key) ? 1 : -1; } drawTable(); }; th.onclick = go; th.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }; });
+  };
+  $("#cq-q", root).oninput = e => { F.qq = e.target.value; drawTable(); };
+  $("#cq-sf", root).onchange = e => { F.qf = e.target.value; drawTable(); };
+  $("#cq-z", root).onchange = e => { F.qz = e.target.checked; drawTable(); };
+  drawTable();
+}
+
 async function vReports(v) {
   const date = sessionStorage.getItem("nabiad_bank_report_date");
   sessionStorage.removeItem("nabiad_bank_report_date");
-  const F = { ...pbInit("month"), ...(date ? { m: "day", d: date } : {}), tab: date ? "bank" : sessionStorage.getItem("nabiad_rep_tab") || "bank", holder: "", bank: "", bs: "t", bg: "weekly", as: "cl", ad: -1, aq: "", az: false, sheet: false }; const holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort(), banksL = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort();
+  const F = { ...pbInit("month"), ...(date ? { m: "day", d: date } : {}), tab: date ? "bank" : sessionStorage.getItem("nabiad_rep_tab") || "bank", holder: "", bank: "", bs: "t", bg: "weekly", as: "cl", ad: -1, aq: "", az: false, sheet: false, cs: "a", cg: "", cgU: "", cd: "pur", qq: "", qf: "", qz: false, qss: "date", qsd: -1 }; const holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort(), banksL = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort();
   v.innerHTML = head("ব্যাংক বিস্তারিত রিপোর্ট", `${repBtns("p")}<button class="btn" id="p-x">${ico("dl")} Excel</button>`) + `
    <div class="tabs noprint">${[["bank", ico("bank") + " ব্যাংক ব্যালেন্স"], ["chq", ico("list") + " চেক"]].map(([k, l]) => `<span class="chip ${k === F.tab ? "on" : ""}" data-tab="${k}">${l}</span>`).join("")}</div>
    <div class="card tbar noprint tb-inl">${pbBar("p", F)}
@@ -4081,7 +4197,7 @@ async function vReports(v) {
    <div class="br-sheetbar noprint" id="p-sheetbar" hidden><button type="button" class="btn" id="p-sheet-t" aria-expanded="false" aria-controls="p-sheetcard">${ico("print")}<span>${bi("A4 রিপোর্ট শিট — স্ক্রিনশট / PDF / শেয়ারের জন্য", "A4 report sheet — for screenshot / PDF / share")}</span><i class="br-chv"></i></button></div>
    <div class="card rep-wrap" id="p-sheetcard"><div class="rep-scroll"><div id="p-out"></div></div></div>`;
   let cur = null;
-  const syncSheet = () => { const bank = F.tab === "bank" && cur?.kind === "bank", bar = $("#p-sheetbar", v); bar.hidden = !bank; bar.classList.toggle("open", !!F.sheet); $("#p-sheetcard", v).classList.toggle("br-collapsed", bank && !F.sheet); $("#p-sheet-t", v).setAttribute("aria-expanded", String(!!F.sheet)); if (!bank || F.sheet) dcFit(v, "p-in"); };
+  const syncSheet = () => { const bank = (F.tab === "bank" && cur?.kind === "bank") || (F.tab === "chq" && cur?.kind === "chq"), bar = $("#p-sheetbar", v); bar.hidden = !bank; bar.classList.toggle("open", !!F.sheet); $("#p-sheetcard", v).classList.toggle("br-collapsed", bank && !F.sheet); $("#p-sheet-t", v).setAttribute("aria-expanded", String(!!F.sheet)); if (!bank || F.sheet) dcFit(v, "p-in"); };
   const setSheet = o => { F.sheet = o; syncSheet(); };
   const tbl = (title, rows, cols, total = true, fmt = r => [r.n, money0(r.amt)]) => { const T = rows.reduce((q, r) => ({ n: q.n + (r.n || 0), a: q.a + r.amt }), { n: 0, a: 0 });
     return repBox(title, cols, rows.map(r => `<tr><td>${r.k}</td>${fmt(r).map(x => `<td class="r num">${x}</td>`).join("")}</tr>`).join(""), total && rows.length ? `<tr class="tot"><td>TOTAL</td>${fmt({ n: T.n, amt: T.a }).map(x => `<td class="r num">${x}</td>`).join("")}</tr>` : ""); };
@@ -4119,14 +4235,17 @@ async function vReports(v) {
     const all = S.cheques.filter(c => c.date >= from && c.date <= to && hOk(c.code)); const live = all.filter(isLive), by = s => all.filter(c => c.status === s);
     const monRows = group(live, c => c.date.slice(0, 7)).sort((a, b) => a.k.localeCompare(b.k)).map(r => ({ ...r, k: (LANG === "en" ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] : BN_M)[+r.k.slice(5) - 1] + " " + r.k.slice(0, 4) }));
     const T = { pur: group(live, c => c.purpose.split(" (")[0]).sort((a, b) => b.amt - a.amt), tak: group(live.filter(c => c.taker), c => c.taker).sort((a, b) => b.amt - a.amt), st: group(all, c => c.status).sort((a, b) => b.amt - a.amt), bank: group(live, c => (am[c.code] || {}).bank).sort((a, b) => b.amt - a.amt), acc: group(live, c => `${c.code} <span class="mut sm">${esc((am[c.code] || {}).holder || "")}</span>`).sort((a, b) => b.amt - a.amt), day: group(live, c => c.date).sort((a, b) => a.k.localeCompare(b.k)).map(r => ({ ...r, k: dmy(r.k) })), mon: monRows };
-    cur = { kind: "chq", from, to, all, live, T }; dash.innerHTML = ""; syncSheet();
-    if (!all.length) { dash.innerHTML = ""; out.innerHTML = label + `<div class="card empty">${bi("এই সময়ে কোনো চেক এন্ট্রি নেই।", "No cheque entries in this period.")}<div class="mut sm" style="margin-top:6px">${bi(`ডাটাবেসে মোট <b>${S.cheques.length}</b>টি চেক আছে। চেক এন্ট্রি করলে এখানে খাত, ব্যাংক, অ্যাকাউন্ট আর দিন অনুযায়ী হিসাব আসবে।`, `There are <b>${S.cheques.length}</b> cheque(s) in the database. Once cheques are entered, totals by purpose, bank, account and day will appear here.`)}</div>${S.me.role !== "boss" ? `<div style="margin-top:12px"><a class="btn pri sm" href="#/entry">${ico("plus")} চেক এন্ট্রি</a></div>` : ""}</div>`; return; }
+    cur = { kind: "chq", from, to, all, live, T };
+    if (!all.length) { dash.innerHTML = ""; out.innerHTML = label + `<div class="card empty">${bi("এই সময়ে কোনো চেক এন্ট্রি নেই।", "No cheque entries in this period.")}<div class="mut sm" style="margin-top:6px">${bi(`ডাটাবেসে মোট <b>${S.cheques.length}</b>টি চেক আছে। চেক এন্ট্রি করলে এখানে খাত, ব্যাংক, অ্যাকাউন্ট আর দিন অনুযায়ী হিসাব আসবে।`, `There are <b>${S.cheques.length}</b> cheque(s) in the database. Once cheques are entered, totals by purpose, bank, account and day will appear here.`)}</div>${S.me.role !== "boss" ? `<div style="margin-top:12px"><a class="btn pri sm" href="#/entry">${ico("plus")} চেক এন্ট্রি</a></div>` : ""}</div>`; cur = null; syncSheet(); return; }
     out.innerHTML = repSheet("p-in", "Cheque Report · চেক রিপোর্ট" + hold, from, to,
       repKpi([[`Live Cheques · ৳ ${money0(sumAmt(live))}`, live.length, "k1"], [`Cleared · ৳ ${money0(sumAmt(by("Cleared")))}`, by("Cleared").length, "k3"], [`Pending · ৳ ${money0(sumAmt(by("Pending")))}`, by("Pending").length, ""], [`Bounced / Cancelled · ৳ ${money0(sumAmt(by("Bounced")))}`, `${by("Bounced").length} / ${by("Cancelled").length}`, "k2"]]),
       repTwo(tbl("By Purpose", T.pur, ["Purpose", "Cheque", "Amount"]), tbl("Cash Taken By", T.tak, ["Name", "Cheque", "Amount"])) +
       repTwo(tbl("By Status", T.st, ["Status", "Cheque", "Amount"]), tbl("By Bank", T.bank, ["Bank", "Cheque", "Amount"])) +
       repOne(tbl("By Account", T.acc, ["Account", "Cheque", "Amount"])) + statementReportBlock(all) +
       repTwo(daysBetween(from, to) <= 62 ? tbl("By Day", T.day, ["Date", "Cheque", "Amount"]) : "", tbl("By Month", T.mon, ["Month", "Cheque", "Amount"])));
+    const spanD = daysBetween(from, to) + 1; F.cg = F.cgU || (spanD <= 45 ? "daily" : spanD <= 200 ? "weekly" : "monthly");
+    const cctx = { from, to, all, live, real: live.filter(c => c.amount > 0), am, by, hold: holdT ? esc(holdT) : "" };
+    dash.innerHTML = cqDash(cctx, F); cqBind(dash, cctx, F); syncSheet();
     dcFit(v, "p-in");
   }
   $$(".chip[data-tab]", v).forEach(c => c.onclick = () => { F.tab = c.dataset.tab; sessionStorage.setItem("nabiad_rep_tab", F.tab); $$(".chip[data-tab]", v).forEach(x => x.classList.toggle("on", x === c)); draw(); });
@@ -4142,7 +4261,7 @@ async function vReports(v) {
   };
   await draw();
   const nm = () => `${cur?.kind === "chq" ? "Cheque" : "Bank"}_Report_${cur ? cur.from + "_" + cur.to : today()}`, tx = () => cur ? `${cur.kind === "chq" ? "Cheque" : "Bank balance"} report ${dmy(cur.from)} → ${dmy(cur.to)}` : "", el = () => $("#p-in", v);
-  const via = fn => async () => { if (!cur) return toast("ডাটা নেই", "err"); const was = F.sheet, bank = cur.kind === "bank"; if (bank && !was) { setSheet(true); await new Promise(r => setTimeout(r, 120)); } try { await fn(); } finally { if (bank && !was) setTimeout(() => setSheet(false), 800); } };
+  const via = fn => async () => { if (!cur) return toast("ডাটা নেই", "err"); const was = F.sheet, bank = true; if (bank && !was) { setSheet(true); await new Promise(r => setTimeout(r, 120)); } try { await fn(); } finally { if (bank && !was) setTimeout(() => setSheet(false), 800); } };
   $("#p-png", v).onclick = via(() => dcPng(el(), nm()));
   $("#p-pdf", v).onclick = via(() => dcPdf(el(), nm()));
   if ($("#p-sh", v)) $("#p-sh", v).onclick = via(() => dcShare(el(), nm(), tx()));
