@@ -655,3 +655,30 @@ button.ivd-ins:hover { transform:translateY(-2px); border-color:var(--pri); }
 .iv-stock-table tr[hidden] { display: none; }
 @media (prefers-reduced-motion:reduce) { .card.iv-stock-entry.flash { animation: none; } }
 .iv-rd3 b.mut { color: var(--mut); }
+
+/* Order vs Delivery v2 (v6.165) */
+.ov-sort{display:flex;align-items:center;gap:6px}.ov-sort .in{height:32px;padding-block:2px;width:auto}
+.ov-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 12px 0}
+.ov-chips .chip b{margin-left:3px;opacity:.75}.ov-chips .sdot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.ov-hint{margin-left:auto}
+.ov-pb{display:block;height:4px;margin-top:5px;border-radius:99px;background:var(--line2);overflow:hidden;min-width:60px}.ov-pb s{display:block;height:100%;border-radius:inherit}
+.ov-pb.lg{height:6px}
+#ov-out .iv-mt td:first-child{min-width:180px;max-width:260px}
+#ov-out .iv-mt td.nw{white-space:normal;font-size:12.5px;color:var(--txt2);max-width:170px}
+#ov-out mark,.ov-c mark{background:#fde68a;color:inherit;border-radius:3px;padding:0 1px}
+.ov-cards{display:grid;gap:10px;padding:10px}
+.ov-c{display:grid;gap:5px;padding:12px 13px;border:1px solid var(--line);border-left:4px solid var(--sc);border-radius:14px;background:var(--surface);transition:transform .12s}
+.ov-c:active{transform:scale(.99)}
+.ov-c header{display:flex;gap:8px;align-items:flex-start;justify-content:space-between}.ov-c header b{font-size:14.5px;overflow-wrap:anywhere}
+.ov-c p{margin:0}
+.ov-bal{display:flex;align-items:baseline;justify-content:space-between}.ov-bal b{font-size:19px}
+.ov-c footer{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:4px}
+.ov-c footer span{display:grid;gap:1px;padding:5px 7px;border-radius:9px;background:var(--surface2);min-width:0}.ov-c footer small{font-size:10.5px;color:var(--mut);font-weight:600}.ov-c footer b{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:640px){.ov-chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.ov-chips::-webkit-scrollbar{display:none}.ov-chips>*{flex:none}.ov-hint{display:none}.ov-sort .mut{display:none}}
+@media (max-width:640px){
+  .iv-flt:has(#ov-q){display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+  .iv-flt:has(#ov-q)>.pq{grid-column:1/-1}.iv-flt:has(#ov-q)>.sp{display:none}
+  .iv-flt:has(#ov-q) label.f:not(:first-child){display:none}
+  .iv-flt:has(#ov-q)>div:nth-child(2) label.f{display:none}
+}
+.ov-pb s{min-height:4px}.ov-pb.lg s{min-height:6px}
