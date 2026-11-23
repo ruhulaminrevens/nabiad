@@ -1,3 +1,5 @@
+/* stop Android Chrome “Desktop site” mode from auto-enlarging text (v6.160) */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 /* NABIAD Smart Finance Suite · design system v3 (colour) */
 :root{
   --bg:#f2f4fb; --surface:#ffffff; --surface2:#f7f8fd; --line:#e2e6f3; --line2:#edf0f8;
@@ -3318,3 +3320,23 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .dr-act{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 2px 10px}
 .dr-act .dr-x{cursor:pointer}
 @media (max-width:640px){.dcx-week{max-width:none;flex-basis:100%}.dr-act{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.dr-act>*{flex:none}}
+
+/* Dashboard v3 (v6.160): attention banner, sticky section bar, quick search */
+.dg-alert{display:flex;align-items:center;gap:12px;margin:0 0 12px;padding:10px 14px;border-radius:14px;border:1px solid color-mix(in srgb,var(--rd) 30%,var(--line));background:linear-gradient(90deg,color-mix(in srgb,var(--rd) 9%,var(--surface)),var(--surface));color:var(--txt);text-decoration:none;transition:transform .15s,box-shadow .15s}
+.dg-alert:hover{transform:translateY(-1px);box-shadow:var(--sh)}
+.dg-ai{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,var(--rd) 14%,transparent);color:var(--rd)}.dg-ai svg{width:18px;height:18px}
+.dg-alert>span:nth-child(2){flex:1;min-width:0;display:grid}.dg-alert small{color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dg-alert u{text-decoration:none;font-weight:700;color:var(--rd);font-size:13px;white-space:nowrap}
+.dg-jump{position:sticky;top:var(--top);z-index:15;display:flex;gap:4px;align-items:center;margin:0 0 14px;padding:5px;border:1px solid var(--line);border-radius:13px;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:saturate(1.4) blur(12px);box-shadow:var(--sh);overflow-x:auto;scrollbar-width:none}
+.dg-jump::-webkit-scrollbar{display:none}
+.dg-jump button{flex:none;border:0;background:none;padding:7px 12px;border-radius:9px;font:inherit;font-size:13px;font-weight:600;color:var(--txt2);cursor:pointer;white-space:nowrap;transition:background .15s,color .15s}
+.dg-jump button:hover{background:var(--pri-soft);color:var(--pri-ink)}
+.dg-jump button.on{background:var(--pri);color:#fff}
+.dg-jump button b{display:inline-block;min-width:18px;padding:0 5px;margin-left:3px;border-radius:99px;background:#fee2e2;color:#b91c1c;font-size:11px;line-height:17px;text-align:center}
+.dg-jump .dg-find{margin-left:auto;display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface2);color:var(--mut);font-weight:500}
+.dg-jump .dg-find svg{width:15px;height:15px}
+:is(#d-kpi,#d-sec-tr,#d-sec-bk,#d-sec-col,#d-sec-ls,#d-att){scroll-margin-top:calc(var(--top) + 64px)}
+.dg-flash{animation:dgFlash 1.2s ease}
+@keyframes dgFlash{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--pri) 40%,transparent);border-radius:16px}100%{box-shadow:0 0 0 14px transparent;border-radius:16px}}
+@media (max-width:640px){.dg-jump .dg-find span{display:none}.dg-jump .dg-find{margin-left:0}.dg-alert{padding:9px 11px}}
+@media (prefers-reduced-motion:reduce){.dg-flash{animation:none}}
