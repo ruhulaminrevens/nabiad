@@ -747,7 +747,7 @@ function lastCheque(code) {
   }
   return last;
 }
-const nextNo = code => { const last = lastCheque(code); return last && Number.isSafeInteger(last.no + 1) ? last.no + 1 : ""; };
+const nextNo = code => { const last = lastCheque(code), n = last ? Number(last.no) + 1 : NaN; return Number.isSafeInteger(n) ? n : ""; };
 const pendingOld = () => S.cheques.filter(c => c.status === "Pending" && daysBetween(c.date, today()) > (CFG.PENDING_ALERT_DAYS ?? 3));
 const activeAccounts = () => S.accounts.filter(a => a.status === "Active");
 const sumAmt = a => a.reduce((s, c) => s + c.amount, 0);
@@ -1167,6 +1167,24 @@ async function setStatus(c, status, date, remarks) {
     return current;
   } finally { statusWrites.delete(c.id); }
 }
+/* v6.136: Cheque Posting — amount shorthand + words */
+const _w1 = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+const _w10 = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+const _w2 = n => n < 20 ? _w1[n] : _w10[Math.floor(n / 10)] + (n % 10 ? "-" + _w1[n % 10] : "");
+const _w3 = n => (n >= 100 ? _w1[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " " : "") : "") + (n % 100 ? _w2(n % 100) : "");
+function takaWords(amount) {
+  if (!(amount > 0) || amount >= 1e12) return "";
+  let n = Math.floor(amount); const paisa = Math.round((amount - n) * 100), parts = [];
+  for (const [d, label] of [[1e7, "Crore"], [1e5, "Lakh"], [1e3, "Thousand"]]) { const q = Math.floor(n / d); if (q) { parts.push(_w3(q) + " " + label); n %= d; } }
+  if (n) parts.push(_w3(n));
+  return "Taka " + [parts.join(" "), paisa ? (parts.length ? "and " : "") + _w2(paisa) + " Paisa" : ""].filter(Boolean).join(" ") + " Only";
+}
+function expandAmt(value) {
+  const m = chequeDigits(value).replace(/^৳\s*/, "").match(/^(\d+(?:\.\d{1,2})?)\s*(k|l|lac|lakh|lakhs|lk|cr|crore)$/i);
+  if (!m) return value;
+  const mult = { k: 1e3, l: 1e5, lac: 1e5, lakh: 1e5, lakhs: 1e5, lk: 1e5, cr: 1e7, crore: 1e7 }[m[2].toLowerCase()];
+  return String(Math.round(Number(m[1]) * mult * 100) / 100);
+}
 async function vEntry(v) {
   const st = { purpose: null, photo: null };
   const activityPageSize = 12;
@@ -1183,30 +1201,33 @@ async function vEntry(v) {
          <div><dt>${bi("অপেক্ষমাণ অঙ্ক", "Pending amount")}</dt><dd id="e-pending-total" class="num"></dd></div>
        </dl></div>
    <section class="card efc" aria-labelledby="e-title">
-    <h2 class="cp-title" id="e-title">${bi("নতুন চেক এন্ট্রি", "New cheque entry")}</h2>
+    <div class="cp-headrow"><h2 class="cp-title" id="e-title">${bi("নতুন চেক এন্ট্রি", "New cheque entry")}</h2><span class="cp-keyhint mut xs">${bi("Enter ↵ দিয়ে পরের ঘরে যান", "Press Enter ↵ to move to the next field")}</span></div>
+    <ol class="cp-flow" id="e-flow" aria-label="${bi("এন্ট্রির ধাপ", "Entry steps")}">${[["e-date", bi("তারিখ", "Date")], ["e-ac", "A/C"], ["e-no", bi("চেক নং", "Cheque no")], ["e-amt", bi("টাকা", "Amount")], ["e-purp", bi("খাত", "Purpose")], ["e-rem", bi("মন্তব্য", "Remarks")]].map(([id, label], i) => `<li><button type="button" tabindex="-1" data-step="${id}"><i>${i + 1}</i><span>${label}</span></button></li>`).join("")}</ol>
     <div class="fgrid ef">
+     <div class="s2"><label class="f" for="e-date">${dateLabel}</label><input class="in big" type="date" id="e-date" value="${today()}"></div>
      <div class="s2"><label class="f" for="e-ac">A/C Code</label><div><input class="in big" id="e-ac" autocomplete="off" placeholder="${bi("কোড বা নাম", "Code or name")}" aria-describedby="e-achint"></div><div class="hint cp-hint" id="e-achint"></div></div>
-     <div class="s2"><label class="f" for="e-date">চেকের তারিখ</label><input class="in big" type="date" id="e-date" value="${today()}"></div>
-     <div class="s2"><label class="f" for="e-no">চেক নং</label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off" aria-describedby="e-nohint"><div class="hint cp-hint" id="e-nohint"></div></div>
-     <div class="s2"><label class="f" for="e-amt">টাকা</label><input class="in big num" id="e-amt" inputmode="decimal" autocomplete="off" aria-describedby="e-amthint"><div class="hint num cp-hint" id="e-amthint"></div></div>
+     <div class="s4 cp-recent hide" id="e-recent-ac" aria-label="${bi("সাম্প্রতিক A/C", "Recent accounts")}"></div>
+     <div class="s2"><label class="f" for="e-no">${bi("চেক নং", "Cheque no")} <span class="cp-auto hide" id="e-auto">${bi("অটো", "auto")}</span></label><input class="in big" id="e-no" inputmode="numeric" autocomplete="off" aria-describedby="e-nohint"><div class="hint cp-hint" id="e-nohint"></div></div>
+     <div class="s2"><label class="f" for="e-amt">${bi("টাকা", "Amount")}</label><input class="in big num" id="e-amt" inputmode="decimal" autocomplete="off" aria-describedby="e-amthint" placeholder="${bi("যেমন 50000 বা 5l", "e.g. 50000 or 5l")}"><div class="hint num cp-hint" id="e-amthint"></div></div>
      <div class="s4 cp-purpose"><div class="cp-section-head"><span class="f" id="e-purpose-label">${bi("খাত", "Purpose")}</span><div class="cp-purpose-tools">
        <button class="btn sm" type="button" id="e-padd">${ico("plus")} ${bi("নতুন খাত যোগ করুন", "New purpose")}</button>
        ${S.me.role === "admin" ? `<button class="btn sm" type="button" id="e-pmg">${ico("edit")} ${bi("খাত সম্পাদনা", "Edit purposes")}</button>` : ""}
-     </div></div><div class="chips" id="e-purp" role="group" aria-labelledby="e-purpose-label"></div></div>
-     <div class="s4" id="x-cash" style="display:none"><label class="f">${bi("কে তুলেছে *", "Withdrawn by *")}</label><input type="hidden" id="e-taker"><div class="chips takers" id="e-takers">${TAKERS.map(t => `<button class="chip" type="button" data-t="${esc(t)}" aria-pressed="false">${esc(t)}</button>`).join("")}</div></div>
+     </div></div><div class="chips" id="e-purp" role="radiogroup" aria-labelledby="e-purpose-label"></div></div>
+     <div class="s4" id="x-cash" style="display:none"><label class="f">${bi("কে তুলেছে *", "Withdrawn by *")}</label><input type="hidden" id="e-taker"><div class="chips takers" id="e-takers" role="radiogroup" aria-label="${bi("কে তুলেছে", "Withdrawn by")}">${TAKERS.map(t => `<button class="chip" type="button" role="radio" data-t="${esc(t)}" aria-checked="false" tabindex="-1">${esc(t)}</button>`).join("")}</div></div>
      <div class="s4" id="x-own" style="display:none"><label class="f" for="e-toac">কোন A/C তে জমা * <span class="mut">(${bi("শুধু রেকর্ড", "record only")})</span></label><div><input class="in" id="e-toac" autocomplete="off" placeholder="${bi("যে অ্যাকাউন্টে টাকা গেছে — কোড বা নাম টাইপ করুন", "Receiving account — type code or name")}"></div></div>
      <div class="s4 cbm" id="e-cashlink" style="display:none"></div>
-     <div class="s4"><label class="f" for="e-rem">${bi("মন্তব্য", "Remarks")}</label><input class="in" id="e-rem" autocomplete="off" list="dl-rem" placeholder="যেমন: সাপ্লায়ারের নাম — বিলের বিবরণ"></div>
+     <div class="s4"><label class="f" for="e-rem">${bi("মন্তব্য", "Remarks")} <span class="mut xs">${bi("(↓ দিয়ে সাজেশন বাছুন)", "(↓ to pick a suggestion)")}</span></label><input class="in" id="e-rem" autocomplete="off" placeholder="${bi("যেমন: সাপ্লায়ারের নাম — বিলের বিবরণ", "e.g. supplier name — bill details")}"><div class="cp-recent cp-remchips hide" id="e-remchips" aria-label="${bi("মন্তব্যের সাজেশন", "Remark suggestions")}"></div></div>
      <details class="s4 cp-attachment" id="e-attach"><summary>${ico("cam")} <span>${bi("চেকের ছবি", "Cheque photo")}</span> <span class="mut sm" id="e-photo-state">${bi("ঐচ্ছিক", "Optional")}</span></summary>
        <div class="photo-in"><button type="button" class="btn" id="e-camera">${ico("cam")} ${bi("ক্যামেরা", "Camera")}</button><button type="button" class="btn" id="e-gallery">${ico("img")} ${bi("গ্যালারি", "Gallery")}</button>
        <input type="file" id="e-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="e-ph" accept="image/*" hidden><img id="e-phv" class="hide" alt="${bi("চেকের ছবির প্রিভিউ", "Cheque photo preview")}"><button type="button" class="btn sm ghost hide" id="e-phx" aria-label="${bi("ছবি বাদ দিন", "Remove photo")}">✕</button></div>
        <div id="e-ocrw" class="hide noprint"><button type="button" class="btn sm" id="e-ocr">${ico("search")} ${bi("ছবি থেকে পড়ুন", "Read from photo")}</button><div id="e-ocro"></div></div>
      </details>
      <div class="s4" id="e-sum" style="display:none"></div>
-    </div>${datalist("dl-rem", [...S.cheques.map(c => c.remarks), ...S.cheques.map(c => c.party)])}
+    </div>
     <div class="fbar cp-footer">
       <div class="hint rd" id="e-err" role="alert"></div>
       <label class="keep"><input type="checkbox" id="keep" checked> ${bi("পরের এন্ট্রিতে A/C ও খাত ধরে রাখুন", "Keep A/C and purpose for next entry")}</label>
+      <div class="cp-keys" aria-hidden="true"><span><kbd>Enter</kbd> ${bi("পরের ঘর", "next")}</span><span><kbd>←</kbd><kbd>→</kbd> ${bi("খাত", "purpose")}</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> ${bi("সেভ", "save")}</span><span><kbd>/</kbd> ${bi("খুঁজুন", "search")}</span></div>
       <div class="entry-actions"><button type="button" class="btn lg" id="e-clear">${bi("পরিষ্কার", "Clear")}</button><button type="button" class="btn pri lg" id="e-save">${ico("save")} ${bi("সেভ", "Save")}</button></div>
     </div>
    </section>
@@ -1216,8 +1237,8 @@ async function vEntry(v) {
        <div id="e-review-tools">
          <label class="cp-search"><span aria-hidden="true">${ico("search")}</span><input class="in" type="search" id="e-find" aria-label="${activitySearchLabel}" placeholder="${bi("চেক নং, A/C, ব্যাংক বা অঙ্ক", "Cheque no, A/C, bank or amount")}" autocomplete="off"></label>
          <select class="in cp-sel" id="e-period-sel" aria-label="${bi("এন্ট্রির সময়", "Activity period")}" aria-controls="e-list"><option value="today">${bi("আজ পোস্ট করা", "Posted today")}</option><option value="date">${bi("চেকের তারিখে", "By cheque date")}</option></select>
-         <select class="in cp-sel" id="e-activity-filters" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filter")}" aria-controls="e-list"></select>
        </div>
+       <div class="chips cp-status" id="e-activity-filters" role="group" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filter")}" aria-controls="e-list"></div>
      </div>
      <div id="e-list"></div>
      <div class="cp-activity-footer"><span class="mut sm" id="e-visible" role="status"></span><button type="button" class="btn sm cp-more" id="e-more" aria-controls="e-list" hidden>${bi("আরও দেখুন", "Show more")}</button></div>
@@ -1225,10 +1246,18 @@ async function vEntry(v) {
   </div>`;
   const posting = $(".cq-posting", v);
   const $e = id => $("#" + id, posting);
+  let autoNo = "", remIdx = -1, flashId = "";
+  const radios = g => $$("[role=radio]", g);
+  const checkedOf = g => radios(g).find(b => b.getAttribute("aria-checked") === "true");
+  const rove = g => { const on = checkedOf(g) || radios(g)[0]; radios(g).forEach(b => { b.tabIndex = b === on ? 0 : -1; }); return on; };
+  const shake = el => { if (!el) return; el.classList.remove("cp-shake"); void el.offsetWidth; el.classList.add("cp-shake"); };
+  const autoTag = () => $e("e-auto").classList.toggle("hide", !autoNo || $e("e-no").value !== autoNo);
+  const noHint = code => { const last = lastCheque(code); $e("e-nohint").textContent = last ? bi(`শেষ এন্ট্রি: ${last.no} (${dmy(last.date)})`, `Last entry: ${last.no} (${dmy(last.date)})`) : bi("এই অ্যাকাউন্টে এখনো এন্ট্রি নেই", "No entries for this account yet"); };
+  const setAutoNo = code => { const n = nextNo(code); autoNo = n === "" ? "" : String(n); $e("e-no").value = autoNo; noHint(code); autoTag(); };
   const ac = suggest($e("e-ac"), () => acItems(), it => {
     const a = it && accMap()[it.value]; $e("e-achint").innerHTML = a ? `${esc(a.bank)} ${a.branch ? "· " + esc(a.branch) : ""} ${a.acno ? "· " + esc(a.acno) : ""}` : "";
-    if (it) { const n = nextNo(it.value); $e("e-no").value = n; const last = lastCheque(it.value); $e("e-nohint").textContent = last ? `শেষ এন্ট্রি: ${last.no} (${dmy(last.date)})` : "এই অ্যাকাউন্টে এখনো এন্ট্রি নেই"; }
-    sum();
+    if (it) setAutoNo(it.value);
+    sum(); drawRem(); flow();
   });
   const toac = suggest($e("e-toac"), () => acItems(true).filter(i => i.value !== ac.get()?.value), () => sum());
   const clearPhoto = photoPicker(v, st, { inp: "e-ph", cam: "e-ph-c", img: "e-phv", x: "e-phx" }, () => { $e("e-ocrw").classList.toggle("hide", !st.photo); $e("e-ocro").innerHTML = ""; $e("e-photo-state").textContent = st.photo ? bi("ছবি যুক্ত হয়েছে", "Attached") : bi("ঐচ্ছিক", "Optional"); });
@@ -1237,13 +1266,13 @@ async function vEntry(v) {
   $e("e-ocr").onclick = () => runOcr(st, $e("e-ocro"), val => { $e("e-no").value = val; $e("e-no").dispatchEvent(new Event("input")); }, val => { $e("e-amt").value = val; $e("e-amt").dispatchEvent(new Event("input")); });
   const purpKey = () => st.purpose ? purposeKey(st.purpose) : "";
   let clTok = 0, clT = 0;
-  const setTaker = t => { $e("e-taker").value = t || ""; $$("#e-takers .chip", v).forEach(c => { const on = c.classList.toggle("on", c.dataset.t === t); c.setAttribute("aria-pressed", on); }); };
-  $$("#e-takers .chip", v).forEach(c => c.onclick = () => { setTaker($e("e-taker").value === c.dataset.t ? "" : c.dataset.t); $e("e-err").textContent = ""; if (!matchMedia("(pointer:coarse)").matches) $e("e-rem").focus(); });
+  const setTaker = t => { $e("e-taker").value = t || ""; const g = $e("e-takers"); radios(g).forEach(c => { const on = c.classList.toggle("on", c.dataset.t === t); c.setAttribute("aria-checked", on); }); rove(g); draw(); flow(); };
+  $$("#e-takers .chip", v).forEach(c => c.onclick = ev => { setTaker($e("e-taker").value === c.dataset.t ? "" : c.dataset.t); $e("e-err").textContent = ""; if (ev.detail && !matchMedia("(pointer:coarse)").matches) $e("e-rem").focus(); });
   function drawPurp() {
     if (!posting.isConnected) return;
-    $e("e-purp").innerHTML = allPurposes().map(p => `<button class="chip" type="button" data-p="${esc(p)}" aria-pressed="false">${esc(p.split(" (")[0])}</button>`).join("");
+    $e("e-purp").innerHTML = allPurposes().map(p => `<button class="chip" type="button" role="radio" data-p="${esc(p)}" aria-checked="false" tabindex="-1">${esc(p.split(" (")[0])}</button>`).join("");
     if ($e("e-pmg")) $e("e-pmg").onclick = () => purposeManage(() => { if (st.purpose && !allPurposes().includes(st.purpose)) st.purpose = ""; drawPurp(); });
-    $$(".chip[data-p]", v).forEach(c => c.onclick = () => { st.purpose = c.dataset.p; $e("e-err").textContent = ""; applyPurpose(); if (purpKey() === "cash") $e("x-cash").scrollIntoView({ block: "nearest" }); else if (purpKey() === "own") $e("e-toac").focus(); else if (!matchMedia("(pointer:coarse)").matches) $e("e-rem").focus(); });
+    $$(".chip[data-p]", v).forEach(c => c.onclick = ev => { st.purpose = c.dataset.p; $e("e-err").textContent = ""; applyPurpose(); if (!ev.detail) return; if (purpKey() === "cash") $e("x-cash").scrollIntoView({ block: "nearest" }); else if (purpKey() === "own") $e("e-toac").focus(); else if (!matchMedia("(pointer:coarse)").matches) $e("e-rem").focus(); });
     $e("e-padd").onclick = () => askText("নতুন খাত (Purpose)", "খাতের নাম লিখুন (যেমন: Salary)", "", async n => {
       if (allPurposes(true).some(p => p.split(" (")[0].trim().toLowerCase() === n.split(" (")[0].trim().toLowerCase())) throw new Error("এই খাত আগেই আছে");
       await API.purposeAdd(n); PURP_X = [...allPurposes(), n]; if (!DEMO) localStorage.setItem("nb_purp_v2", JSON.stringify(PURP_X));
@@ -1252,8 +1281,9 @@ async function vEntry(v) {
     applyPurpose();
   }
   function applyPurpose() {
-    $$(".chip[data-p]", v).forEach(c => { const on = c.classList.toggle("on", c.dataset.p === st.purpose); c.setAttribute("aria-pressed", on); });
-    const k = purpKey(); $e("x-cash").style.display = k === "cash" ? "" : "none"; $e("x-own").style.display = k === "own" ? "" : "none"; sum();
+    $$(".chip[data-p]", v).forEach(c => { const on = c.classList.toggle("on", c.dataset.p === st.purpose); c.setAttribute("aria-checked", on); });
+    rove($e("e-purp"));
+    const k = purpKey(); $e("x-cash").style.display = k === "cash" ? "" : "none"; $e("x-own").style.display = k === "own" ? "" : "none"; sum(); drawRem(); flow();
   }
   drawPurp(); loadPurposes().then(drawPurp);
   /* Cheque Posting (Cash Withdrawal) ↔ Cash Checker "Total Bank" link */
@@ -1269,29 +1299,138 @@ async function vEntry(v) {
     el.innerHTML = `<div class="cbm-h"><span>${ico("link")} Cash Checker (${dmy(date)}) · Receipt › Bank · <b>${esc(code)}</b>: <b class="num">${src ? "৳ " + money0(entered) : ok ? bi("এখনো এন্ট্রি নেই", "no entry yet") : "—"}</b> · ${bi("চেক পোস্টিং", "Cheque Posting")}: <b class="num">৳ ${money0(posted)}</b>${cur ? ` <span class="mut xs">(+ ৳ ${money0(cur)} ${bi("এই চেক", "this cheque")})</span>` : ""}</span><a class="btn sm" href="#/cashchk" id="e-cashgo">${bi("Cash Checker খুলুন", "Open Cash Checker")}</a></div>`;
     $("#e-cashgo", el).onclick = () => sessionStorage.setItem("nabiad_cash_date", date);
   }
-  function sum() {
-    clearTimeout(clT); clT = setTimeout(cashLink, 350);
-    const code = ac.get()?.value, no = chequeNumber($e("e-no").value), amt = chequeAmount($e("e-amt").value);
+  function amtVal() { return expandAmt($e("e-amt").value); }
+  function commitAmt() { const x = expandAmt($e("e-amt").value); if (x !== $e("e-amt").value) { $e("e-amt").value = x; sum(); } }
+  function sum() { clearTimeout(clT); clT = setTimeout(cashLink, 350); draw(); }
+  function draw() {
+    const code = ac.get()?.value, no = chequeNumber($e("e-no").value), amt = chequeAmount(amtVal()), k = purpKey();
     $e("e-amthint").textContent = amt ? "৳ " + money(amt) : ""; const el = $e("e-sum");
-    if (code && no) {
-      const dup = S.cheques.find(c => c.code === code && c.no === +no);
-      const nobk = !dup && !bookForLeaf(code, +no);
-      el.style.display = ""; el.className = "s4 sumbox" + (dup || nobk ? " dup" : "");
-      el.innerHTML = dup ? `⛔ <b>${esc(code)} · ${no}</b> আগেই এন্ট্রি আছে (${dmy(dup.date)}, ৳ ${money(dup.amount)}, ${dup.status})` : nobk ? `⛔ <b>${esc(code)} · ${no}</b> ${bi("কোনো রেজিস্টার্ড চেক বইয়ে নেই — আগে বই যোগ করুন", "is not in any registered cheque book — register the book first")}` : `<span class="tag">${esc(code)}</span><span>চেক নং <b>${no}</b></span><span class="big num">৳ ${Number.isFinite(amt) ? money(amt) : "—"}</span><span class="mut">${esc((st.purpose || "খাত বাছুন").split(" (")[0])}</span>`;
-    } else el.style.display = "none";
+    if (!code) { el.style.display = "none"; return; }
+    const a = accMap()[code], dup = no ? S.cheques.find(c => c.code === code && c.no === +no) : null, bk = no ? bookForLeaf(code, +no) : null, nobk = !!no && !dup && !bk;
+    el.style.display = ""; el.className = "s4 sumbox cp-tk" + (dup || nobk ? " dup" : "");
+    if (dup) { el.innerHTML = `⛔ <b>${esc(code)} · ${no}</b> ${bi("আগেই এন্ট্রি আছে", "is already entered")} (${dmy(dup.date)}, ৳ ${money(dup.amount)}, ${esc(dup.status)})`; return; }
+    if (nobk) { el.innerHTML = `⛔ <b>${esc(code)} · ${no}</b> ${bi("কোনো রেজিস্টার্ড চেক বইয়ে নেই — আগে বই যোগ করুন", "is not in any registered cheque book — register the book first")}`; return; }
+    const date = $e("e-date").value, extra = k === "cash" ? $e("e-taker").value : k === "own" ? toac.get()?.value || "" : "", rem = $e("e-rem").value.trim();
+    const words = amt ? takaWords(amt) : "", leaf = bk && bk.last != null ? bi(`পাতা ${no - bk.first + 1}/${bk.last - bk.first + 1}`, `Leaf ${no - bk.first + 1} of ${bk.last - bk.first + 1}`) : "";
+    const pills = [validChequeDate(date) ? `${ico("clock")} ${dmy(date)}` : "", `<b>${esc((st.purpose || bi("খাত বাছুন", "Choose purpose")).split(" (")[0])}</b>`, extra ? esc(extra) : "", bk ? `${esc(bk.series || "")} ${leaf}`.trim() : "", rem ? `“${esc(rem.length > 46 ? rem.slice(0, 46) + "…" : rem)}”` : ""].filter(Boolean);
+    el.innerHTML = `<div class="cp-tk-top"><span class="tag">${esc(code)}</span><b>${esc(a?.holder || "")}</b><span class="mut">${esc(a?.bank || "")}</span></div>
+      <div class="cp-tk-main"><span class="cp-tk-no">${bi("চেক নং", "Cheque no")} <b>${no || "—"}</b></span><span class="big num">৳ ${amt ? money(amt) : "—"}</span></div>
+      ${words ? `<div class="cp-tk-words">${esc(words)}</div>` : ""}
+      <div class="cp-tk-meta">${pills.map(x => `<span>${x}</span>`).join("")}</div>`;
   }
+  /* step indicator (follows focus + progress) */
+  function flow() {
+    const k = purpKey(), amt = chequeAmount(amtVal());
+    const done = {
+      "e-date": validChequeDate($e("e-date").value), "e-ac": !!ac.get(), "e-no": !!chequeNumber($e("e-no").value),
+      "e-amt": k === "cancel" || amt > 0,
+      "e-purp": !!st.purpose && (k !== "cash" || !!$e("e-taker").value) && (k !== "own" || !!toac.get()),
+      "e-rem": $e("e-rem").value.trim() !== ""
+    };
+    const f = document.activeElement; let act = "";
+    if (f && posting.contains(f)) act = f.id === "e-rem" ? "e-rem" : ["e-date", "e-ac", "e-no", "e-amt"].includes(f.id) ? f.id : f.closest("#e-purp,#e-takers,#x-cash,#x-own") ? "e-purp" : "";
+    $$("#e-flow [data-step]", posting).forEach(b => { const id = b.dataset.step; b.classList.toggle("done", !!done[id]); b.classList.toggle("on", id === act); b.parentElement.classList.toggle("on", id === act); });
+  }
+  const focusPurpose = () => { const b = rove($e("e-purp")); (b || $e("e-rem")).focus(); };
+  const afterPurpose = () => { const k = purpKey(); if (k === "cash") (rove($e("e-takers")) || $e("e-rem")).focus(); else if (k === "own") $e("e-toac").focus(); else $e("e-rem").focus(); };
+  function radioNav(group, choose, advance) {
+    group.addEventListener("keydown", e => {
+      const items = radios(group), cur = items.indexOf(document.activeElement);
+      if (cur < 0 || e.ctrlKey || e.metaKey || e.altKey) return;
+      const chk = items.indexOf(checkedOf(group)); let to = -1;
+      if (e.key === "ArrowRight") to = chk >= 0 ? (chk + 1) % items.length : cur;
+      else if (e.key === "ArrowLeft") to = chk >= 0 ? (chk - 1 + items.length) % items.length : cur;
+      else if (e.key === "Home") to = 0; else if (e.key === "End") to = items.length - 1;
+      else if (e.key === "Enter") { e.preventDefault(); if (chk < 0) { shake(group); $e("e-err").textContent = bi("← → চেপে বাছুন", "Use ← → to choose"); } else { $e("e-err").textContent = ""; advance(); } return; }
+      else return;
+      e.preventDefault(); $e("e-err").textContent = choose(items[to]) || ""; items[to].focus();
+    });
+  }
+  radioNav($e("e-purp"), chip => { st.purpose = chip.dataset.p; applyPurpose(); }, afterPurpose);
+  radioNav($e("e-takers"), chip => { setTaker(chip.dataset.t); }, () => $e("e-rem").focus());
+  rove($e("e-takers"));
+  /* recent accounts + remark suggestions */
+  function drawRecent() {
+    const box = $e("e-recent-ac"), seen = new Set(), out = [];
+    for (const c of [...S.cheques].sort((x, y) => (Date.parse(y.at) || 0) - (Date.parse(x.at) || 0))) {
+      if (seen.has(c.code)) continue; seen.add(c.code);
+      const a = accMap()[c.code]; if (a && a.status === "Active") out.push(a);
+      if (out.length >= 5) break;
+    }
+    const html = out.length ? `<span class="cp-recent-l">${bi("সাম্প্রতিক", "Recent")}</span>` + out.map(a => `<button type="button" tabindex="-1" class="chip sm${ac.get()?.value === a.code ? " on" : ""}" data-ac="${esc(a.code)}" title="${esc([a.holder, a.bank].filter(Boolean).join(" · "))}">${esc(a.code)}</button>`).join("") : "";
+    if (box.innerHTML !== html) box.innerHTML = html;
+    box.classList.toggle("hide", !out.length);
+  }
+  $e("e-recent-ac").onmousedown = e => e.preventDefault();
+  $e("e-recent-ac").onclick = e => {
+    const b = e.target.closest("[data-ac]"); if (!b) return;
+    const it = acItems().find(i => i.value === b.dataset.ac); if (!it) return;
+    ac.set(it); drawRecent(); $e("e-ac").dispatchEvent(new CustomEvent("picked"));
+  };
+  function remPool() {
+    const code = ac.get()?.value, k = purpKey(), map = new Map(), rows = [...S.cheques].sort((x, y) => (Date.parse(y.at) || 0) - (Date.parse(x.at) || 0)).slice(0, 800);
+    rows.forEach((c, i) => {
+      for (const text of [c.remarks, c.party].map(x => String(x || "").trim()).filter(Boolean)) {
+        const key = text.toLowerCase(), cur = map.get(key) || { text, score: 0, at: i };
+        cur.score += 1 + (code && c.code === code ? 3 : 0) + (k && purposeKey(c.purpose) === k ? 2 : 0); map.set(key, cur);
+      }
+    });
+    return [...map.values()].sort((x, y) => y.score - x.score || x.at - y.at);
+  }
+  function drawRem() {
+    const box = $e("e-remchips"), q = $e("e-rem").value.trim().toLowerCase();
+    const list = remPool().filter(x => x.text.toLowerCase() !== q && (!q || x.text.toLowerCase().includes(q))).slice(0, 6);
+    remIdx = Math.min(remIdx, list.length - 1);
+    box.innerHTML = list.map((x, i) => `<button type="button" tabindex="-1" class="chip sm${i === remIdx ? " hl" : ""}" data-rem="${esc(x.text)}">${esc(x.text.length > 34 ? x.text.slice(0, 34) + "…" : x.text)}</button>`).join("");
+    box.classList.toggle("hide", !list.length);
+  }
+  function applyRem(text) { $e("e-rem").value = text; remIdx = -1; drawRem(); draw(); flow(); }
+  $e("e-remchips").onmousedown = e => e.preventDefault();
+  $e("e-remchips").onclick = e => { const b = e.target.closest("[data-rem]"); if (b) { applyRem(b.dataset.rem); $e("e-rem").focus(); } };
+  $e("e-rem").addEventListener("input", () => { remIdx = -1; drawRem(); draw(); flow(); });
+  $e("e-rem").addEventListener("keydown", e => {
+    if (e.isComposing || e.keyCode === 229 || e.ctrlKey || e.metaKey) return;
+    const chips = $$("[data-rem]", $e("e-remchips"));
+    if (e.key === "ArrowDown" && chips.length) { e.preventDefault(); remIdx = (remIdx + 1) % chips.length; drawRem(); }
+    else if (e.key === "ArrowUp" && chips.length) { e.preventDefault(); remIdx = remIdx <= 0 ? chips.length - 1 : remIdx - 1; drawRem(); }
+    else if (e.key === "Enter") { e.preventDefault(); if (remIdx >= 0 && chips[remIdx]) applyRem(chips[remIdx].dataset.rem); else save(); }
+    else if (e.key === "Escape" && remIdx >= 0) { e.preventDefault(); e.stopPropagation(); remIdx = -1; drawRem(); }
+  });
+  /* keyboard flow: Date → A/C → Cheque no → Amount → Purpose (← →) → Remarks → Enter saves, then back to Date */
   ["e-no", "e-amt"].forEach(i => $e(i).addEventListener("input", sum));
-  $e("e-ac").addEventListener("picked", () => $e("e-no").select() || $e("e-no").focus());
+  $e("e-no").addEventListener("input", autoTag);
+  $e("e-date").addEventListener("input", () => { draw(); flow(); });
+  $e("e-date").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); $e("e-ac").focus(); } });
+  $e("e-ac").addEventListener("picked", () => { $e("e-no").focus(); $e("e-no").select(); });
   $e("e-no").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $e("e-amt").focus(); } });
-  $e("e-amt").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if (st.purpose) save(); else choosePurpose(); } });
-  $$("#e-taker,#e-rem", v).forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); save(); } }));
+  $e("e-amt").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); commitAmt(); focusPurpose(); } });
+  $e("e-amt").addEventListener("blur", commitAmt);
   $e("e-toac").addEventListener("picked", () => $e("e-rem").focus());
   $e("e-date").addEventListener("change", () => { clearTimeout(clT); clT = setTimeout(cashLink, 100); });
+  posting.addEventListener("input", flow); posting.addEventListener("change", flow);
+  posting.addEventListener("focusin", flow); posting.addEventListener("focusout", () => setTimeout(flow, 0));
+  posting.addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !e.isComposing) { e.preventDefault(); save(); } });
+  $e("e-flow").onclick = e => { const b = e.target.closest("[data-step]"); if (!b) return; if (b.dataset.step === "e-purp") focusPurpose(); else $e(b.dataset.step).focus(); };
+  const onSlash = e => {
+    if (!posting.isConnected || e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || document.querySelector(".mback")) return;
+    const t = document.activeElement; if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+    e.preventDefault(); $e("e-find").focus();
+  };
+  document.addEventListener("keydown", onSlash);
+  /* animated numbers */
+  const tween = (el, to, fmt) => {
+    const from = Number(el.dataset.v ?? to); el.dataset.v = to; cancelAnimationFrame(+el.dataset.raf || 0);
+    if (from === to || matchMedia("(prefers-reduced-motion:reduce)").matches) { el.textContent = fmt(to); return; }
+    const t0 = performance.now(), step = now => { const p = Math.min(1, (now - t0) / 380); el.textContent = fmt(p < 1 ? Math.round(from + (to - from) * (1 - Math.pow(1 - p, 3))) : to); if (p < 1) el.dataset.raf = requestAnimationFrame(step); };
+    el.dataset.raf = requestAnimationFrame(step);
+  };
   function clearAll(full) {
     $e("e-err").textContent = "";
     $e("e-attach").open = false;
     if (full || !$("#keep", v).checked) { ac.set(null); st.purpose = null; setTaker(""); $e("e-achint").textContent = ""; $e("e-nohint").textContent = ""; }
-    toac.set(null); $e("e-no").value = ac.get() ? nextNo(ac.get().value) : ""; $e("e-amt").value = ""; $e("e-rem").value = ""; clearPhoto(); applyPurpose();
+    toac.set(null);
+    if (ac.get()) setAutoNo(ac.get().value); else { autoNo = ""; $e("e-no").value = ""; autoTag(); }
+    $e("e-amt").value = ""; $e("e-rem").value = ""; remIdx = -1; clearPhoto(); applyPurpose(); drawRecent(); flow();
   }
   let renderedActivity = "", renderedFilters = "";
   function list() {
@@ -1313,21 +1452,20 @@ async function vEntry(v) {
     const filtered = records.filter(({c}) => (!activityStatus || c.status === activityStatus) && matches(c));
     filtered.sort((a, b) => (b.at || 0) - (a.at || 0) || b.c.no - a.c.no);
     const visible = filtered.slice(0, activityLimit);
-    $e("e-cnt").textContent = records.length;
-    $e("e-total").textContent = "৳ " + money(liveTotal);
-    $e("e-pending-total").textContent = "৳ " + money(pendingTotal);
+    tween($e("e-cnt"), records.length, String);
+    tween($e("e-total"), liveTotal, n => "৳ " + money(n));
+    tween($e("e-pending-total"), pendingTotal, n => "৳ " + money(n));
     const toolsVisible = records.length > 0 || !!activityStatus || $e("e-find").value !== "";
     $e("e-review-tools").hidden = false;
     $e("e-find").closest(".cp-search").hidden = $e("e-activity-filters").hidden = !toolsVisible;
     const filters = [["", records.length], ...STATUSES.filter(status => counts.has(status) || status === activityStatus).map(status => [status, counts.get(status) || 0])];
-    const filtersHtml = filters.map(([status, count]) => `<option value="${esc(status)}">${status ? esc(status) : bi("সব স্ট্যাটাস", "All status")} (${count})</option>`).join("");
+    const filtersHtml = filters.map(([status, count]) => `<button type="button" class="chip sm${status === activityStatus ? " on" : ""}" data-st="${esc(status)}" aria-pressed="${status === activityStatus}">${status ? esc(status) : bi("সব", "All")} <b>${count}</b></button>`).join("");
     if (filtersHtml !== renderedFilters) $e("e-activity-filters").innerHTML = renderedFilters = filtersHtml;
-    $e("e-activity-filters").value = activityStatus;
     $e("e-more").hidden = visible.length >= filtered.length;
     const countText = records.length ? bi(`${filtered.length}টির মধ্যে ${visible.length}টি দেখানো হয়েছে`, `Showing ${visible.length} of ${filtered.length} matches`) : "";
     if ($e("e-visible").textContent !== countText) $e("e-visible").textContent = countText;
     const html = visible.length ? `<div class="tw cards cp-activity-table"><table><thead><tr><th scope="col">A/C · ${bi("চেক", "Cheque")}</th><th scope="col" class="r">${bi("অঙ্ক", "Amount")}</th><th scope="col">${bi("স্ট্যাটাস", "Status")}</th><th scope="col">${bi("তারিখ ও অপারেটর", "Date & operator")}</th><th scope="col">${bi("অ্যাকশন","Action")}</th></tr></thead><tbody>
-      ${visible.map(({c, posted}) => `<tr><td data-l=""><button type="button" class="cq-link" data-recent="${esc(c.id)}" data-activity-action="reference">${esc(acLabel(c.code))} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc([c.purpose?.split(" (")[0], c.party].filter(Boolean).join(" · "))}</div></td>
+      ${visible.map(({c, posted}) => `<tr${c.id === flashId ? ' class="cp-new"' : ""}><td data-l=""><button type="button" class="cq-link" data-recent="${esc(c.id)}" data-activity-action="reference">${esc(acLabel(c.code))} · ${c.no}</button>${chqIcons(c)}<div class="mut sm">${esc([c.purpose?.split(" (")[0], c.party].filter(Boolean).join(" · "))}</div></td>
         <td class="r num"><strong>৳ ${money(c.amount)}</strong></td>
         <td><div class="stc">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}</div></td>
         <td><div class="cp-row-date mut sm"><span>${byDate ? postedLabel : dateLabel} ${dmy(byDate ? posted : c.date) || "—"}</span><span>${esc(c.by || "—")}</span></div></td>
@@ -1347,7 +1485,7 @@ async function vEntry(v) {
   }
   function choosePurpose() {
     $e("e-err").textContent = bi("খাত বাছুন", "Choose a purpose.");
-    $e("e-purp").querySelector("button")?.focus();
+    shake($e("e-purp")); focusPurpose();
   }
   function resetActivity(mode) {
     activityMode = mode;
@@ -1374,8 +1512,9 @@ async function vEntry(v) {
   $e("e-dprev").onclick = () => stepActivityDate(-1);
   $e("e-dnext").onclick = () => stepActivityDate(1);
   $e("e-find").oninput = () => { activityLimit = activityPageSize; list(); };
-  $e("e-activity-filters").onchange = () => {
-    activityStatus = $e("e-activity-filters").value;
+  $e("e-activity-filters").onclick = e => {
+    const b = e.target.closest("[data-st]"); if (!b) return;
+    activityStatus = activityStatus === b.dataset.st ? "" : b.dataset.st;
     activityLimit = activityPageSize;
     list();
   };
@@ -1397,8 +1536,8 @@ async function vEntry(v) {
   };
   let busy = false;
   async function save() {
-    if (busy) return; const err = $e("e-err"); err.textContent = ""; err.className = "hint rd";
-    const code = ac.get()?.value, no = chequeNumber($e("e-no").value), amount = chequeAmount($e("e-amt").value), date = $e("e-date").value, k = purpKey();
+    if (busy) return; const err = $e("e-err"); err.textContent = ""; err.className = "hint rd"; commitAmt();
+    const code = ac.get()?.value, no = chequeNumber($e("e-no").value), amount = chequeAmount(amtVal()), date = $e("e-date").value, k = purpKey();
     if (!code) return err.textContent = "A/C Code বাছুন", $e("e-ac").focus();
     if (!no) return err.textContent = bi("সঠিক চেক নম্বর দিন।", "Enter a valid cheque number."), $e("e-no").focus();
     if (!st.purpose) return choosePurpose();
@@ -1433,8 +1572,9 @@ async function vEntry(v) {
       saveCache(); refreshBadges(); cashLink();
       if (warn) toast(warn.slice(3), /হয়নি/.test(warn) ? "err" : "ok"); toast(row.pending ? `✔ অফলাইনে জমা হয়েছে: ${code} · ${no} · ৳ ${money(row.amount)} — নেট এলে সিঙ্ক হবে` : `✔ সেভ হয়েছে: ${code} · ${no} · ৳ ${money(row.amount)}`);
       if (!posting.isConnected) return;
-      clearAll(false); list();
-      const next = $e(ac.get() ? "e-no" : "e-ac"); next.focus(); next.select();
+      flashId = row.id; clearAll(false); list(); setTimeout(() => { flashId = ""; }, 2800);
+      saveButton.classList.add("cp-saved"); setTimeout(() => saveButton.classList.remove("cp-saved"), 1200);
+      $e("e-date").focus();
     } catch (e) { err.textContent = e.message || String(e); toast(e.message || String(e), "err"); }
     finally { busy = false; saveButton.disabled = clearButton.disabled = false; saveButton.innerHTML = saveLabel; }
   }
@@ -1444,9 +1584,10 @@ async function vEntry(v) {
   const poll = setInterval(async () => {
     if (document.hidden || refreshing || busy) return;
     refreshing = true;
-    try { await reload(); list(); } catch { } finally { refreshing = false; }
+    try { await reload(); list(); drawRecent(); } catch { } finally { refreshing = false; }
   }, 30000);
-  return () => { clearInterval(poll); clearTimeout(clT); };
+  drawRecent(); drawRem(); flow();
+  return () => { clearInterval(poll); clearTimeout(clT); document.removeEventListener("keydown", onSlash); };
 }
 
 /* ---------- status update ---------- */
