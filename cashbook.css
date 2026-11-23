@@ -211,7 +211,7 @@
 .cb-action.btn:is(.cb-summary-link, [data-register-format="png"]) { --cb-accent: var(--vi); --cb-tint: var(--vi-soft); }
 .cb-action.btn[data-register-format="pdf"] { --cb-accent: var(--rd); --cb-tint: var(--rd-soft); }
 .cb-action.btn[data-register-print] { --cb-accent: var(--am); --cb-tint: var(--am-soft); }
-.top.ph.cb-page-head .acts > .btn { white-space: normal; line-height: 1.2; }
+.top.ph.cb-page-head .acts > .btn { white-space: nowrap; line-height: 1.2; }
 .cb-opening-field { position: relative; flex: 0 1 210px; min-width: 0; }
 .cb-opening-field > span { position: absolute; inset-inline-start: 11px; top: 50%; transform: translateY(-50%); color: var(--pri-ink); font-weight: 750; pointer-events: none; }
 .cb-opening-field > #cb-oc { max-width: none; min-width: 0; padding-inline: 30px 11px; color: var(--pri-ink); background: var(--pri-soft); font-size: 16px; }
@@ -304,8 +304,8 @@
   .cb-activity-body { padding-inline: 10px; }
 }
 @media (max-width: 700px) {
-  .top.ph.cb-page-head .acts { flex: 1 0 100%; width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-  .top.ph.cb-page-head .acts > .btn { width: 100%; height: auto; min-height: 44px; padding: 6px 4px; gap: 4px; justify-content: center; font-size: .8rem; }
+  .top.ph.cb-page-head .acts { flex: 1 0 100%; width: 100%; display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.3fr) minmax(0, 1fr); gap: 6px; }
+  .top.ph.cb-page-head .acts > .btn { width: 100%; height: auto; min-height: 44px; padding: 6px 4px; gap: 4px; justify-content: center; font-size: .78rem; }
   .top.ph.cb-page-head .acts > .btn svg { width: 14px; height: 14px; }
   .cb-opening-field { width: 100%; max-width: none; flex: none; }
   .cb-opening-field > #cb-oc { height: 44px; }
@@ -472,3 +472,32 @@
 .dc-register .rep-t td, .dc-register .rep-t th { padding: 5px 8px; }
 .dc-register tr.cancelled td { color: #9ca3af !important; text-decoration: line-through; }
 .dcx-tools > #dc-register { flex: none; }
+
+/* v6.107: Cash Book recorded lines use the same card grammar as Collection entries */
+.cb-act-table .cb-led-name{font-weight:700;color:var(--txt)}
+.cb-act-table .cb-record-actions{gap:8px}
+.cb-act-table tr.cba.sr td:first-child{box-shadow:inset 3px 0 0 var(--gr)}
+.cb-act-table tr.cba.sp td:first-child{box-shadow:inset 3px 0 0 var(--rd)}
+@media (max-width:900px){
+  .tw.cards.cb-act-table tr.cba{display:grid;grid-template-columns:28px minmax(0,1fr) auto;grid-template-areas:"sl name amt" "act act act";gap:2px 10px;align-items:start;border-left:4px solid var(--gr);padding:10px 12px}
+  .tw.cards.cb-act-table tr.cba.sp{border-left-color:var(--rd)}
+  .tw.cards.cb-act-table tbody tr.cba td{display:block;padding:0;text-align:left;width:auto;min-width:0;box-shadow:none}
+  .tw.cards.cb-act-table tbody tr.cba td::before{display:none!important}
+  .tw.cards.cb-act-table tbody tr.cba td:nth-child(1){grid-area:sl;display:grid;place-items:center;width:24px;height:24px;margin-top:1px;border-radius:50%;background:var(--surface2);color:var(--mut);font-size:12px;font-weight:700}
+  .tw.cards.cb-act-table tbody tr.cba td:nth-child(2){grid-area:name;font-weight:700}
+  .tw.cards.cb-act-table tbody tr.cba .cb-led-name{padding:0;font-size:14.5px;word-break:break-word}
+  .tw.cards.cb-act-table tbody tr.cba td:nth-child(2) .sm{font-size:12.5px;font-weight:500}
+  .tw.cards.cb-act-table tbody tr.cba td:nth-child(3){grid-area:amt;text-align:right;font-size:17px;font-weight:800;color:var(--pri-ink)}
+  .tw.cards.cb-act-table tbody tr.cba td:nth-child(4){grid-area:act;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+  .tw.cards.cb-act-table tr.cba .iconbtn.sm{width:36px;height:36px}
+}
+
+/* v6.107: Cash Book report row stays on one line on phones */
+@media (max-width:560px){
+  .cb-report-controls #cb-register{flex:none;max-width:none;white-space:nowrap}
+  .cb-report-source{flex:1 1 120px}
+}
+
+/* v6.107: Cash Difference = amount on one line, status below */
+.cb-df-n{display:block;white-space:nowrap}
+.cb-df-s{display:block;font-size:.72rem;font-weight:700;opacity:.85}
