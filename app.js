@@ -1694,7 +1694,7 @@ async function vStatus(v) {
   const buckets = [["", bi("সব বয়স", "Any age")], ["0", bi(`≤ ${alertDays} দিন`, `≤ ${alertDays} days`)], ["1", bi("৪–৭ দিন", "4–7 days")], ["2", bi("৮–১৫ দিন", "8–15 days")], ["3", bi("১৫+ দিন", "15+ days")]];
   const bucketOf = d => d <= alertDays ? "0" : d <= 7 ? "1" : d <= 15 ? "2" : "3";
   let saved = {}; try { saved = JSON.parse(sessionStorage.getItem("nabiad_status_view") || "{}"); } catch { }
-  let mode = filters.some(f => f[0] === saved.mode) ? saved.mode : "pending", page = 0, ageF = saved.age || "", acF = "", group = !!saved.group, activeId = "", bulkBusy = false, lastQueue = [];
+  let mode = filters.some(f => f[0] === saved.mode) ? saved.mode : "pending", page = 0, ageF = saved.age || "", acF = "", grp = ["bank", "ac", "day", "year", "month", "week"].includes(saved.grp) ? saved.grp : saved.group ? "day" : "", activeId = "", bulkBusy = false, lastQueue = [];
   const sel = new Set(), open = new Set();
   v.innerHTML = head("চেক স্ট্যাটাস আপডেট", `<button class="btn" type="button" id="s-xl">${ico("dl")} ${bi("এক্সেল", "Excel")}</button>${moduleCan("cheque", "entry") ? `<a class="btn" href="#/entry">${ico("plus")} ${bi("চেক পোস্টিং", "Cheque Posting")}</a>` : ""}<a class="btn" href="#/cheques">${ico("list")} ${bi("চেক তালিকা", "Register")}</a>`) + `
     <section class="card cq-tools cq-workspace" aria-label="${bi("চেক স্ট্যাটাস তালিকা", "Cheque status queue")}">
@@ -1704,7 +1704,7 @@ async function vStatus(v) {
         <div class="cq-search"><label class="f" for="s-q">${bi("চেক খুঁজুন", "Search cheques")} <kbd>/</kbd></label><div class="cq-qw"><span aria-hidden="true">${ico("search")}</span><input class="in" id="s-q" type="search" autocomplete="off" placeholder="${bi("চেক নং, A/C বা অঙ্ক", "Cheque no, A/C or amount")}"></div></div>
         <div><label class="f" for="s-ac">${bi("অ্যাকাউন্ট", "Account")}</label><select class="in" id="s-ac"></select></div>
         <div><label class="f" for="s-sort">${bi("সাজানোর ক্রম", "Sort by")}</label><select class="in" id="s-sort"><option value="">${bi("তালিকার ডিফল্ট ক্রম", "Queue default")}</option><option value="old">${bi("পুরনো চেক আগে", "Oldest cheque first")}</option><option value="new">${bi("নতুন চেক আগে", "Newest cheque first")}</option><option value="amount">${bi("বেশি অঙ্ক আগে", "Highest amount first")}</option></select></div>
-        <label class="cq-grp-t"><input type="checkbox" id="s-group"> ${bi("তারিখ অনুযায়ী গ্রুপ", "Group by cheque date")}</label>
+        <div class="cq-grp-s"><label class="f" for="s-group">${bi("গ্রুপ করুন", "Group by")}</label><select class="in" id="s-group"><option value="">${bi("গ্রুপ ছাড়া", "No grouping")}</option><option value="bank">${bi("ব্যাংকের নাম", "Bank name")}</option><option value="ac">${bi("অ্যাকাউন্টের নাম", "Account name")}</option><option value="day">${bi("চেকের তারিখ", "Cheque date")}</option><optgroup label="${bi("তারিখ অনুযায়ী", "Date")}"><option value="year">${bi("বছর", "Year")}</option><option value="month">${bi("মাস", "Month")}</option><option value="week">${bi("সপ্তাহ", "Week")}</option></optgroup></select></div>
       </div>
       <div class="cq-chiprow"><div class="chips" id="s-age" role="group" aria-label="${bi("চেকের বয়স", "Cheque age")}"></div></div>
     </section>
@@ -1720,9 +1720,9 @@ async function vStatus(v) {
   const q = $("#s-q", v), date = $("#s-d", v), list = $("#s-list", v), info = $("#s-info", v);
   const pager = $("#s-pager", v), prev = $("#s-prev", v), next = $("#s-next", v), sort = $("#s-sort", v), title = $("#s-title", v);
   const acSel = $("#s-ac", v), ageBox = $("#s-age", v), tiles = $$("[data-cq-filter]", v), pageSize = 40;
-  sort.value = saved.sort || ""; $("#s-group", v).checked = group;
+  sort.value = saved.sort || ""; $("#s-group", v).value = grp;
   let lastHtml = "", lastAc = "", lastAge = "";
-  const persist = () => { try { sessionStorage.setItem("nabiad_status_view", JSON.stringify({ mode, age: ageF, group, sort: sort.value })); } catch { } };
+  const persist = () => { try { sessionStorage.setItem("nabiad_status_view", JSON.stringify({ mode, age: ageF, grp, sort: sort.value })); } catch { } };
   const refOf = c => `${acLabel(c.code)} · ${c.no}`;
   function draw() {
     if (!list.isConnected) return;
@@ -1770,6 +1770,15 @@ async function vStatus(v) {
       if (order === "new") return b.date.localeCompare(a.date) || b.no - a.no;
       return (b.sdate || b.date).localeCompare(a.sdate || a.date) || b.no - a.no;
     });
+    const dateGrp = ["day", "year", "month", "week"].includes(grp), desc = !(order === "old" || (!order && (mode === "pending" || mode === "older")));
+    const keyOf = c => grp === "bank" ? (accounts[c.code]?.bank || "—") : grp === "ac" ? c.code : grp === "day" ? c.date : grp === "year" ? c.date.slice(0, 4) : grp === "month" ? c.date.slice(0, 7) : grp === "week" ? pbWeek(c.date)[0] : "";
+    const gkey = new Map(), gagg = new Map();
+    if (grp) {
+      for (const c of queue) { const k = keyOf(c); gkey.set(c, k); const o = gagg.get(k) || { n: 0, amt: 0 }; o.n++; o.amt += c.amount; gagg.set(k, o); }
+      queue.sort((a, b) => { const x = gkey.get(a), y = gkey.get(b); return x === y ? 0 : dateGrp && desc ? y.localeCompare(x) : x.localeCompare(y); });
+    }
+    const MN = [bi("জানুয়ারি", "January"), bi("ফেব্রুয়ারি", "February"), bi("মার্চ", "March"), bi("এপ্রিল", "April"), bi("মে", "May"), bi("জুন", "June"), bi("জুলাই", "July"), bi("আগস্ট", "August"), bi("সেপ্টেম্বর", "September"), bi("অক্টোবর", "October"), bi("নভেম্বর", "November"), bi("ডিসেম্বর", "December")];
+    const gLabel = (k, c) => grp === "ac" ? acLabel(c.code) : grp === "day" ? dmy(k) : grp === "month" ? `${MN[+k.slice(5, 7) - 1]} ${k.slice(0, 4)}` : grp === "week" ? `${dmy(k)} – ${dmy(pbWeek(k)[1])}` : k;
     lastQueue = queue;
     const pages = Math.max(1, Math.ceil(queue.length / pageSize));
     page = Math.min(page, pages - 1);
@@ -1807,9 +1816,10 @@ async function vStatus(v) {
     };
     let html = "";
     if (visible.length) {
-      let lastDate = "";
+      let lastKey = null;
       for (const c of visible) {
-        if (group && c.date !== lastDate) { lastDate = c.date; const day = queue.filter(x => x.date === c.date); html += `<div class="cq-grp"><b>${dmy(c.date)}</b><span>${bi(`${day.length}টি চেক`, `${day.length} cheque(s)`)} · ৳ ${money(sumAmt(day))}</span></div>`; }
+        const k = gkey.get(c);
+        if (grp && k !== lastKey) { lastKey = k; const g = gagg.get(k); html += `<div class="cq-grp"><b>${esc(gLabel(k, c))}</b><span>${bi(`${g.n}টি চেক`, `${g.n} cheque(s)`)} · ৳ ${money(g.amt)}</span></div>`; }
         html += card(c);
       }
     } else html = `<div class="card empty cp-empty"><strong>${q.value.trim() || acF || ageF ? bi("ফিল্টারে কোনো চেক মেলেনি", "No cheques match these filters") : mode === "pending" ? bi("সব চেক হালনাগাদ ✓ — কোনো অপেক্ষমাণ চেক নেই", "All caught up ✓ — no pending cheques") : bi("এই তালিকায় কোনো চেক নেই", "No cheques in this queue")}</strong>${q.value.trim() || acF || ageF ? `<button type="button" class="btn sm" id="s-reset-q">${bi("ফিল্টার মুছুন", "Clear filters")}</button>` : mode === "pending" ? `<button type="button" class="btn sm" data-cq-go="all">${bi("সব চেক দেখুন", "View all cheques")}</button>` : ""}</div>`;
@@ -1830,7 +1840,7 @@ async function vStatus(v) {
   q.oninput = resetPage; sort.onchange = resetPage;
   acSel.onchange = () => { acF = acSel.value; resetPage(); };
   ageBox.onclick = e => { const b = e.target.closest("[data-age]"); if (!b) return; ageF = ageF === b.dataset.age ? "" : b.dataset.age; resetPage(); };
-  $("#s-group", v).onchange = e => { group = e.target.checked; draw(); };
+  $("#s-group", v).onchange = e => { grp = e.target.value; page = 0; persist(); draw(); };
   const changePage = delta => { page += delta; draw(); info.scrollIntoView({ block: "nearest" }); };
   prev.onclick = () => changePage(-1); next.onclick = () => changePage(1);
   $("#s-all", v).onchange = e => { const on = e.target.checked; lastQueue.slice(page * pageSize, page * pageSize + pageSize).filter(c => canEdit && c.status === "Pending" && !c.pending).forEach(c => on ? sel.add(c.id) : sel.delete(c.id)); draw(); };
