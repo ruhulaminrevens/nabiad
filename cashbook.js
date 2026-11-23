@@ -912,14 +912,14 @@ async function vCashBook(v) {
         $(".cb-side-count", button).textContent = activityBook ? (activityBook.lines[button.dataset.cbSide]?.length || 0) : "—";
       }
       const entries = activityBook?.lines[activitySide] || [];
-      get("activity-lines").innerHTML = entries.length ? `<table><thead><tr><th scope="col">SL</th><th scope="col">${bi("লেজার", "Ledger")}</th><th scope="col" class="r">${bi("টাকা", "Amount")}</th><th scope="col">${bi("অ্যাকশন", "Action")}</th></tr></thead><tbody>${entries.map((item, index) => `<tr><td class="num" data-l="SL">${index + 1}</td><td data-l=""><span class="cq-link cb-led-name">${esc(cbRegisterLineLabel(item, rawTally))}</span>
+      get("activity-lines").innerHTML = entries.length ? `<table><thead><tr><th scope="col">SL</th><th scope="col">${bi("লেজার", "Ledger")}</th><th scope="col" class="r">${bi("টাকা", "Amount")}</th><th scope="col">${bi("অ্যাকশন", "Action")}</th></tr></thead><tbody>${entries.map((item, index) => `<tr class="cba s${activitySide}"><td class="num cb-sl" data-l="SL">${index + 1}</td><td data-l=""><span class="cb-led-name">${esc(cbRegisterLineLabel(item, rawTally))}</span>
         ${item.ref || item.c ? `<div class="mut sm">${esc([item.ref && cbVoucherLabel(activitySide) + " " + item.ref, item.c].filter(Boolean).join(" · "))}</div>` : ""}
         ${cbPendingPartyRef(item, rawTally) ? `<div class="am sm">${esc(cbPendingPartyRef(item, rawTally))}</div>` : ""}
         ${item.note ? `<div class="mut sm cb-narr">${esc(item.note)}</div>` : ""}</td>
         <td class="r num" data-l="${bi("টাকা", "Amount")}"><strong>${moneyText(item.a)}</strong></td>
         <td data-l="${bi("অ্যাকশন", "Action")}"><div class="cb-record-actions">
-          ${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="btn sm" data-cb-edit="${index}">${bi("এডিট", "Edit")}</button>` : `<button type="button" class="btn sm" disabled title="${esc(bi("এডিটের অনুমতি বা সময় নেই", "No edit permission or edit window closed"))}">${bi("এডিট", "Edit")}</button>`}
-          ${!imported && admin ? `<button type="button" class="btn sm" data-cb-delete="${index}">${bi("মুছুন", "Delete")}</button>` : ""}
+          ${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="iconbtn sm" data-cb-edit="${index}" title="${esc(bi("এডিট", "Edit"))}" aria-label="${esc(bi("এডিট", "Edit"))}">${ico("edit")}</button>` : `<button type="button" class="iconbtn sm" disabled title="${esc(bi("এডিটের অনুমতি বা সময় নেই", "No edit permission or edit window closed"))}" aria-label="${esc(bi("এডিট", "Edit"))}">${ico("edit")}</button>`}
+          ${!imported && admin ? `<button type="button" class="iconbtn sm rd" data-cb-delete="${index}" title="${esc(bi("মুছুন", "Delete"))}" aria-label="${esc(bi("মুছুন", "Delete"))}">${ico("trash")}</button>` : ""}
         </div></td></tr>`).join("")}</tbody></table>` : "";
       get("activity-lines").hidden = !entries.length;
       get("activity-empty").hidden = !activityBook || !!entries.length;
