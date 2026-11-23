@@ -913,9 +913,8 @@ async function vCashBook(v) {
       }
       const entries = activityBook?.lines[activitySide] || [];
       get("activity-lines").innerHTML = entries.length ? `<table><thead><tr><th scope="col">SL</th><th scope="col">${bi("লেজার", "Ledger")}</th><th scope="col" class="r">${bi("টাকা", "Amount")}</th><th scope="col">${bi("অ্যাকশন", "Action")}</th></tr></thead><tbody>${entries.map((item, index) => `<tr class="cba s${activitySide}"><td class="num cb-sl" data-l="SL">${index + 1}</td><td data-l=""><span class="cb-led-name">${esc(cbRegisterLineLabel(item, rawTally))}</span>
-        ${item.ref || item.c ? `<div class="mut sm">${esc([item.ref && cbVoucherLabel(activitySide) + " " + item.ref, item.c].filter(Boolean).join(" · "))}</div>` : ""}
-        ${cbPendingPartyRef(item, rawTally) ? `<div class="am sm">${esc(cbPendingPartyRef(item, rawTally))}</div>` : ""}
-        ${item.note ? `<div class="mut sm cb-narr">${esc(item.note)}</div>` : ""}</td>
+        ${item.ref || item.c ? `<div class="mut sm cb-sub">${item.ref ? `<span class="cb-vl">${esc(cbVoucherLabel(activitySide))}</span> <b class="cb-vr">${esc(item.ref)}</b>` : ""}${item.ref && item.c ? " · " : ""}${item.c ? `<span class="cb-vc">${esc(item.c)}</span>` : ""}</div>` : ""}
+        ${cbPendingPartyRef(item, rawTally) || item.note ? `<div class="sm cb-x">${cbPendingPartyRef(item, rawTally) ? `<span class="am">${esc(cbPendingPartyRef(item, rawTally))}</span>` : ""}${cbPendingPartyRef(item, rawTally) && item.note ? " · " : ""}${item.note ? `<span class="mut cb-narr">${esc(item.note)}</span>` : ""}</div>` : ""}</td>
         <td class="r num" data-l="${bi("টাকা", "Amount")}"><strong>${moneyText(item.a)}</strong></td>
         <td data-l="${bi("অ্যাকশন", "Action")}"><div class="cb-record-actions">
           ${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="iconbtn sm cpi am" data-cb-edit="${index}" title="${esc(bi("এডিট", "Edit"))}" aria-label="${esc(bi("এডিট", "Edit"))}">${ico("edit")}</button>` : `<button type="button" class="iconbtn sm cpi am" disabled title="${esc(bi("এডিটের অনুমতি বা সময় নেই", "No edit permission or edit window closed"))}" aria-label="${esc(bi("এডিট", "Edit"))}">${ico("edit")}</button>`}

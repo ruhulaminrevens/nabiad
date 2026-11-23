@@ -501,3 +501,23 @@
 /* v6.107: Cash Difference = amount on one line, status below */
 .cb-df-n{display:block;white-space:nowrap}
 .cb-df-s{display:block;font-size:.72rem;font-weight:700;opacity:.85}
+
+/* v6.108: recorded lines stay compact — desktop 2 lines, phone max 3 */
+.cb-act-table .cb-led-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.cb-act-table .cb-sub,.cb-act-table .cb-x{display:flex;gap:4px;min-width:0;white-space:nowrap;overflow:hidden}
+.cb-act-table .cb-vl{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.cb-act-table .cb-vr{flex:none}
+.cb-act-table .cb-vc,.cb-act-table .cb-narr{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.cb-act-table .cb-x>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:900px){
+  .tw.cards.cb-act-table tbody tr.cba .cb-led-name{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;overflow:hidden}
+  .tw.cards.cb-act-table tbody tr.cba td:nth-child(2):has(.cb-x) .cb-led-name{-webkit-line-clamp:1}
+  .tw.cards.cb-act-table tbody tr.cba td:nth-child(2) .cb-sub,.tw.cards.cb-act-table tbody tr.cba td:nth-child(2) .cb-x{display:flex}
+}
+
+.cb-act-table .cb-x .cb-narr,.cb-act-table .cb-x .am{white-space:nowrap;overflow-wrap:normal;word-break:normal}
+.cb-act-table .cb-x .am{flex:none;max-width:60%;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:900px){
+  .tw.cards.cb-act-table .cb-vl{display:none}
+  .tw.cards.cb-act-table .cb-vr::before{content:"#";font-weight:600;opacity:.6;margin-inline-end:1px}
+}
