@@ -5475,7 +5475,7 @@ async function vDcol(v) {
      <div class="dcx-b entry-actions"><button class="btn big" type="button" id="dc-clear">${ico("x")} ${bi("পরিষ্কার", "Clear")}</button><button class="btn pri big" id="dc-add">${ico("plus")} যোগ করুন</button></div>
     </div><div class="hint rd" id="dc-err" style="min-height:0;margin-top:8px"></div><datalist id="dc-dl-a"></datalist></div>
    <div class="card flush dcx-list"><div class="ch"><h3>এই তারিখের কালেকশন</h3><span class="tag" id="dc-cnt">0</span></div>
-    <div class="noprint dcx-tools"><div class="chips dcx-tabs" id="dc-sc"></div>${searchBox("dc-q", "খুঁজুন — পার্টি, ASM, Account, টাকা…")}<button type="button" id="dc-register" class="btn pri">${ico("table")}<span>${bi("দেখুন / Export", "View / Export")}</span></button></div>
+    <div class="noprint dcx-tools"><div class="chips dcx-tabs" id="dc-sc"></div>${searchBox("dc-q", innerWidth < 560 ? bi("খুঁজুন…", "Search…") : "খুঁজুন — পার্টি, ASM, Account, টাকা…")}<button type="button" id="dc-register" class="btn pri">${ico("table")}<span>${bi("দেখুন / Export", "View / Export")}</span></button></div>
     <div class="chips dcx-acc noprint" id="dc-ac"></div>
     <div id="dc-list"></div></div></div><div id="dc-selbar" class="selbar hide"></div>`;
   const list = $("#dc-list", v), err = m => $("#dc-err", v).textContent = m || "";

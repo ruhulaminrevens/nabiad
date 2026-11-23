@@ -2588,3 +2588,11 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 .adm-content .top.ph .acts{width:100%}
 @media (max-width:560px){ .st-btns.st-short>.btn{flex:1 1 100%} }
 #st-mfa{margin-top:8px;padding-top:12px;border-top:1px solid var(--line)}
+
+/* Collection Entry: search and View / Export share one line on phones */
+@media (max-width:900px){
+  .dcx-tools{flex-wrap:wrap}
+  .dcx-tools>.dcx-tabs{flex:1 1 100%}
+  .dcx-tools .srch{flex:1 1 120px;min-width:0}
+  .dcx-tools>#dc-register{flex:none;padding-inline:12px;white-space:nowrap}
+}
