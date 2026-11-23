@@ -3741,7 +3741,7 @@ async function vDash(v) {
       $("#dg-col", v).textContent = "৳ " + money0(dcSum(rows)); $("#dg-cols", v).textContent = rows.length ? `${bi("Approved", "Approved")} ${ap.length} · Pending ${pe.length}` : bi("আজ এখনো কোনো এন্ট্রি নেই", "No entries yet today");
     } catch { if ($("#dg-cols", v)) $("#dg-cols", v).textContent = "—"; }
     try {
-      const b = await API.cbOn(t); if (!$("#dg-cb", v)) return; const sum = k => (b?.lines?.[k] || []).reduce((q, l) => q + (+l.a || 0), 0), R = sum("r"), P = sum("p");
+      const b = await API.cbOn(t); if (!$("#dg-cb", v)) return; const sum = k => (b?.lines?.[k] || []).filter(l => !l.x).reduce((q, l) => q + (+l.a || 0), 0), R = sum("r"), P = sum("p");
       $("#dg-cb", v).textContent = b ? (R - P < 0 ? "−" : "") + "৳ " + money0(Math.abs(R - P)) : "—"; $("#dg-cbs", v).textContent = b ? `${bi("আয়", "In")} ${money0(R)} · ${bi("ব্যয়", "Out")} ${money0(P)}` : bi("আজ এখনো এন্ট্রি নেই", "No entries yet today");
     } catch { if ($("#dg-cbs", v)) $("#dg-cbs", v).textContent = "—"; }
   })();
@@ -4318,13 +4318,13 @@ async function vRegister(v) {
         if (!current()) return;
         setLedgers(ledgers.list);
         const checkerDays = new Map(rows.map(r => [r.date, r]));
-        const books = (allBooks || []).filter(b => ["r", "p"].some(tt => (b.lines?.[tt] || []).some(l => +l.a)) && !(checkerDays.get(b.date)?.status === "final" && b.status !== "final"));
+        const books = (allBooks || []).filter(b => ["r", "p"].some(tt => (b.lines?.[tt] || []).some(l => +l.a && !l.x)) && !(checkerDays.get(b.date)?.status === "final" && b.status !== "final"));
         const bookDays = new Set(books.map(b => b.date));
         const diffs = books.filter(b => {
           const c = checkerDays.get(b.date);
           if (c?.status !== "final" || b.status !== "final") return false;
           return [["r", "receipt"], ["p", "payment"]].some(([side, type]) => {
-            const bookTotal = (b.lines?.[side] || []).filter(l => !CASH_MEMO.includes(l.k)).reduce((sum, l) => sum + (+l.a || 0), 0);
+            const bookTotal = (b.lines?.[side] || []).filter(l => !l.x && !CASH_MEMO.includes(l.k)).reduce((sum, l) => sum + (+l.a || 0), 0);
             const checkerTotal = CASH_SUM_KEYS(type).reduce((sum, k) => sum + (+c.items?.[k]?.a || 0), 0);
             return Math.abs(bookTotal - checkerTotal) > 0.5;
           });
@@ -4336,7 +4336,7 @@ async function vRegister(v) {
           accounts: Array.isArray(it.accs) ? [...new Set(it.accs.filter(z => z?.c && +z.a).map(z => z.c))].join(", ") : "",
           st: r.status, by: r.entered_by, source: "checker"
         })));
-        const fromBook = books.flatMap(b => [["r", "receipt"], ["p", "payment"]].flatMap(([side, type]) => (b.lines?.[side] || []).filter(l => +l.a).map(l => ({
+        const fromBook = books.flatMap(b => [["r", "receipt"], ["p", "payment"]].flatMap(([side, type]) => (b.lines?.[side] || []).filter(l => +l.a && !l.x).map(l => ({
           date: b.date, k: CASH_KEYS(type).includes(cashCategory(l.k)) ? cashCategory(l.k) : side === "r" ? "cz_oth" : "p_oth",
           type, a: +l.a, led: l.n, ref: l.ref, n: l.note, x: l.x, accounts: l.c, st: b.status, by: b.entered_by, source: "book"
         }))));
