@@ -1959,7 +1959,7 @@ async function vClosing(v) {
     if (!current()) return;
     const has = Object.values(ex).some(r => r.total != null);
     const canEdit = moduleCan("bank", "edit", false), canEntry = moduleCan("bank", "entry");
-    const accs = S.accounts.filter(a => a.daily && (a.status === "Active" || ex[a.code]) && (!has || canEntry || ex[a.code]?.total != null)).sort((a, b) => a.sort - b.sort);
+    const accs = S.accounts.filter(a => a.daily && (a.status === "Active" || ex[a.code]) && (!has || canEntry || ex[a.code]?.total != null)).sort((a, b) => String(a.bank || "~").localeCompare(String(b.bank || "~"), "en", { sensitivity: "base" }) || String(a.code).localeCompare(String(b.code), "en", { numeric: true, sensitivity: "base" })); /* bank A–Z, then A/C code A–Z */
     const locked = has ? !canEdit || Object.values(ex).some(r => r.pending) : !canEntry;
     const draft = has ? null : await Draft.get(date); const dr = draft?.rows || {};
     /* Debit/Withdraw ← Cash Checker "Total Bank" · Credit/Deposit ← approved Collection + Cash Checker "Bank" (per A/C, this date) */
@@ -2026,7 +2026,7 @@ async function vClosing(v) {
     <div class="bc-review">${locked ? "" : `<span class="mut sm" id="c-extra-help">${bi("অতিরিক্ত ডেবিট বা ক্রেডিট দিতে আগে ওই A/C-এর ব্যাংক ক্লোজিং লিখুন।", "Enter the account’s Bank Closing amount to enable extra debit and credit.")}</span>`}<span class="mut sm" id="c-shown" role="status"></span></div>
     <div id="c-empty" class="empty" hidden>${bi("এই ফিল্টারে কোনো অ্যাকাউন্ট নেই", "No accounts match these filters")}</div>
     <div class="tw cards closing bc-table"><table id="ct"><thead><tr><th>#</th><th>A/C</th><th class="r">আগের ক্লোজিং</th><th class="r c-dr">${bi("ডেবিট / উত্তোলন", "Debit / Withdraw")}</th><th class="r c-cr">${bi("ক্রেডিট / জমা", "Credit / Deposit")}</th><th class="r">হিসাব মতে</th><th class="r c-bk">ব্যাংক ক্লোজিং</th><th class="r">${bi("ব্লক", "Block")}</th><th class="r">${bi("ব্যবহারযোগ্য", "Usable")}</th><th class="r">${bi("অমিল", "Diff")}</th><th>মন্তব্য</th></tr></thead><tbody>
-    ${rows.map((r, i) => { const b = B(r.a); return `<tr data-i="${i}" style="--b1:${b.c1}"><td class="mut">${i + 1}</td><td class="acc-c" style="--b1:${b.c1}"><b>${esc(r.code)}</b> <span class="mvdot" aria-label="${bi("লেনদেন", "Activity")}" hidden>●</span><div class="mut sm">${esc(r.holder)}</div></td><td class="r num">${money(r.prevT)}</td>
+    ${rows.map((r, i) => { const b = B(r.a); const bk = r.a.bank || bi("অন্যান্য", "Other"), first = i === 0 || (rows[i - 1].a.bank || "") !== (r.a.bank || ""); const gh = first ? `<tr class="gh"><td colspan="11" data-l=""><b>${esc(bk)}</b> <span class="gn">${rows.filter(y => (y.a.bank || "") === (r.a.bank || "")).length}</span></td></tr>` : ""; return gh + `<tr data-i="${i}" style="--b1:${b.c1}"><td class="mut">${i + 1}</td><td class="acc-c" style="--b1:${b.c1}"><b>${esc(r.code)}</b> <span class="mvdot" aria-label="${bi("লেনদেন", "Activity")}" hidden>●</span><div class="mut sm">${esc(r.holder)}</div></td><td class="r num">${money(r.prevT)}</td>
      <td class="c-dr"><div class="au">${autoDr(r)}</div><input class="cell od" ${locked ? "" : 'aria-describedby="c-extra-help"'} aria-label="${esc(r.code)} · ${bi("অতিরিক্ত ডেবিট", "Additional debit")}" value="${fmtIn(r.od || "")}" inputmode="decimal" placeholder="${bi("অতিরিক্ত", "Extra")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
      <td class="c-cr"><div class="au">${autoCr(r)}</div><input class="cell odp" ${locked ? "" : 'aria-describedby="c-extra-help"'} aria-label="${esc(r.code)} · ${bi("অতিরিক্ত ক্রেডিট", "Additional credit")}" value="${fmtIn(r.odp || "")}" inputmode="decimal" placeholder="${bi("অতিরিক্ত", "Extra")}" ${locked ? "disabled" : ""}><div class="eff num"></div></td>
      <td class="r num exp"></td><td class="c-bk"><input class="cell tot" aria-label="${esc(r.code)} · ${bi("ব্যাংক ক্লোজিং", "Bank closing")}" value="${r.total == null ? "" : fmtIn(r.total)}" data-dirty="${r.total == null ? "" : "1"}" inputmode="decimal" ${locked ? "disabled" : ""}></td><td><input class="cell blk" aria-label="${esc(r.code)} · ${bi("ব্লক", "Blocked amount")}" value="${fmtIn(r.block || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
@@ -2057,6 +2057,7 @@ async function vClosing(v) {
         tr.style.display = show ? "" : "none";
         if (show) visible++;
       });
+      $$("#ct tbody tr.gh", body).forEach(gh => { let n = gh.nextElementSibling, any = false; while (n && !n.classList.contains("gh") && !n.classList.contains("tot")) { if (n.style.display !== "none") any = true; n = n.nextElementSibling; } gh.style.display = any ? "" : "none"; });
       $("#c-shown", body).textContent = bi(`${rows.length}টির মধ্যে ${visible}টি`, `${visible} of ${rows.length} accounts`);
       $("#c-empty", body).hidden = visible > 0;
       reviewButtons.forEach(btn => btn.setAttribute("aria-pressed", btn.dataset.review === review));
