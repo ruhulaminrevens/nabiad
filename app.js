@@ -2032,7 +2032,7 @@ async function vClosing(v) {
      <td class="r num exp"></td><td class="c-bk"><input class="cell tot" aria-label="${esc(r.code)} · ${bi("ব্যাংক ক্লোজিং", "Bank closing")}" value="${r.total == null ? "" : fmtIn(r.total)}" data-dirty="${r.total == null ? "" : "1"}" inputmode="decimal" ${locked ? "disabled" : ""}></td><td><input class="cell blk" aria-label="${esc(r.code)} · ${bi("ব্লক", "Blocked amount")}" value="${fmtIn(r.block || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
      <td class="r num usa b"></td><td class="r num dif"></td><td><input class="cell t rem" aria-label="${esc(r.code)} · ${bi("মন্তব্য", "Remarks")}" value="${esc(r.remark)}" ${locked ? "disabled" : ""}></td></tr>`; }).join("")}
     <tr class="tot"><td></td><td>মোট <span class="mut sm" id="T-n"></span></td><td class="r num" id="T0"></td><td class="r num c-dr" id="T1"></td><td class="r num c-cr" id="T2"></td><td class="r num" id="T3"></td><td class="r num c-bk t-bank" id="T4"></td><td class="r num" id="T5"></td><td class="r num t-usa" id="T6"></td><td class="r num t-diff" id="T7"></td><td></td></tr></tbody></table></div>
-    ${locked || !rows.length ? "" : `<div class="cbar entry-actions"><div class="bc-bartot" id="c-bartot" aria-live="off"><span class="bt-n">${bi("মোট", "Total")} <b id="bt-n"></b></span><span>${bi("ক্লোজিং", "Closing")} <b id="bt-4" class="num"></b></span><span>${bi("ব্যবহারযোগ্য", "Usable")} <b id="bt-6" class="num bt-usa"></b></span><span>${bi("অমিল", "Diff")} <b id="bt-7" class="num"></b></span></div>${has ? "" : `<button type="button" class="btn lg fix" id="c-draft">${ico("edit")} <span data-save-label>${bi("ড্রাফট সেভ", "Save draft")}</span></button>`}<button type="button" class="btn pri lg fix" id="c-save">${ico("save")} <span data-save-label>${bi("সেভ", "Save")}</span></button><div class="hint" id="c-err" role="alert"></div></div>`}
+    ${locked || !rows.length ? "" : `<div class="cbar entry-actions"><div class="bc-bartot" id="c-bartot" aria-live="off"><span class="bt-n">${bi("মোট", "Total")} <b id="bt-n"></b></span><span>${bi("ক্লোজিং", "Closing")} <b id="bt-4" class="num"></b></span><span>${bi("ব্যবহারযোগ্য", "Usable")} <b id="bt-6" class="num bt-usa"></b></span><span>${bi("অমিল", "Diff")} <b id="bt-7" class="num"></b></span></div><button type="button" class="btn lg fix" id="c-preview">${ico("eye")} <span>${bi("প্রিভিউ", "Preview")}</span></button>${has ? "" : `<button type="button" class="btn lg fix" id="c-draft">${ico("edit")} <span data-save-label>${bi("ড্রাফট সেভ", "Save draft")}</span></button>`}<button type="button" class="btn pri lg fix" id="c-save">${ico("save")} <span data-save-label>${bi("সেভ", "Save")}</span></button><div class="hint" id="c-err" role="alert"></div></div>`}
     </section>`;
     [...$$("[data-go]", body), ...$$("[data-go]", msg)].forEach(a => a.onclick = () => {
       const key = {crep: "nabiad_crep_date"}[a.dataset.go];
@@ -2156,6 +2156,24 @@ async function vClosing(v) {
     calc();
     filters.hidden = false;
     if (locked || !rows.length) return;
+    const previewBtn = $("#c-preview", body);
+    if (previewBtn) previewBtn.onclick = () => {
+      calc(); /* refresh so the report shows exactly what is typed right now (saved or not) */
+      const list = rows.map(r => ({ a: r.a, total: r._tot || 0, block: r._blk || 0, remark: r._rem || "" }));
+      const name = `Bank_Closing_${date}`, canShare = !!navigator.share;
+      modal(`<div class="sn-pv"><div class="sn-pvh noprint"><h2>${bi("ডেইলি ব্যাংক ক্লোজিং রিপোর্ট", "Daily Bank Closing Report")}</h2><button type="button" class="btn sm" data-role="close" aria-label="${bi("বন্ধ", "Close")}">${ico("xmark")}</button></div>
+        <div class="sn-pvn noprint">${has ? "" : bi("সেভ না করা মান দিয়ে প্রিভিউ — সেভ করলে এটাই ফাইনাল হবে।", "Preview of the values typed now — not saved yet.")}</div>
+        <div class="rep-wrap sn-pvb"><div class="rep-scroll"><div id="pv-wrap">${bankRepHtml("pv-rep", date, list, null, null)}</div></div></div>
+        <div class="sn-pva noprint"><button type="button" class="btn cb-action sn-png" id="pv-png">${ico("img")}<span>${bi("ছবি", "Image")}</span></button><button type="button" class="btn cb-action sn-pdf" id="pv-pdf">${ico("print")}<span>${bi("প্রিন্ট PDF", "Print PDF")}</span></button>${canShare ? `<button type="button" class="btn cb-action sn-sh" id="pv-sh">${ico("share")}<span>${bi("শেয়ার", "Share")}</span></button>` : ""}</div></div>`, (root, close) => {
+        const rep = () => $("#pv-rep", root), T = list.reduce((q, r) => ({ t: q.t + r.total, b: q.b + r.block }), { t: 0, b: 0 });
+        $$('[data-role="close"]', root).forEach(b => b.onclick = close);
+        const fit = () => dcFit(root, "pv-rep"); fit(); window.addEventListener("resize", fit);
+        new MutationObserver(() => { if (!root.isConnected || !rep()) window.removeEventListener("resize", fit); }).observe(root, { childList: true });
+        $("#pv-png", root).onclick = () => dcPng(rep(), name);
+        $("#pv-pdf", root).onclick = () => dcPdf(rep(), name);
+        const sh = $("#pv-sh", root); if (sh) sh.onclick = () => dcShare(rep(), name, `${dmy(date)} Bank Closing — Total ৳ ${money0(T.t)} · Block ${money0(T.b)} · Usable ${money0(T.t - T.b)}`);
+      });
+    };
     const saveDraft = $("#c-draft", body), saveFinal = $("#c-save", body);
     if (saveDraft) saveDraft.onclick = async () => {
       if (saving) return;
@@ -2225,6 +2243,18 @@ async function vClosing(v) {
 }
 
 /* ---------- closing report + account history ---------- */
+/* Daily Bank Closing Report card — shared by Balance Snapshot and the Bank Closing preview */
+function bankRepHtml(id, date, rows, by, filteredOf) {
+  const T = rows.reduce((q, r) => ({ t: q.t + r.total, b: q.b + r.block }), { t: 0, b: 0 }), usaN = rows.filter(r => r.total - r.block > 0).length, filtered = filteredOf != null && filteredOf !== rows.length, all = filteredOf;
+  rows.forEach((r, i) => r.n = i + 1);
+  return `<div class="rep" id="${id}">
+      ${dcHead("Daily Bank Closing Report · ব্যাংক ক্লোজিং রিপোর্ট" + (filtered ? ` · Filtered ${rows.length}/${all}` : ""), date, date)}
+      <div class="rep-kpi"><div><span>Accounts</span><b>${rows.length}</b></div><div class="k1"><span>Total Balance</span><b>৳ ${money0(T.t)}</b></div><div class="k2"><span>Block / Lien</span><b>৳ ${money0(T.b)}</b></div><div class="k3"><span>Usable (${usaN} A/C)</span><b>৳ ${money0(T.t - T.b)}</b></div></div>
+      <table class="rep-t grp-t"><thead><tr><th class="r">#</th><th>A/C Code</th><th>Account Holder</th><th class="r">Total</th><th class="r bk">Block</th><th class="r us">Usable</th><th>Remarks</th></tr></thead><tbody>
+      ${rows.map((r, k) => { const u = r.total - r.block; const bk = r.a.bank || bi("অন্যান্য", "Other"), first = k === 0 || (rows[k - 1].a.bank || "") !== (r.a.bank || ""); const grp = first ? (g => `<tr class="gh"><td></td><td colspan="2"><b>${esc(bk)}</b> <span class="gn">${g.length}</span></td><td class="r num">${money0(g.reduce((x, y) => x + y.total, 0))}</td><td class="r num">${money0(g.reduce((x, y) => x + y.block, 0))}</td><td class="r num">${money0(g.reduce((x, y) => x + y.total - y.block, 0))}</td><td></td></tr>`)(rows.filter(y => (y.a.bank || "") === (r.a.bank || ""))) : ""; return grp + `<tr><td class="n">${r.n}</td><td class="cd"><i class="bdot" style="background:${brandOf(r.a).c1}"></i>${esc(r.a.code)}</td><td class="ho">${esc(r.a.holder)}</td><td class="r num">${money0(r.total)}</td><td class="r num ${r.block ? "bk" : "z"}">${r.block ? money0(r.block) : "—"}</td><td class="r num ${u > 0 ? "us" : "z"}">${u > 0 ? money0(u) : u < 0 ? money0(u) : "0"}</td><td class="rm">${esc(r.remark)}</td></tr>`; }).join("")}
+      <tr class="tot"><td></td><td colspan="2">GRAND TOTAL</td><td class="r num">${money0(T.t)}</td><td class="r num">${money0(T.b)}</td><td class="r num">${money0(T.t - T.b)}</td><td></td></tr></tbody></table>
+      ${dcFoot(by ? " · Entered by " + esc(by) : "")}</div>`;
+}
 async function vCrep(v) {
   let date = sessionStorage.getItem("nabiad_crep_date") || S.lastBal || today(); sessionStorage.removeItem("nabiad_crep_date");
   const canShare = !!navigator.share;
@@ -2242,13 +2272,7 @@ async function vCrep(v) {
     rows.forEach((r, i) => r.n = i + 1); const T = rows.reduce((s, r) => ({ t: s.t + r.total, b: s.b + r.block }), { t: 0, b: 0 }); data = { rows, T, filtered: rows.length !== all.length, all: all.length };
     const wd = new Date(date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long" }), dl = new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
     const usaN = rows.filter(r => r.total - r.block > 0).length, by = (bm[all[0]?.code] || {}).by;
-    $("#crep", v).innerHTML = rows.length ? `<div class="rep" id="crep-in">
-      ${dcHead("Daily Bank Closing Report · ব্যাংক ক্লোজিং রিপোর্ট" + (data.filtered ? ` · Filtered ${rows.length}/${all.length}` : ""), date, date)}
-      <div class="rep-kpi"><div><span>Accounts</span><b>${rows.length}</b></div><div class="k1"><span>Total Balance</span><b>৳ ${money0(T.t)}</b></div><div class="k2"><span>Block / Lien</span><b>৳ ${money0(T.b)}</b></div><div class="k3"><span>Usable (${usaN} A/C)</span><b>৳ ${money0(T.t - T.b)}</b></div></div>
-      <table class="rep-t grp-t"><thead><tr><th class="r">#</th><th>A/C Code</th><th>Account Holder</th><th class="r">Total</th><th class="r bk">Block</th><th class="r us">Usable</th><th>Remarks</th></tr></thead><tbody>
-      ${rows.map((r, k) => { const u = r.total - r.block; const bk = r.a.bank || bi("অন্যান্য", "Other"), first = k === 0 || (rows[k - 1].a.bank || "") !== (r.a.bank || ""); const grp = first ? (g => `<tr class="gh"><td></td><td colspan="2"><b>${esc(bk)}</b> <span class="gn">${g.length}</span></td><td class="r num">${money0(g.reduce((x, y) => x + y.total, 0))}</td><td class="r num">${money0(g.reduce((x, y) => x + y.block, 0))}</td><td class="r num">${money0(g.reduce((x, y) => x + y.total - y.block, 0))}</td><td></td></tr>`)(rows.filter(y => (y.a.bank || "") === (r.a.bank || ""))) : ""; return grp + `<tr><td class="n">${r.n}</td><td class="cd"><i class="bdot" style="background:${brandOf(r.a).c1}"></i>${esc(r.a.code)}</td><td class="ho">${esc(r.a.holder)}</td><td class="r num">${money0(r.total)}</td><td class="r num ${r.block ? "bk" : "z"}">${r.block ? money0(r.block) : "—"}</td><td class="r num ${u > 0 ? "us" : "z"}">${u > 0 ? money0(u) : u < 0 ? money0(u) : "0"}</td><td class="rm">${esc(r.remark)}</td></tr>`; }).join("")}
-      <tr class="tot"><td></td><td colspan="2">GRAND TOTAL</td><td class="r num">${money0(T.t)}</td><td class="r num">${money0(T.b)}</td><td class="r num">${money0(T.t - T.b)}</td><td></td></tr></tbody></table>
-      ${dcFoot(by ? " · Entered by " + esc(by) : "")}</div>` : `<div class="empty">${all.length ? "খোঁজার সাথে কিছু মেলেনি" : "এই তারিখে কোনো ব্যালেন্স সেভ নেই"}</div>`;
+    $("#crep", v).innerHTML = rows.length ? bankRepHtml("crep-in", date, rows, by, all.length) : `<div class="empty">${all.length ? "খোঁজার সাথে কিছু মেলেনি" : "এই তারিখে কোনো ব্যালেন্স সেভ নেই"}</div>`;
     fitRep();
   }
   function fitRep() { const el = $("#crep-in", v); if (!el) return; el.style.zoom = ""; const w = el.parentElement.clientWidth - 8; if (w < 794) el.style.zoom = (w / 794).toFixed(3); }
