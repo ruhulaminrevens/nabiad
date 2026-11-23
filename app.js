@@ -824,8 +824,8 @@ const ROUTES = {
   status: { t: "চেক স্ট্যাটাস", ic: "flag", roles: "as", sec: "main", f: () => vStatus },
   cheques: { t: "চেক রেজিস্টার", ic: "list", roles: "asb", sec: "main", f: () => vCheques },
   closing: { t: "ব্যাংক ক্লোজিং", ic: "bank", roles: "as", sec: "bank", f: () => vClosing },
-  crep: { t: "ব্যালেন্স স্ন্যাপশট", ic: "img", roles: "asb", sec: "bank", f: () => vCrep },
-  reports: { t: "ব্যাংক রিপোর্ট", ic: "chart", roles: "asb", sec: "bank", f: () => vReports },
+  crep: { t: "ব্যাংক সামারি", ic: "img", roles: "asb", sec: "bank", f: () => vCrep },
+  reports: { t: "ব্যাংক বিস্তারিত রিপোর্ট", ic: "chart", roles: "asb", sec: "bank", f: () => vReports },
   cash: { t: "ক্যাশ খাতা", ic: "book", roles: "as", sec: "cash", f: () => vCashBook },
   cashchk: { t: "ক্যাশ চেকার", ic: "check", roles: "as", sec: "cash", f: () => vCash },
   cashsum: { t: "ক্যাশ সামারি", ic: "pulse", roles: "asb", sec: "cash", f: () => vCashSum },
@@ -2340,14 +2340,14 @@ function hChart(gs, m) {
   const area = n > 1 ? `<path d="${line(vals)}L${X(n - 1).toFixed(1)},${H - B}L${X(0).toFixed(1)},${H - B}Z" fill="url(#hga)"/>` : "";
   return `<div class="sn-chart" data-lo="${lo}" data-hi="${hi}"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${bi("ব্যালেন্সের গ্রাফ", "Balance chart")}"><defs><linearGradient id="hga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7c3aed" stop-opacity=".28"/><stop offset="1" stop-color="#7c3aed" stop-opacity="0"/></linearGradient><linearGradient id="hgl" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>${grid}${area}${n > 1 ? `<path d="${line(vals)}" class="hl"/>` : ""}${showUse && n > 1 ? `<path d="${line(use)}" class="hu"/>` : ""}${dots}${n === 1 ? `<circle cx="${X(0)}" cy="${Y(vals[0]).toFixed(1)}" r="5" class="hdh"/>` : ""}${xl}<line class="hcur" x1="0" x2="0" y1="${T}" y2="${H - B}"/><circle class="hcd" r="5" cx="0" cy="0"/><rect class="hov" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg><div class="hq" hidden></div>${showUse ? `<div class="hlg"><span><i class="l1"></i>${bi("টোটাল", "Total")}</span><span><i class="l2"></i>${bi("ব্যবহারযোগ্য", "Usable")}</span></div>` : ""}</div>`;
 }
-function hChartBind(root, gs, m) {
+function hChartBind(root, gs, m, lbl) {
   const box = $(".sn-chart", root); if (!box) return;
   const svg = $("svg", box), tip = $(".hq", box), cur = $(".hcur", svg), cd = $(".hcd", svg), { W, H, L, R, T, B } = H_G, n = gs.length, lo = +box.dataset.lo, hi = +box.dataset.hi;
   const move = e => {
     const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, i = n === 1 ? 0 : Math.round(Math.min(1, Math.max(0, (x - L) / (W - L - R))) * (n - 1)), g = gs[i];
     const cx = L + (n === 1 ? (W - L - R) / 2 : i / (n - 1) * (W - L - R)), cy = T + (1 - (g.total - lo) / (hi - lo)) * (H - T - B);
     cur.setAttribute("x1", cx); cur.setAttribute("x2", cx); cd.setAttribute("cx", cx); cd.setAttribute("cy", cy); cur.style.opacity = cd.style.opacity = 1;
-    tip.hidden = false; tip.innerHTML = `<b>${hLabel(m, g.k)}</b><span>${bi("ব্যালেন্স", "Balance")} <strong>৳ ${money0(g.total)}</strong></span>${g.deb ? `<span>${bi("ডেবিট", "Debit")} ${money0(g.deb)}</span>` : ""}${g.cre ? `<span>${bi("ক্রেডিট", "Credit")} ${money0(g.cre)}</span>` : ""}`;
+    tip.hidden = false; tip.innerHTML = `<b>${hLabel(m, g.k)}</b><span>${lbl || bi("ব্যালেন্স", "Balance")} <strong>৳ ${money0(g.total)}</strong></span>${g.deb ? `<span>${bi("ডেবিট", "Debit")} ${money0(g.deb)}</span>` : ""}${g.cre ? `<span>${bi("ক্রেডিট", "Credit")} ${money0(g.cre)}</span>` : ""}`;
     const tw = tip.offsetWidth; tip.style.left = Math.min(r.width - tw - 4, Math.max(4, cx / W * r.width - tw / 2)) + "px";
   };
   const out = () => { tip.hidden = true; cur.style.opacity = cd.style.opacity = 0; };
@@ -2357,7 +2357,7 @@ function hChartBind(root, gs, m) {
 async function vCrep(v) {
   let date = sessionStorage.getItem("nabiad_crep_date") || S.lastBal || today(); sessionStorage.removeItem("nabiad_crep_date");
   const canShare = !!navigator.share;
-  v.innerHTML = head("ব্যাংক ক্লোজিং রিপোর্ট", `<button class="btn cb-action sn-png" id="r-png">${ico("img")}<span class="lb">${bi("ছবি", "Image")}</span></button><button class="btn cb-action sn-pdf" id="r-pdf">${ico("print")}<span class="lb">PDF</span></button><button class="btn cb-action sn-xl" id="r-xl">${ico("dl")}<span class="lb">Excel</span></button>${canShare ? `<button class="btn cb-action sn-sh" id="r-sh">${ico("share")}<span class="lb">${bi("শেয়ার", "Share")}</span></button>` : ""}`, "sn-head") + `
+  v.innerHTML = head("ব্যাংক সামারি", `<button class="btn cb-action sn-png" id="r-png">${ico("img")}<span class="lb">${bi("ছবি", "Image")}</span></button><button class="btn cb-action sn-pdf" id="r-pdf">${ico("print")}<span class="lb">PDF</span></button><button class="btn cb-action sn-xl" id="r-xl">${ico("dl")}<span class="lb">Excel</span></button>${canShare ? `<button class="btn cb-action sn-sh" id="r-sh">${ico("share")}<span class="lb">${bi("শেয়ার", "Share")}</span></button>` : ""}`, "sn-head") + `
    <div class="sn-split">
    <div class="card noprint sn-hist"><div class="sn-hh"><div><h3>${bi("অ্যাকাউন্ট ইতিহাস", "Account history")}</h3><p class="mut sm">${bi("যেকোনো অ্যাকাউন্টের ব্যালেন্সের ধারা", "Balance trend of any account")}</p></div><button type="button" class="btn sm sn-hx" id="h-xl" title="Excel">${ico("dl")}<span>Excel</span></button></div>
     <div class="sn-acw">${ico("search")}<input class="in" id="h-ac" autocomplete="off" placeholder="${bi("A/C কোড, হোল্ডার বা ব্যাংক খুঁজুন", "Search A/C code, holder or bank")}"><button type="button" class="sn-clr" id="h-clr" hidden aria-label="${bi("মুছুন", "Clear")}">${ico("xmark")}</button></div>
@@ -3844,7 +3844,7 @@ async function vDash(v) {
   const todayC = S.cheques.filter(c => c.date === t && isLive(c)), pend = S.cheques.filter(c => c.status === "Pending"), old = pendingOld();
   const mon = S.cheques.filter(c => c.date.startsWith(ym) && isLive(c)), due = dueList(), sys = sysAlerts();
   const upcoming = (S.reminders || []).filter(r => !r.done).sort((a, b) => remDue(a) - remDue(b)).slice(0, 5);
-  const acts = boss ? [["crep", "img", "ব্যালেন্স স্ন্যাপশট", "qa1"], ["cashsum", "pulse", "ক্যাশ সামারি", "qa2"], ["reports", "chart", "ব্যাংক রিপোর্ট", "qa3"], ["dsum", "trend", "কালেকশন সামারি", "qa4"]]
+  const acts = boss ? [["crep", "img", "ব্যাংক সামারি", "qa1"], ["cashsum", "pulse", "ক্যাশ সামারি", "qa2"], ["reports", "chart", "ব্যাংক বিস্তারিত রিপোর্ট", "qa3"], ["dsum", "trend", "কালেকশন সামারি", "qa4"]]
     : [["entry", "plus", "চেক পোস্টিং", "qa1"], ["closing", "bank", "ব্যাংক ক্লোজিং", "qa2"], ["cash", "book", "ক্যাশ খাতা", "qa3"], ["dcol", "coins", "কালেকশন এন্ট্রি", "qa4"]];
   const bankDone = S.lastBal === t, cashDone = S.lastCash === t || S.lastBook === t, workday = !isFri(t);
   const st = (ok, l, go, sub) => `<a class="stchip ${ok ? "ok" : "no"}" href="${go}"><i>${ok ? "✓" : "!"}</i><span><b>${l}</b><small>${sub}</small></span></a>`;
@@ -3967,26 +3967,133 @@ async function vDash(v) {
 }
 
 /* =================== v6: bank + cheque reports =================== */
+/* =================== v6.131: Bank Reports — interactive dashboard =================== */
+const BR_PAL = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#06b6d4", "#8b5cf6", "#f97316", "#14b8a6"];
+const brPct = (a, b) => b ? a / b * 100 : 0;
+const brSgn = n => (n >= 0 ? "+" : "−") + money0(Math.abs(n));
+const brSgnC = n => (n >= 0 ? "+" : "−") + compactN(Math.abs(n));
+const brPc = p => p == null ? "" : `${p >= 0 ? "+" : "−"}${Math.abs(p).toFixed(1)}%`;
+const brBankClr = name => brandOf(S.accounts.find(a => a.bank === name) || { bank: name }).c1;
+function brSpark(vals, cls = "") {
+  if (vals.length < 2) return "";
+  const w = 100, h = 26, mx = Math.max(...vals), mn = Math.min(...vals), rg = mx - mn || 1;
+  const d = vals.map((q, i) => (i ? "L" : "M") + (i / (vals.length - 1) * w).toFixed(1) + "," + (h - 2 - (q - mn) / rg * (h - 4)).toFixed(1)).join("");
+  return `<svg class="br-sp ${cls}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}L${w},${h}L0,${h}Z" class="a"/><path d="${d}" class="l" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function brDonut(items, total) {
+  let cum = 0;
+  const segs = items.map(it => { const p = brPct(it.amt, total), len = Math.max(0, p - .5); const s = `<circle class="br-seg" cx="21" cy="21" r="15.9155" fill="none" stroke="${it.c}" stroke-width="5" stroke-dasharray="${len.toFixed(2)} ${(100 - len).toFixed(2)}" stroke-dashoffset="${(25 - cum).toFixed(2)}"><title>${esc(it.k)} · ${p.toFixed(1)}%</title></circle>`; cum += p; return s; }).join("");
+  return `<svg viewBox="0 0 42 42" class="br-donut" role="img" aria-label="${bi("ব্যাংক অনুযায়ী ভাগ", "Share by bank")}"><circle cx="21" cy="21" r="15.9155" fill="none" class="br-seg0" stroke-width="5"/>${segs}<text x="21" y="20.6" text-anchor="middle" class="br-dn">${compactN(total)}</text><text x="21" y="25.6" text-anchor="middle" class="br-dl">${bi("মোট", "Total")}</text></svg>`;
+}
+function brInsights(c) {
+  const { L, To, openD, mx, mn, ser, byBank, accRows, movers } = c, out = [], chg = L.t - To, pct = To ? chg / Math.abs(To) * 100 : null, pp = pct == null ? "" : ` (${brPc(pct)})`;
+  out.push([chg >= 0 ? "up" : "dn", bi(`${dmy(openD)}-এর তুলনায় মোট ব্যালেন্স ${brSgn(chg)}${pp}`, `Total moved ${brSgn(chg)}${pp} since ${dmy(openD)}`)]);
+  if (ser.length > 1) out.push(["info", bi(`সর্বোচ্চ ${compactN(mx.t)} (${dmy(mx.date)}) · সর্বনিম্ন ${compactN(mn.t)} (${dmy(mn.date)})`, `Peak ${compactN(mx.t)} on ${dmy(mx.date)} · low ${compactN(mn.t)} on ${dmy(mn.date)}`)]);
+  const tot = accRows.reduce((s, r) => s + Math.max(0, r.cl), 0), b0 = byBank[0];
+  if (b0 && tot > 0) { const t3 = byBank.slice(0, 3).reduce((s, r) => s + Math.max(0, r.amt), 0); out.push(["info", bi(`সবচেয়ে বড় ব্যাংক ${b0.k} — মোটের ${brPct(b0.amt, tot).toFixed(1)}%; শীর্ষ ৩ ব্যাংকে ${brPct(t3, tot).toFixed(1)}%`, `Largest bank ${b0.k} holds ${brPct(b0.amt, tot).toFixed(1)}%; top 3 banks hold ${brPct(t3, tot).toFixed(1)}%`)]); }
+  if (movers[0]) { const m = movers[0]; out.push([m.ch >= 0 ? "up" : "dn", bi(`সবচেয়ে বেশি পরিবর্তন: ${m.c} ${brSgn(m.ch)}`, `Biggest mover: ${m.c} ${brSgn(m.ch)}`)]); }
+  if (L.b > 0) out.push(["warn", bi(`ব্লক ৳ ${money0(L.b)} (মোটের ${brPct(L.b, L.t).toFixed(1)}%) — ব্যবহারযোগ্য ৳ ${money0(L.t - L.b)}`, `Block ৳ ${money0(L.b)} is ${brPct(L.b, L.t).toFixed(1)}% of total — usable ৳ ${money0(L.t - L.b)}`)]);
+  const neg = accRows.filter(r => r.cl < 0).length, idle = accRows.filter(r => r.ch === 0 && r.cl > 0).length;
+  if (neg) out.push(["warn", bi(`${neg}টি অ্যাকাউন্টে নেগেটিভ ব্যালেন্স (ওভারড্রাফট)`, `${neg} account(s) with a negative balance (overdraft)`)]);
+  if (idle) out.push(["info", bi(`${idle}টি অ্যাকাউন্টে পুরো সময়ে কোনো নড়াচড়া নেই`, `${idle} account(s) had no movement in this period`)]);
+  return out;
+}
+function brDash(c, F) {
+  const { from, to, ser, accRows, byBank, byHolder, L, To, openD, lastD, mx, mn, movers, hold } = c, chg = L.t - To, pct = To ? chg / Math.abs(To) * 100 : null;
+  const rows = ser.map(x => ({ date: x.date, total: x.t, block: x.b })), G0 = hGroup(rows, "daily"), tots = ser.map(x => x.t);
+  const share = L.t ? (L.t - L.b) / L.t * 100 : 0, tot = accRows.reduce((s, r) => s + Math.max(0, r.cl), 0);
+  const kpi = (cls, ic, lab, val, sub, sp) => `<div class="br-k ${cls}"><div class="br-kt"><span class="br-ki">${ico(ic)}</span><span class="br-kl">${lab}</span></div><div class="br-kv num">${val}</div><div class="br-ks">${sub}</div>${sp || ""}</div>`;
+  const kpis = [
+    kpi("k1", "bank", bi("ক্লোজিং ব্যালেন্স", "Closing balance"), "৳ " + money0(L.t), dmy(lastD), brSpark(tots)),
+    kpi(chg >= 0 ? "k3" : "k2", "trend", bi("নেট পরিবর্তন", "Net change"), `<span class="${chg >= 0 ? "gr" : "rd"}">${brSgn(chg)}</span>`, `${brPc(pct)} ${bi("বনাম", "vs")} ${dmy(openD)}`),
+    kpi("k3", "wallet", bi("ব্যবহারযোগ্য", "Usable"), "৳ " + money0(L.t - L.b), `${share.toFixed(1)}% ${bi("মোটের", "of total")}`, brSpark(ser.map(x => x.t - x.b), "g")),
+    kpi("k4", "shield", bi("ব্লক / লিয়েন", "Block / lien"), "৳ " + money0(L.b), `${brPct(L.b, L.t).toFixed(1)}% ${bi("মোটের", "of total")}`, brSpark(ser.map(x => x.b), "a")),
+    kpi("", "chart", bi("সর্বোচ্চ", "Highest"), "৳ " + money0(mx.t), dmy(mx.date)),
+    kpi("", "chart", bi("সর্বনিম্ন", "Lowest"), "৳ " + money0(mn.t), dmy(mn.date)),
+    kpi("", "clock", bi("দৈনিক গড়", "Daily average"), "৳ " + money0(G0.avg), `${ser.length} ${bi("দিন সেভ", "saved days")}`),
+    kpi("", "list", bi("ক্রেডিট / ডেবিট", "Credit / debit"), `<span class="gr">${brSgnC(G0.cre)}</span> <span class="mut">/</span> <span class="rd">−${compactN(G0.deb)}</span>`, `${G0.moves} ${bi("বার ব্যালেন্স বদলেছে", "balance changes")}`)
+  ].join("");
+  const ins = brInsights({ L, To, openD, mx, mn, ser, byBank, accRows, movers }).map(([k, t]) => `<li class="br-in ${k}"><i></i><span>${esc(t)}</span></li>`).join("");
+  const posBank = byBank.filter(r => r.amt > 0), top = posBank.slice(0, 6), rest = posBank.slice(6).reduce((s, r) => s + r.amt, 0);
+  const dItems = top.map(r => ({ k: r.k, amt: r.amt, c: brBankClr(r.k) })).concat(rest > 0 ? [{ k: bi("অন্যান্য", "Others"), amt: rest, c: "#94a3b8" }] : []);
+  const dTot = dItems.reduce((s, r) => s + r.amt, 0);
+  const bar = (rows, clr) => rows.length ? rows.map((r, i) => { const ch = r.amt - r.o, p = brPct(Math.max(0, r.amt), tot); return `<div class="br-row"><div class="br-rt"><i style="background:${clr(r, i)}"></i><b title="${esc(r.k)}">${esc(r.k)}</b><span class="mut">${r.n} A/C</span><span class="num br-ra">${money0(r.amt)}</span></div><div class="br-bar"><u style="width:${Math.min(100, p).toFixed(1)}%;background:${clr(r, i)}"></u></div><div class="br-rs"><span>${p.toFixed(1)}%</span><span class="${ch >= 0 ? "gr" : "rd"}">${ch ? brSgn(ch) : "—"}</span></div></div>`; }).join("") : `<div class="mut sm">—</div>`;
+  const mv = (arr, cls) => arr.length ? arr.map(r => `<div class="br-mv"><i class="bdot" style="background:${brandOf(r.a).c1}"></i><span class="br-mn"><b>${esc(r.c)}</b><em>${esc(r.a?.holder || "")}</em></span><span class="num ${cls}">${brSgn(r.ch)}</span></div>`).join("") : `<div class="mut sm">${bi("কিছু নেই", "None")}</div>`;
+  const gain = [...accRows].filter(r => r.ch > 0).sort((a, b) => b.ch - a.ch).slice(0, 6), lose = [...accRows].filter(r => r.ch < 0).sort((a, b) => a.ch - b.ch).slice(0, 6);
+  const sg = (k, l) => `<button type="button" class="chip${F.bs === k ? " on" : ""}" data-bs="${k}">${l}</button>`;
+  const gg = (k, l) => `<button type="button" class="chip${F.bg === k ? " on" : ""}" data-bg="${k}">${l}</button>`;
+  return `<div class="br-chips"><span>${ico("cal")}${dmy(from)} → ${dmy(to)}</span><span>${ico("clock")}${ser.length} ${bi("দিন সেভ", "saved days")}</span><span>${ico("card")}${accRows.length} A/C</span><span>${ico("bank")}${byBank.length} ${bi("ব্যাংক", "banks")}</span>${hold ? `<span class="on">${ico("eye")}${hold}</span>` : ""}</div>
+   <div class="br-kpis">${kpis}</div>
+   <ul class="br-ins">${ins}</ul>
+   <div class="br-g2">
+    <section class="card br-card br-chartc"><div class="br-h"><h3>${bi("ব্যালেন্স ট্রেন্ড", "Balance trend")}</h3><div class="br-ctl"><div class="seg">${sg("t", bi("মোট", "Total"))}${sg("u", bi("ব্যবহারযোগ্য", "Usable"))}${sg("b", bi("ব্লক", "Block"))}</div><div class="seg">${gg("daily", bi("দিন", "Day"))}${gg("weekly", bi("সপ্তাহ", "Week"))}${gg("monthly", bi("মাস", "Month"))}</div></div></div><div id="br-chart"></div></section>
+    <section class="card br-card"><div class="br-h"><h3>${bi("ব্যাংক অনুযায়ী ভাগ", "Share by bank")}</h3></div><div class="br-dw">${brDonut(dItems, dTot)}<ul class="br-lg">${dItems.map(r => `<li><i style="background:${r.c}"></i><span>${esc(r.k)}</span><b>${brPct(r.amt, dTot).toFixed(1)}%</b></li>`).join("")}</ul></div></section>
+   </div>
+   <div class="br-g2">
+    <section class="card br-card"><div class="br-h"><h3>${bi("ব্যাংক অনুযায়ী (ক্লোজিং)", "By bank (closing)")}</h3><span class="mut sm">${byBank.length}</span></div><div class="br-list">${bar(byBank, r => brBankClr(r.k))}</div></section>
+    <section class="card br-card"><div class="br-h"><h3>${bi("হোল্ডার অনুযায়ী (ক্লোজিং)", "By holder (closing)")}</h3><span class="mut sm">${byHolder.length}</span></div><div class="br-list">${bar(byHolder, (r, i) => BR_PAL[i % BR_PAL.length])}</div></section>
+   </div>
+   <div class="br-g2">
+    <section class="card br-card"><div class="br-h"><h3>${ico("trend")}${bi("সবচেয়ে বেশি বেড়েছে", "Top gainers")}</h3></div>${mv(gain, "gr")}</section>
+    <section class="card br-card"><div class="br-h"><h3>${bi("সবচেয়ে বেশি কমেছে", "Top losers")}</h3></div>${mv(lose, "rd")}</section>
+   </div>
+   <section class="card br-card br-acc"><div class="br-h"><h3>${bi("সব অ্যাকাউন্ট", "All accounts")}</h3><span class="mut sm" id="br-cnt"></span></div>
+    <div class="br-tools"><label class="br-s">${ico("search")}<input class="in" id="br-q" type="search" placeholder="${bi("A/C, হোল্ডার, ব্যাংক খুঁজুন…", "Search A/C, holder, bank…")}" value="${esc(F.aq || "")}" autocomplete="off"></label><label class="keep"><input type="checkbox" id="br-z" ${F.az ? "checked" : ""}> ${bi("শূন্য ব্যালেন্স লুকাও", "Hide zero balances")}</label></div>
+    <div class="br-tw"><table class="br-t"><thead id="br-th"></thead><tbody id="br-tb"></tbody><tfoot id="br-tf"></tfoot></table></div></section>`;
+}
+function brBind(root, c, F) {
+  const { ser, accRows } = c, rows = ser.map(x => ({ date: x.date, total: x.t, block: x.b })), tot = accRows.reduce((s, r) => s + Math.max(0, r.cl), 0);
+  const drawChart = () => {
+    const m = F.bg, g = hGroup(rows, m).gs.map(x => F.bs === "t" ? x : { ...x, total: F.bs === "u" ? x.total - x.block : x.block, block: 0, deb: 0, cre: 0 });
+    const box = $("#br-chart", root); box.innerHTML = hChart(g, m); hChartBind(box, g, m, F.bs === "t" ? "" : F.bs === "u" ? bi("ব্যবহারযোগ্য", "Usable") : bi("ব্লক", "Block"));
+    $$("[data-bs]", root).forEach(b => b.classList.toggle("on", b.dataset.bs === F.bs)); $$("[data-bg]", root).forEach(b => b.classList.toggle("on", b.dataset.bg === F.bg));
+  };
+  $$("[data-bs]", root).forEach(b => b.onclick = () => { F.bs = b.dataset.bs; drawChart(); });
+  $$("[data-bg]", root).forEach(b => b.onclick = () => { F.bg = b.dataset.bg; drawChart(); });
+  drawChart();
+  const COLS = [["c", bi("অ্যাকাউন্ট", "Account"), 0], ["bank", bi("ব্যাংক", "Bank"), 0, "hm"], ["o", bi("ওপেনিং", "Opening"), 1, "hm"], ["cl", bi("ক্লোজিং", "Closing"), 1], ["bl", bi("ব্লক", "Block"), 1, "hm"], ["ch", bi("পরিবর্তন", "Change"), 1], ["sh", bi("ভাগ", "Share"), 1, "hm"]];
+  const val = (r, k) => k === "c" ? r.c : k === "bank" ? (r.a?.bank || "") : k === "sh" ? r.cl : r[k];
+  const drawTable = () => {
+    const q = (F.aq || "").trim().toLowerCase(), k = F.as, d = F.ad;
+    let list = accRows.filter(r => (!F.az || r.cl !== 0) && (!q || `${r.c} ${r.a?.holder || ""} ${r.a?.bank || ""}`.toLowerCase().includes(q)));
+    list = [...list].sort((a, b) => { const x = val(a, k), y = val(b, k); return (typeof x === "string" ? x.localeCompare(y) : x - y) * d; });
+    $("#br-th", root).innerHTML = `<tr>${COLS.map(([key, l, r, hm]) => `<th class="${r ? "r" : ""} ${hm || ""} srt${key === k ? " on" : ""}" data-k="${key}" tabindex="0" role="button" aria-sort="${key === k ? (d > 0 ? "ascending" : "descending") : "none"}">${l}<i>${key === k ? (d > 0 ? "▲" : "▼") : ""}</i></th>`).join("")}</tr>`;
+    $("#br-tb", root).innerHTML = list.length ? list.map(r => { const p = brPct(Math.max(0, r.cl), tot); return `<tr><td class="cd"><i class="bdot" style="background:${brandOf(r.a).c1}"></i><b>${esc(r.c)}</b> <span class="mut">${esc(r.a?.holder || "")}</span></td><td class="hm">${esc(r.a?.bank || "")}</td><td class="r num hm">${money0(r.o)}</td><td class="r num"><b>${money0(r.cl)}</b></td><td class="r num hm">${r.bl ? money0(r.bl) : "—"}</td><td class="r num ${r.ch >= 0 ? "gr" : "rd"}">${r.ch ? brSgn(r.ch) : "—"}</td><td class="r hm"><span class="br-mb"><u style="width:${Math.min(100, p * 2).toFixed(0)}%"></u></span><span class="num sm">${p.toFixed(1)}%</span></td></tr>`; }).join("") : `<tr><td colspan="7" class="z" style="text-align:center">${bi("কোনো অ্যাকাউন্ট মেলেনি", "No matching accounts")}</td></tr>`;
+    const S2 = list.reduce((s, r) => ({ o: s.o + r.o, cl: s.cl + r.cl, bl: s.bl + r.bl, ch: s.ch + r.ch }), { o: 0, cl: 0, bl: 0, ch: 0 });
+    $("#br-tf", root).innerHTML = list.length ? `<tr><td>${bi("মোট", "TOTAL")}</td><td class="hm"></td><td class="r num hm">${money0(S2.o)}</td><td class="r num">${money0(S2.cl)}</td><td class="r num hm">${money0(S2.bl)}</td><td class="r num ${S2.ch >= 0 ? "gr" : "rd"}">${brSgn(S2.ch)}</td><td class="hm"></td></tr>` : "";
+    $("#br-cnt", root).textContent = `${list.length} / ${accRows.length}`;
+    $$("#br-th th", root).forEach(th => { const go = () => { const key = th.dataset.k; if (F.as === key) F.ad = -F.ad; else { F.as = key; F.ad = key === "c" || key === "bank" ? 1 : -1; } drawTable(); }; th.onclick = go; th.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }; });
+  };
+  $("#br-q", root).oninput = e => { F.aq = e.target.value; drawTable(); };
+  $("#br-z", root).onchange = e => { F.az = e.target.checked; drawTable(); };
+  drawTable();
+}
+
 async function vReports(v) {
   const date = sessionStorage.getItem("nabiad_bank_report_date");
   sessionStorage.removeItem("nabiad_bank_report_date");
-  const F = { ...pbInit("month"), ...(date ? { m: "day", d: date } : {}), tab: date ? "bank" : sessionStorage.getItem("nabiad_rep_tab") || "bank", holder: "" }; const holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort();
-  v.innerHTML = head("রিপোর্ট", `${repBtns("p")}<button class="btn" id="p-x">${ico("dl")} Excel</button>`) + `
+  const F = { ...pbInit("month"), ...(date ? { m: "day", d: date } : {}), tab: date ? "bank" : sessionStorage.getItem("nabiad_rep_tab") || "bank", holder: "", bank: "", bs: "t", bg: "weekly", as: "cl", ad: -1, aq: "", az: false, sheet: false }; const holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort(), banksL = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort();
+  v.innerHTML = head("ব্যাংক বিস্তারিত রিপোর্ট", `${repBtns("p")}<button class="btn" id="p-x">${ico("dl")} Excel</button>`) + `
    <div class="tabs noprint">${[["bank", ico("bank") + " ব্যাংক ব্যালেন্স"], ["chq", ico("list") + " চেক"]].map(([k, l]) => `<span class="chip ${k === F.tab ? "on" : ""}" data-tab="${k}">${l}</span>`).join("")}</div>
    <div class="card tbar noprint tb-inl">${pbBar("p", F)}
-   <div class="row" style="margin-top:10px"><div style="flex:1 1 200px"><label class="f">অ্যাকাউন্ট হোল্ডার</label><select class="in" id="p-h"><option value="">সব</option>${holders.map(h => `<option>${esc(h)}</option>`).join("")}</select></div></div></div><div class="card rep-wrap"><div class="rep-scroll"><div id="p-out"></div></div></div>`;
+   <div class="row br-fl" ><div><label class="f">${bi("অ্যাকাউন্ট হোল্ডার", "Account holder")}</label><select class="in" id="p-h"><option value="">${bi("সব", "All")}</option>${holders.map(h => `<option>${esc(h)}</option>`).join("")}</select></div><div><label class="f">${bi("ব্যাংক", "Bank")}</label><select class="in" id="p-b"><option value="">${bi("সব", "All")}</option>${banksL.map(h => `<option>${esc(h)}</option>`).join("")}</select></div></div></div>
+   <div id="p-dash" class="br-dash noprint"></div>
+   <div class="br-sheetbar noprint" id="p-sheetbar" hidden><button type="button" class="btn" id="p-sheet-t" aria-expanded="false" aria-controls="p-sheetcard">${ico("print")}<span>${bi("A4 রিপোর্ট শিট — স্ক্রিনশট / PDF / শেয়ারের জন্য", "A4 report sheet — for screenshot / PDF / share")}</span><i class="br-chv"></i></button></div>
+   <div class="card rep-wrap" id="p-sheetcard"><div class="rep-scroll"><div id="p-out"></div></div></div>`;
   let cur = null;
+  const syncSheet = () => { const bank = F.tab === "bank" && cur?.kind === "bank", bar = $("#p-sheetbar", v); bar.hidden = !bank; bar.classList.toggle("open", !!F.sheet); $("#p-sheetcard", v).classList.toggle("br-collapsed", bank && !F.sheet); $("#p-sheet-t", v).setAttribute("aria-expanded", String(!!F.sheet)); if (!bank || F.sheet) dcFit(v, "p-in"); };
+  const setSheet = o => { F.sheet = o; syncSheet(); };
   const tbl = (title, rows, cols, total = true, fmt = r => [r.n, money0(r.amt)]) => { const T = rows.reduce((q, r) => ({ n: q.n + (r.n || 0), a: q.a + r.amt }), { n: 0, a: 0 });
     return repBox(title, cols, rows.map(r => `<tr><td>${r.k}</td>${fmt(r).map(x => `<td class="r num">${x}</td>`).join("")}</tr>`).join(""), total && rows.length ? `<tr class="tot"><td>TOTAL</td>${fmt({ n: T.n, amt: T.a }).map(x => `<td class="r num">${x}</td>`).join("")}</tr>` : ""); };
   const range = () => pbRange(F);
   async function draw() {
-    const [from, to] = range(), am = accMap(), out = $("#p-out", v); const hOk = code => !F.holder || (am[code] || {}).holder === F.holder;
-    const label = "", hold = F.holder ? ` · ${esc(F.holder)}` : "";
+    const [from, to] = range(), am = accMap(), out = $("#p-out", v); const hOk = code => (!F.holder || (am[code] || {}).holder === F.holder) && (!F.bank || (am[code] || {}).bank === F.bank);
+    const label = "", holdT = [F.holder, F.bank].filter(Boolean).join(" · "), hold = holdT ? ` · ${esc(holdT)}` : "", dash = $("#p-dash", v);
     if (F.tab === "bank") {
-      out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
-      let rows; try { rows = (await cached(`br:${from}:${to}`, 120000, () => API.balancesRange(addDays(from, -10), to))).filter(r => hOk(r.code) && am[r.code]?.daily); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(isNetErr(e) ? "ইন্টারনেট নেই — ব্যাংক রিপোর্টের জন্য অনলাইন থাকতে হবে" : e.message)}</div>`; return; }
+      out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`; dash.innerHTML = `<div class="skel" style="height:190px"></div>`;
+      let rows; try { rows = (await cached(`br:${from}:${to}`, 120000, () => API.balancesRange(addDays(from, -10), to))).filter(r => hOk(r.code) && am[r.code]?.daily); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(isNetErr(e) ? "ইন্টারনেট নেই — ব্যাংক রিপোর্টের জন্য অনলাইন থাকতে হবে" : e.message)}</div>`; dash.innerHTML = ""; cur = null; syncSheet(); return; }
       const before = rows.filter(r => r.date < from), inR = rows.filter(r => r.date >= from);
-      const ser = balSeries(inR); if (!ser.length) { out.innerHTML = label + `<div class="card empty">এই সময়ে কোনো ব্যালেন্স সেভ নেই</div>`; cur = null; return; }
+      const ser = balSeries(inR); if (!ser.length) { out.innerHTML = label + `<div class="card empty">${bi("এই সময়ে কোনো ব্যালেন্স সেভ নেই", "No saved balances in this period")}</div>`; dash.innerHTML = ""; cur = null; syncSheet(); return; }
       const firstD = ser[0].date, lastD = ser[ser.length - 1].date, openD = before.length ? before[before.length - 1].date : firstD;
       const mapOn = (arr, d) => Object.fromEntries(arr.filter(r => r.date === d).map(r => [r.code, r]));
       const O = mapOn(before.length ? before : inR, openD), C = mapOn(inR, lastD);
@@ -4003,14 +4110,15 @@ async function vReports(v) {
         repTwo(tbl("By Bank (closing)", byBank.map(r => ({ ...r, k: esc(r.k) })), ["Bank", "A/C", "Balance"]), tbl("By Holder (closing)", byHolder.map(r => ({ ...r, k: esc(r.k) })), ["Holder", "A/C", "Balance"])) +
         repOne(tbl("Biggest Movers", movers.map(r => ({ k: `<b>${esc(r.c)}</b> <span class="mut">${esc(r.a?.holder || "")}</span>`, n: money0(r.o), amt: r.ch, cl: r.cl })), ["Account", "Opening", "Closing", "Change"], false, r => [r.n, money0(r.cl), `<b class="${r.amt >= 0 ? "gr" : "rd"}">${r.amt >= 0 ? "+" : "−"}${money0(Math.abs(r.amt))}</b>`])) +
         repOne(tbl("All Accounts", accRows.map(r => ({ k: `<i class="bdot" style="background:${brandOf(r.a).c1}"></i><b>${esc(r.c)}</b> <span class="mut">${esc(r.a?.holder || "")}</span>`, n: money0(r.o), amt: r.cl, ch: r.ch, bl: r.bl })), ["Account", "Opening", "Closing", "Block", "Change"], false, r => [r.n, money0(r.amt), r.bl ? money0(r.bl) : "—", `<span class="${r.ch >= 0 ? "gr" : "rd"}">${Math.abs(r.ch) < 1 ? "—" : (r.ch >= 0 ? "+" : "−") + money0(Math.abs(r.ch))}</span>`])));
-      dcFit(v, "p-in");
+      const dctx = { from, to, ser, accRows, byBank, byHolder, L, To, openD, lastD, mx, mn, movers, hold: F.holder || F.bank ? esc([F.holder, F.bank].filter(Boolean).join(" · ")) : "" };
+      dash.innerHTML = brDash(dctx, F); brBind(dash, dctx, F); syncSheet();
       return;
     }
     const all = S.cheques.filter(c => c.date >= from && c.date <= to && hOk(c.code)); const live = all.filter(isLive), by = s => all.filter(c => c.status === s);
     const monRows = group(live, c => c.date.slice(0, 7)).sort((a, b) => a.k.localeCompare(b.k)).map(r => ({ ...r, k: (LANG === "en" ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] : BN_M)[+r.k.slice(5) - 1] + " " + r.k.slice(0, 4) }));
     const T = { pur: group(live, c => c.purpose.split(" (")[0]).sort((a, b) => b.amt - a.amt), tak: group(live.filter(c => c.taker), c => c.taker).sort((a, b) => b.amt - a.amt), st: group(all, c => c.status).sort((a, b) => b.amt - a.amt), bank: group(live, c => (am[c.code] || {}).bank).sort((a, b) => b.amt - a.amt), acc: group(live, c => `${c.code} <span class="mut sm">${esc((am[c.code] || {}).holder || "")}</span>`).sort((a, b) => b.amt - a.amt), day: group(live, c => c.date).sort((a, b) => a.k.localeCompare(b.k)).map(r => ({ ...r, k: dmy(r.k) })), mon: monRows };
-    cur = { kind: "chq", from, to, all, live, T };
-    if (!all.length) { out.innerHTML = label + `<div class="card empty">${bi("এই সময়ে কোনো চেক এন্ট্রি নেই।", "No cheque entries in this period.")}<div class="mut sm" style="margin-top:6px">${bi(`ডাটাবেসে মোট <b>${S.cheques.length}</b>টি চেক আছে। চেক এন্ট্রি করলে এখানে খাত, ব্যাংক, অ্যাকাউন্ট আর দিন অনুযায়ী হিসাব আসবে।`, `There are <b>${S.cheques.length}</b> cheque(s) in the database. Once cheques are entered, totals by purpose, bank, account and day will appear here.`)}</div>${S.me.role !== "boss" ? `<div style="margin-top:12px"><a class="btn pri sm" href="#/entry">${ico("plus")} চেক এন্ট্রি</a></div>` : ""}</div>`; return; }
+    cur = { kind: "chq", from, to, all, live, T }; dash.innerHTML = ""; syncSheet();
+    if (!all.length) { dash.innerHTML = ""; out.innerHTML = label + `<div class="card empty">${bi("এই সময়ে কোনো চেক এন্ট্রি নেই।", "No cheque entries in this period.")}<div class="mut sm" style="margin-top:6px">${bi(`ডাটাবেসে মোট <b>${S.cheques.length}</b>টি চেক আছে। চেক এন্ট্রি করলে এখানে খাত, ব্যাংক, অ্যাকাউন্ট আর দিন অনুযায়ী হিসাব আসবে।`, `There are <b>${S.cheques.length}</b> cheque(s) in the database. Once cheques are entered, totals by purpose, bank, account and day will appear here.`)}</div>${S.me.role !== "boss" ? `<div style="margin-top:12px"><a class="btn pri sm" href="#/entry">${ico("plus")} চেক এন্ট্রি</a></div>` : ""}</div>`; return; }
     out.innerHTML = repSheet("p-in", "Cheque Report · চেক রিপোর্ট" + hold, from, to,
       repKpi([[`Live Cheques · ৳ ${money0(sumAmt(live))}`, live.length, "k1"], [`Cleared · ৳ ${money0(sumAmt(by("Cleared")))}`, by("Cleared").length, "k3"], [`Pending · ৳ ${money0(sumAmt(by("Pending")))}`, by("Pending").length, ""], [`Bounced / Cancelled · ৳ ${money0(sumAmt(by("Bounced")))}`, `${by("Bounced").length} / ${by("Cancelled").length}`, "k2"]]),
       repTwo(tbl("By Purpose", T.pur, ["Purpose", "Cheque", "Amount"]), tbl("Cash Taken By", T.tak, ["Name", "Cheque", "Amount"])) +
@@ -4022,6 +4130,8 @@ async function vReports(v) {
   $$(".chip[data-tab]", v).forEach(c => c.onclick = () => { F.tab = c.dataset.tab; sessionStorage.setItem("nabiad_rep_tab", F.tab); $$(".chip[data-tab]", v).forEach(x => x.classList.toggle("on", x === c)); draw(); });
   pbBind(v, "p", F, draw);
   $("#p-h", v).onchange = e => { F.holder = e.target.value; draw(); };
+  $("#p-b", v).onchange = e => { F.bank = e.target.value; draw(); };
+  $("#p-sheet-t", v).onclick = () => setSheet(!F.sheet);
   $("#p-x", v).onclick = () => {
     if (!cur) return toast("ডাটা নেই", "err"); const strip = s => String(s).replace(/<[^>]+>/g, "").trim();
     if (cur.kind === "bank") return exportXlsx({ Daily: [["Date", "Accounts", "Total", "Block", "Usable"], ...cur.ser.map(x => [dmy(x.date), x.n, x.t, x.b, x.t - x.b])], Accounts: [["Code", "Holder", "Bank", "Opening", "Closing", "Block", "Change"], ...cur.accRows.map(r => [r.c, r.a?.holder || "", r.a?.bank || "", r.o, r.cl, r.bl, r.ch])], "By Bank": [["Bank", "A/C", "Closing", "Block"], ...cur.byBank.map(r => [r.k, r.n, r.amt, r.bl])], "By Holder": [["Holder", "A/C", "Closing", "Block"], ...cur.byHolder.map(r => [r.k, r.n, r.amt, r.bl])] }, `Bank_Report_${cur.from}_${cur.to}.xlsx`);
@@ -4029,7 +4139,12 @@ async function vReports(v) {
     exportXlsx({ Summary: [["Period", `${cur.from} → ${cur.to}`], ["Holder", F.holder || "All"], [], ["Live cheques", cur.live.length, sumAmt(cur.live)], ...statementSummaryExport(cur.all)], "By Purpose": sh(cur.T.pur, ["Purpose", "Count", "Amount"]), "By Cash Taker": sh(cur.T.tak, ["Name", "Count", "Amount"]), "By Status": sh(cur.T.st, ["Status", "Count", "Amount"]), "By Bank": sh(cur.T.bank, ["Bank", "Count", "Amount"]), "By Account": sh(cur.T.acc, ["Account", "Count", "Amount"]), "By Day": sh(cur.T.day, ["Date", "Count", "Amount"]), "By Month": sh(cur.T.mon, ["Month", "Count", "Amount"]), Details: [CHQ_HEAD, ...[...cur.all].sort((a, b) => a.date.localeCompare(b.date)).map(chqRow)] }, `Cheque_Report_${today()}.xlsx`);
   };
   await draw();
-  return repBind(v, "p", "p-in", () => `${cur?.kind === "chq" ? "Cheque" : "Bank"}_Report_${cur ? cur.from + "_" + cur.to : today()}`, () => cur ? `${cur.kind === "chq" ? "Cheque" : "Bank balance"} report ${dmy(cur.from)} → ${dmy(cur.to)}` : "");
+  const nm = () => `${cur?.kind === "chq" ? "Cheque" : "Bank"}_Report_${cur ? cur.from + "_" + cur.to : today()}`, tx = () => cur ? `${cur.kind === "chq" ? "Cheque" : "Bank balance"} report ${dmy(cur.from)} → ${dmy(cur.to)}` : "", el = () => $("#p-in", v);
+  const via = fn => async () => { if (!cur) return toast("ডাটা নেই", "err"); const was = F.sheet, bank = cur.kind === "bank"; if (bank && !was) { setSheet(true); await new Promise(r => setTimeout(r, 120)); } try { await fn(); } finally { if (bank && !was) setTimeout(() => setSheet(false), 800); } };
+  $("#p-png", v).onclick = via(() => dcPng(el(), nm()));
+  $("#p-pdf", v).onclick = via(() => dcPdf(el(), nm()));
+  if ($("#p-sh", v)) $("#p-sh", v).onclick = via(() => dcShare(el(), nm(), tx()));
+  const onRs = () => dcFit(v, "p-in"); window.addEventListener("resize", onRs); return () => window.removeEventListener("resize", onRs);
 }
 
 /* =================== v6: CASH — daily record =================== */
