@@ -2639,3 +2639,13 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 /* ===== v6.115 — Bank Closing polish ===== */
 @media (max-width:900px){ .bc-context #c-linked{width:100%} }
 .bc-controls input::placeholder{text-overflow:ellipsis}
+
+/* ===== v6.116 — Linked transactions: full-width 3-up row on desktop (no tall empty block) ===== */
+.bc-context #c-linked{flex:1 1 100%;margin-inline-start:0}
+@media (min-width:901px){
+  .bc-context{gap:6px 14px}
+  .bc-context .clink{flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 12px}
+  .bc-context .clink .cl-h{flex:none;white-space:nowrap}
+  .bc-context .clink .cl-g{flex:1;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .bc-context .clink .cl-w{flex-basis:100%}
+}
