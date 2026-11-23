@@ -947,7 +947,7 @@ async function vCashBook(v) {
       state.account.parentElement.hidden = !CB_BANK.includes(state.category);
       state.cancel.hidden = index == null;
       $("button[type=submit] span", state.section).textContent = index == null ? bi("যোগ করুন", "Add") : bi("আপডেট", "Update");
-      if (focus) state.name.focus();
+      if (focus) { if (index != null) state.name.dataset.quiet = "1"; state.name.focus(); }
     };
     for (const side of sides) {
       const section = $(`[data-cb-form="${side}"]`, body), form = $("form", section);

@@ -773,7 +773,7 @@ function suggest(input, getItems, onPick, opts = {}) {
   };
   const pick = it => { picked = it; input.value = fmt(it); show(false); onPick && onPick(it); };
   input.addEventListener("input", () => { picked = null; onPick && onPick(null); render(); });
-  input.addEventListener("focus", () => { input.select(); render(); });
+  input.addEventListener("focus", () => { input.select(); if (input.dataset.quiet) { delete input.dataset.quiet; return; } render(); });
   input.addEventListener("keydown", e => {
     if (e.key === "Enter" && (e.isComposing || e.keyCode === 229 || e.repeat)) return;
     if (list.classList.contains("hide") && ["ArrowDown", "ArrowUp"].includes(e.key)) render();
