@@ -828,7 +828,7 @@ async function vCashBook(v) {
           ${mayBalance ? `<div class="cb-row-actions"><button type="button" class="btn" id="cb-note-save" disabled>${ico("save")} ${bi("নোট সেভ করুন", "Save notes")}</button></div>` : ""}
         </details>
         ${mayBalance ? `<div class="cb-row-actions">${final
-          ? `<button type="button" class="btn" id="cb-balance">${bi("নগদের হিসাব আপডেট", "Update cash count")}</button>`
+          ? `<button type="button" class="btn pri" id="cb-balance">${ico("refresh")} ${bi("নগদের হিসাব আপডেট", "Update cash count")}</button>`
           : `<button type="button" class="btn pri" id="cb-close-day">${ico("check")} ${bi("দিন বন্ধ করুন", "Close day")}</button>`}</div>` : ""}
       </section>
       <div class="hint rd" id="cb-err" role="alert"></div>
