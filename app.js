@@ -27,6 +27,24 @@ const dmy2 = s => s ? `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(2, 4)}` : ""
 const addDays = (s, n) => { const d = new Date(s + "T00:00:00"); d.setDate(d.getDate() + n); return iso(d); };
 const daysBetween = (a, b) => Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 864e5);
 const num = v => { const n = parseFloat(String(v ?? "").replace(/,/g, "")); return isNaN(n) ? 0 : n; };
+/* typed arithmetic in money cells: "4,93,582+500", "1,20,000-10000", "5000*2", brackets ok. evalExpr → number or null (not valid yet) */
+function evalExpr(src) {
+  const s = String(src ?? "").replace(/[,\s৳]/g, "").replace(/[−–—]/g, "-").replace(/[×xX]/g, "*").replace(/÷/g, "/");
+  if (!s || !/^[0-9.+\-*/()]+$/.test(s)) return null;
+  let i = 0;
+  const factor = () => {
+    if (s[i] === "+" || s[i] === "-") { const sg = s[i++] === "-" ? -1 : 1, f = factor(); return f === null ? null : sg * f; }
+    if (s[i] === "(") { i++; const v = expr(); if (v === null || s[i] !== ")") return null; i++; return v; }
+    const m = /^(?:\d+\.?\d*|\.\d+)/.exec(s.slice(i)); if (!m) return null; i += m[0].length; return parseFloat(m[0]);
+  };
+  const term = () => { let v = factor(); while (v !== null && (s[i] === "*" || s[i] === "/")) { const op = s[i++], r = factor(); if (r === null || (op === "/" && r === 0)) return null; v = op === "*" ? v * r : v / r; } return v; };
+  const expr = () => { let v = term(); while (v !== null && (s[i] === "+" || s[i] === "-")) { const op = s[i++], r = term(); if (r === null) return null; v = op === "+" ? v + r : v - r; } return v; };
+  const out = expr(); return out !== null && i === s.length && Number.isFinite(out) ? Math.round(out * 100) / 100 : null;
+}
+const exprTail = s => String(s ?? "").replace(/[\s+\-*/×÷xX−.(]+$/, "");
+const ev = s => { const t = evalExpr(s); if (t !== null) return t; const u = evalExpr(exprTail(s)); return u === null ? 0 : u; };
+const exprOk = s => evalExpr(s) !== null || evalExpr(exprTail(s)) !== null;
+const hasOp = s => /[0-9).]\s*[+\-*/×÷−xX]/.test(String(s ?? "").replace(/,/g, ""));
 const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const purposeKey = p => { const s = String(p || "").toLowerCase(); return s.startsWith("cash") ? "cash" : s.startsWith("own") ? "own" : (s.startsWith("cancel") || s.startsWith("blank")) ? "cancel" : s.startsWith("supplier") ? "supplier" : "other"; };
 function toast(msg, kind = "ok") { const t = document.createElement("div"); t.className = "toast " + kind; t.innerHTML = `<i>${kind === "err" ? "!" : kind === "info" ? "i" : "✓"}</i><span></span>`; t.lastChild.textContent = tr(String(msg)).replace(/^✔\s*/, ""); $("#toasts").appendChild(t); setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 260); }, kind === "err" ? 6000 : 2800); return t; }
@@ -2025,7 +2043,7 @@ async function vClosing(v) {
     const autoCr = r => (r.acc || r.acb) ? `${r.acc ? `<span><em>${bi("কালেকশন", "Collection")}</em> <b class="num">${money(r.acc)}</b></span>` : ""}${r.acb ? `<span><em>${bi("ক্যাশ জমা", "Cash dep.")}</em> <b class="num">${money(r.acb)}</b></span>` : ""}` : `<span class="mut">—</span>`;
     body.innerHTML = `<div class="bc-summary" aria-label="${bi("দিনের মোট", "Daily totals")}">${tiles.map(([i, label]) => `<div class="card bc-kpi" data-kpi="${i}"><span>${label}</span><strong class="num"></strong></div>`).join("")}</div>
     <section class="card bc-register" aria-label="${bi("অ্যাকাউন্ট পর্যালোচনা", "Account review")}">
-    <div class="bc-review">${locked ? "" : `<span class="mut sm" id="c-extra-help">${bi("অতিরিক্ত ডেবিট বা ক্রেডিট দিতে আগে ওই A/C-এর ব্যাংক ক্লোজিং লিখুন।", "Enter the account’s Bank Closing amount to enable extra debit and credit.")}</span>`}<span class="mut sm" id="c-shown" role="status"></span></div>
+    <div class="bc-review">${locked ? "" : `<span class="mut sm" id="c-extra-help">${bi("অতিরিক্ত ডেবিট বা ক্রেডিট দিতে আগে ওই A/C-এর ব্যাংক ক্লোজিং লিখুন।", "Enter the account’s Bank Closing amount to enable extra debit and credit.")} <b class="xtip">${bi("টিপ: সরাসরি 4,93,582+500 বা 1,20,000-10000 লেখা যায়।", "Tip: you can type 4,93,582+500 or 1,20,000-10000 directly.")}</b></span>`}<span class="mut sm" id="c-shown" role="status"></span></div>
     <div id="c-empty" class="empty" hidden>${bi("এই ফিল্টারে কোনো অ্যাকাউন্ট নেই", "No accounts match these filters")}</div>
     <div class="tw cards closing bc-table"><table id="ct"><thead><tr><th>#</th><th>A/C</th><th class="r">আগের ক্লোজিং</th><th class="r c-dr">${bi("ডেবিট / উত্তোলন", "Debit / Withdraw")}</th><th class="r c-cr">${bi("ক্রেডিট / জমা", "Credit / Deposit")}</th><th class="r">হিসাব মতে</th><th class="r c-bk">ব্যাংক ক্লোজিং</th><th class="r">${bi("ব্লক", "Block")}</th><th class="r">${bi("ব্যবহারযোগ্য", "Usable")}</th><th class="r">${bi("অমিল", "Diff")}</th><th>মন্তব্য</th></tr></thead><tbody>
     ${rows.map((r, i) => { const b = B(r.a); const bk = r.a.bank || bi("অন্যান্য", "Other"), first = i === 0 || (rows[i - 1].a.bank || "") !== (r.a.bank || ""); const gh = first ? `<tr class="gh"><td colspan="11" data-l=""><b>${esc(bk)}</b> <span class="gn">${rows.filter(y => (y.a.bank || "") === (r.a.bank || "")).length}</span></td></tr>` : ""; return gh + `<tr data-i="${i}" style="--b1:${b.c1}"><td class="mut">${i + 1}</td><td class="acc-c" style="--b1:${b.c1}"><b>${esc(r.code)}</b> <span class="mvdot" aria-label="${bi("লেনদেন", "Activity")}" hidden>●</span><div class="mut sm">${esc(r.holder)}</div></td><td class="r num">${money(r.prevT)}</td>
@@ -2034,7 +2052,7 @@ async function vClosing(v) {
      <td class="r num exp"></td><td class="c-bk"><input class="cell tot" aria-label="${esc(r.code)} · ${bi("ব্যাংক ক্লোজিং", "Bank closing")}" value="${r.total == null ? "" : fmtIn(r.total)}" data-dirty="${r.total == null ? "" : "1"}" inputmode="decimal" ${locked ? "disabled" : ""}></td><td><input class="cell blk" aria-label="${esc(r.code)} · ${bi("ব্লক", "Blocked amount")}" value="${fmtIn(r.block || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
      <td class="r num usa b"></td><td class="r num dif"></td><td><input class="cell t rem" aria-label="${esc(r.code)} · ${bi("মন্তব্য", "Remarks")}" value="${esc(r.remark)}" ${locked ? "disabled" : ""}></td></tr>`; }).join("")}
     <tr class="tot"><td></td><td>মোট <span class="mut sm" id="T-n"></span></td><td class="r num" id="T0"></td><td class="r num c-dr" id="T1"></td><td class="r num c-cr" id="T2"></td><td class="r num" id="T3"></td><td class="r num c-bk t-bank" id="T4"></td><td class="r num" id="T5"></td><td class="r num t-usa" id="T6"></td><td class="r num t-diff" id="T7"></td><td></td></tr></tbody></table></div>
-    ${locked || !rows.length ? "" : `<div class="cbar entry-actions"><div class="bc-bartot" id="c-bartot" aria-live="off"><span class="bt-n">${bi("মোট", "Total")} <b id="bt-n"></b></span><span>${bi("ক্লোজিং", "Closing")} <b id="bt-4" class="num"></b></span><span>${bi("ব্যবহারযোগ্য", "Usable")} <b id="bt-6" class="num bt-usa"></b></span><span>${bi("অমিল", "Diff")} <b id="bt-7" class="num"></b></span></div><button type="button" class="btn lg fix" id="c-preview">${ico("eye")} <span>${bi("প্রিভিউ", "Preview")}</span></button>${has ? "" : `<button type="button" class="btn lg fix" id="c-draft">${ico("edit")} <span data-save-label>${bi("ড্রাফট সেভ", "Save draft")}</span></button>`}<button type="button" class="btn pri lg fix" id="c-save">${ico("save")} <span data-save-label>${bi("সেভ", "Save")}</span></button><div class="hint" id="c-err" role="alert"></div></div>`}
+    ${locked || !rows.length ? "" : `<div class="cbar entry-actions"><label class="bc-bsrch">${ico("search")}<input id="c-bq" type="search" autocomplete="off" placeholder="${bi("খুঁজুন — কোড, হোল্ডার, ব্যাংক", "Search code, holder, bank")}" aria-label="${bi("অ্যাকাউন্ট খুঁজুন", "Search accounts")}"></label><div class="bc-bartot" id="c-bartot" aria-live="off"><span class="bt-n">${bi("মোট", "Total")} <b id="bt-n"></b></span><span>${bi("ক্লোজিং", "Closing")} <b id="bt-4" class="num"></b></span><span>${bi("ব্যবহারযোগ্য", "Usable")} <b id="bt-6" class="num bt-usa"></b></span><span>${bi("অমিল", "Diff")} <b id="bt-7" class="num"></b></span></div><button type="button" class="btn lg fix" id="c-preview">${ico("eye")} <span>${bi("প্রিভিউ", "Preview")}</span></button>${has ? "" : `<button type="button" class="btn lg fix" id="c-draft">${ico("edit")} <span data-save-label>${bi("ড্রাফট সেভ", "Save draft")}</span></button>`}<button type="button" class="btn pri lg fix" id="c-save">${ico("save")} <span data-save-label>${bi("সেভ", "Save")}</span></button><div class="hint" id="c-err" role="alert"></div></div>`}
     </section>`;
     [...$$("[data-go]", body), ...$$("[data-go]", msg)].forEach(a => a.onclick = () => {
       const key = {crep: "nabiad_crep_date"}[a.dataset.go];
@@ -2066,8 +2084,7 @@ async function vClosing(v) {
     };
     const actions = $(".bc-register .cbar", body);
     const validClosing = input => {
-      const value = input.value.trim().replace(/,/g, "");
-      return !!input.dataset.dirty && /^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value) && Number.isFinite(Number(value));
+      return !!input.dataset.dirty && exprOk(input.value);
     };
     const setExtraInputs = ({odI, odpI, ti}) => {
       odI.disabled = odpI.disabled = saving || locked || !validClosing(ti) || (has && !ti.dataset.edited);
@@ -2088,11 +2105,11 @@ async function vClosing(v) {
       cells.forEach(cell => {
         const {tr, r, odI, odpI, ti, blkI, remI, eff, expO, usaO, difO, dot} = cell;
         const closingSet = validClosing(ti);
-        const draftDebit = num(odI.value), draftCredit = num(odpI.value);
-        const od = closingSet ? draftDebit : 0, odp = closingSet ? draftCredit : 0, blk = num(blkI.value);
+        const draftDebit = ev(odI.value), draftCredit = ev(odpI.value);
+        const od = closingSet ? draftDebit : 0, odp = closingSet ? draftCredit : 0, blk = ev(blkI.value);
         const dr = r.adr + od, cr = r.acc + r.acb + odp, exp = r.prevT - dr + cr;
         if (!ti.dataset.dirty && document.activeElement !== ti) ti.value = fmtIn(exp);
-        const tot = closingSet ? num(ti.value) : exp;
+        const tot = closingSet ? ev(ti.value) : exp;
         setExtraInputs(cell);
         const diff = tot - exp, usa = tot - blk, chg = Math.abs(diff) > 0.001;
         const mv = !!(r.adr || r.acc || r.acb || od || odp);
@@ -2134,12 +2151,21 @@ async function vClosing(v) {
           bi("ডিভাইসে ড্রাফট সেভ হয়নি। Save draft চাপুন।", "Could not save on this device. Use Save draft to retry."), "err");
       }, 700);
     };
+    /* "= 4,058" under a cell while an expression such as 3,558+500 is being typed */
+    const xhint = inp => {
+      if (inp.classList.contains("rem")) return;
+      let h = inp.parentElement.querySelector(".xr"); const on = document.activeElement === inp && hasOp(inp.value) && exprOk(inp.value);
+      if (!on) { h && h.remove(); return; }
+      if (!h) { h = document.createElement("div"); h.className = "xr num"; inp.after(h); }
+      h.textContent = "= " + money(ev(inp.value));
+    };
     $$("#ct input", body).forEach(input => input.addEventListener("input", () => {
       if (input.classList.contains("tot")) {
         input.dataset.dirty = input.value.trim() === "" ? "" : "1";
         input.dataset.edited = "1";
       }
       calc(true);
+      xhint(input);
       autosave();
     }));
     $$("#ct .rem", body).forEach(input => input.addEventListener("blur", event => {
@@ -2148,12 +2174,14 @@ async function vClosing(v) {
     $$("#ct input.cell:not(.rem)", body).forEach(inp => {
       inp.addEventListener("focus", () => inp.select());
       inp.addEventListener("blur", event => {
-        if (inp.value.trim() !== "" && (!inp.classList.contains("tot") || validClosing(inp))) inp.value = fmtIn(num(inp.value));
+        if (inp.value.trim() !== "" && (!inp.classList.contains("tot") || validClosing(inp))) inp.value = fmtIn(ev(inp.value)); xhint(inp);
         if (!actions?.contains(event.relatedTarget)) calc();
       });
       inp.addEventListener("keydown", e => { if (e.key !== "Enter") return; e.preventDefault(); let tr = inp.closest("tr").nextElementSibling; while (tr && tr.style.display === "none") tr = tr.nextElementSibling; const cls = [...inp.classList].find(c => ["od", "odp", "tot", "blk"].includes(c)); const nx = tr && $("." + cls, tr); if (nx) nx.focus(); });
     });
-    query.oninput = () => filter();
+    const bq = $("#c-bq", body);
+    query.oninput = () => { if (bq) bq.value = query.value; filter(); };
+    if (bq) { bq.value = query.value; bq.oninput = () => { query.value = bq.value; filter(); }; }
     reviewButtons.forEach(btn => btn.onclick = () => { review = btn.dataset.review; filter(); });
     calc();
     filters.hidden = false;

@@ -2849,3 +2849,17 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 }
 
 #tx-out{margin-top:14px} #tx-warn:not(:empty){margin-bottom:12px}
+
+/* ===== v6.129 — typed arithmetic hint + compact search in the phone save bar ===== */
+.xr{font-size:11px;font-weight:800;color:var(--pri);text-align:right;padding-top:2px;line-height:1.2}
+.xtip{font-weight:600;color:var(--vi);margin-inline-start:8px}
+.bc-register .cbar .bc-bsrch{display:none}
+@media (max-width:900px){
+  .bc-register .cbar .bc-bsrch{display:flex;align-items:center;gap:7px;grid-column:1/-1;order:-1;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);box-shadow:var(--sh)}
+  .bc-register .cbar .bc-bsrch:focus-within{border-color:var(--pri);box-shadow:var(--glow)}
+  .bc-register .cbar .bc-bsrch svg{flex:none;width:16px;height:16px;color:var(--mut)}
+  .bc-register .cbar .bc-bsrch input{flex:1;min-width:0;height:100%;border:0;outline:0;background:transparent;font:inherit;font-size:16px;color:var(--txt)}
+  .bc-register .cbar .btn.lg{min-height:40px;height:40px}
+  .bc-register .cbar{gap:6px;padding:6px}
+}
+.bc-register .cbar .bc-bsrch input,.bc-register .cbar .bc-bsrch input:focus{border:0!important;box-shadow:none!important;outline:0!important;padding:0;border-radius:0}
