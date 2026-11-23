@@ -3224,3 +3224,17 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
   #e-review-tools .cp-search{order:2;flex:1 1 11rem;min-width:0}
   #e-review-tools .cp-sel{order:3}
 }
+
+/* ===== v6.146 — Cheque Status: compact filters, full-width pulse, phone grid ===== */
+.cq-pulse{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.cq-queue-controls{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) auto;align-items:end}
+.cq-queue-controls .cq-grp-t{margin:0;height:40px;white-space:nowrap}
+.cq-chiprow:has(.chips[hidden]){display:none}
+@media (max-width:900px){
+  .cq-pulse{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible;padding-bottom:0}
+  .cq-pulse>*{flex:none}
+  .cq-pulse>:last-child:nth-child(odd){grid-column:1/-1}
+  .cq-queue-controls{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .cq-queue-controls .cq-search,.cq-queue-controls .cq-grp-t{grid-column:1/-1}
+  .cq-queue-controls .cq-grp-t{height:auto}
+}
