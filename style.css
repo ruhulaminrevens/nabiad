@@ -3049,3 +3049,9 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 .cp-flow button.on span{display:inline}
 .cp-flow li.on{flex:2.4 1 0}
 .cbm .cbm-h svg{width:14px;height:14px;vertical-align:-2px;flex:none}
+/* v6.136: Clear / Save stay visible while the long form scrolls */
+.cq-posting .cp-footer{position:sticky;bottom:0;z-index:6;box-shadow:0 -10px 24px -14px rgba(30,27,75,.35);background:linear-gradient(var(--grad-soft),var(--grad-soft)),var(--surface)}
+@media (max-width:900px){.cq-posting .cp-footer{bottom:calc(78px + env(safe-area-inset-bottom))}}
+.cq-posting .cp-footer{background-color:var(--surface);background-image:var(--grad-soft)}
+@media (max-width:900px){.cp-keys{display:none}}
+@media (max-width:900px),(pointer:coarse){.cp-footer .cp-keys{display:none}}
