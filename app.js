@@ -1911,7 +1911,7 @@ async function vClosing(v) {
   $("#c-d", v).setAttribute("aria-label", bi("ক্লোজিংয়ের তারিখ", "Closing date"));
   const dateControls = ["#c-p", "#c-d", "#c-n"].map(s => $(s, v));
   let autoT, pendingDraft, revision = 0, saving = false, review = "all";
-  let statusToast, draftState;
+  let statusToast, draftState, gapToastKey;
   const notifyStatus = (message, kind = "info") => {
     statusToast?.remove();
     statusToast = toast(message, kind);
@@ -1975,7 +1975,12 @@ async function vClosing(v) {
     const msgs = [];
     if (saved) msgs.push(`<div class="alert gr bc-notice"><span>${queued ? bi("এই ডিভাইসে সেভ হয়েছে", "Saved on this device") : bi("ক্লোজিং সেভ হয়েছে", "Closing saved")}</span>${queued ? "" : `<a class="btn sm" href="#/crep" data-go="crep">${ico("img")} ${bi("ব্যালেন্স স্ন্যাপশট", "Balance Snapshot")}</a>`}</div>`);
     if (has && !queued) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 " + bi("এই তারিখের ব্যালেন্স ফাইনাল সেভ হয়েছে। বদলাতে Admin কে বলুন।", "This date is finalized. Ask an Admin to change it.") : "⚠ " + bi("এই তারিখ ফাইনাল সেভ আছে। সেভ করলে নতুন মান বসবে।", "This date is already finalized. Saving will replace the values.")}</div>`);
-    if (!has && prev.date && gap) msgs.push(`<div class="mut sm">${bi("আগের ডাটা:", "Previous data:")} <b>${dmy(prev.date)}</b>${gap ? ` <b class="am">(${bi("মাঝে " + gap + " কর্মদিবসের ডাটা নেই", gap + " working days of data missing in between")})</b>` : ""}</div>`);
+    if (statusToast?.dataset.gap) statusToast.remove();
+    if (!has && prev.date && gap && gapToastKey !== date) {
+      gapToastKey = date; /* once per opened date, replaces the previous popup: a short popup instead of a permanent line */
+      notifyStatus(`${bi("আগের ডাটা:", "Previous data:")} ${dmy(prev.date)} · ${bi("মাঝে " + gap + " কর্মদিবসের ডাটা নেই", gap + " working days of data missing in between")}`, "err");
+      statusToast.dataset.gap = "1";
+    }
     if (draft && !locked) msgs.push(`<div class="alert vi bc-notice"><span>${bi("ড্রাফট লোড হয়েছে", "Draft loaded")} · ${esc(draft.by || "")} · ${new Date(draft.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</span><button type="button" class="btn sm" id="c-dd">${bi("ড্রাফট বাদ দিন", "Discard draft")}</button></div>`);
     if (isFri(date) && !has) msgs.push(`<div class="alert am">${bi("শুক্রবার — সাধারণত ব্যাংক বন্ধ থাকে। দরকার না হলে \"পরের ›\" চাপুন।", "Friday — banks are usually closed. Press \"Next ›\" if you do not need this day.")}</div>`);
     if (!srcOk) msgs.push(`<div class="alert am">⚠ ${bi("লিংক করা ডাটা পুরোপুরি লোড হয়নি। ফাইনাল সেভের আগে হিসাব মতে ব্যালেন্স যাচাই করুন।", "Some linked data could not load. Review the expected balance before finalizing.")}</div>`);
