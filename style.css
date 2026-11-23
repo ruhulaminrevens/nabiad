@@ -2617,8 +2617,17 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 .bc-summary .bc-kpi{border:1px solid var(--line2);border-radius:12px;background:var(--pri-soft)}
 .bc-kpi[data-kpi="3"]{background:var(--vi-soft)} .bc-kpi[data-kpi="5"]{background:var(--am-soft)} .bc-kpi[data-kpi="6"]{background:var(--gr-soft)}
 .bc-kpi[data-kpi="4"],.bc-kpi[data-kpi="6"]{border-top-color:var(--line2)}
-/* linked-transaction chips on one tidy row */
-.bc-context .clink .cl-g{display:flex;flex-wrap:wrap;gap:6px}
+/* linked transactions: one aligned row per item — badge | label | amount */
+.bc-context .clink{gap:8px}
+.bc-context .clink .cl-h{font-size:13px}
+.bc-context .clink .cl-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:6px}
+.bc-context .clink .cl-g span{display:grid;grid-template-columns:62px 1fr auto;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid var(--line2);border-left-width:4px;font-size:13px}
+.bc-context .clink .cl-g span.c-dr{background:var(--rd-soft,rgba(244,63,94,.08));border-left-color:#f43f5e}
+.bc-context .clink .cl-g span.c-cr{background:var(--gr-soft,rgba(16,185,129,.09));border-left-color:#10b981}
+.bc-context .clink .cl-g i{order:-1;justify-self:start;font-size:11px;font-weight:700;line-height:18px;padding:0 8px;border-radius:99px;background:color-mix(in srgb,currentColor 12%,transparent)}
+.bc-context .clink .cl-g span.c-dr i{color:#e11d48} .bc-context .clink .cl-g span.c-cr i{color:#059669}
+.bc-context .clink .cl-g em{color:var(--txt2);min-width:0;overflow-wrap:anywhere;line-height:1.3}
+.bc-context .clink .cl-g b{font-size:14px;font-weight:800;white-space:nowrap}
 /* phone: account cards use a left accent bar (brand colour) like Collection cards */
 @media (max-width:900px){
   .tw.cards #ct tbody tr[data-i]{border-left:4px solid var(--b1,#6366f1)}
