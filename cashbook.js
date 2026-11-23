@@ -839,8 +839,8 @@ async function vCashBook(v) {
             <div class="cb-activity-filters" role="group" aria-label="${bi("লেনদেনের ধরন", "Transaction type")}">
               ${sides.map(side => `<button type="button" class="btn sm" data-cb-side="${side}" aria-controls="cb-activity-lines" aria-pressed="false">${cbSideLabel(side)} <span class="cb-side-count">${(lines[side] || []).length}</span></button>`).join("")}
             </div>
-            <label class="cb-report-source">${bi("রিপোর্টের উৎস", "Report source")}
-              <select class="in" id="cb-report-source">
+            <label class="cb-report-source">
+              <select class="in" id="cb-report-source" aria-label="${esc(bi("রিপোর্টের উৎস", "Report source"))}">
                 <option value="app">${bi("ক্যাশ খাতা", "Cash Book")}</option>
                 <option value="tally">${bi("Tally ভাউচার", "Tally vouchers")}</option>
               </select>
