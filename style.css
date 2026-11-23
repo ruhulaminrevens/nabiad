@@ -3283,3 +3283,16 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .cq-clear{align-self:end;display:flex}
 .cq-clear .btn{height:40px;white-space:nowrap}
 @media (max-width:900px){.cq-queue-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.cq-clear{grid-column:1/-1}.cq-clear .btn{width:100%}}
+/* v6.152 — Cheque Status phone card: status on its own full-width row, amount beside the date */
+@media (max-width:760px){
+  .cq-item:not(.has-sel){grid-template-columns:minmax(0,1fr) auto;gap:3px 12px}
+  .cq-item:not(.has-sel) .cq-value{display:contents}
+  .cq-item:not(.has-sel) .cq-ref .cq-link{grid-column:1/-1;grid-row:1}
+  .cq-item:not(.has-sel) .cq-ref>div:nth-child(2){grid-column:1/-1;grid-row:2}
+  .cq-item:not(.has-sel) .cq-ref>div:nth-child(3){grid-column:1;grid-row:3}
+  .cq-item:not(.has-sel) .cq-ref>div:nth-child(4){grid-column:1/-1;grid-row:4}
+  .cq-item:not(.has-sel) .cq-value>strong{grid-column:2;grid-row:3;align-self:center;margin:0;text-align:end;font-size:1.05rem}
+  .cq-item:not(.has-sel) .cq-state{grid-column:1/-1;grid-row:5;justify-content:flex-start;margin-top:4px}
+  .cq-item:not(.has-sel) .cqs-age{grid-column:1/-1;grid-row:6}
+  .cq-item:not(.has-sel) .cq-actions{grid-column:1/-1;grid-row:7;margin-top:8px}
+}
