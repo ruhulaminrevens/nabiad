@@ -1969,10 +1969,9 @@ async function vClosing(v) {
     (colRows || []).forEach(r => { if (r.date === date && r.status === "approved" && r.account) aCc[r.account] = (aCc[r.account] || 0) + (+r.amount || 0); });
     const gap = prev.date ? workGap(prev.date, date) : 0;
     const queued = Object.values(ex).some(r => r.pending);
-    if (draft) setDraftState(DEMO || draft.local ? "local" : "online");
+    if (draft) draftState = DEMO || draft.local ? "local" : "online"; /* passive: no popup on page open */
     else if (queued) notifyStatus(bi("ফাইনাল · সিঙ্ক বাকি", "Final · Pending sync"));
     else if (saved) notifyStatus(bi("ক্লোজিং সেভ হয়েছে", "Closing saved"), "ok");
-    else if (!has) notifyStatus(bi("সেভ হয়নি", "Not saved"));
     const msgs = [];
     if (saved) msgs.push(`<div class="alert gr bc-notice"><span>${queued ? bi("এই ডিভাইসে সেভ হয়েছে", "Saved on this device") : bi("ক্লোজিং সেভ হয়েছে", "Closing saved")}</span>${queued ? "" : `<a class="btn sm" href="#/crep" data-go="crep">${ico("img")} ${bi("ব্যালেন্স স্ন্যাপশট", "Balance Snapshot")}</a>`}</div>`);
     if (has && !queued) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 " + bi("এই তারিখের ব্যালেন্স ফাইনাল সেভ হয়েছে। বদলাতে Admin কে বলুন।", "This date is finalized. Ask an Admin to change it.") : "⚠ " + bi("এই তারিখ ফাইনাল সেভ আছে। সেভ করলে নতুন মান বসবে।", "This date is already finalized. Saving will replace the values.")}</div>`);
@@ -2121,7 +2120,7 @@ async function vClosing(v) {
       autoT = setTimeout(() => {
         const stored = flushDraft();
         if (!current()) return;
-        if (stored) setDraftState("local");
+        if (stored) draftState = "local"; /* silent autosave; only failures are announced */
         else if (draftState !== "failed") setDraftState("failed",
           bi("ডিভাইসে ড্রাফট সেভ হয়নি। Save draft চাপুন।", "Could not save on this device. Use Save draft to retry."), "err");
       }, 700);

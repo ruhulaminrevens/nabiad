@@ -2654,8 +2654,12 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 .bc-register .cbar #c-draft{background:var(--surface);color:var(--pri);border:1.5px solid color-mix(in srgb,var(--pri) 40%,var(--line));box-shadow:none}
 .bc-register .cbar #c-draft:not(:disabled):hover{background:var(--pri-soft);border-color:var(--pri)}
 @media (min-width:901px){
-  .bc-register .cbar{display:flex;justify-content:flex-end;align-items:center;gap:10px}
-  .bc-register .cbar .btn.lg{width:190px;flex:none;min-height:46px}
+  .bc-register .cbar{display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:6px 8px}
+  .bc-register .cbar .btn.lg{width:auto;min-width:112px;flex:none;height:38px;min-height:38px;padding:0 18px;font-size:14px;border-radius:10px}
   .bc-register .cbar #c-err{order:-1;flex:1;margin-inline-end:auto}
+}
+@media (max-width:900px){
+  .bc-register .cbar{padding:6px;gap:8px}
+  .bc-register .cbar .btn.lg{min-height:42px;padding:6px 10px;font-size:14px;border-radius:10px}
 }
 @media (min-width:901px){ html:has(.bc-register .cbar) #toasts{bottom:calc(var(--bc-save-bottom) + 76px)} }
