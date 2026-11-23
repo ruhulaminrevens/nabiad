@@ -1297,8 +1297,8 @@ async function vInvRep(v) {
   const TABS = [["status", bi("Pending অবস্থা", "Pending status")], ["dist", bi("ডিস্ট্রিবিউশন", "Distribution")], ["nir", bi("নিরাময়", "Niramoy")], ["rm", bi("আরএম ফ্যাক্টরি", "RM Factory")], ["exc", bi("সতর্কতা", "Alerts")]];
   v.innerHTML = head(ROUTES[CUR].t, `${repBtns("ir")}<button class="btn" id="ir-xl">${ico("dl")} Excel</button>`) +
     `<div class="card tbar noprint">${pbBar("irpb", F)}</div>${ivSeg("ir-tab", TABS, F.r)}
-    <div class="ir-cmd card noprint"><div class="ir-cmd-r"><div class="ivd-find"><span class="ivd-find-i" aria-hidden="true">${ico("search")}</span>
-      <input class="in" id="ir-q" type="search" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="ir-res" aria-autocomplete="list" placeholder="${bi("পার্টি, ASM, আইটেম, ট্রান্সপোর্ট বা কমান্ড খুঁজুন…", "Search party, ASM, item, transport or commands…")}" aria-label="${bi("রিপোর্ট সার্চ", "Report search")}"><kbd>/</kbd>
+    <div class="ir-cmd card noprint"><div class="ir-desc" id="ir-desc" aria-live="polite"></div><div class="ir-cmd-r"><div class="ivd-find"><span class="ivd-find-i" aria-hidden="true">${ico("search")}</span>
+      <input class="in" id="ir-q" type="search" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="ir-res" aria-autocomplete="list" placeholder="${bi("পার্টি, আইটেম খুঁজুন…", "Search party, item…")}" aria-label="${bi("রিপোর্ট সার্চ", "Report search")}"><kbd>/</kbd>
       <div class="ivd-res" id="ir-res" role="listbox" hidden></div></div>
       <button type="button" class="btn sm" id="ir-clear" disabled>${bi("সব মুছুন", "Clear all")}</button></div>
       <div class="ir-cmd-f" id="ir-fl"></div><div class="ir-count mut sm" id="ir-count" role="status"></div></div>
@@ -1402,8 +1402,8 @@ async function vInvRep(v) {
     counts = { all: X0.length, shown: X.length };
     cur = { name: "Inventory_Alerts", xl: { Alerts: [["Type", "Date", "Detail"], ...X.map(x => [IV_XK[x.k][1], x.d, x.txt.replace(/<[^>]+>/g, "")])] } };
     const kinds = Object.keys(IV_XK), mxK = Math.max(1, ...kinds.map(k => X1.filter(x => x.k === k).length));
-    viz.innerHTML = vcard(bi("সতর্কতার ধরন", "Alert types", ""), bi("ধরনে ক্লিক করলে শীট ফিল্টার হবে", "Click a type to filter the sheet"), hbars(kinds.map(k => { const n = X1.filter(x => x.k === k).length; return [k, `${bi(IV_XK[k][0], IV_XK[k][1])} · ${n}`, n, n, (n / mxK * 100).toFixed(1), IV_XK[k][2]]; }), "data-xk"), "ir-v1") +
-      vcard(bi("মেয়াদ অনুযায়ী (দেরিতে Pending)", "Late pending by age", ""), bi("কতদিন ধরে বাকি", "How long they have waited"), (() => { const late = X1.filter(x => x.k === "late"), b = [0, 0, 0, 0]; late.forEach(x => b[x.n > 30 ? 3 : x.n > 15 ? 2 : x.n > 10 ? 1 : 0]++); const m = Math.max(1, ...b); return hbars(b.map((n, i) => ["", ["8–10", "11–15", "16–30", "30+"][i] + " " + bi("দিন", "d") + " · " + n, n, n, (n / m * 100).toFixed(1), BC[i]]), "data-none"); })(), "ir-v2");
+    viz.innerHTML = vcard(bi("সতর্কতার ধরন", "Alert types", ""), bi("ধরনে ক্লিক করলে শীট ফিল্টার হবে", "Click a type to filter the sheet"), hbars(kinds.map(k => { const n = X1.filter(x => x.k === k).length; return [k, bi(IV_XK[k][0], IV_XK[k][1]), n, n, (n / mxK * 100).toFixed(1), IV_XK[k][2]]; }), "data-xk"), "ir-v1") +
+      vcard(bi("মেয়াদ অনুযায়ী (দেরিতে Pending)", "Late pending by age", ""), bi("কতদিন ধরে বাকি", "How long they have waited"), (() => { const late = X1.filter(x => x.k === "late"), b = [0, 0, 0, 0]; late.forEach(x => b[x.n > 30 ? 3 : x.n > 15 ? 2 : x.n > 10 ? 1 : 0]++); const m = Math.max(1, ...b); return hbars(b.map((n, i) => ["", ["8–10", "11–15", "16–30", "30+"][i] + " " + bi("দিন", "days"), n, n, (n / m * 100).toFixed(1), BC[i]]), "data-none"); })(), "ir-v2");
     filters.push([xF, [["", bi("সব ধরন", "All types"), X1.length], ...kinds.map(k => [k, bi(IV_XK[k][0], IV_XK[k][1]), X1.filter(x => x.k === k).length])], "xk"]);
     return repSheet("ir-in", "Inventory · Alerts & exceptions", f, t, repKpi(kinds.map(k => [IV_XK[k][1], X1.filter(x => x.k === k).length, ""])),
       repOne(repBox("Alerts", ["~Type", "~Date", "~Detail"], X.map(x => `<tr><td>${IV_XK[x.k][1]}</td><td>${x.d.length > 7 ? dmy(x.d) : x.d}</td><td>${x.txt}</td></tr>`).join(""))), filtNote());
@@ -1445,8 +1445,18 @@ async function vInvRep(v) {
       const s = sortSt[ti]; if (s) sortTable(tbl, ti, s.c, s.d);
     });
   }
+  const DESC = {
+    status: ["clock", bi("আজ পর্যন্ত যেসব অর্ডার ডেলিভারি হয়নি — সবচেয়ে পুরোনোটা আগে। ৭ দিনের বেশি পুরোনোগুলো লাল।", "Orders not yet delivered as of today, oldest first. Anything older than 7 days is flagged.")],
+    dist: ["ivcart", bi("এই সময়ের ডিস্ট্রিবিউশন অর্ডার — আইটেম, পার্টি ও ASM অনুযায়ী অর্ডার বনাম ডেলিভারি।", "Distribution orders in this period: ordered vs delivered by item, party and ASM.")],
+    nir: ["ivtruck", bi("এই সময়ের নিরাময় ট্রিপ — আইটেম ও ট্রান্সপোর্ট অনুযায়ী পরিমাণ, মূল্য ও ভাড়া।", "Niramoy trips in this period: quantity, value and rent by item and transport.")],
+    rm: ["ivbox", bi("বুলতা ফ্যাক্টরির দৈনিক উৎপাদন, ডেলিভারি ও স্টক — স্টক কত দিন চলবে তাও দেখায়।", "Daily ready, delivery and stock at the Bulta factory, with how many days the stock will last.")],
+    exc: ["flag", bi("যেসব জিনিস নজর দরকার: দেরিতে Pending, নেগেটিভ স্টক, Demand-এর বেশি অর্ডার, ভুল তারিখ।", "Things that need attention: late pending, negative stock, orders over demand, date errors.")]
+  };
   let first = true;
   function draw() {
+    const dd = DESC[F.r]; $("#ir-desc", v).innerHTML = `${ico(dd[0])}<span>${dd[1]}</span>`;
+    const on = $("#ir-tab .chip.on", v), tb = $("#ir-tab", v); if (on && tb && tb.scrollWidth > tb.clientWidth) tb.scrollTo({ left: on.offsetLeft - 8, behavior: reduce ? "auto" : "smooth" });
+    viz.scrollLeft = 0;
     out.innerHTML = build(); dcFit(v, "ir-in"); locks(); enhance();
     paintFilters(fl);
     if (first || !reduce) { viz.classList.remove("go"); void viz.offsetWidth; viz.classList.add("go"); } first = false;

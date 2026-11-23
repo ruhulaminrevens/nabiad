@@ -514,3 +514,32 @@ button.ivd-ins:hover { transform:translateY(-2px); border-color:var(--pri); }
 @media (max-width:640px) { .ir-cmd-r { flex-wrap:wrap; } .ir-cmd-r .ivd-find { flex-basis:100%; } .ir-fg + .ir-fg { padding-left:0; border-left:0; } .ir-hb button { grid-template-columns:minmax(0,1fr) auto; } .ir-hb i { display:none; } .ir-mini { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media (prefers-reduced-motion:reduce) { .ir-viz.go > *,.ir-viz.go .ir-hb s,.ir-viz.go .ir-cols span,.ir-pop { animation:none !important; } }
 .ir-cmd .ivd-res { z-index:30; }
+
+/* Status & Report v3 — tab guide + compact phone layout (v6.155) */
+.ir-desc { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border-radius:12px; background:linear-gradient(90deg,var(--pri-soft),transparent); font-size:13px; line-height:1.45; color:var(--txt); }
+.ir-desc svg { flex:none; width:18px; height:18px; margin-top:1px; color:var(--pri); }
+.ir-desc span { animation:ivdIn .3s ease both; }
+@media (max-width:640px) {
+  /* tabs: one swipeable row instead of a 3-row grid */
+  #ir-tab.iv-seg { display:flex !important; flex-wrap:nowrap; overflow-x:auto; scroll-snap-type:x proximity; scrollbar-width:none; gap:4px; width:100%; -webkit-mask:linear-gradient(90deg,#000 88%,transparent); mask:linear-gradient(90deg,#000 88%,transparent); }
+  #ir-tab.iv-seg::-webkit-scrollbar { display:none; }
+  #ir-tab .chip { flex:none; scroll-snap-align:start; padding:8px 14px; white-space:nowrap; }
+  /* search + Clear all on one line */
+  .ir-cmd-r { flex-wrap:nowrap; gap:8px; } .ir-cmd-r .ivd-find { flex:1 1 auto; min-width:0; }
+  #ir-clear { flex:none; padding-inline:10px; white-space:nowrap; }
+  .ir-desc { font-size:12.5px; padding:9px 10px; }
+  /* filter groups: each one swipeable row */
+  .ir-cmd-f { display:grid; gap:8px; }
+  .ir-fg { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; padding-bottom:2px; margin-inline:-2px; padding-inline:2px; }
+  .ir-fg::-webkit-scrollbar { display:none; }
+  .ir-fg .chip { flex:none; white-space:nowrap; }
+  /* bars visible on phone: label + value, bar underneath */
+  .ir-hb button { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"l v" "b b"; row-gap:5px; padding:7px 4px; }
+  .ir-hb .ir-hl { grid-area:l; } .ir-hb b { grid-area:v; } .ir-hb i { display:block !important; grid-area:b; height:6px; }
+  /* insight cards: swipe carousel with a peek of the next card */
+  .ir-viz { display:flex; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none; gap:10px; padding-bottom:4px; }
+  .ir-viz::-webkit-scrollbar { display:none; }
+  .ir-viz > .ir-vc { flex:0 0 86%; scroll-snap-align:start; }
+  .ir-viz > .ir-vc:only-child { flex-basis:100%; }
+  .ivd-ring { width:96px; height:96px; }
+}
