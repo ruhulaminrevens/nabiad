@@ -2863,3 +2863,16 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
   .bc-register .cbar{gap:6px;padding:6px}
 }
 .bc-register .cbar .bc-bsrch input,.bc-register .cbar .bc-bsrch input:focus{border:0!important;box-shadow:none!important;outline:0!important;padding:0;border-radius:0}
+
+/* ===== v6.130 — Bank Closing hint row: ⓘ Tip | date | count ===== */
+.bc-review{position:relative;align-items:center;gap:0;margin-bottom:10px}
+.bc-review #c-shown{margin-inline-start:0}
+.bc-info{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px 0 8px;margin-inline-end:10px;border-radius:99px;border:1px solid color-mix(in srgb,var(--vi) 35%,var(--line));background:var(--vi-soft);color:var(--vi);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+.bc-info svg{width:15px;height:15px}
+.bc-info:hover,.bc-info[aria-expanded="true"]{background:color-mix(in srgb,var(--vi) 16%,var(--surface));border-color:var(--vi)}
+.bc-dt{font-weight:800;font-size:13px;color:var(--txt2);padding-inline:10px;border-inline:1px solid var(--line)}
+.bc-review:not(:has(.bc-info)) .bc-dt{border-inline-start:0;padding-inline-start:0}
+.bc-review #c-shown{padding-inline-start:10px}
+.bc-tip{position:absolute;inset-inline-start:0;top:calc(100% + 4px);z-index:30;width:max-content;max-width:min(380px,92vw);padding:10px 12px;border-radius:12px;background:#1e1b4b;color:#fff;box-shadow:var(--sh2);font-size:12.5px;line-height:1.45}
+.bc-tip[hidden]{display:none}
+.bc-tip p{margin:0} .bc-tip p+p{margin-top:6px;color:#c4b5fd;font-weight:600}
