@@ -476,7 +476,6 @@
 /* v6.107: Cash Book recorded lines use the same card grammar as Collection entries */
 .cb-act-table .cb-led-name{font-weight:700;color:var(--txt)}
 .cb-act-table .cb-record-actions{gap:8px}
-.cb-act-table .iconbtn[disabled]{opacity:.45;cursor:not-allowed}
 .cb-act-table tr.cba.sr td:first-child{box-shadow:inset 3px 0 0 var(--gr)}
 .cb-act-table tr.cba.sp td:first-child{box-shadow:inset 3px 0 0 var(--rd)}
 @media (max-width:900px){
@@ -490,5 +489,5 @@
   .tw.cards.cb-act-table tbody tr.cba td:nth-child(2) .sm{font-size:12.5px;font-weight:500}
   .tw.cards.cb-act-table tbody tr.cba td:nth-child(3){grid-area:amt;text-align:right;font-size:17px;font-weight:800;color:var(--pri-ink)}
   .tw.cards.cb-act-table tbody tr.cba td:nth-child(4){grid-area:act;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
-  .tw.cards.cb-act-table tr.cba .iconbtn.sm{width:38px;height:38px}
+  .tw.cards.cb-act-table tr.cba .iconbtn.sm{width:36px;height:36px}
 }

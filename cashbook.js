@@ -918,8 +918,8 @@ async function vCashBook(v) {
         ${item.note ? `<div class="mut sm cb-narr">${esc(item.note)}</div>` : ""}</td>
         <td class="r num" data-l="${bi("টাকা", "Amount")}"><strong>${moneyText(item.a)}</strong></td>
         <td data-l="${bi("অ্যাকশন", "Action")}"><div class="cb-record-actions">
-          ${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="iconbtn sm" data-cb-edit="${index}" title="${esc(bi("এডিট", "Edit"))}" aria-label="${esc(bi("এডিট", "Edit"))}">${ico("edit")}</button>` : `<button type="button" class="iconbtn sm" disabled title="${esc(bi("এডিটের অনুমতি বা সময় নেই", "No edit permission or edit window closed"))}" aria-label="${esc(bi("এডিট", "Edit"))}">${ico("edit")}</button>`}
-          ${!imported && admin ? `<button type="button" class="iconbtn sm rd" data-cb-delete="${index}" title="${esc(bi("মুছুন", "Delete"))}" aria-label="${esc(bi("মুছুন", "Delete"))}">${ico("trash")}</button>` : ""}
+          ${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="iconbtn sm cpi am" data-cb-edit="${index}" title="${esc(bi("এডিট", "Edit"))}" aria-label="${esc(bi("এডিট", "Edit"))}">${ico("edit")}</button>` : `<button type="button" class="iconbtn sm cpi am" disabled title="${esc(bi("এডিটের অনুমতি বা সময় নেই", "No edit permission or edit window closed"))}" aria-label="${esc(bi("এডিট", "Edit"))}">${ico("edit")}</button>`}
+          ${!imported && admin ? `<button type="button" class="iconbtn sm cpi rd" data-cb-delete="${index}" title="${esc(bi("মুছুন", "Delete"))}" aria-label="${esc(bi("মুছুন", "Delete"))}">${ico("trash")}</button>` : ""}
         </div></td></tr>`).join("")}</tbody></table>` : "";
       get("activity-lines").hidden = !entries.length;
       get("activity-empty").hidden = !activityBook || !!entries.length;
