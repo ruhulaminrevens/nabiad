@@ -2844,7 +2844,7 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 @media print{ .sn-hist{display:none!important} }
 .sn-pd{white-space:nowrap}
 @media (max-width:640px){
-  .sn-ht th:nth-child(4),.sn-ht td:nth-child(4),.sn-ht th:nth-child(5),.sn-ht td:nth-child(5){display:none}
+  .sn-ht th:nth-child(5),.sn-ht td:nth-child(5){display:none}
   .sn-pd i{display:none} .sn-ht td{padding:8px 8px;font-size:12.5px} .sn-ht thead th{padding:8px}
 }
 

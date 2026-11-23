@@ -2277,21 +2277,21 @@ function hLabel(m, k) {
 const compactN = n => { const a = Math.abs(n), s = n < 0 ? "-" : ""; return a >= 1e7 ? s + (a / 1e7).toFixed(2).replace(/\.?0+$/, "") + "Cr" : a >= 1e5 ? s + (a / 1e5).toFixed(1).replace(/\.0$/, "") + "L" : a >= 1e3 ? s + (a / 1e3).toFixed(1).replace(/\.0$/, "") + "k" : s + Math.round(a); };
 /* rows: [{date,total,block,remark}] ascending → grouped periods + overall stats. A "txn" = a saved day on which the balance moved. */
 function hGroup(rows, m) {
-  const gs = [], map = new Map(); let prev = null, moves = 0;
+  const gs = [], map = new Map(); let prev = null, moves = 0, deb = 0, cre = 0;
   rows.forEach(r => {
     const k = hKey(m, r.date); let g = map.get(k);
-    if (!g) { g = { k, rows: [], moves: 0, hi: -Infinity, lo: Infinity, sum: 0 }; map.set(k, g); gs.push(g); }
-    const mv = prev !== null && r.total !== prev ? 1 : 0; g.moves += mv; moves += mv; prev = r.total;
+    if (!g) { g = { k, rows: [], moves: 0, deb: 0, cre: 0, hi: -Infinity, lo: Infinity, sum: 0 }; map.set(k, g); gs.push(g); }
+    const mv = prev !== null && r.total !== prev ? 1 : 0, df = prev === null ? 0 : r.total - prev; g.moves += mv; moves += mv; if (df > 0) { g.cre += df; cre += df; } else if (df < 0) { g.deb -= df; deb -= df; } prev = r.total;
     g.rows.push(r); g.hi = Math.max(g.hi, r.total); g.lo = Math.min(g.lo, r.total); g.sum += r.total;
   });
   gs.forEach((g, i) => { const last = g.rows[g.rows.length - 1]; g.date = last.date; g.total = last.total; g.block = last.block || 0; g.remark = last.remark || ""; g.avg = g.sum / g.rows.length; g.chg = g.total - (i ? gs[i - 1].total : g.rows[0].total); });
   const tot = rows.map(r => r.total), hi = Math.max(...tot), lo = Math.min(...tot), first = rows[0], last = rows[rows.length - 1];
-  return { gs, moves, hi, lo, hiD: rows.find(r => r.total === hi).date, loD: rows.find(r => r.total === lo).date, avg: tot.reduce((a, b) => a + b, 0) / tot.length, first, last, chg: last.total - first.total, pct: first.total ? (last.total - first.total) / Math.abs(first.total) * 100 : null, days: rows.length };
+  return { gs, moves, deb, cre, hi, lo, hiD: rows.find(r => r.total === hi).date, loD: rows.find(r => r.total === lo).date, avg: tot.reduce((a, b) => a + b, 0) / tot.length, first, last, chg: last.total - first.total, pct: first.total ? (last.total - first.total) / Math.abs(first.total) * 100 : null, days: rows.length };
 }
 const H_G = { W: 640, H: 210, L: 46, R: 12, T: 12, B: 26 };
 /* inline SVG area chart over the grouped closings; hover tooltip is wired by hChartBind */
 function hChart(gs, m) {
-  const { W, H, L, R, T, B } = H_G, n = gs.length, vals = gs.map(g => g.total), use = gs.map(g => g.total - g.block), showUse = gs.some(g => g.block > 0), all = showUse ? vals.concat(use) : vals;
+  const { W, H, L, R, T, B } = H_G, n = gs.length, vals = gs.map(g => g.total), use = gs.map(g => g.total - g.block), showUse = false, all = vals;
   let lo = Math.min(...all), hi = Math.max(...all); const pad = (hi - lo) * .1 || Math.abs(hi) * .05 || 1; hi += pad; lo -= pad; if (lo < 0 && Math.min(...all) >= 0) lo = 0;
   const X = i => L + (n === 1 ? (W - L - R) / 2 : i / (n - 1) * (W - L - R)), Y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
   const line = a => a.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
@@ -2309,7 +2309,7 @@ function hChartBind(root, gs, m) {
     const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * W, i = n === 1 ? 0 : Math.round(Math.min(1, Math.max(0, (x - L) / (W - L - R))) * (n - 1)), g = gs[i];
     const cx = L + (n === 1 ? (W - L - R) / 2 : i / (n - 1) * (W - L - R)), cy = T + (1 - (g.total - lo) / (hi - lo)) * (H - T - B);
     cur.setAttribute("x1", cx); cur.setAttribute("x2", cx); cd.setAttribute("cx", cx); cd.setAttribute("cy", cy); cur.style.opacity = cd.style.opacity = 1;
-    tip.hidden = false; tip.innerHTML = `<b>${hLabel(m, g.k)}</b><span>${bi("টোটাল", "Total")} <strong>৳ ${money0(g.total)}</strong></span>${g.block ? `<span>${bi("ব্লক", "Block")} ${money0(g.block)}</span><span>${bi("ব্যবহারযোগ্য", "Usable")} ${money0(g.total - g.block)}</span>` : ""}`;
+    tip.hidden = false; tip.innerHTML = `<b>${hLabel(m, g.k)}</b><span>${bi("ব্যালেন্স", "Balance")} <strong>৳ ${money0(g.total)}</strong></span>${g.deb ? `<span>${bi("ডেবিট", "Debit")} ${money0(g.deb)}</span>` : ""}${g.cre ? `<span>${bi("ক্রেডিট", "Credit")} ${money0(g.cre)}</span>` : ""}`;
     const tw = tip.offsetWidth; tip.style.left = Math.min(r.width - tw - 4, Math.max(4, cx / W * r.width - tw / 2)) + "px";
   };
   const out = () => { tip.hidden = true; cur.style.opacity = cd.style.opacity = 0; };
@@ -2379,12 +2379,12 @@ async function vCrep(v) {
     rows = rows.filter(r => r.total != null);
     const strip = `<div class="sn-sel"><span class="sn-bd" style="background:linear-gradient(135deg,${br.c1},${br.c2})">${esc(br.s)}</span><div class="sn-si"><b>${esc(a.code)}</b><span>${esc(a.holder || "")}</span><em>${esc([a.bank, a.branch, a.type].filter(Boolean).join(" · "))}</em></div></div>`;
     if (!rows.length) { hData = null; hOut().innerHTML = strip + `<div class="sn-hmsg">${bi("এই সময়ে কোনো ডাটা নেই", "No data in this period")}</div>`; return; }
-    const G = hGroup(rows, m), up = G.chg > 0 ? "up" : G.chg < 0 ? "dn" : "", sg = n => n > 0 ? "+" + money0(n) : n < 0 ? "−" + money0(-n) : "—", usable = G.last.total - (G.last.block || 0);
-    const kp = [["sn-k1", bi("সর্বশেষ ব্যালেন্স", "Closing"), "৳ " + money0(G.last.total), dmy(G.last.date), ""], ["sn-k2", bi("পরিবর্তন", "Change"), sg(G.chg), (G.pct == null ? "" : (G.pct > 0 ? "+" : "") + G.pct.toFixed(1) + "% · ") + bi("শুরু থেকে", "since start"), up], ["sn-k3", bi("সর্বোচ্চ", "Highest"), money0(G.hi), dmy(G.hiD), "up"], ["sn-k4", bi("সর্বনিম্ন", "Lowest"), money0(G.lo), dmy(G.loD), "dn"], ["sn-k5", bi("গড়", "Average"), money0(G.avg), `${G.days} ${bi("দিন", "days")}`, ""], ["sn-k6", bi("লেনদেন", "Txns"), String(G.moves), bi("ব্যালেন্স বদলেছে", "balance moved"), ""], ["sn-k7", bi("ব্লক", "Block"), money0(G.last.block || 0), bi("সর্বশেষ", "latest"), ""], ["sn-k8", bi("ব্যবহারযোগ্য", "Usable"), money0(usable), bi("সর্বশেষ", "latest"), ""]];
+    const G = hGroup(rows, m), up = G.chg > 0 ? "up" : G.chg < 0 ? "dn" : "", sg = n => n > 0 ? "+" + money0(n) : n < 0 ? "−" + money0(-n) : "—";
+    const kp = [["sn-k1", bi("সর্বশেষ ব্যালেন্স", "Closing"), "৳ " + money0(G.last.total), dmy(G.last.date), ""], ["sn-k2", bi("পরিবর্তন", "Change"), sg(G.chg), (G.pct == null ? "" : (G.pct > 0 ? "+" : "") + G.pct.toFixed(1) + "% · ") + bi("শুরু থেকে", "since start"), up], ["sn-k3", bi("সর্বোচ্চ", "Highest"), money0(G.hi), dmy(G.hiD), "up"], ["sn-k4", bi("সর্বনিম্ন", "Lowest"), money0(G.lo), dmy(G.loD), "dn"], ["sn-k5", bi("গড়", "Average"), money0(G.avg), `${G.days} ${bi("দিন", "days")}`, ""], ["sn-k6", bi("লেনদেন", "Txns"), String(G.moves), bi("ব্যালেন্স বদলেছে", "balance moved"), ""], ["sn-k7", bi("মোট ডেবিট", "Total debit"), money0(G.deb), bi("ব্যালেন্স কমেছে", "balance went down"), "dn"], ["sn-k8", bi("মোট ক্রেডিট", "Total credit"), money0(G.cre), bi("ব্যালেন্স বেড়েছে", "balance went up"), "up"]];
     const mx = Math.max(...G.gs.map(g => g.total), 1), list = [...G.gs].reverse();
     hData = { a, m, G };
     hOut().innerHTML = strip + `<div class="sn-kpis">${kp.map(([c, l, val, sub, t]) => `<div class="sn-kp ${c} ${t}"><span>${l}</span><b>${val}</b><em>${sub}</em></div>`).join("")}</div>` + hChart(G.gs, m) +
-      `<div class="tw sn-ht"><table><thead><tr><th>${bi("সময়", "Period")}</th><th class="r">${bi("ক্লোজিং", "Closing")}</th><th class="r">${bi("পরিবর্তন", "Change")}</th><th class="r">${bi("ব্লক", "Block")}</th><th class="r">${bi("ব্যবহারযোগ্য", "Usable")}</th><th class="r" title="${bi("যতবার ব্যালেন্স বদলেছে", "How many times the balance changed")}">${bi("লেনদেন", "Txns")}</th></tr></thead><tbody>${list.map(g => `<tr><td class="sn-pd">${hLabel(m, g.k)}${m === "daily" && g.remark ? `<small>${esc(g.remark)}</small>` : ""}</td><td class="r num sn-cb" style="--w:${Math.max(2, Math.round(Math.max(0, g.total) / mx * 100))}%">${money0(g.total)}</td><td class="r num ${g.chg > 0 ? "up" : g.chg < 0 ? "dn" : "z"}">${sg(g.chg)}</td><td class="r num">${g.block ? money0(g.block) : "—"}</td><td class="r num">${money0(g.total - g.block)}</td><td class="r num">${g.moves || "—"}</td></tr>`).join("")}</tbody></table></div>`;
+      `<div class="tw sn-ht"><table><thead><tr><th>${bi("সময়", "Period")}</th><th class="r">${bi("ক্লোজিং", "Closing")}</th><th class="r">${bi("ডেবিট", "Debit")}</th><th class="r">${bi("ক্রেডিট", "Credit")}</th><th class="r" title="${bi("যতবার ব্যালেন্স বদলেছে", "How many times the balance changed")}">${bi("লেনদেন", "Txns")}</th></tr></thead><tbody>${list.map(g => `<tr><td class="sn-pd">${hLabel(m, g.k)}${m === "daily" && g.remark ? `<small>${esc(g.remark)}</small>` : ""}</td><td class="r num sn-cb" style="--w:${Math.max(2, Math.round(Math.max(0, g.total) / mx * 100))}%">${money0(g.total)}</td><td class="r num ${g.deb ? "dn" : "z"}">${g.deb ? money0(g.deb) : "—"}</td><td class="r num ${g.cre ? "up" : "z"}">${g.cre ? money0(g.cre) : "—"}</td><td class="r num">${g.moves || "—"}</td></tr>`).join("")}</tbody></table></div>`;
     hChartBind(hOut(), G.gs, m);
   }
   $("#h-m", v).onchange = () => { const r = hRange(mode()); $("#h-f", v).value = r.from; $("#h-t", v).value = r.to; hist(); };
@@ -2392,7 +2392,7 @@ async function vCrep(v) {
   $("#h-clr", v).onclick = () => { hAc.set(null); $("#h-ac", v).focus(); hist(); };
   $("#h-ac", v).addEventListener("input", () => { $("#h-clr", v).hidden = !$("#h-ac", v).value; });
   $("#h-top", v).onclick = e => { const b = e.target.closest("[data-c]"); if (b) pickAcc(b.dataset.c); };
-  $("#h-xl", v).onclick = () => { if (!hData) return toast(bi("আগে একটি অ্যাকাউন্ট বেছে নিন", "Pick an account first"), "err"); const { a, m, G } = hData; exportXlsx({ History: [[a.code + " · " + (a.holder || ""), "Closing", "Change", "Block", "Usable", "Txns"], ...G.gs.map(g => [hLabel(m, g.k).replace(/<[^>]+>/g, ""), g.total, g.chg, g.block, g.total - g.block, g.moves]), ["TOTAL / LATEST", G.last.total, G.chg, G.last.block || 0, G.last.total - (G.last.block || 0), G.moves]] }, `History_${a.code}_${$("#h-f", v).value}_${$("#h-t", v).value}.xlsx`); };
+  $("#h-xl", v).onclick = () => { if (!hData) return toast(bi("আগে একটি অ্যাকাউন্ট বেছে নিন", "Pick an account first"), "err"); const { a, m, G } = hData; exportXlsx({ History: [[a.code + " · " + (a.holder || ""), "Closing", "Debit", "Credit", "Txns"], ...G.gs.map(g => [hLabel(m, g.k).replace(/<[^>]+>/g, ""), g.total, g.deb, g.cre, g.moves]), ["TOTAL / LATEST", G.last.total, G.deb, G.cre, G.moves]] }, `History_${a.code}_${$("#h-f", v).value}_${$("#h-t", v).value}.xlsx`); };
   await load();
   hist();   /* empty prompt first, then default to the most active account */
   loadTop().then(() => { if (!$("#h-top", v)) return; renderTop(); if (!hAc.get() && topList.length) pickAcc(topList[0].code); });
