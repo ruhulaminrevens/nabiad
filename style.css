@@ -3140,3 +3140,38 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 }
 @media (max-width:680px){.cq-queue-controls{grid-template-columns:minmax(0,1fr)}.cq-grp-t{margin-left:0}}
 @media (pointer:coarse){.cq-keys,.cq-search .f kbd{display:none}}
+
+/* ===== v6.139 — Cheque Register: smart search, quick views, insights ===== */
+.k-sw{position:relative}
+.k-sw label kbd{margin-left:6px;vertical-align:1px}
+.k-tips{display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:25;flex-wrap:wrap;align-items:center;gap:6px;padding:9px 11px;border-radius:12px;background:var(--surface);border:1px solid var(--line);box-shadow:var(--sh2);animation:pop .14s var(--ease)}
+.k-sw:focus-within:has(input:placeholder-shown) .k-tips{display:flex}
+.k-tips span{font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+.k-tips button{all:unset;cursor:pointer;padding:3px 10px;border-radius:99px;border:1px solid var(--line);background:var(--surface2);font-size:12px;font-weight:600;color:var(--txt2);transition:.15s var(--ease)}
+.k-tips button:hover{border-color:var(--pri);color:var(--pri);background:var(--pri-soft)}
+.k-quick,.k-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:12px}
+.k-chips[hidden],.k-pulse[hidden]{display:none}
+.k-quick .chip,.k-chips .chip{padding:4px 11px;font-size:12.5px}
+.k-quick-l{font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin-right:2px}
+.k-chips .chip b{font-size:10px;opacity:.85;margin-left:2px}
+.k-pulse{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:12px}
+.ksum .kc[data-st]{cursor:pointer}
+.ksum .kc[data-st]:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+.ksum .kc.on{box-shadow:0 0 0 2px var(--kc),var(--sh2)}
+.k-dens{flex-wrap:nowrap}
+.enquiry-actions{flex-wrap:wrap}
+.enquiry-results th.k-th{cursor:pointer;user-select:none;white-space:nowrap}
+.enquiry-results th.k-th:hover,.enquiry-results th.k-th.on{color:var(--pri)}
+.enquiry-results th.k-th i{font-style:normal;opacity:.55;font-size:.85em}
+.enquiry-results th.k-th.on i{opacity:1}
+#k-tab tbody tr[data-register-id]{cursor:pointer;transition:background .15s var(--ease)}
+#k-tab tbody tr[data-register-id]:hover{background:var(--pri-soft)}
+#k-tab tbody tr.k-act{background:var(--pri-soft);box-shadow:inset 3px 0 0 var(--pri)}
+#k-tab mark{background:color-mix(in srgb,var(--am) 35%,transparent);color:inherit;border-radius:3px;padding:0 1px}
+#k-tab tr.k-grp td{background:var(--surface2);padding:7px 14px;font-size:.84rem;cursor:default}
+#k-tab tr.k-grp td span{margin-left:12px;color:var(--mut)}
+#k-tab.k-compact td{padding-block:5px}
+#k-tab.k-compact td div>div.mut.sm{display:none}
+#k-tab.k-compact td .stc-d{display:none}
+@media (max-width:900px){.k-pulse{display:flex}.k-tips{position:static;margin-top:6px;box-shadow:none}.k-dens{display:none}#k-tab tr.k-grp td{display:block}}
+@media (pointer:coarse){.k-sw label kbd{display:none}}
