@@ -2688,7 +2688,7 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
   .top.ph.sn-head .acts:has(#r-sh){grid-template-columns:repeat(4,minmax(0,1fr))}
   .top.ph.sn-head .acts>.btn{width:100%;height:auto;min-height:44px;justify-content:center;font-size:.8rem;padding-inline:4px;gap:5px}
 }
-.sn-hist{margin-top:14px}
+.sn-hist{margin-block:14px}
 .sn-hist h3{margin:0 0 10px;font-size:15px}
 .sn-hrow{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:end}
 .sn-hrow label.f{display:block;margin-bottom:4px}
