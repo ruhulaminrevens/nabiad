@@ -1969,10 +1969,9 @@ async function vClosing(v) {
     (colRows || []).forEach(r => { if (r.date === date && r.status === "approved" && r.account) aCc[r.account] = (aCc[r.account] || 0) + (+r.amount || 0); });
     const gap = prev.date ? workGap(prev.date, date) : 0;
     const queued = Object.values(ex).some(r => r.pending);
-    if (draft) setDraftState(DEMO || draft.local ? "local" : "online");
+    if (draft) draftState = DEMO || draft.local ? "local" : "online"; /* passive: no popup on page open */
     else if (queued) notifyStatus(bi("ফাইনাল · সিঙ্ক বাকি", "Final · Pending sync"));
     else if (saved) notifyStatus(bi("ক্লোজিং সেভ হয়েছে", "Closing saved"), "ok");
-    else if (!has) notifyStatus(bi("সেভ হয়নি", "Not saved"));
     const msgs = [];
     if (saved) msgs.push(`<div class="alert gr bc-notice"><span>${queued ? bi("এই ডিভাইসে সেভ হয়েছে", "Saved on this device") : bi("ক্লোজিং সেভ হয়েছে", "Closing saved")}</span>${queued ? "" : `<a class="btn sm" href="#/crep" data-go="crep">${ico("img")} ${bi("ব্যালেন্স স্ন্যাপশট", "Balance Snapshot")}</a>`}</div>`);
     if (has && !queued) msgs.push(`<div class="alert ${locked ? "rd" : "am"}">${locked ? "🔒 " + bi("এই তারিখের ব্যালেন্স ফাইনাল সেভ হয়েছে। বদলাতে Admin কে বলুন।", "This date is finalized. Ask an Admin to change it.") : "⚠ " + bi("এই তারিখ ফাইনাল সেভ আছে। সেভ করলে নতুন মান বসবে।", "This date is already finalized. Saving will replace the values.")}</div>`);
@@ -2028,7 +2027,7 @@ async function vClosing(v) {
      <td class="r num exp"></td><td class="c-bk"><input class="cell tot" aria-label="${esc(r.code)} · ${bi("ব্যাংক ক্লোজিং", "Bank closing")}" value="${r.total == null ? "" : fmtIn(r.total)}" data-dirty="${r.total == null ? "" : "1"}" inputmode="decimal" ${locked ? "disabled" : ""}></td><td><input class="cell blk" aria-label="${esc(r.code)} · ${bi("ব্লক", "Blocked amount")}" value="${fmtIn(r.block || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
      <td class="r num usa b"></td><td class="r num dif"></td><td><input class="cell t rem" aria-label="${esc(r.code)} · ${bi("মন্তব্য", "Remarks")}" value="${esc(r.remark)}" ${locked ? "disabled" : ""}></td></tr>`; }).join("")}
     <tr class="tot"><td></td><td>মোট <span class="mut sm" id="T-n"></span></td><td class="r num" id="T0"></td><td class="r num c-dr" id="T1"></td><td class="r num c-cr" id="T2"></td><td class="r num" id="T3"></td><td class="r num c-bk t-bank" id="T4"></td><td class="r num" id="T5"></td><td class="r num t-usa" id="T6"></td><td class="r num t-diff" id="T7"></td><td></td></tr></tbody></table></div>
-    ${locked || !rows.length ? "" : `<div class="cbar entry-actions">${has ? "" : `<button type="button" class="btn lg fix" id="c-draft">${ico("edit")} <span data-save-label>${bi("ড্রাফট সেভ", "Save draft")}</span></button>`}<button type="button" class="btn pri lg fix" id="c-save">${ico("save")} <span class="bl"><span data-save-label>${bi("ফাইনাল সেভ", "Final save")}</span><small>${dmy(date)}</small></span></button><div class="hint" id="c-err" role="alert"></div></div>`}
+    ${locked || !rows.length ? "" : `<div class="cbar entry-actions">${has ? "" : `<button type="button" class="btn lg fix" id="c-draft">${ico("edit")} <span data-save-label>${bi("ড্রাফট সেভ", "Save draft")}</span></button>`}<button type="button" class="btn pri lg fix" id="c-save">${ico("save")} <span data-save-label>${bi("সেভ", "Save")}</span></button><div class="hint" id="c-err" role="alert"></div></div>`}
     </section>`;
     [...$$("[data-go]", body), ...$$("[data-go]", msg)].forEach(a => a.onclick = () => {
       const key = {crep: "nabiad_crep_date"}[a.dataset.go];
@@ -2121,7 +2120,7 @@ async function vClosing(v) {
       autoT = setTimeout(() => {
         const stored = flushDraft();
         if (!current()) return;
-        if (stored) setDraftState("local");
+        if (stored) draftState = "local"; /* silent autosave; only failures are announced */
         else if (draftState !== "failed") setDraftState("failed",
           bi("ডিভাইসে ড্রাফট সেভ হয়নি। Save draft চাপুন।", "Could not save on this device. Use Save draft to retry."), "err");
       }, 700);
