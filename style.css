@@ -2596,3 +2596,46 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
   .dcx-tools .srch{flex:1 1 120px;min-width:0}
   .dcx-tools>#dc-register{flex:none;padding-inline:12px;white-space:nowrap}
 }
+
+/* ===== v6.112 — Bank Closing: same buttons, pills, tiles and account cards as Cheque / Cash / Collection ===== */
+@media (max-width:700px){
+  .top.ph.bc-head .acts{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .top.ph.bc-head .acts>.btn{width:100%;height:auto;min-height:44px;justify-content:center;white-space:nowrap;font-size:.8rem;padding-inline:6px;gap:5px}
+  .top.ph.bc-head .acts>.btn .ico,.top.ph.bc-head .acts>.btn svg{flex:none}
+}
+/* filter pills (like Collection tabs) */
+.bc-filters{gap:6px}
+.bc-filters .btn{border-radius:99px;padding:6px 12px;min-height:34px;font-size:13px;font-weight:600;color:var(--txt2);background:var(--surface);border:1px solid var(--line);box-shadow:none;white-space:nowrap}
+.bc-filters .btn:hover{border-color:color-mix(in srgb,var(--pri) 45%,var(--line));color:var(--pri);background:var(--pri-soft)}
+.bc-filters .btn[aria-pressed="true"]{background:var(--grad);border-color:transparent;color:#fff;box-shadow:var(--sh-pri)}
+.bc-filters .bc-count{background:color-mix(in srgb,currentColor 16%,transparent);color:inherit;font-size:11px;font-weight:800;line-height:18px;padding:0 7px}
+@media (max-width:560px){
+  .bc-filters{display:flex;flex-wrap:nowrap;overflow-x:auto;width:100%;scrollbar-width:none;padding:2px 2px 6px;margin:-2px -2px -6px}
+  .bc-filters::-webkit-scrollbar{display:none}
+  .bc-filters .btn{flex:none;min-height:36px}
+}
+/* summary tiles: tinted like the Cash date tiles */
+.bc-summary .bc-kpi{border:1px solid var(--line2);border-radius:12px;background:var(--pri-soft)}
+.bc-kpi[data-kpi="3"]{background:var(--vi-soft)} .bc-kpi[data-kpi="5"]{background:var(--am-soft)} .bc-kpi[data-kpi="6"]{background:var(--gr-soft)}
+.bc-kpi[data-kpi="4"],.bc-kpi[data-kpi="6"]{border-top-color:var(--line2)}
+/* linked transactions: one aligned row per item — badge | label | amount */
+.bc-context .clink{gap:8px}
+.bc-context .clink .cl-h{font-size:13px}
+.bc-context .clink .cl-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:6px}
+.bc-context .clink .cl-g span{display:grid;grid-template-columns:62px 1fr auto;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid var(--line2);border-left-width:4px;font-size:13px}
+.bc-context .clink .cl-g span.c-dr{background:var(--rd-soft,rgba(244,63,94,.08));border-left-color:#f43f5e}
+.bc-context .clink .cl-g span.c-cr{background:var(--gr-soft,rgba(16,185,129,.09));border-left-color:#10b981}
+.bc-context .clink .cl-g i{order:-1;justify-self:start;font-size:11px;font-weight:700;line-height:18px;padding:0 8px;border-radius:99px;background:color-mix(in srgb,currentColor 12%,transparent)}
+.bc-context .clink .cl-g span.c-dr i{color:#e11d48} .bc-context .clink .cl-g span.c-cr i{color:#059669}
+.bc-context .clink .cl-g em{color:var(--txt2);min-width:0;overflow-wrap:anywhere;line-height:1.3}
+.bc-context .clink .cl-g b{font-size:14px;font-weight:800;white-space:nowrap}
+/* phone: account cards use a left accent bar (brand colour) like Collection cards */
+@media (max-width:900px){
+  .tw.cards #ct tbody tr[data-i]{border-left:4px solid var(--b1,#6366f1)}
+  .tw.cards #ct td.acc-c{border-top:0;margin-top:0;padding-top:0;border-radius:0}
+  .tw.cards #ct tbody tr[data-i] td::before{text-transform:none;letter-spacing:0;font-size:11.5px;font-weight:600;color:var(--mut)}
+}
+
+/* ===== v6.115 — Bank Closing polish ===== */
+@media (max-width:900px){ .bc-context #c-linked{width:100%} }
+.bc-controls input::placeholder{text-overflow:ellipsis}
