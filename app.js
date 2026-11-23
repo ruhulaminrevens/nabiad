@@ -5117,7 +5117,9 @@ async function vRegister(v) {
          <div id="rg-purpose"><label class="f" for="rg-k">${bi("খাত", "Purpose")}</label><select class="in" id="rg-k"><option value="">${all}</option>${[...CASH_KEYS("receipt"), ...CASH_KEYS("payment")].map(k => `<option value="${k}">${esc(cashLabel(k))}</option>`).join("")}</select></div>
        </div>
      </div>
+     <p class="iv-desc noprint" id="rg-desc"></p>
      <div id="rg-sum" class="rg-summary" role="status"></div>
+     <div class="ir-viz noprint" id="rg-viz"></div>
      <div id="rg-notice"></div>
      <div class="card flush" id="rg-out"></div>
      <div class="cq-pager rg-pager" id="rg-pager" hidden><button type="button" class="btn" id="rg-prev">${bi("আগের", "Previous")}</button><span class="mut sm" id="rg-page"></span><button type="button" class="btn" id="rg-next">${bi("পরের", "Next")}</button></div>`;
@@ -5225,6 +5227,19 @@ async function vRegister(v) {
       .filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`);
     return { type, typeLabel, groupFields, groups, dates, id: String(row.id).padStart(2, "0") };
   }
+  const rgHl = txt => typeof ivHl === "function" ? ivHl(txt, F.q) : esc(txt);
+  const rgDesc = () => { const d = g("rg-desc"); if (!d) return; d.innerHTML = ico("info") + "<span>" + (source === "ledgers" ? bi("Tally-র সব লেজার আর প্রতিটি লেজার কোন খাতে (Purpose / Group) যায়। “খাত নির্ধারিত নয়” লেজারগুলোর voucher রিপোর্টে আলাদা থাকে — উপরের “লেজার খাত নির্ধারণ” থেকে ঠিক করুন।", "Every Tally ledger and the purpose / group it maps to. Vouchers of “Unmapped” ledgers stay separate in reports — fix them with “Ledger → Purpose/Group” above.") : source === "tally" ? bi("Tally থেকে import করা Cash Book voucher — লেজারের খাত অনুযায়ী সাজানো।", "Cash Book vouchers imported from Tally, grouped by each ledger's purpose.") : bi("অ্যাপে লেখা ক্যাশের হিসাব: যেদিন Cash Book আছে সেদিনের লেজারভিত্তিক লাইন, না থাকলে Cash Checker-এর খাতভিত্তিক মোট।", "Cash recorded in the app: ledger lines from the Cash Book where a day has one, otherwise the Cash Checker category totals.")) + ` <kbd>/</kbd> ${bi("চাপলে সার্চ", "to search")}</span>`; };
+  const tile = (label, value, cls, attr = "") => `<${attr ? `button type="button" ${attr}` : "div"} class="card${attr ? " rg-click" : ""}"><span class="mut sm">${label}</span><strong class="${cls}">${value}</strong></${attr ? "button" : "div"}>`;
+  function rgViz(rows) {
+    const box = g("rg-viz"); if (!box) return;
+    if (source === "ledgers" || !rows.length) { box.innerHTML = ""; return; }
+    const grp = type => { const m = new Map(); rows.filter(l => l.type === type).forEach(l => { const k = l.k || "unmapped", o = m.get(k) || { k, n: 0, amt: 0 }; o.n++; o.amt += l.a; m.set(k, o); }); return [...m.values()].sort((a, b) => b.amt - a.amt).slice(0, 7); };
+    const bars = (arr, color) => { const mx = Math.max(1, ...arr.map(x => x.amt)); return arr.length ? `<ul class="ir-hb">${arr.map(x => `<li><button type="button" data-rgk="${esc(x.k)}" class="${F.k === x.k ? "on" : ""}" title="${esc(x.k === "unmapped" ? ungrouped : cashLabel(x.k))} · ${x.n} · ৳ ${money0(x.amt)}"><span class="ir-hl">${esc(x.k === "unmapped" ? ungrouped : cashLabel(x.k))}</span><i><s style="width:${(x.amt / mx * 100).toFixed(1)}%;background:${color}"></s></i><b class="num">${dcLakh(x.amt)}</b></button></li>`).join("")}</ul>` : `<div class="empty iv-empty">${bi("কিছু নেই", "Nothing")}</div>`; };
+    const days = [...rows.reduce((m, l) => { const o = m.get(l.date) || { r: 0, p: 0 }; o[l.type === "receipt" ? "r" : "p"] += l.a; return m.set(l.date, o); }, new Map())].sort((a, b) => a[0].localeCompare(b[0])), mx = Math.max(1, ...days.flatMap(([, o]) => [o.r, o.p]));
+    box.innerHTML = dcVcard(bi("প্রাপ্তি — খাত অনুযায়ী", "Receipts by purpose"), bi("ক্লিক করলে সেই খাত বাছাই হবে", "Click to filter by purpose"), bars(grp("receipt"), "linear-gradient(90deg,#10b981,#34d399)"))
+      + dcVcard(bi("পরিশোধ — খাত অনুযায়ী", "Payments by purpose"), bi("ক্লিক করলে সেই খাত বাছাই হবে", "Click to filter by purpose"), bars(grp("payment"), "linear-gradient(90deg,#ef4444,#f97316)"))
+      + (days.length > 1 ? dcVcard(bi("দিন অনুযায়ী প্রাপ্তি বনাম পরিশোধ", "Receipts vs payments per day"), `${days.length} ${bi("দিন", "days")}`, `<div class="rg-days">${days.map(([d, o]) => `<span title="${dmy(d)} · Receipt ৳ ${money0(o.r)} · Payment ৳ ${money0(o.p)}"><i class="r" style="--h:${(o.r / mx * 100).toFixed(1)}%"></i><i class="p" style="--h:${(o.p / mx * 100).toFixed(1)}%"></i></span>`).join("")}</div><div class="iv-bx"><span>${dmy(days[0][0])}</span><span>${dmy(days.at(-1)[0])}</span></div>`) : "");
+  }
   const ledgerStatus = active => active ? bi("চালু", "Active") : bi("নিষ্ক্রিয়", "Inactive");
   const ledgerCmp = new Intl.Collator("en", { numeric: true, sensitivity: "base" }).compare;
   function drawLedgers() {
@@ -5237,8 +5252,9 @@ async function vRegister(v) {
     shownLedgers.sort((x, y) => ledgerCmp(x.row.name || "", y.row.name || ""));
     const first = paginate(shownLedgers.length);
     const activeCount = shownLedgers.filter(l => l.row.active !== false).length;
-    g("rg-sum").innerHTML = [[bi("লেজার", "Ledgers"), shownLedgers.length, ""], [bi("চালু", "Active"), activeCount, "gr"], [bi("নিষ্ক্রিয়", "Inactive"), shownLedgers.length - activeCount, "rd"]]
-      .map(([label, value, cls]) => `<div class="card"><span class="mut sm">${label}</span><strong class="${cls}">${value}</strong></div>`).join("");
+    const unm = shownLedgers.filter(l => !l.groupFields.length).length;
+    g("rg-sum").innerHTML = tile(bi("লেজার", "Ledgers"), shownLedgers.length, "") + tile(bi("চালু", "Active"), activeCount, "gr") + tile(bi("নিষ্ক্রিয়", "Inactive"), shownLedgers.length - activeCount, "rd") + tile(bi("খাত নির্ধারিত নয়", "Unmapped"), unm, unm ? "am" : "", `data-rgk="unmapped" title="${bi("ক্লিক করলে শুধু এগুলো", "Click to show only these")}"`);
+    rgViz([]); rgDesc();
     const details = values => values.length ? values.map(value => `<div>${esc(value)}</div>`).join("") : "—";
     out.innerHTML = `<div class="tw cards"><table class="rg-table rg-ledgers"><colgroup><col class="c-id"><col class="c-type"><col class="c-name"><col class="c-grp"><col class="c-date"><col class="c-st"></colgroup><thead><tr>${ledgerHeadings.map(label => `<th scope="col">${esc(label)}</th>`).join("")}</tr></thead><tbody>
       ${shownLedgers.slice(first, first + pageSize).map(({ row, id, typeLabel, groups, dates }) => {
@@ -5248,7 +5264,7 @@ async function vRegister(v) {
         const control = canToggleLedger
           ? `<button type="button" class="tgl ${active ? "on" : "off"}" data-rg-ledger="${esc(row.id)}" aria-pressed="${active}" title="${esc(active ? bi("নিষ্ক্রিয় করতে ক্লিক করুন", "Click to disable") : bi("সক্রিয় করতে ক্লিক করুন", "Click to activate"))}" aria-label="${esc(`${act} · ${row.name}`)}"${toggling.has(String(row.id)) ? " disabled" : ""}>${esc(status)}</button>`
           : `<span class="tag ${tag}">${esc(status)}</span>`;
-        return `<tr><td class="num">${esc(id)}</td><td><span class="tag ty-${esc(row.kind || "both")}">${esc(typeLabel)}</span></td><td><b>${esc(row.name)}</b></td><td>${groups.length ? details(groups) : esc(ungrouped)}</td><td class="num sm">${details(dates)}</td><td>${control}</td></tr>`;
+        return `<tr><td class="num">${esc(id)}</td><td><span class="tag ty-${esc(row.kind || "both")}">${esc(typeLabel)}</span></td><td><b>${rgHl(row.name)}</b></td><td>${groups.length ? details(groups) : `<span class="rg-unm">${esc(ungrouped)}</span>`}</td><td class="num sm">${details(dates)}</td><td>${control}</td></tr>`;
       }).join("")}
       </tbody></table></div>${shownLedgers.length ? "" : `<div class="empty">${bi("কোনো লেজার মেলেনি", "No ledgers match these filters")}</div>`}`;
   }
@@ -5289,14 +5305,15 @@ async function vRegister(v) {
       (!q || chequeSearchKey([l.led, l.k && cashLabel(l.k), l.n, l.accounts, l.ref, l.a, l.x].join(" ")).includes(q)));
     const sums = {receipt: 0, payment: 0};
     for (const l of shown) sums[l.type] += Math.round(l.a * 100);
-    g("rg-sum").innerHTML = [[bi("লাইন", "Lines"), shown.length, ""], ["Receipt", "৳ " + money(sums.receipt / 100), "gr"], ["Payment", "৳ " + money(sums.payment / 100), "rd"]]
-      .map(([label, value, cls]) => `<div class="card"><span class="mut sm">${label}</span><strong class="${cls}">${value}</strong></div>`).join("");
+    const net = (sums.receipt - sums.payment) / 100;
+    g("rg-sum").innerHTML = tile(bi("লাইন", "Lines"), shown.length, "") + tile("Receipt", "৳ " + money(sums.receipt / 100), "gr", `data-rgt="receipt" title="${bi("ক্লিক করলে শুধু Receipt", "Click for receipts only")}"`) + tile("Payment", "৳ " + money(sums.payment / 100), "rd", `data-rgt="payment" title="${bi("ক্লিক করলে শুধু Payment", "Click for payments only")}"`) + tile(bi("নিট (প্রাপ্তি − পরিশোধ)", "Net (receipt − payment)"), (net < 0 ? "−" : "") + "৳ " + money(Math.abs(net)), net < 0 ? "rd" : "gr");
+    rgViz(rows.filter(l => (!F.type || l.type === F.type) && (!q || chequeSearchKey([l.led, l.k && cashLabel(l.k), l.n, l.accounts, l.ref, l.a, l.x].join(" ")).includes(q)))); rgDesc();
     const first = paginate(shown.length);
     const ledger = bi("লেজার", "Ledger"), detail = bi("ভাউচার / নোট", "Voucher / note"), recordSource = bi("উৎস", "Source");
     out.innerHTML = shown.length ? `<div class="tw cards"><table class="rg-table"><thead><tr><th>তারিখ</th><th>ধরন</th><th>${ledger}</th><th>${bi("খাত","Purpose / Group")}</th><th class="r">টাকা</th><th>${detail}</th><th>${recordSource}</th></tr></thead><tbody>
       ${shown.slice(first, first + pageSize).map(l => `<tr><td>${dmy(l.date)}</td><td><span class="tag ${l.type === "receipt" ? "au-insert" : "au-delete"}">${l.type === "receipt" ? "Receipt" : "Payment"}</span></td>
-      <td>${l.led ? `<b>${esc(l.led)}</b>${l.source === "checker" ? `<div class="mut xs">${mappedCategoryTotal}</div>` : ""}` : `<span class="mut" title="${esc(l.source === "checker" ? categoryTotal : bi("নাম দেওয়া হয়নি", "Unnamed entry"))}">—</span>`}</td>
-      <td>${esc(l.k ? cashLabel(l.k) : ungrouped)}</td><td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td>
+      <td>${l.led ? `<b>${rgHl(l.led)}</b>${l.source === "checker" ? `<div class="mut xs">${mappedCategoryTotal}</div>` : ""}` : `<span class="mut" title="${esc(l.source === "checker" ? categoryTotal : bi("নাম দেওয়া হয়নি", "Unnamed entry"))}">—</span>`}</td>
+      <td>${l.k ? esc(cashLabel(l.k)) : `<span class="rg-unm">${esc(ungrouped)}</span>`}</td><td class="r num b ${l.type === "receipt" ? "gr" : "rd"}">${money(l.a)}${l.x ? `<div class="mut xs">${esc(l.x)}</div>` : ""}</td>
       <td class="sm">${[l.ref, l.accounts && "A/C " + l.accounts, l.n].filter(Boolean).map(x => `<div>${esc(x)}</div>`).join("") || "—"}</td>
       <td class="mut sm">${sources[l.source]}${l.st ? ` · ${l.st === "final" ? bi("ফাইনাল", "Final") : bi("ড্রাফট", "Draft")}` : ""}${l.by ? " · " + esc(l.by) : ""}</td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty">${bi("এই ফিল্টারে কোনো লাইন নেই", "No lines match these filters")}</div>`;
@@ -5339,7 +5356,11 @@ async function vRegister(v) {
     const next = btn.dataset.rgTally || btn.dataset.rgSource;
     if (source !== next) setSource(next);
   };
-  g("rg-q").oninput = e => { F.q = e.target.value; resetPage(); };
+  let rgT = 0; g("rg-q").oninput = e => { clearTimeout(rgT); rgT = setTimeout(() => { F.q = e.target.value; resetPage(); }, 90); };
+  const rgPick = e => { const b = e.target.closest("[data-rgk],[data-rgt]"); if (!b) return; if (b.dataset.rgt) { F.type = F.type === b.dataset.rgt ? "" : b.dataset.rgt; g("rg-t").value = F.type; } else { const k = b.dataset.rgk; if (k === "unmapped" && !g("rg-k").querySelector('option[value="unmapped"]')) g("rg-k").add(new Option(ungrouped, "unmapped")); F.k = F.k === k ? "" : k; g("rg-k").value = F.k; } resetPage(); };
+  g("rg-sum").onclick = rgPick; g("rg-viz").onclick = rgPick;
+  const rgSlash = e => { if (e.key === "/" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && !document.querySelector(".mback")) { e.preventDefault(); g("rg-q")?.focus(); } };
+  document.addEventListener("keydown", rgSlash);
   g("rg-t").onchange = e => { F.type = e.target.value; resetPage(); };
   g("rg-k").onchange = e => { F.k = e.target.value; resetPage(); };
   const changePage = delta => { page += delta; draw(); out.scrollIntoView({block: "start"}); };
@@ -5358,6 +5379,7 @@ async function vRegister(v) {
   };
   pbBind(v, "rg", F, load);
   await setSource("app");
+  return () => document.removeEventListener("keydown", rgSlash);
 }
 
 /* =================== v6: reminders (photo + pick days + cheque link) =================== */

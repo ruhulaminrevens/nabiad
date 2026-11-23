@@ -3360,3 +3360,19 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
   .rem-list .card.rem>.ri{width:34px;height:34px;grid-row:1/span 3;margin:0}
   .rem-list .card.rem>:not(.ri){grid-column:2;min-width:0}
 }
+
+/* Cash Register v2 (v6.162) */
+.rg-table .tag{white-space:nowrap;overflow-wrap:normal}
+.rg-table td:first-child{white-space:nowrap;overflow-wrap:normal}
+.rg-summary{grid-template-columns:repeat(4,minmax(0,1fr))}
+.rg-summary .rg-click{text-align:left;font:inherit;color:inherit;cursor:pointer;border:1px solid var(--line);transition:transform .15s,border-color .15s}
+.rg-summary .rg-click:hover{transform:translateY(-2px);border-color:var(--pri)}
+.rg-summary strong.am{color:var(--am)}
+.rg-unm{display:inline-block;padding:1px 8px;border-radius:99px;background:#fef3c7;color:#b45309;font-size:12px;font-weight:600}
+.rg-table mark{background:#fde68a;color:inherit;border-radius:3px;padding:0 1px}
+.rg-days{display:flex;align-items:end;gap:4px;height:90px;margin-top:12px;border-bottom:1px solid var(--line)}
+.rg-days span{flex:1;height:100%;display:flex;align-items:end;gap:1px}
+.rg-days i{flex:1;height:var(--h);min-height:2px;border-radius:3px 3px 0 0;opacity:.85}
+.rg-days i.r{background:#10b981}.rg-days i.p{background:#ef4444}
+.rg-days span:hover i{opacity:1}
+@media (max-width:640px){.rg-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
