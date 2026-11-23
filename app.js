@@ -824,8 +824,8 @@ const ROUTES = {
   status: { t: "চেক স্ট্যাটাস", ic: "flag", roles: "as", sec: "main", f: () => vStatus },
   cheques: { t: "চেক রেজিস্টার", ic: "list", roles: "asb", sec: "main", f: () => vCheques },
   closing: { t: "ব্যাংক ক্লোজিং", ic: "bank", roles: "as", sec: "bank", f: () => vClosing },
-  crep: { t: "ব্যালেন্স স্ন্যাপশট", ic: "img", roles: "asb", sec: "bank", f: () => vCrep },
-  reports: { t: "ব্যাংক রিপোর্ট", ic: "chart", roles: "asb", sec: "bank", f: () => vReports },
+  crep: { t: "ব্যাংক সামারি", ic: "img", roles: "asb", sec: "bank", f: () => vCrep },
+  reports: { t: "ব্যাংক বিস্তারিত রিপোর্ট", ic: "chart", roles: "asb", sec: "bank", f: () => vReports },
   cash: { t: "ক্যাশ খাতা", ic: "book", roles: "as", sec: "cash", f: () => vCashBook },
   cashchk: { t: "ক্যাশ চেকার", ic: "check", roles: "as", sec: "cash", f: () => vCash },
   cashsum: { t: "ক্যাশ সামারি", ic: "pulse", roles: "asb", sec: "cash", f: () => vCashSum },
@@ -2357,7 +2357,7 @@ function hChartBind(root, gs, m, lbl) {
 async function vCrep(v) {
   let date = sessionStorage.getItem("nabiad_crep_date") || S.lastBal || today(); sessionStorage.removeItem("nabiad_crep_date");
   const canShare = !!navigator.share;
-  v.innerHTML = head("ব্যাংক ক্লোজিং রিপোর্ট", `<button class="btn cb-action sn-png" id="r-png">${ico("img")}<span class="lb">${bi("ছবি", "Image")}</span></button><button class="btn cb-action sn-pdf" id="r-pdf">${ico("print")}<span class="lb">PDF</span></button><button class="btn cb-action sn-xl" id="r-xl">${ico("dl")}<span class="lb">Excel</span></button>${canShare ? `<button class="btn cb-action sn-sh" id="r-sh">${ico("share")}<span class="lb">${bi("শেয়ার", "Share")}</span></button>` : ""}`, "sn-head") + `
+  v.innerHTML = head("ব্যাংক সামারি", `<button class="btn cb-action sn-png" id="r-png">${ico("img")}<span class="lb">${bi("ছবি", "Image")}</span></button><button class="btn cb-action sn-pdf" id="r-pdf">${ico("print")}<span class="lb">PDF</span></button><button class="btn cb-action sn-xl" id="r-xl">${ico("dl")}<span class="lb">Excel</span></button>${canShare ? `<button class="btn cb-action sn-sh" id="r-sh">${ico("share")}<span class="lb">${bi("শেয়ার", "Share")}</span></button>` : ""}`, "sn-head") + `
    <div class="sn-split">
    <div class="card noprint sn-hist"><div class="sn-hh"><div><h3>${bi("অ্যাকাউন্ট ইতিহাস", "Account history")}</h3><p class="mut sm">${bi("যেকোনো অ্যাকাউন্টের ব্যালেন্সের ধারা", "Balance trend of any account")}</p></div><button type="button" class="btn sm sn-hx" id="h-xl" title="Excel">${ico("dl")}<span>Excel</span></button></div>
     <div class="sn-acw">${ico("search")}<input class="in" id="h-ac" autocomplete="off" placeholder="${bi("A/C কোড, হোল্ডার বা ব্যাংক খুঁজুন", "Search A/C code, holder or bank")}"><button type="button" class="sn-clr" id="h-clr" hidden aria-label="${bi("মুছুন", "Clear")}">${ico("xmark")}</button></div>
@@ -3844,7 +3844,7 @@ async function vDash(v) {
   const todayC = S.cheques.filter(c => c.date === t && isLive(c)), pend = S.cheques.filter(c => c.status === "Pending"), old = pendingOld();
   const mon = S.cheques.filter(c => c.date.startsWith(ym) && isLive(c)), due = dueList(), sys = sysAlerts();
   const upcoming = (S.reminders || []).filter(r => !r.done).sort((a, b) => remDue(a) - remDue(b)).slice(0, 5);
-  const acts = boss ? [["crep", "img", "ব্যালেন্স স্ন্যাপশট", "qa1"], ["cashsum", "pulse", "ক্যাশ সামারি", "qa2"], ["reports", "chart", "ব্যাংক রিপোর্ট", "qa3"], ["dsum", "trend", "কালেকশন সামারি", "qa4"]]
+  const acts = boss ? [["crep", "img", "ব্যাংক সামারি", "qa1"], ["cashsum", "pulse", "ক্যাশ সামারি", "qa2"], ["reports", "chart", "ব্যাংক বিস্তারিত রিপোর্ট", "qa3"], ["dsum", "trend", "কালেকশন সামারি", "qa4"]]
     : [["entry", "plus", "চেক পোস্টিং", "qa1"], ["closing", "bank", "ব্যাংক ক্লোজিং", "qa2"], ["cash", "book", "ক্যাশ খাতা", "qa3"], ["dcol", "coins", "কালেকশন এন্ট্রি", "qa4"]];
   const bankDone = S.lastBal === t, cashDone = S.lastCash === t || S.lastBook === t, workday = !isFri(t);
   const st = (ok, l, go, sub) => `<a class="stchip ${ok ? "ok" : "no"}" href="${go}"><i>${ok ? "✓" : "!"}</i><span><b>${l}</b><small>${sub}</small></span></a>`;
@@ -4073,10 +4073,10 @@ async function vReports(v) {
   const date = sessionStorage.getItem("nabiad_bank_report_date");
   sessionStorage.removeItem("nabiad_bank_report_date");
   const F = { ...pbInit("month"), ...(date ? { m: "day", d: date } : {}), tab: date ? "bank" : sessionStorage.getItem("nabiad_rep_tab") || "bank", holder: "", bank: "", bs: "t", bg: "weekly", as: "cl", ad: -1, aq: "", az: false, sheet: false }; const holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort(), banksL = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort();
-  v.innerHTML = head("রিপোর্ট", `${repBtns("p")}<button class="btn" id="p-x">${ico("dl")} Excel</button>`) + `
+  v.innerHTML = head("ব্যাংক বিস্তারিত রিপোর্ট", `${repBtns("p")}<button class="btn" id="p-x">${ico("dl")} Excel</button>`) + `
    <div class="tabs noprint">${[["bank", ico("bank") + " ব্যাংক ব্যালেন্স"], ["chq", ico("list") + " চেক"]].map(([k, l]) => `<span class="chip ${k === F.tab ? "on" : ""}" data-tab="${k}">${l}</span>`).join("")}</div>
    <div class="card tbar noprint tb-inl">${pbBar("p", F)}
-   <div class="row br-fl" style="margin-top:10px"><div style="flex:1 1 200px"><label class="f">${bi("অ্যাকাউন্ট হোল্ডার", "Account holder")}</label><select class="in" id="p-h"><option value="">${bi("সব", "All")}</option>${holders.map(h => `<option>${esc(h)}</option>`).join("")}</select></div><div style="flex:1 1 200px"><label class="f">${bi("ব্যাংক", "Bank")}</label><select class="in" id="p-b"><option value="">${bi("সব", "All")}</option>${banksL.map(h => `<option>${esc(h)}</option>`).join("")}</select></div></div></div>
+   <div class="row br-fl" ><div><label class="f">${bi("অ্যাকাউন্ট হোল্ডার", "Account holder")}</label><select class="in" id="p-h"><option value="">${bi("সব", "All")}</option>${holders.map(h => `<option>${esc(h)}</option>`).join("")}</select></div><div><label class="f">${bi("ব্যাংক", "Bank")}</label><select class="in" id="p-b"><option value="">${bi("সব", "All")}</option>${banksL.map(h => `<option>${esc(h)}</option>`).join("")}</select></div></div></div>
    <div id="p-dash" class="br-dash noprint"></div>
    <div class="br-sheetbar noprint" id="p-sheetbar" hidden><button type="button" class="btn" id="p-sheet-t" aria-expanded="false" aria-controls="p-sheetcard">${ico("print")}<span>${bi("A4 রিপোর্ট শিট — স্ক্রিনশট / PDF / শেয়ারের জন্য", "A4 report sheet — for screenshot / PDF / share")}</span><i class="br-chv"></i></button></div>
    <div class="card rep-wrap" id="p-sheetcard"><div class="rep-scroll"><div id="p-out"></div></div></div>`;

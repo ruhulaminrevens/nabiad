@@ -2962,3 +2962,7 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
   .br-card{padding:12px}
 }
 .br-sheetbar .btn{max-width:100%;white-space:normal;text-align:left;height:auto;min-height:38px}
+/* v6.132: Reports filter row — period left, Holder + Bank side by side on the right */
+.tb-inl>.pb+.br-fl{flex:0 1 400px;display:flex;flex-wrap:wrap;gap:10px;min-width:260px;align-items:flex-end}
+.tb-inl>.pb+.br-fl>div{flex:1 1 150px;min-width:130px}
+.tb-inl>.pb+.br-fl .in{width:100%}
