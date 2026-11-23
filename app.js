@@ -1705,6 +1705,7 @@ async function vStatus(v) {
         <div><label class="f" for="s-sort">${bi("সাজানোর ক্রম", "Sort by")}</label><select class="in" id="s-sort"><option value="">${bi("তালিকার ডিফল্ট ক্রম", "Queue default")}</option><option value="old">${bi("পুরনো চেক আগে", "Oldest cheque first")}</option><option value="new">${bi("নতুন চেক আগে", "Newest cheque first")}</option><option value="amount">${bi("বেশি অঙ্ক আগে", "Highest amount first")}</option></select></div>
         <div class="cq-grp-s"><label class="f" for="s-group">${bi("গ্রুপ করুন", "Group by")}</label><select class="in" id="s-group"><option value="">${bi("গ্রুপ ছাড়া", "No grouping")}</option><option value="bank">${bi("ব্যাংকের নাম", "Bank name")}</option><option value="ac">${bi("অ্যাকাউন্টের নাম", "Account name")}</option><option value="day">${bi("চেকের তারিখ", "Cheque date")}</option></select></div>
         <div class="cq-grp-s"><label class="f" for="s-dateby">${bi("তারিখ অনুযায়ী", "Date by")}</label><select class="in" id="s-dateby"><option value="">—</option><option value="year">${bi("বছর", "Year")}</option><option value="month">${bi("মাস", "Month")}</option><option value="week">${bi("সপ্তাহ", "Week")}</option></select></div>
+        <div class="cq-clear"><button type="button" class="btn sm" id="s-clearall" disabled>${bi("সব মুছুন", "Clear all")}</button></div>
       </div>
       <div class="cq-chiprow"><div class="chips" id="s-age" role="group" aria-label="${bi("চেকের বয়স", "Cheque age")}"></div></div>
     </section>
@@ -1789,6 +1790,8 @@ async function vStatus(v) {
     const pages = Math.max(1, Math.ceil(queue.length / pageSize));
     page = Math.min(page, pages - 1);
     const start = page * pageSize, end = Math.min(start + pageSize, queue.length), visible = queue.slice(start, end);
+    const nAct = [q.value.trim(), acF, ageF, sort.value, grp, dateBy].filter(Boolean).length;
+    clearAll.disabled = !nAct; clearAll.textContent = bi("সব মুছুন", "Clear all") + (nAct ? ` (${nAct})` : "");
     title.textContent = filters.find(f => f[0] === mode)[1];
     info.textContent = queue.length ? bi(`${queue.length}টির মধ্যে ${start + 1}–${end} · চেকের মোট অঙ্ক ৳ ${money(sumAmt(queue))}`, `${start + 1}–${end} of ${queue.length} · Face value ৳ ${money(sumAmt(queue))}`) : bi("০ চেক", "0 cheques");
     pager.hidden = pages <= 1; prev.disabled = page === 0; next.disabled = page + 1 >= pages;
@@ -1846,6 +1849,8 @@ async function vStatus(v) {
   }
   const resetPage = () => { page = 0; draw(); };
   tiles.forEach(btn => btn.onclick = () => { mode = btn.dataset.cqFilter; ageF = ""; acF = ""; sel.clear(); resetPage(); });
+  const clearAll = $("#s-clearall", v);
+  clearAll.onclick = () => { q.value = ""; acF = ""; ageF = ""; sort.value = ""; grp = dateBy = ""; $("#s-group", v).value = ""; $("#s-dateby", v).value = ""; sel.clear(); resetPage(); q.focus(); };
   let qT = 0; q.oninput = () => { clearTimeout(qT); qT = setTimeout(resetPage, 120); }; sort.onchange = resetPage;
   acSel.onchange = () => { acF = acSel.value; resetPage(); };
   ageBox.onclick = e => { const b = e.target.closest("[data-age]"); if (!b) return; ageF = ageF === b.dataset.age ? "" : b.dataset.age; resetPage(); };
@@ -2071,7 +2076,7 @@ async function vCheques(v) {
          <label for="k-dateby" class="mut sm">${bi("তারিখ অনুযায়ী", "Date by")}</label>
          <select class="in" id="k-dateby"><option value="">—</option><option value="year">${bi("বছর", "Year")}</option><option value="month">${bi("মাস", "Month")}</option><option value="week">${bi("সপ্তাহ", "Week")}</option></select>
          <div class="chips k-dens" role="group" aria-label="${bi("ঘনত্ব", "Density")}"><button type="button" class="chip sm" data-dens="" aria-pressed="true">${bi("স্বাভাবিক", "Comfortable")}</button><button type="button" class="chip sm" data-dens="compact" aria-pressed="false">${bi("কমপ্যাক্ট", "Compact")}</button></div>
-         <button type="button" class="btn sm" id="k-reset">${bi("ফিল্টার মুছুন", "Clear filters")}</button>
+         <button type="button" class="btn sm" id="k-reset">${bi("সব মুছুন", "Clear all")}</button>
          <label for="k-sort" class="mut sm">${bi("সাজান", "Sort by")}</label>
          <select class="in" id="k-sort"><option value="newest">${bi("নতুন চেক আগে", "Newest date")}</option>
            <option value="oldest">${bi("পুরোনো চেক আগে", "Oldest date")}</option>
@@ -2187,8 +2192,9 @@ async function vCheques(v) {
     if ($("#k-quick", v).innerHTML !== quickHtml) $("#k-quick", v).innerHTML = quickHtml;
     const activeCount = Object.values(filterFields).filter(key => F[key].trim()).length;
     const reset = $("#k-reset", v);
-    reset.disabled = activeCount === 0;
-    reset.textContent = bi("ফিল্টার মুছুন", "Clear filters") + (activeCount ? ` (${activeCount})` : "");
+    const allCount = activeCount + (grp ? 1 : 0) + (dateBy ? 1 : 0) + (F.sort !== "newest" ? 1 : 0);
+    reset.disabled = allCount === 0;
+    reset.textContent = bi("সব মুছুন", "Clear all") + (allCount ? ` (${allCount})` : "");
     $("#k-count", v).textContent = part.length
       ? bi(`${money(offset + 1)}–${money(offset + part.length)} দেখাচ্ছে · মোট ${money(arr.length)} চেক`, `Showing ${money(offset + 1)}–${money(offset + part.length)} of ${money(arr.length)} cheques`)
       : bi("০টি চেক", "0 cheques");
@@ -2273,7 +2279,8 @@ async function vCheques(v) {
       const field = $("#" + id, v);
       if (field) field.value = "";
     }
-    F.page = 0;
+    F.page = 0; F.sort = "newest"; grp = dateBy = "";
+    $("#k-sort", v).value = "newest"; $("#k-group", v).value = ""; $("#k-dateby", v).value = "";
     $("#k-q", v).focus();
     draw();
   };
