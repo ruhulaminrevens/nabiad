@@ -2731,3 +2731,31 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
   .tw.cards #ct tbody tr.gh td{display:block;width:auto;border:0;border-radius:10px;padding:7px 12px;text-align:left}
   .tw.cards #ct tbody tr.gh td::before{content:none}
 }
+
+/* ===== v6.124 — Bank Closing: Preview | Save draft | Save, and the report popup ===== */
+.bc-register .cbar #c-preview{background:var(--vi-soft);color:var(--vi);border:1.5px solid color-mix(in srgb,var(--vi) 35%,var(--line));box-shadow:none}
+.bc-register .cbar #c-preview:not(:disabled):hover{background:color-mix(in srgb,var(--vi) 14%,var(--surface));border-color:var(--vi)}
+@media (max-width:900px){
+  .bc-register .cbar{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .bc-register .cbar:not(:has(#c-draft)){grid-template-columns:repeat(2,minmax(0,1fr))}
+  .bc-register .cbar .btn.lg{font-size:13px;padding:6px 4px;gap:5px}
+  .bc-register .cbar > #c-save:only-of-type{grid-column:auto}
+}
+@media (max-width:420px){ .bc-register .cbar .btn.lg svg{display:none} }
+.modal:has(.sn-pv){width:min(900px,96vw);padding:0;overflow:hidden;display:flex;flex-direction:column;max-height:94vh}
+.sn-pv{display:flex;flex-direction:column;min-height:0;max-height:94vh;flex:1}
+.sn-pvh{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--grad);color:#fff}
+.sn-pvh h2{margin:0;flex:1;position:static}
+.sn-pvh .btn{margin-inline-end:12px;background:rgba(255,255,255,.18);color:#fff;border-color:rgba(255,255,255,.4);box-shadow:none}
+.sn-pvb .rep{min-height:0}
+.sn-pvn{padding:6px 16px 0;font-size:12.5px;color:var(--am);font-weight:600}
+.sn-pvn:empty{display:none}
+.sn-pvb{flex:1;min-height:0;overflow:auto;margin:10px 12px;border-radius:12px;border:1px solid var(--line)}
+.sn-pva{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;padding:10px 14px max(10px,env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--surface);position:sticky;bottom:0}
+.sn-pva .btn{height:44px;justify-content:center;gap:6px;white-space:nowrap}
+@media print{
+  body.print-rep:has(#modal-root .sn-pv) #app{display:none!important}
+  body.print-rep #modal-root .mback{position:static!important;display:block!important;background:none!important;padding:0!important;backdrop-filter:none!important}
+  body.print-rep .modal:has(.sn-pv){width:100%!important;max-height:none!important;overflow:visible!important;box-shadow:none!important;border:0!important}
+  body.print-rep .sn-pv,body.print-rep .sn-pvb{max-height:none!important;overflow:visible!important;margin:0!important;border:0!important}
+}
