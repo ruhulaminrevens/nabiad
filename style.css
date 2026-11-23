@@ -3248,3 +3248,26 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .cq-queue-controls{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,.8fr)}
 .cq-grp.l2{margin-inline-start:14px;font-size:.92em;border-inline-start:3px solid color-mix(in srgb,var(--pri) 35%,transparent)}
 @media (max-width:900px){.cq-queue-controls{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cq-grp-s{grid-column:auto}}
+
+/* ===== v6.149 — Cheque Status: search beside Update date, tidier phone cards ===== */
+.cq-queue-controls{grid-template-columns:repeat(4,minmax(0,1fr))}
+.cq-head-r{flex:1 1 auto;justify-content:flex-end}
+.cq-qsearch{flex:1 1 220px;max-width:380px;min-width:0}
+.cq-qsearch .cq-qw{position:relative}
+.cq-qsearch .in{padding-right:34px}
+.cq-qsearch kbd{position:absolute;right:9px;top:50%;transform:translateY(-50%);pointer-events:none}
+.cq-qsearch .in:focus~kbd{display:none}
+@media (pointer:coarse){.cq-qsearch kbd{display:none}}
+@media (max-width:900px){
+  .cq-queue-controls{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cq-head-r{flex-basis:100%;justify-content:space-between}
+  .cq-qsearch{flex:1 1 100%;max-width:none}
+}
+@media (max-width:760px){
+  .cq-item:not(.has-sel){grid-template-columns:minmax(0,1fr) auto;gap:2px 12px}
+  .cq-item:not(.has-sel) .cq-ref{display:contents}
+  .cq-item:not(.has-sel) .cq-ref .cq-link{grid-column:1/-1}
+  .cq-item:not(.has-sel) .cq-ref>div{grid-column:1}
+  .cq-item:not(.has-sel) .cq-value{grid-column:2;grid-row:2/span 3;align-self:start}
+  .cq-item:not(.has-sel) .cq-actions{grid-column:1/-1;margin-top:8px}
+}

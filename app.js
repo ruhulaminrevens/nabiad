@@ -1701,7 +1701,6 @@ async function vStatus(v) {
       <div class="cq-filters" role="group" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}">${filters.map(([id, label, desc, ic]) => `<button type="button" class="btn" data-cq-filter="${id}" aria-pressed="false" aria-controls="s-list"><span class="cq-tl-t"><i>${ico(ic)}</i>${label}</span><strong class="num"></strong><small class="num"></small><em>${desc}</em></button>`).join("")}</div>
       <div class="cq-pulse" id="s-pulse"></div>
       <div class="cq-queue-controls">
-        <div class="cq-search"><label class="f" for="s-q">${bi("চেক খুঁজুন", "Search cheques")} <kbd>/</kbd></label><div class="cq-qw"><span aria-hidden="true">${ico("search")}</span><input class="in" id="s-q" type="search" autocomplete="off" placeholder="${bi("চেক নং, A/C বা অঙ্ক", "Cheque no, A/C or amount")}"></div></div>
         <div><label class="f" for="s-ac">${bi("অ্যাকাউন্ট", "Account")}</label><select class="in" id="s-ac"></select></div>
         <div><label class="f" for="s-sort">${bi("সাজানোর ক্রম", "Sort by")}</label><select class="in" id="s-sort"><option value="">${bi("তালিকার ডিফল্ট ক্রম", "Queue default")}</option><option value="old">${bi("পুরনো চেক আগে", "Oldest cheque first")}</option><option value="new">${bi("নতুন চেক আগে", "Newest cheque first")}</option><option value="amount">${bi("বেশি অঙ্ক আগে", "Highest amount first")}</option></select></div>
         <div class="cq-grp-s"><label class="f" for="s-group">${bi("গ্রুপ করুন", "Group by")}</label><select class="in" id="s-group"><option value="">${bi("গ্রুপ ছাড়া", "No grouping")}</option><option value="bank">${bi("ব্যাংকের নাম", "Bank name")}</option><option value="ac">${bi("অ্যাকাউন্টের নাম", "Account name")}</option><option value="day">${bi("চেকের তারিখ", "Cheque date")}</option></select></div>
@@ -1711,7 +1710,7 @@ async function vStatus(v) {
     </section>
     <div class="cq-queue-head">
       <div><h2 class="cq-queue-title" id="s-title"></h2><p id="s-info" class="cq-info mut sm" role="status"></p></div>
-      <div class="cq-head-r"><label class="cq-selall" id="s-allw" hidden><input type="checkbox" id="s-all"> <span id="s-alll"></span></label>
+      <div class="cq-head-r"><div class="cq-qsearch"><div class="cq-qw"><span aria-hidden="true">${ico("search")}</span><input class="in" id="s-q" type="search" autocomplete="off" aria-label="${bi("চেক খুঁজুন", "Search cheques")}" placeholder="${bi("চেক নং, A/C বা অঙ্ক", "Cheque no, A/C or amount")}"><kbd aria-hidden="true">/</kbd></div></div><label class="cq-selall" id="s-allw" hidden><input type="checkbox" id="s-all"> <span id="s-alll"></span></label>
       <div class="cq-action-date"><label class="f" for="s-d">${bi("আপডেটের তারিখ", "Update date")}</label><input class="in" type="date" id="s-d" value="${today()}" max="${today()}" required></div></div>
     </div>
     <div id="s-list" class="cq-list" role="region" aria-labelledby="s-title"></div>
@@ -1847,7 +1846,7 @@ async function vStatus(v) {
   }
   const resetPage = () => { page = 0; draw(); };
   tiles.forEach(btn => btn.onclick = () => { mode = btn.dataset.cqFilter; ageF = ""; acF = ""; sel.clear(); resetPage(); });
-  q.oninput = resetPage; sort.onchange = resetPage;
+  let qT = 0; q.oninput = () => { clearTimeout(qT); qT = setTimeout(resetPage, 120); }; sort.onchange = resetPage;
   acSel.onchange = () => { acF = acSel.value; resetPage(); };
   ageBox.onclick = e => { const b = e.target.closest("[data-age]"); if (!b) return; ageF = ageF === b.dataset.age ? "" : b.dataset.age; resetPage(); };
   $("#s-group", v).onchange = e => { grp = e.target.value; page = 0; persist(); draw(); };
