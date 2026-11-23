@@ -2027,7 +2027,7 @@ async function vClosing(v) {
      <td class="r num exp"></td><td class="c-bk"><input class="cell tot" aria-label="${esc(r.code)} · ${bi("ব্যাংক ক্লোজিং", "Bank closing")}" value="${r.total == null ? "" : fmtIn(r.total)}" data-dirty="${r.total == null ? "" : "1"}" inputmode="decimal" ${locked ? "disabled" : ""}></td><td><input class="cell blk" aria-label="${esc(r.code)} · ${bi("ব্লক", "Blocked amount")}" value="${fmtIn(r.block || "")}" inputmode="decimal" ${locked ? "disabled" : ""}></td>
      <td class="r num usa b"></td><td class="r num dif"></td><td><input class="cell t rem" aria-label="${esc(r.code)} · ${bi("মন্তব্য", "Remarks")}" value="${esc(r.remark)}" ${locked ? "disabled" : ""}></td></tr>`; }).join("")}
     <tr class="tot"><td></td><td>মোট <span class="mut sm" id="T-n"></span></td><td class="r num" id="T0"></td><td class="r num c-dr" id="T1"></td><td class="r num c-cr" id="T2"></td><td class="r num" id="T3"></td><td class="r num c-bk t-bank" id="T4"></td><td class="r num" id="T5"></td><td class="r num t-usa" id="T6"></td><td class="r num t-diff" id="T7"></td><td></td></tr></tbody></table></div>
-    ${locked || !rows.length ? "" : `<div class="cbar entry-actions">${has ? "" : `<button type="button" class="btn lg fix" id="c-draft">${ico("edit")} <span data-save-label>${bi("ড্রাফট সেভ", "Save draft")}</span></button>`}<button type="button" class="btn pri lg fix" id="c-save">${ico("save")} <span data-save-label>${bi("সেভ", "Save")}</span></button><div class="hint" id="c-err" role="alert"></div></div>`}
+    ${locked || !rows.length ? "" : `<div class="cbar entry-actions"><div class="bc-bartot" id="c-bartot" aria-live="off"><span class="bt-n">${bi("মোট", "Total")} <b id="bt-n"></b></span><span>${bi("ক্লোজিং", "Closing")} <b id="bt-4" class="num"></b></span><span>${bi("ব্যবহারযোগ্য", "Usable")} <b id="bt-6" class="num bt-usa"></b></span><span>${bi("অমিল", "Diff")} <b id="bt-7" class="num"></b></span></div>${has ? "" : `<button type="button" class="btn lg fix" id="c-draft">${ico("edit")} <span data-save-label>${bi("ড্রাফট সেভ", "Save draft")}</span></button>`}<button type="button" class="btn pri lg fix" id="c-save">${ico("save")} <span data-save-label>${bi("সেভ", "Save")}</span></button><div class="hint" id="c-err" role="alert"></div></div>`}
     </section>`;
     [...$$("[data-go]", body), ...$$("[data-go]", msg)].forEach(a => a.onclick = () => {
       const key = {crep: "nabiad_crep_date"}[a.dataset.go];
@@ -2109,6 +2109,7 @@ async function vClosing(v) {
       T.forEach((n, i) => $("#T" + i, body).textContent = money(n));
       stats.forEach(el => $("strong", el).textContent = "৳ " + money(T[Number(el.dataset.kpi)]));
       $("#T-n", body).textContent = `(${rows.length})`;
+      const bt = $("#c-bartot", body); if (bt) { $("#bt-n", bt).textContent = `(${rows.length})`; [4, 6, 7].forEach(i => { $("#bt-" + i, bt).textContent = money(T[i]); }); $("#bt-7", bt).className = "num " + (Math.abs(T[7]) > 0.001 ? "bt-bad" : ""); }
       reviewButtons.forEach(btn => $(".bc-count", btn).textContent = counts[btn.dataset.review]);
       filter(keepFocus);
     };
