@@ -2507,9 +2507,9 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 .st-me b{font-size:18px;font-weight:800}
 .st-me small{color:var(--mut);overflow:hidden;text-overflow:ellipsis}
 .st-chips{display:flex;gap:8px;flex-wrap:wrap}
-.stc{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:99px;font-size:12px;font-weight:700;background:var(--surface);border:1px solid var(--line);color:var(--txt2)}
-.stc i{width:8px;height:8px;border-radius:50%;background:var(--mut)}
-.stc.ok i{background:var(--gr)} .stc.bad i{background:var(--rd)}
+.stx{display:inline-flex;flex-direction:row;align-items:center;gap:7px;padding:6px 12px;border-radius:99px;font-size:12px;font-weight:700;line-height:1.2;white-space:nowrap;background:var(--surface);border:1px solid var(--line);color:var(--txt2)}
+.stx i{width:8px;height:8px;flex:none;border-radius:50%;background:var(--mut)}
+.stx.ok i{background:var(--gr)} .stx.bad i{background:var(--rd)}
 .st-nav{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px;margin:0 0 4px;position:sticky;top:var(--top);z-index:5;background:linear-gradient(var(--bg) 70%,transparent);scrollbar-width:none}
 .st-nav::-webkit-scrollbar{display:none}
 .st-nav .chip{flex:none;display:inline-flex;align-items:center;gap:7px;cursor:pointer}
@@ -2540,3 +2540,48 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 @media (max-width:900px){.pnl-grid{grid-template-columns:minmax(0,1fr)}.adm-nav{position:static}.pnl-feed li{grid-template-columns:auto minmax(0,1fr)}.pnl-feed li>.xs{grid-column:2}}
 @media (max-width:560px){.pnl-kv{gap:8px}.pnl-kv b{font-size:17px}.st-sum{padding:14px}.st-me b{font-size:16px}}
 @media (prefers-reduced-motion:reduce){.st-flash{animation:none}}
+
+
+/* ---- Phone polish v6.105: action groups, status rows, metric grids ---- */
+#st-push,#st-mfa{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 16px;align-items:center;border-bottom:0;padding:4px 0}
+.st-txt{min-width:0;display:grid;gap:4px}
+.st-btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.st-btns>.btn{flex:0 0 auto;justify-content:center;gap:7px;text-align:center}
+.st-btns>.btn svg{width:16px;height:16px;flex:none}
+.euac.st-sw{margin-top:6px;padding:10px 12px}
+.euac.st-sw>span:first-child{font-weight:600}
+.tag svg,.pill svg{width:13px;height:13px;vertical-align:-2px;margin-right:2px}
+.sch svg,#adm-status-title svg,#adm-history-title svg{width:17px;height:17px;vertical-align:-3px;margin-right:6px;color:var(--pri)}
+.alert>svg{width:17px;height:17px;vertical-align:-3px;margin-right:4px}
+@media (max-width:560px){
+  #st-push,#st-mfa{grid-template-columns:minmax(0,1fr)}
+  .st-btns>.btn{flex:1 1 calc(50% - 4px);min-height:44px;white-space:normal;line-height:1.2}
+  .st-btns>.btn:last-child:nth-child(odd){flex-basis:100%}
+  .row:not(:has(> :not(.btn))){gap:8px}
+  .row:not(:has(> :not(.btn))) > .btn.fix:not(.sm){flex:1 1 calc(50% - 8px);justify-content:center;white-space:normal;line-height:1.2;min-height:44px}
+  .row:not(:has(> :not(.btn))) > .btn.fix:not(.sm):last-child:nth-child(odd){flex-basis:100%}
+  .stx{padding:5px 10px}
+}
+@media (max-width:440px){ .adm-metrics>:last-child:nth-child(odd){grid-column:1/-1} }
+
+.chip>svg,.chip>span>svg{width:14px;height:14px;vertical-align:-2px;margin-right:3px}
+@media (max-width:560px){
+  .adm-user-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .adm-user-actions .btn{justify-content:center;min-height:44px;text-align:center}
+  .adm-user-actions .btn:last-child:nth-child(odd){grid-column:1/-1}
+}
+
+.blogo{white-space:nowrap;flex:none}
+@media (max-width:560px){
+  .bk-overview{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .bk-overview>*{grid-column:span 2}
+  .bk-overview>:nth-child(4),.bk-overview>:nth-child(5){grid-column:span 3}
+  .top .acts #rg-map{flex:1 1 100%}
+}
+
+.adm-content .top.ph .ph-l{display:none}
+.adm-content .top.ph:not(:has(.acts .btn)){display:none}
+.adm-content .top.ph{padding:10px 12px}
+.adm-content .top.ph .acts{width:100%}
+@media (max-width:560px){ .st-btns.st-short>.btn{flex:1 1 100%} }
+#st-mfa{margin-top:8px;padding-top:12px;border-top:1px solid var(--line)}

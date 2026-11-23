@@ -1,5 +1,5 @@
 /* Cache a complete release before it takes control. Bank data stays in the app's user cache. */
-const VERSION = "6.104-readme-i18n1";
+const VERSION = "6.105-phone-polish1";
 const CACHE = "nabiad-v" + VERSION;
 const SCOPE = self.registration.scope;
 const SHELL = new URL("index.html", SCOPE).href;
@@ -7,7 +7,7 @@ const CORE = [
   SHELL,
   ...["app.js", "config.js", "i18n.js", "inv.js", "cashbook.js", "cheque-verification.js", "style.css", "inv.css", "cashbook.css"]
     .map(path => new URL(path + "?v=" + VERSION, SCOPE).href),
-  ...["vendor/supabase.js", "manifest.json", "icon.svg", "icon-192.png"].map(path => new URL(path, SCOPE).href)
+  ...["vendor/supabase.js", "manifest.json", "icon.svg", "icon-192.png", "badge-96.png"].map(path => new URL(path, SCOPE).href)
 ];
 const ENTRY_PATHS = new Set([new URL(SCOPE).pathname, new URL(SHELL).pathname]);
 const VENDOR_PATH = new URL("vendor/", SCOPE).pathname;
@@ -93,5 +93,5 @@ self.addEventListener("notificationclick", e => {
 });
 self.addEventListener("push", e => {
   let d = {}; try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || "Nabiad", { body: d.body || "", icon: "icon-192.png", badge: "icon-192.png", tag: d.tag || "nabiad", renotify: true, data: { url: (d.url || "").replace(/^\//, "") || "#/dash" } }));
+  e.waitUntil(self.registration.showNotification(d.title || "Nabiad", { body: d.body || "", icon: "icon-192.png", badge: "badge-96.png", tag: d.tag || "nabiad", renotify: true, data: { url: (d.url || "").replace(/^\//, "") || "#/dash" } }));
 });
