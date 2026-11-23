@@ -3175,3 +3175,19 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 #k-tab.k-compact td .stc-d{display:none}
 @media (max-width:900px){.k-pulse{display:flex}.k-tips{position:static;margin-top:6px;box-shadow:none}.k-dens{display:none}#k-tab tr.k-grp td{display:block}}
 @media (pointer:coarse){.k-sw label kbd{display:none}}
+
+/* ===== v6.141 — Cheque Posting: one-line activity toolbar, inline cheque-no error ===== */
+#e-review-tools .cp-status{margin:0;flex:0 0 auto;flex-wrap:nowrap}
+#e-review-tools .cp-search{flex:1 1 12rem;min-width:0}
+.cp-nberr{margin-top:6px;padding:6px 10px;border-radius:8px;background:var(--rd-soft);color:var(--rd);border:1px solid color-mix(in srgb,var(--rd) 35%,transparent);font-size:12.5px;font-weight:600;line-height:1.35}
+.cp-nberr[hidden]{display:none}
+.cq-posting .in[aria-invalid="true"]{border-color:var(--rd);box-shadow:0 0 0 3px color-mix(in srgb,var(--rd) 14%,transparent)}
+@media (max-width:640px){#e-review-tools .cp-search{flex-basis:100%}#e-review-tools .cp-status{flex:1 1 auto;flex-wrap:wrap}}
+
+/* ===== v6.142 — Posting: full-width book error with action, one-line recent row ===== */
+.cp-nberr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:7px 12px}
+.cp-nberr b{font-weight:800}
+.cp-nblink{all:unset;cursor:pointer;font-weight:800;text-decoration:underline;text-underline-offset:2px;color:var(--rd)}
+.cp-nblink:hover{filter:brightness(.8)}
+.cp-nblink:focus-visible{outline:2px solid var(--rd);outline-offset:2px;border-radius:4px}
+.cp-recent{max-height:27px;overflow:hidden}
