@@ -3238,3 +3238,8 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
   .cq-queue-controls .cq-search,.cq-queue-controls .cq-grp-t{grid-column:1/-1}
   .cq-queue-controls .cq-grp-t{height:auto}
 }
+
+/* ===== v6.147 — Cheque Status: Group by dropdown ===== */
+.cq-queue-controls{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}
+.cq-grp-s{min-width:0}
+@media (max-width:900px){.cq-queue-controls{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cq-grp-s{grid-column:1/-1}}
