@@ -1262,57 +1262,197 @@ async function vInvDash(v) {
 }
 
 /* =================== Status & Report (A4 sheets) + month lock =================== */
+/* shared command-box behaviour (dropdown of jumps/commands while the text also filters the page live) */
+function ivCmdBind(qIn, res, getItems, onType, onClear) {
+  let items = [], idx = 0, t = 0;
+  const close = () => { res.hidden = true; qIn.setAttribute("aria-expanded", "false"); };
+  const paint = () => {
+    items = getItems(qIn.value); idx = 0; let g = "";
+    res.innerHTML = items.map((it, i) => { const h = it.g !== g ? `<div class="grp">${(g = it.g)}</div>` : ""; return h + `<div class="it${i === 0 ? " on" : ""}" role="option" id="${res.id}-o${i}" data-i="${i}">${ico(it.ic)}<div class="t"><div>${it.t}</div>${it.s ? `<div class="mut sm">${it.s}</div>` : ""}</div></div>`; }).join("") || `<div class="empty">${bi("কিছু পাওয়া যায়নি", "Nothing found")}</div>`;
+    res.hidden = false; qIn.setAttribute("aria-expanded", "true");
+  };
+  const pick = i => { const it = items[i]; if (!it) return; close(); it.run(); };
+  qIn.addEventListener("focus", paint);
+  qIn.addEventListener("input", () => { paint(); clearTimeout(t); t = setTimeout(() => onType(qIn.value.trim()), 120); });
+  qIn.addEventListener("keydown", e => {
+    if (e.key === "Escape") { if (qIn.value) { qIn.value = ""; onType(""); onClear?.(); paint(); } else { close(); qIn.blur(); } return; }
+    if (e.key === "Enter") { e.preventDefault(); pick(idx); return; }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); if (res.hidden) paint();
+      idx = Math.max(0, Math.min(items.length - 1, idx + (e.key === "ArrowDown" ? 1 : -1)));
+      const els = $$(".it", res); els.forEach((d, i) => d.classList.toggle("on", i === idx)); els[idx]?.scrollIntoView({ block: "nearest" }); qIn.setAttribute("aria-activedescendant", `${res.id}-o${idx}`);
+    }
+  });
+  res.addEventListener("mousedown", e => { e.preventDefault(); const d = e.target.closest("[data-i]"); if (d) pick(+d.dataset.i); });
+  qIn.addEventListener("blur", () => setTimeout(close, 120));
+  return { close, paint, stop: () => clearTimeout(t) };
+}
+
+/* Status & Report v2 — same A4 sheets (Screenshot / PDF / Share / Excel), now with command search,
+   live filters, clickable insight strip, sortable tables, row preview and a per-tab live summary */
 async function vInvRep(v) {
-  const params = ivParams(), section = params.get("section"), channel = ["dist", "nir"].includes(params.get("channel")) ? params.get("channel") : null;
+  const params = ivParams(), section = params.get("section");
   const C = ivCan(), F = Object.assign(ivLinkedPeriod(), { r: ["dist", "nir", "rm", "exc"].includes(section) ? section : "status" });
+  let chF = ["dist", "nir"].includes(params.get("channel")) ? params.get("channel") : "", qF = "", ageF = "", stF = "", pF = "", xF = "", sortSt = {};
+  const TABS = [["status", bi("Pending অবস্থা", "Pending status")], ["dist", bi("ডিস্ট্রিবিউশন", "Distribution")], ["nir", bi("নিরাময়", "Niramoy")], ["rm", bi("আরএম ফ্যাক্টরি", "RM Factory")], ["exc", bi("সতর্কতা", "Alerts")]];
   v.innerHTML = head(ROUTES[CUR].t, `${repBtns("ir")}<button class="btn" id="ir-xl">${ico("dl")} Excel</button>`) +
-    `<div class="card tbar noprint">${pbBar("irpb", F)}</div>${ivSeg("ir-tab", [["status", bi("Pending অবস্থা", "Pending status")], ["dist", bi("ডিস্ট্রিবিউশন", "Distribution")], ["nir", bi("নিরাময়", "Niramoy")], ["rm", bi("আরএম ফ্যাক্টরি", "RM Factory")], ["exc", bi("সতর্কতা", "Alerts")]], F.r)}
-    <div class="card rep-wrap"><div class="rep-scroll"><div id="ir-out"></div></div></div>${C.admin ? `<div class="card noprint" id="ir-lock"></div>` : ""}`;
-  const out = $("#ir-out", v); let cur = null;
+    `<div class="card tbar noprint">${pbBar("irpb", F)}</div>${ivSeg("ir-tab", TABS, F.r)}
+    <div class="ir-cmd card noprint"><div class="ir-cmd-r"><div class="ivd-find"><span class="ivd-find-i" aria-hidden="true">${ico("search")}</span>
+      <input class="in" id="ir-q" type="search" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="ir-res" aria-autocomplete="list" placeholder="${bi("পার্টি, ASM, আইটেম, ট্রান্সপোর্ট বা কমান্ড খুঁজুন…", "Search party, ASM, item, transport or commands…")}" aria-label="${bi("রিপোর্ট সার্চ", "Report search")}"><kbd>/</kbd>
+      <div class="ivd-res" id="ir-res" role="listbox" hidden></div></div>
+      <button type="button" class="btn sm" id="ir-clear" disabled>${bi("সব মুছুন", "Clear all")}</button></div>
+      <div class="ir-cmd-f" id="ir-fl"></div><div class="ir-count mut sm" id="ir-count" role="status"></div></div>
+    <div class="ir-viz noprint" id="ir-viz"></div>
+    <div class="card rep-wrap"><div class="rep-scroll"><div id="ir-out"></div></div></div>${C.admin ? `<div class="card noprint" id="ir-lock"></div>` : ""}<div class="ir-pop" id="ir-pop" hidden></div>`;
+  const out = $("#ir-out", v), viz = $("#ir-viz", v), pop = $("#ir-pop", v), qIn = $("#ir-q", v), res = $("#ir-res", v); let cur = null, counts = { all: 0, shown: 0 }, fl = [];
   try { await invLoad(); dpLoad().catch(() => { }); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(ivErr(e))}</div>`; return; }
-  const tr2 = (cells, cls = "") => `<tr class="${cls}">${cells.map((c, i) => `<td class="${i ? "r num" : ""}">${c}</td>`).join("")}</tr>`;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const tr2 = (cells, cls = "", attr = "") => `<tr class="${cls}"${attr}>${cells.map((c, i) => `<td class="${i ? "r num" : ""}">${c}</td>`).join("")}</tr>`;
+  const nq = () => ivSearch(qF);
+  let sKey = "", sIdx = new Map();
+  const otext = o => {
+    const key = INV_T + ":" + INV.orders.length; if (key !== sKey) { sKey = key; sIdx = new Map(); }
+    let s = sIdx.get(o.id);
+    if (s === undefined) { s = ivSearch([ivPname(o), o.location, o.asm, o.transport, o.vehicle, o.date, dmy(o.date), o.status, ...Object.keys(o.lines).map(ivItemName)].join(" ")); sIdx.set(o.id, s); }
+    return s;
+  };
+  const matchO = o => !qF || otext(o).includes(nq());
+  const hl = s => { const q = qF.trim(); if (!q) return esc(s); const re = new RegExp("(" + q.split(/\s+/).filter(Boolean).map(x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")", "gi"); return String(s ?? "").split(re).map((x, i) => i % 2 ? `<mark>${esc(x)}</mark>` : esc(x)).join(""); };
+  const chName = ch => bi(...(IV_CH[ch] || [ch, ch]));
+  const lakh = n => n >= 1e7 ? (n / 1e7).toFixed(2) + bi(" কোটি", " Cr") : n >= 1e5 ? (n / 1e5).toFixed(2) + bi(" লাখ", " L") : money0(n);
+  const band = d => d <= 3 ? 0 : d <= 7 ? 1 : d <= 15 ? 2 : 3, BL = ["0–3", "4–7", "8–15", "15+"], BC = ["#10b981", "#f59e0b", "#f97316", "#dc2626"];
+  const hbars = (rows, attr = "data-q") => `<ul class="ir-hb">${rows.map(([k, label, val, txt, w, color]) => `<li><button type="button" ${attr}="${esc(k)}" title="${esc(label)}"><span class="ir-hl">${esc(label)}</span><i><s style="width:${w}%;${color ? "background:" + color : ""}"></s></i><b class="num">${txt}</b></button></li>`).join("")}</ul>`;
+  const vcard = (title, sub, body, cls = "") => `<section class="ir-vc card ${cls}"><div class="iv-section-head"><div><h3>${title}</h3>${sub ? `<p class="mut sm">${sub}</p>` : ""}</div></div>${body}</section>`;
   function build() {
-    const [f, t] = pbRange(F), inR = o => ivInPeriod(o, f, t);
+    const [f, t] = pbRange(F), inR = o => ivInPeriod(o, f, t), q = nq();
+    fl = []; const filters = fl; viz.innerHTML = "";
     if (F.r === "status") {
-      const cutoff = t < today() ? t : today();
-      const P = INV.orders.filter(o => (!channel || o.ch === channel) && ivPendingAt(o, cutoff)).sort((a, b) => a.date.localeCompare(b.date));
-      const age = o => Math.max(0, ivDays(o.date, cutoff)), b = [[0, 3], [4, 7], [8, 15], [16, 9999]], bl = ["0–3", "4–7", "8–15", "15+"];
+      const cutoff = t < today() ? t : today(), age = o => Math.max(0, ivDays(o.date, cutoff));
+      const P0 = INV.orders.filter(o => (!chF || o.ch === chF) && ivPendingAt(o, cutoff)).sort((a, b) => a.date.localeCompare(b.date));
+      const P1 = P0.filter(matchO), P = ageF === "" ? P1 : P1.filter(o => band(age(o)) === +ageF);
+      counts = { all: P0.length, shown: P.length };
+      const bl = BL.map((_, i) => P1.filter(o => band(age(o)) === i));
       const ib = ivItemTotals(P);
       cur = { name: "Pending_Status", xl: { Pending: [["Order date", "Channel", "Party", "Location", "ASM", "Items", "Qty", "Value", "Status", "Days"], ...P.map(o => [o.date, o.ch, ivPname(o), o.location, o.asm, Object.entries(o.lines).map(([k, l]) => `${ivItemName(k)} ${l.q}`).join(", "), o.total_qty, o.value, o.status, age(o)])] } };
+      const mxB = Math.max(1, ...bl.map(x => ivSum(x, o => o.value))), val = ivSum(P1, o => o.value) || 1;
+      const chv = Object.keys(IV_CH).map(ch => [ch, ivSum(P1.filter(o => o.ch === ch), o => o.value)]);
+      const oldest = P.slice(0, 3);
+      viz.innerHTML = vcard(bi("বয়স অনুযায়ী Pending", "Pending by age", ""), bi("ব্যান্ডে ক্লিক করলে শীট ফিল্টার হবে", "Click a band to filter the sheet"), hbars(bl.map((g, i) => [String(i), `${BL[i]} ${bi("দিন", "days")} · ${g.length}`, 0, "৳ " + lakh(ivSum(g, o => o.value)), (ivSum(g, o => o.value) / mxB * 100).toFixed(1), BC[i]]), "data-age"), "ir-v1") +
+        vcard(bi("চ্যানেল অনুযায়ী মূল্য", "Value by channel", ""), bi("ক্লিক করে চ্যানেল বাছুন", "Click to pick a channel"), `<div class="ir-split">${chv.map(([ch, x]) => `<button type="button" data-ch="${ch}" class="${chF === ch ? "on" : ""}" style="flex:${Math.max(.05, x / val)}"><i class="ivd-dot ${ch}"></i>${chName(ch)}<b class="num">৳ ${lakh(x)}</b></button>`).join("")}</div><p class="mut sm ir-note">${bi("শীর্ষ বাকি আইটেম", "Top pending items")}: ${Object.keys(ib).sort((a, b) => ib[b].pend - ib[a].pend).slice(0, 3).map(id => `<button type="button" class="ir-lk" data-q="${esc(ivItemName(id))}">${esc(ivItemName(id))} <b class="num">${ivQ(ib[id].pend)}</b></button>`).join(" ")}</p>`, "ir-v2") +
+        vcard(bi("সবচেয়ে পুরোনো ৩টি", "Oldest three", ""), bi("ক্লিক করলে অর্ডার খুলবে", "Click to open the order"), oldest.length ? `<ul class="ir-old">${oldest.map(o => `<li><button type="button" data-oid="${esc(o.id)}"><i class="ivd-dot ${o.ch}"></i><span><b>${esc(ivPname(o))}</b><small>${dmy(o.date)} · ${ivQ(o.total_qty)} ctn</small></span><strong class="ivd-age ${age(o) > 7 ? "bad" : age(o) > 3 ? "warn" : "ok"}">${age(o)} ${bi("দিন", "d")}</strong></button></li>`).join("")}</ul>` : `<div class="empty iv-empty">${bi("কিছু বাকি নেই ✓", "Nothing pending ✓")}</div>`, "ir-v3");
+      filters.push([chF, [["", bi("সব চ্যানেল", "All channels"), P0.length], ...Object.keys(IV_CH).map(ch => [ch, chName(ch), INV.orders.filter(o => o.ch === ch && ivPendingAt(o, cutoff)).length])], "ch"]);
+      filters.push([ageF, [["", bi("সব বয়স", "Any age"), P1.length], ...bl.map((g, i) => [String(i), BL[i] + " " + bi("দিন", "d"), g.length])], "age"]);
       return repSheet("ir-in", "Inventory · Pending Status (as of " + dmy(t > today() ? today() : t) + ")", f, t,
         repKpi([["Pending orders", P.length, "k1"], ["Pending qty (ctn)", ivQ(ivSum(P, o => o.total_qty)), "k2"], ["Pending value", "৳ " + money0(ivSum(P, o => o.value)), "k3"], ["Older than 7 days", P.filter(o => age(o) > 7).length, ""]]),
-        repTwo(repBox("By age (days)", ["Days", "Orders", "Qty", "Value"], b.map(([a, z], i) => { const g = P.filter(o => age(o) >= a && age(o) <= z); return tr2([bl[i], g.length, ivQ(ivSum(g, o => o.total_qty)), money0(ivSum(g, o => o.value))]); }).join("")),
-          repBox("By item", ["Item", "Pending qty", "Value"], Object.keys(ib).sort((a, b) => ib[b].pend - ib[a].pend).map(id => tr2([esc(ivItemName(id)), ivQ(ib[id].pend), money0(ib[id].val)])).join(""))) +
-        repOne(repBox("Pending orders — oldest first", ["~Order date", "~Party", "~ASM", "Qty", "Value", "Days"], P.map(o => `<tr><td>${dmy(o.date)}</td><td>${esc(ivPname(o))}${o.location ? ` <small>· ${esc(o.location)}</small>` : ""}</td><td>${esc(o.asm || "")}</td><td class="r num">${ivQ(o.total_qty)}</td><td class="r num">${money0(o.value)}</td><td class="r num ${age(o) > 7 ? "b" : ""}">${age(o)}</td></tr>`).join(""), P.length ? `<tr class="tot"><td colspan="3">TOTAL</td><td class="r num">${ivQ(ivSum(P, o => o.total_qty))}</td><td class="r num">${money0(ivSum(P, o => o.value))}</td><td></td></tr>` : "")));
+        repTwo(repBox("By age (days)", ["Days", "Orders", "Qty", "Value"], [[0, 3], [4, 7], [8, 15], [16, 9999]].map(([a, z], i) => { const g = P.filter(o => age(o) >= a && age(o) <= z); return tr2([BL[i], g.length, ivQ(ivSum(g, o => o.total_qty)), money0(ivSum(g, o => o.value))]); }).join("")),
+          repBox("By item", ["Item", "Pending qty", "Value"], Object.keys(ib).sort((a, b) => ib[b].pend - ib[a].pend).map(id => tr2([hl(ivItemName(id)), ivQ(ib[id].pend), money0(ib[id].val)])).join(""))) +
+        repOne(repBox("Pending orders — oldest first", ["~Order date", "~Party", "~ASM", "Qty", "Value", "Days"], P.map(o => `<tr class="ir-row" data-oid="${esc(o.id)}"><td>${dmy(o.date)}</td><td>${hl(ivPname(o))}${o.location ? ` <small>· ${hl(o.location)}</small>` : ""}</td><td>${hl(o.asm || "")}</td><td class="r num">${ivQ(o.total_qty)}</td><td class="r num">${money0(o.value)}</td><td class="r num ${age(o) > 7 ? "b" : ""}">${age(o)}</td></tr>`).join(""), P.length ? `<tr class="tot"><td colspan="3">TOTAL</td><td class="r num">${ivQ(ivSum(P, o => o.total_qty))}</td><td class="r num">${money0(ivSum(P, o => o.value))}</td><td></td></tr>` : "")),
+        filtNote());
     }
     if (F.r === "dist" || F.r === "nir") {
-      const ch = F.r, nir = ch === "nir", L = INV.orders.filter(o => o.ch === ch && inR(o)), live = L.filter(o => o.status !== "cancel"), ok = live.filter(o => ivDelIn(o, f, t)), it = ivItemTotals(L, f, t);
+      const ch = F.r, nir = ch === "nir", L0 = INV.orders.filter(o => o.ch === ch && inR(o)), live0 = L0.filter(o => o.status !== "cancel");
+      const L = L0.filter(o => matchO(o) && (!stF || (o.status !== "cancel" && (stF === "del") === ivDelIn(o, f, t)))), live = L.filter(o => o.status !== "cancel"), ok = live.filter(o => ivDelIn(o, f, t)), it = ivItemTotals(L, f, t);
+      counts = { all: live0.length, shown: live.length };
       const g = key => { const m = Object.create(null); live.forEach(o => { const k = (key === "party" ? ivPname(o) : o[key]) || "—", x = m[k] ||= { n: 0, q: 0, v: 0, dv: 0, r: 0 }; x.n++; x.q += o.total_qty; x.v += o.value; x.r += +o.rent || 0; if (ivDelIn(o, f, t)) x.dv += o.value; }); return Object.entries(m).sort((a, b) => b[1].v - a[1].v); };
       const ms = F.m === "month" ? [ivMon(f)] : [], dm = ms.length ? ivDemandOf(ch, ms[0]) : {};
-      const ids = [...new Set([...Object.keys(it), ...Object.keys(dm)])].sort((a, b) => (INV.byId[a]?.sort ?? 100) - (INV.byId[b]?.sort ?? 100) || a - b);
+      const ids = [...new Set([...Object.keys(it), ...Object.keys(dm)])].filter(id => !q || ivSearch(ivItemName(id)).includes(q) || L.length).sort((a, b) => (INV.byId[a]?.sort ?? 100) - (INV.byId[b]?.sort ?? 100) || a - b);
+      const pty = g(nir ? "transport" : "party"), day = new Map(); ok.forEach(o => { const d = o.delivery_date || o.date; day.set(d, (day.get(d) || 0) + 1); });
       cur = { name: nir ? "Niramoy_Report" : "Distribution_Report", xl: { Items: [["Item", "Demand", "Ordered", "Delivered", "Pending", "Delivered value"], ...ids.map(id => [ivItemName(id), +dm[id] || 0, it[id]?.ord || 0, it[id]?.del || 0, it[id]?.pend || 0, it[id]?.dval || 0])], [nir ? "Transport" : "Party"]: [[nir ? "Transport" : "Party", "Count", "Qty", "Value", nir ? "Rent" : "Delivered value"], ...g(nir ? "transport" : "party").map(([k, x]) => [k, x.n, x.q, x.v, nir ? x.r : x.dv])] } };
       if (!nir) cur.xl.ASM = [["ASM", "Orders", "Qty", "Value", "Delivered value"], ...g("asm").map(([k, x]) => [k, x.n, x.q, x.v, x.dv])];
+      /* live summary strip */
+      const topI = ids.map(id => [id, it[id]?.ord || 0]).filter(x => x[1]).sort((a, b) => b[1] - a[1]).slice(0, 6), mxI = Math.max(1, ...topI.map(x => x[1]));
+      const dTot = Object.values(dm).reduce((a, b) => a + (+b || 0), 0), dDone = ids.reduce((s, id) => s + Math.min(+dm[id] || 0, it[id]?.del || 0), 0), pct = dTot ? Math.round(dDone / dTot * 100) : 0;
+      const topP = pty.slice(0, 6), mxP = Math.max(1, ...topP.map(x => x[1].v));
+      const days = [...day.entries()].sort((a, b) => a[0].localeCompare(b[0])), mxD = Math.max(1, ...days.map(x => x[1]));
+      viz.innerHTML = (dTot ? vcard(bi("Demand পূরণ", "Demand fulfilled", ""), bi("মাসের লক্ষ্যের বিপরীতে ডেলিভারি", "Deliveries against the month's targets"), `<div class="ivd-dm"><div class="ivd-ring" style="--p:${Math.min(100, pct)}"><b class="num">${pct}%</b></div><div class="ivd-dmi"><p><b class="num">${ivQ(dDone)}</b> / ${ivQ(dTot)} ctn</p><p class="mut sm">${ivQ(Math.max(0, dTot - dDone))} ctn ${bi("বাকি", "remaining")}</p></div></div>`, "ir-v1")
+        : vcard(bi("ডেলিভারি অবস্থা", "Delivery status", ""), bi("ডেলিভার্ড বনাম বাকি (ctn)", "Delivered vs pending (ctn)"), `<div class="ivd-dm"><div class="ivd-ring" style="--p:${live.length ? Math.round(ok.length / live.length * 100) : 0}"><b class="num">${live.length ? Math.round(ok.length / live.length * 100) : 0}%</b></div><div class="ivd-dmi"><p><b class="num">${ok.length}</b> / ${live.length} ${nir ? bi("ট্রিপ", "trips") : bi("অর্ডার", "orders")}</p><p class="mut sm">${live.length - ok.length} ${bi("বাকি", "pending")}</p></div></div>`, "ir-v1")) +
+        vcard(bi("শীর্ষ আইটেম (অর্ডার)", "Top items (ordered)", ""), bi("ক্লিক করলে আইটেম ফিল্টার", "Click to filter by item"), topI.length ? hbars(topI.map(([id, n]) => [ivItemName(id), ivItemName(id), n, ivQ(n) + " ctn", (n / mxI * 100).toFixed(1)])) : `<div class="empty iv-empty">${bi("কিছু নেই", "Nothing")}</div>`, "ir-v2") +
+        vcard(nir ? bi("ট্রান্সপোর্ট অনুযায়ী", "By transport", "") : bi("শীর্ষ পার্টি", "Top parties", ""), bi("মূল্য অনুযায়ী — ক্লিক করে ফিল্টার", "By value — click to filter"), topP.length ? hbars(topP.map(([k, x]) => [k, k, x.v, "৳ " + lakh(x.v), (x.v / mxP * 100).toFixed(1)])) : `<div class="empty iv-empty">${bi("কিছু নেই", "Nothing")}</div>`, "ir-v3") +
+        (days.length > 1 ? vcard(bi("দিন অনুযায়ী ডেলিভারি", "Deliveries per day", ""), `${days.length} ${bi("দিন", "days")}`, `<div class="ir-cols" style="--n:${days.length}">${days.map(([d, n]) => `<span title="${dmy(d)} · ${n}" style="--h:${(n / mxD * 100).toFixed(1)}%"></span>`).join("")}</div><div class="iv-bx"><span>${dmy(days[0][0])}</span><span>${dmy(days.at(-1)[0])}</span></div>`, "ir-v4") : "");
+      filters.push([stF, [["", bi("সব", "All"), live0.length], ["del", bi("ডেলিভার্ড", "Delivered"), live0.filter(o => ivDelIn(o, f, t)).length], ["pend", bi("বাকি", "Pending"), live0.filter(o => !ivDelIn(o, f, t)).length]], "st"]);
       return repSheet("ir-in", nir ? "Inventory · Niramoy Delivery Report" : "Inventory · Distribution Report", f, t,
         repKpi(nir ? [["Trips", live.length, "k1"], ["Qty (ctn)", ivQ(ivSum(live, o => o.total_qty)), "k2"], ["Value", "৳ " + money0(ivSum(live, o => o.value)), "k3"], ["Rent", "৳ " + money0(ivSum(live, o => o.rent)), ""]]
           : [["Orders", live.length, "k1"], ["Ordered (ctn)", ivQ(ivSum(live, o => o.total_qty)), "k2"], ["Delivered", "৳ " + money0(ivSum(ok, o => o.value)), "k3"], ["Pending (ctn)", ivQ(ivSum(live.filter(o => !ivDelIn(o, f, t)), o => o.total_qty)), ""]]),
-        repOne(repBox("By item", ["Item", ...(ms.length ? ["Demand"] : []), "Ordered", "Delivered", "Pending", "Delivered ৳"], ids.map(id => tr2([esc(ivItemName(id)), ...(ms.length ? [dm[id] ? ivQ(dm[id]) : "—"] : []), ivQ(it[id]?.ord || 0), ivQ(it[id]?.del || 0), ivQ(it[id]?.pend || 0), money0(it[id]?.dval || 0)])).join(""),
+        repOne(repBox("By item", ["Item", ...(ms.length ? ["Demand"] : []), "Ordered", "Delivered", "Pending", "Delivered ৳"], ids.map(id => tr2([hl(ivItemName(id)), ...(ms.length ? [dm[id] ? ivQ(dm[id]) : "—"] : []), ivQ(it[id]?.ord || 0), ivQ(it[id]?.del || 0), ivQ(it[id]?.pend || 0), money0(it[id]?.dval || 0)])).join(""),
           ids.length ? `<tr class="tot"><td>TOTAL</td>${ms.length ? `<td class="r num">${ivQ(Object.values(dm).reduce((a, b) => a + (+b || 0), 0))}</td>` : ""}<td class="r num">${ivQ(ivSum(ids, id => it[id]?.ord))}</td><td class="r num">${ivQ(ivSum(ids, id => it[id]?.del))}</td><td class="r num">${ivQ(ivSum(ids, id => it[id]?.pend))}</td><td class="r num">${money0(ivSum(ids, id => it[id]?.dval))}</td></tr>` : "")) +
-        (nir ? repOne(repBox("By transport", ["Transport", "Trips", "Qty", "Value", "Rent"], g("transport").map(([k, x]) => tr2([esc(k), x.n, ivQ(x.q), money0(x.v), money0(x.r)])).join("")))
-          : repTwo(repBox("Top parties", ["Party", "Orders", "Qty", "Value"], g("party").slice(0, 25).map(([k, x]) => tr2([esc(k), x.n, ivQ(x.q), money0(x.v)])).join("")), repBox("By ASM / RSM", ["ASM", "Orders", "Qty", "Value"], g("asm").map(([k, x]) => tr2([esc(k), x.n, ivQ(x.q), money0(x.v)])).join("")))));
+        (nir ? repOne(repBox("By transport", ["Transport", "Trips", "Qty", "Value", "Rent"], g("transport").map(([k, x]) => tr2([hl(k), x.n, ivQ(x.q), money0(x.v), money0(x.r)])).join("")))
+          : repTwo(repBox("Top parties", ["Party", "Orders", "Qty", "Value"], g("party").slice(0, 25).map(([k, x]) => tr2([hl(k), x.n, ivQ(x.q), money0(x.v)])).join("")), repBox("By ASM / RSM", ["ASM", "Orders", "Qty", "Value"], g("asm").map(([k, x]) => tr2([hl(k), x.n, ivQ(x.q), money0(x.v)])).join("")))),
+        filtNote());
     }
     if (F.r === "rm") {
-      const Ls = INV.rmp.map(p => ({ p, L: rmLedgerRows(p.code, f, t) }));
+      const all = INV.rmp.map(p => ({ p, L: rmLedgerRows(p.code, f, t) })), byName = q ? all.filter(x => ivSearch(x.p.name).includes(q)) : [];
+      const Ls = all.filter(x => (!pF || x.p.code === pF) && (!byName.length || byName.includes(x))).map(x => ({ ...x, L: { ...x.L, rows: byName.length || !q ? x.L.rows : x.L.rows.filter(r => ivSearch(dmy(r.date) + " " + (r.remarks || "")).includes(q)) } }));
+      counts = { all: all.length, shown: Ls.length };
       cur = { name: "RM_Factory_Report", xl: Object.fromEntries(Ls.map(({ p, L }) => [p.name.slice(0, 28), [["Date", "Ready", "Delivery", "Stock", "Stock kg", "Remarks"], ["Opening", "", "", L.open, L.open * p.bag_kg, ""], ...L.rows.map(x => [x.date, x.ready, x.del, x.stock, x.stock * p.bag_kg, x.remarks])]])) };
       const sm = Ls.map(({ p, L }) => { const R = ivSum(L.rows, x => x.ready), D = ivSum(L.rows, x => x.del), c = L.open + R - D; return { p, L, R, D, c }; });
+      const nDays = Math.max(1, ivDays(f, t < today() ? t : today()) + 1);
+      const chart = (x, color) => {
+        const vals = [x.L.open, ...x.L.rows.map(r => r.stock)], mx = Math.max(1, ...vals), mn = Math.min(0, ...vals), W = 300, H = 80, rg = (mx - mn) || 1;
+        const pts = vals.map((s, i) => [(i / Math.max(1, vals.length - 1) * W), H - 6 - (s - mn) / rg * (H - 12)]), d = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(""), zy = H - 6 - (0 - mn) / rg * (H - 12);
+        return `<svg class="ir-line" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(x.p.name)}"><line x1="0" x2="${W}" y1="${zy.toFixed(1)}" y2="${zy.toFixed(1)}" class="z"/><path d="${d}L${W} ${H}L0 ${H}Z" fill="${color}" opacity=".12"/><path d="${d}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
+      };
+      viz.innerHTML = sm.map((x, i) => { const avgOut = x.D / nDays, cover = avgOut > 0 ? Math.floor(Math.max(0, x.c) / avgOut) : null, col = ["#7c3aed", "#0891b2", "#059669"][i % 3]; return vcard(esc(x.p.name), `${ivQ(x.c)} bag · ${ivQ(x.c * x.p.bag_kg)} kg`, `${chart(x, col)}<div class="ir-mini"><span><small class="mut">${bi("গড় উৎপাদন/দিন", "Avg ready/day")}</small><b class="num">${ivQ(Math.round(x.R / nDays * 10) / 10)}</b></span><span><small class="mut">${bi("গড় ডেলিভারি/দিন", "Avg out/day")}</small><b class="num">${ivQ(Math.round(avgOut * 10) / 10)}</b></span><span><small class="mut">${bi("স্টক চলবে", "Stock cover")}</small><b class="num ${cover !== null && cover < 3 ? "rd" : ""}">${cover === null ? "—" : cover + " " + bi("দিন", "d")}</b></span></div>`, "ir-v" + (i + 1)); }).join("");
+      filters.push([pF, [["", bi("সব পণ্য", "All products"), all.length], ...all.map(x => [x.p.code, x.p.name, ""])], "p"]);
       return repSheet("ir-in", "Inventory · RM Factory (Bulta, Rupganj)", f, t,
         repKpi(sm.map(x => [x.p.name + " stock", `${ivQ(x.c)} bag · ${ivQ(x.c * x.p.bag_kg)} kg`, x.c < 0 ? "k2" : "k3"]).concat([["Total stock (kg)", ivQ(ivSum(sm, x => x.c * x.p.bag_kg)), "k1"]])),
         repOne(repBox("Summary (bags)", ["Product", "Opening", "Ready", "Delivery", "Closing", "Closing kg"], sm.map(x => tr2([esc(x.p.name), ivQ(x.L.open), ivQ(x.R), ivQ(x.D), ivQ(x.c), ivQ(x.c * x.p.bag_kg)])).join(""))) +
-        repTwo(...sm.map(x => repBox(x.p.name + " — daily", ["~Date", "Ready", "Delivery", "Stock"], x.L.rows.map(r => `<tr><td>${dmy(r.date)}</td><td class="r num">${r.ready || ""}</td><td class="r num">${r.del || ""}</td><td class="r num ${r.stock < 0 ? "b" : ""}">${ivQ(r.stock)}</td></tr>`).join("")))));
+        repTwo(...sm.map(x => repBox(x.p.name + " — daily", ["~Date", "Ready", "Delivery", "Stock"], x.L.rows.map(r => `<tr><td>${dmy(r.date)}</td><td class="r num">${r.ready || ""}</td><td class="r num">${r.del || ""}</td><td class="r num ${r.stock < 0 ? "b" : ""}">${ivQ(r.stock)}</td></tr>`).join("")))), filtNote());
     }
-    const X = ivExceptions(f, t).filter(x => !channel || !x.ch || x.ch === channel);
+    const X0 = ivExceptions(f, t).filter(x => !chF || !x.ch || x.ch === chF), X1 = X0.filter(x => !q || ivSearch(x.txt).includes(q)), X = X1.filter(x => !xF || x.k === xF);
+    counts = { all: X0.length, shown: X.length };
     cur = { name: "Inventory_Alerts", xl: { Alerts: [["Type", "Date", "Detail"], ...X.map(x => [IV_XK[x.k][1], x.d, x.txt.replace(/<[^>]+>/g, "")])] } };
-    return repSheet("ir-in", "Inventory · Alerts & exceptions", f, t, repKpi(Object.keys(IV_XK).map(k => [IV_XK[k][1], X.filter(x => x.k === k).length, ""])),
-      repOne(repBox("Alerts", ["~Type", "~Date", "~Detail"], X.map(x => `<tr><td>${IV_XK[x.k][1]}</td><td>${x.d.length > 7 ? dmy(x.d) : x.d}</td><td>${x.txt}</td></tr>`).join(""))));
+    const kinds = Object.keys(IV_XK), mxK = Math.max(1, ...kinds.map(k => X1.filter(x => x.k === k).length));
+    viz.innerHTML = vcard(bi("সতর্কতার ধরন", "Alert types", ""), bi("ধরনে ক্লিক করলে শীট ফিল্টার হবে", "Click a type to filter the sheet"), hbars(kinds.map(k => { const n = X1.filter(x => x.k === k).length; return [k, `${bi(IV_XK[k][0], IV_XK[k][1])} · ${n}`, n, n, (n / mxK * 100).toFixed(1), IV_XK[k][2]]; }), "data-xk"), "ir-v1") +
+      vcard(bi("মেয়াদ অনুযায়ী (দেরিতে Pending)", "Late pending by age", ""), bi("কতদিন ধরে বাকি", "How long they have waited"), (() => { const late = X1.filter(x => x.k === "late"), b = [0, 0, 0, 0]; late.forEach(x => b[x.n > 30 ? 3 : x.n > 15 ? 2 : x.n > 10 ? 1 : 0]++); const m = Math.max(1, ...b); return hbars(b.map((n, i) => ["", ["8–10", "11–15", "16–30", "30+"][i] + " " + bi("দিন", "d") + " · " + n, n, n, (n / m * 100).toFixed(1), BC[i]]), "data-none"); })(), "ir-v2");
+    filters.push([xF, [["", bi("সব ধরন", "All types"), X1.length], ...kinds.map(k => [k, bi(IV_XK[k][0], IV_XK[k][1]), X1.filter(x => x.k === k).length])], "xk"]);
+    return repSheet("ir-in", "Inventory · Alerts & exceptions", f, t, repKpi(kinds.map(k => [IV_XK[k][1], X1.filter(x => x.k === k).length, ""])),
+      repOne(repBox("Alerts", ["~Type", "~Date", "~Detail"], X.map(x => `<tr><td>${IV_XK[x.k][1]}</td><td>${x.d.length > 7 ? dmy(x.d) : x.d}</td><td>${x.txt}</td></tr>`).join(""))), filtNote());
+    function filtNote() {
+      const bits = [];
+      if (qF) bits.push(`${bi("সার্চ", "Search")}: “${esc(qF)}”`);
+      if (chF && F.r === "status") bits.push(chName(chF));
+      if (ageF !== "" && F.r === "status") bits.push(BL[+ageF] + " " + bi("দিন", "days"));
+      if (stF) bits.push(stF === "del" ? bi("ডেলিভার্ড", "Delivered") : bi("বাকি", "Pending"));
+      if (pF) bits.push(INV.rmp.find(p => p.code === pF)?.name || pF);
+      if (xF) bits.push(bi(IV_XK[xF][0], IV_XK[xF][1]));
+      return bits.length ? `${bi("ফিল্টার", "Filtered")}: ${bits.join(" · ")}` : "";
+    }
+  }
+  /* ---- chips under the search box, counts, tab badges ---- */
+  const paintFilters = chips => {
+    $("#ir-fl", v).innerHTML = chips.map(([cur0, opts, key]) => `<div class="ir-fg" role="group" data-fk="${key}">${opts.map(([k, l, n]) => `<button type="button" class="chip sm${String(k) === String(cur0) ? " on" : ""}" data-fv="${esc(k)}" aria-pressed="${String(k) === String(cur0)}">${esc(l)}${n !== "" ? ` <b>${n}</b>` : ""}</button>`).join("")}</div>`).join("");
+    const active = !!(qF || (F.r === "status" && (chF || ageF !== "")) || stF && ["dist", "nir"].includes(F.r) || pF && F.r === "rm" || xF && F.r === "exc");
+    $("#ir-clear", v).disabled = !active;
+    $("#ir-count", v).textContent = counts.all ? bi(`${counts.all}টির মধ্যে ${counts.shown}টি দেখাচ্ছে`, `Showing ${counts.shown} of ${counts.all}`) : "";
+  };
+  function setFilter(k, val) { if (k === "ch") chF = val; else if (k === "age") ageF = val; else if (k === "st") stF = val; else if (k === "p") pF = val; else if (k === "xk") xF = val; sortSt = {}; draw(); }
+  /* ---- sortable tables (DOM sort: works for every sheet, totals stay last) ---- */
+  const cellKey = td => { const s = (td?.textContent || "").trim(); if (!s || s === "—") return -Infinity; const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/); if (m) return +(m[3] + m[2] + m[1]); const n = Number(s.replace(/[,৳\s]/g, "")); return Number.isFinite(n) ? n : s.toLowerCase(); };
+  function sortTable(tbl, ti, ci, dir) {
+    const body = tbl.tBodies[0], rows = [...body.rows].filter(r => !r.classList.contains("tot") && r.cells.length > ci), tots = [...body.rows].filter(r => r.classList.contains("tot"));
+    const dec = rows.map((r, i) => [cellKey(r.cells[ci]), i, r]);
+    dec.sort((a, b) => { const x = a[0], y = b[0]; const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y)); return (c || a[1] - b[1]) * dir; });
+    dec.forEach(([, , r]) => body.appendChild(r)); tots.forEach(r => body.appendChild(r));
+    $$("thead th", tbl).forEach((th, i) => { th.classList.toggle("asc", i === ci && dir > 0); th.classList.toggle("desc", i === ci && dir < 0); th.setAttribute("aria-sort", i === ci ? (dir > 0 ? "ascending" : "descending") : "none"); });
+  }
+  function enhance() {
+    $$("#ir-in .rep-t", v).forEach((tbl, ti) => {
+      $$("thead th", tbl).forEach((th, ci) => {
+        th.classList.add("ir-sort"); th.tabIndex = 0; th.setAttribute("role", "button");
+        const go = () => { const s = sortSt[ti], dir = s && s.c === ci ? -s.d : (th.classList.contains("r") ? -1 : 1); sortSt[ti] = { c: ci, d: dir }; sortTable(tbl, ti, ci, dir); };
+        th.onclick = go; th.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
+      });
+      const s = sortSt[ti]; if (s) sortTable(tbl, ti, s.c, s.d);
+    });
+  }
+  let first = true;
+  function draw() {
+    out.innerHTML = build(); dcFit(v, "ir-in"); locks(); enhance();
+    paintFilters(fl);
+    if (first || !reduce) { viz.classList.remove("go"); void viz.offsetWidth; viz.classList.add("go"); } first = false;
+    const pendN = INV.orders.filter(o => ivPendingAt(o, today())).length, excN = ivExceptions(...pbRange(F)).length;
+    $$("#ir-tab .ir-bd", v).forEach(x => x.remove());
+    [["status", pendN, ""], ["exc", excN, " bad"]].forEach(([k, n, c]) => { const el = $(`#ir-tab [data-k="${k}"]`, v); if (el && n) el.insertAdjacentHTML("beforeend", ` <b class="ir-bd${c}">${n}</b>`); });
   }
   function locks() {
     const box = $("#ir-lock", v); if (!box) return;
@@ -1320,11 +1460,56 @@ async function vInvRep(v) {
     box.innerHTML = `<div class="ch"><h3>${ico("ivlock")} ${bi("মাস Lock", "Month lock")}</h3></div><div class="mut sm">${bi("Lock করা মাসে কেউ (admin-ও) নতুন এন্ট্রি, বদল বা মুছতে পারবে না। ভুল ঠিক করতে আগে Unlock করুন।", "Nobody (admins included) can add, change or delete anything in a locked month. Unlock it first to correct a mistake.")}</div><div class="iv-locks">${ms.map(m => { const L = INV.locks.find(l => String(l.month).slice(0, 10) === m); return `<div class="iv-lki ${L ? "on" : ""}"><span><b>${ivMonName(m)}</b><small class="mut">${L ? bi("Lock করেছেন ", "Locked by ") + esc(L.locked_by || "") : bi("খোলা", "Open")}</small></span><button class="btn sm ${L ? "" : "pri"}" data-lm="${m}" data-on="${L ? 1 : 0}">${L ? bi("Unlock", "Unlock") : bi("Lock", "Lock")}</button></div>`; }).join("")}</div>`;
     $$("[data-lm]", box).forEach(b => b.onclick = async () => { const m = b.dataset.lm, on = b.dataset.on === "1"; if (!confirm(on ? bi(`${ivMonName(m)} Unlock করবেন?`, `Unlock ${ivMonName(m)}?`) : bi(`${ivMonName(m)} Lock করবেন? এরপর এই মাসে কিছু বদলানো যাবে না।`, `Lock ${ivMonName(m)}? Nothing in this month can be changed afterwards.`))) return; try { on ? await API.invUnlock(m) : await API.invLock(m); await invLoad(true); toast(on ? bi("✔ Unlock হয়েছে", "✔ Unlocked") : bi("✔ Lock হয়েছে", "✔ Locked")); locks(); } catch (e) { toast(ivErr(e), "err"); } });
   }
-  function draw() { out.innerHTML = build(); dcFit(v, "ir-in"); locks(); }
-  pbBind(v, "irpb", F, draw); ivSegBind(v, "ir-tab", F, "r", draw);
+  /* ---- command palette: jumps + commands (the typed text also filters the sheet live) ---- */
+  const goTab = k => { F.r = k; sortSt = {}; $$("#ir-tab .chip", v).forEach(x => { const on = x.dataset.k === k; x.classList.toggle("on", on); x.setAttribute("aria-pressed", String(on)); }); draw(); };
+  const cmdItems = raw => {
+    const q = ivSearch(raw), list = [], cm = (ic, t, s, run) => ({ g: bi("কমান্ড", "Commands"), ic, t, s, run });
+    if (!q) {
+      TABS.forEach(([k, l]) => list.push({ g: bi("ট্যাবে যান", "Go to tab"), ic: "chart", t: l, s: "", run: () => goTab(k) }));
+      list.push(cm("dl", bi("Excel এক্সপোর্ট", "Export to Excel"), "", () => $("#ir-xl", v).click()));
+      list.push(cm("print", bi("PDF তৈরি", "Make PDF"), "", () => $("#ir-pdf", v)?.click()));
+      list.push(cm("img", bi("স্ক্রিনশট", "Screenshot"), "", () => $("#ir-png", v)?.click()));
+      list.push(cm("flag", bi("শুধু ৮+ দিনের Pending", "Only pending 8+ days"), bi("Pending অবস্থা ট্যাবে", "on the Pending status tab"), () => { goTab("status"); ageF = "2"; draw(); }));
+      return list;
+    }
+    INV.orders.filter(o => o.status !== "cancel" && otext(o).includes(q)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6).forEach(o => list.push({ g: bi("অর্ডার ও ট্রিপ", "Orders & trips"), ic: o.ch === "nir" ? "ivtruck" : "ivcart", t: `<b>${esc(ivPname(o))}</b> ${ivSt(o.status)}`, s: `${chName(o.ch)} · ${dmy(o.date)} · ${ivQ(o.total_qty)} ctn · ৳ ${money0(o.value)}`, run: () => ivOrderModal(o.ch, o, draw) }));
+    INV.items.filter(i => ivSearch(i.name).includes(q)).slice(0, 4).forEach(i => list.push({ g: bi("আইটেম", "Items"), ic: "ivbox", t: `<b>${esc(i.name)}</b>`, s: bi("এই আইটেম দিয়ে শীট ফিল্টার করুন", "filter the sheet by this item"), run: () => { qIn.value = i.name; qF = i.name; draw(); } }));
+    TABS.filter(([, l]) => ivSearch(l).includes(q)).forEach(([k, l]) => list.push({ g: bi("ট্যাবে যান", "Go to tab"), ic: "chart", t: `<b>${l}</b>`, s: "", run: () => goTab(k) }));
+    return list;
+  };
+  const cmd = ivCmdBind(qIn, res, cmdItems, val => { qF = val; sortSt = {}; draw(); });
+  /* ---- clicks: chips, viz strip, rows ---- */
+  v.addEventListener("click", e => {
+    const t = e.target; let b;
+    if ((b = t.closest("#ir-fl [data-fv]"))) { setFilter(b.closest("[data-fk]").dataset.fk, b.dataset.fv); return; }
+    if (!t.closest("#ir-viz,#ir-in")) return;
+    if ((b = t.closest("[data-age]"))) setFilter("age", ageF === b.dataset.age ? "" : b.dataset.age);
+    else if ((b = t.closest("[data-ch]"))) setFilter("ch", chF === b.dataset.ch ? "" : b.dataset.ch);
+    else if ((b = t.closest("[data-xk]"))) setFilter("xk", xF === b.dataset.xk ? "" : b.dataset.xk);
+    else if ((b = t.closest("[data-q]"))) { qF = qF === b.dataset.q ? "" : b.dataset.q; qIn.value = qF; sortSt = {}; draw(); }
+    else if ((b = t.closest("[data-oid]"))) { const o = INV.orders.find(x => x.id === b.dataset.oid); if (o && !getSelection().toString()) ivOrderModal(o.ch, o, draw); }
+  });
+  $("#ir-clear", v).onclick = () => { qF = ""; ageF = ""; stF = ""; pF = ""; xF = ""; chF = ""; qIn.value = ""; sortSt = {}; draw(); };
+  /* ---- row preview on hover ---- */
+  const preview = e => {
+    const row = e.target.closest?.("#ir-in .ir-row"); if (!row) { pop.hidden = true; return; }
+    const o = INV.orders.find(x => x.id === row.dataset.oid); if (!o) return;
+    const ls = Object.entries(o.lines).sort((a, b) => b[1].q - a[1].q), top = ls.slice(0, 5);
+    pop.innerHTML = `<b>${esc(ivPname(o))}</b><small>${chName(o.ch)} · ${dmy(o.date)} · ${ivSt(o.status)}${o.asm ? " · " + esc(o.asm) : ""}</small>${top.map(([id, l]) => `<div><span>${esc(ivItemName(id))}</span><i class="num">${ivQ(l.q)} × ${money0(l.r)}</i></div>`).join("")}${ls.length > 5 ? `<small class="mut">+${ls.length - 5} ${bi("আরও আইটেম", "more items")}</small>` : ""}<div class="ir-pop-t"><span>${ivQ(o.total_qty)} ctn</span><b class="num">৳ ${money0(o.value)}</b></div><small class="mut">${bi("ক্লিক করলে খুলবে", "click to open")}</small>`;
+    pop.hidden = false; const w = pop.offsetWidth, h = pop.offsetHeight, x = Math.min(innerWidth - w - 12, e.clientX + 16), y = e.clientY + 18 + h > innerHeight ? e.clientY - h - 12 : e.clientY + 18;
+    pop.style.left = Math.max(8, x) + "px"; pop.style.top = Math.max(8, y) + "px";
+  };
+  if (matchMedia("(hover:hover)").matches) { out.addEventListener("mousemove", preview); out.addEventListener("mouseleave", () => pop.hidden = true); }
+  const onKey = e => { if (e.key === "/" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && !document.querySelector(".mback")) { e.preventDefault(); qIn.focus(); } };
+  document.addEventListener("keydown", onKey);
+  pbBind(v, "irpb", F, draw);
+  ivSegBind(v, "ir-tab", F, "r", () => { sortSt = {}; draw(); });
   const unb = repBind(v, "ir", "ir-in", () => `${cur?.name || "Inventory"}_${pbRange(F).join("_")}`, () => cur?.name.replace(/_/g, " ") || "");
+  /* sort arrows must not appear in screenshots / PDF */
+  ["ir-png", "ir-pdf", "ir-sh"].forEach(id => $("#" + id, v)?.addEventListener("click", () => { const el = $("#ir-in", v); el?.classList.add("nosort"); setTimeout(() => el?.classList.remove("nosort"), 3000); }, true));
   $("#ir-xl", v).onclick = () => cur && exportXlsx(cur.xl, `${cur.name}_${pbRange(F).join("_")}.xlsx`);
-  draw(); return unb;
+  draw();
+  return () => { unb?.(); cmd.stop(); document.removeEventListener("keydown", onKey); pop.remove(); };
 }
 
 Object.assign(AU_T, { inv_orders: "ইনভেন্টরি অর্ডার", inv_items: "ইনভেন্টরি আইটেম", inv_demand: "ইনভেন্টরি Demand", rm_daily: "আরএম দৈনিক", rm_products: "আরএম পণ্য", rm_ledger: "আরএম খাতা", inv_locks: "ইনভেন্টরি Lock" });
