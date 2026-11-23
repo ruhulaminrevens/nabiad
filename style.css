@@ -3191,3 +3191,22 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .cp-nblink:hover{filter:brightness(.8)}
 .cp-nblink:focus-visible{outline:2px solid var(--rd);outline-offset:2px;border-radius:4px}
 .cp-recent{max-height:27px;overflow:hidden}
+
+/* ===== v6.143 — Posting: tidy A/C suggestions, compact phone toolbar and purpose row ===== */
+.sg-list [data-i]{overflow-wrap:normal}
+.sg-list [data-i]:not(:has(.sgn)):not(:has(.sgb))>span{flex:1 1 auto;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sg-list [data-i]>small{flex:0 1 auto;min-width:0;max-width:45%;overflow:hidden;text-overflow:ellipsis}
+.cq-posting .suggest:has(#e-ac) .sg-list,.cq-posting .suggest:has(#e-toac) .sg-list{left:auto;right:0;width:max(100%,min(460px,calc(100vw - 40px)))}
+.cp-purpose .cp-section-head .f{font-size:12.5px;font-weight:650;color:var(--txt2)}
+@media (max-width:640px){
+  #e-review-tools .cp-status{flex:1 1 0;min-width:0;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 18px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 18px),transparent)}
+  #e-review-tools .cp-status::-webkit-scrollbar,#e-purp::-webkit-scrollbar{display:none}
+  #e-review-tools .cp-status .chip{flex:0 0 auto}
+  #e-review-tools .cp-sel{flex:0 0 auto;min-width:0;height:36px;font-size:13px;padding-inline:10px 26px}
+  .cp-purpose .cp-section-head{flex-wrap:nowrap;justify-content:space-between}
+  .cp-purpose-tools{flex-wrap:nowrap}
+  .cp-purpose-tools .btn{min-height:34px;padding-inline:10px;font-size:12.5px;white-space:nowrap}
+  #e-purp{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:none;padding:2px;margin-inline:-2px;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)}
+  #e-purp .chip{flex:0 0 auto;scroll-snap-align:start}
+}
+@media (max-width:520px){.sg-list [data-i]:not(:has(.sgn))>small{white-space:nowrap;max-width:100%}.sg-list [data-i]:not(:has(.sgn)){gap:3px}}

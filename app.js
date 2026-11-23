@@ -1359,6 +1359,7 @@ async function vEntry(v) {
     });
   }
   radioNav($e("e-purp"), chip => { st.purpose = chip.dataset.p; applyPurpose(); }, afterPurpose);
+  $e("e-purp").addEventListener("click", e => { const b = e.target.closest(".chip"); if (b) b.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" }); });
   radioNav($e("e-takers"), chip => { setTaker(chip.dataset.t); }, () => $e("e-rem").focus());
   rove($e("e-takers"));
   /* recent accounts + remark suggestions */
