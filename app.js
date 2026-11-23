@@ -2008,21 +2008,27 @@ function editChequeModal(c, after) {
 async function vCheques(v) {
   const F = { q: "", code: "", status: "", purpose: "", verification: "", sort: "newest", page: 0 }, PF = pbInit("month"), PS = 100, PBO = { all: true };
   const filterFields = { "k-q": "q", "k-c": "code", "k-s": "status", "k-u": "purpose", "k-vf": "verification" };
+  let saved = {}; try { saved = JSON.parse(sessionStorage.getItem("nabiad_reg_view") || "{}"); } catch { }
+  let groupOn = !!saved.group, dens = saved.dens || "", activeRow = "", quickActs = [];
+  if (["newest", "oldest", "highest", "lowest"].includes(saved.sort)) F.sort = saved.sort;
   const columns = [
     bi("তারিখ", "Date"), bi("A/C · চেক", "A/C · Cheque"), bi("হোল্ডার", "Holder"), bi("টাকা", "Amount"),
     bi("খাত / বিবরণ", "Purpose / Details"), bi("স্ট্যাটাস", "Status"), bi("কে", "Entered by")
   ];
   v.innerHTML = head("চেক তালিকা ও এনকোয়ারি", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>${S.me.role !== "boss" && moduleCan("cheque", "edit") ? `<button class="btn" id="k-verify">${ico("check")} ${bi("স্টেটমেন্ট যাচাই", "Verify statement")}</button>` : ""}`) + `<div class="card tbar noprint">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
-   <div style="flex:2 1 220px"><label class="f" for="k-q">${bi("চেক খুঁজুন", "Search cheques")}</label><input class="in" id="k-q" type="search" autocomplete="off" placeholder="${bi("চেক নং, A/C, ব্যাংক, মন্তব্য, টাকা", "Cheque no, A/C, bank, remarks, amount")}"></div>
+   <div class="k-sw" style="flex:2 1 220px"><label class="f" for="k-q">${bi("চেক খুঁজুন", "Search cheques")} <kbd>/</kbd></label><input class="in" id="k-q" type="search" autocomplete="off" placeholder="${bi("চেক নং, A/C, নাম… বা >50000 status:pending", "Cheque no, A/C, name… or >50000 status:pending")}"><div class="k-tips" id="k-tips" aria-hidden="true"><span>${bi("স্মার্ট সার্চ:", "Smart search:")}</span>${[[">=1l", bi("≥ ১ লাখ", "≥ 1 lakh")], ["<10k", bi("< ১০ হাজার", "< 10k")], ["status:pending", "status:pending"], ["status:bounced", "status:bounced"], ["by:", "by:name"], ["ac:", "ac:code"]].map(([t, l]) => `<button type="button" tabindex="-1" data-tip="${t}">${l}</button>`).join("")}</div></div>
    <div style="flex:1 1 220px"><label class="f" for="k-c">A/C</label><select class="in" id="k-c"><option value="">সব</option>${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)}${a.holder ? " · " + esc(a.holder) : ""}${a.bank ? " · " + esc(a.bank) : ""}</option>`).join("")}</select></div>
    <div><label class="f" for="k-s">স্ট্যাটাস</label><select class="in" id="k-s"></select></div>
    <div><label class="f" for="k-u">খাত</label><select class="in" id="k-u"><option value="">সব</option>${allPurposes(true).map(p => `<option value="${esc(p)}">${esc(p.split(" (")[0])}</option>`).join("")}</select></div>
-   ${S.statementReady ? `<div><label class="f" for="k-vf">${bi("স্টেটমেন্ট যাচাই", "Statement verification")}</label><select class="in" id="k-vf"><option value="">${bi("সব", "All")}</option><option value="yes">Verified</option><option value="no">Unverified</option></select></div>` : ""}</div></div>
+   ${S.statementReady ? `<div><label class="f" for="k-vf">${bi("স্টেটমেন্ট যাচাই", "Statement verification")}</label><select class="in" id="k-vf"><option value="">${bi("সব", "All")}</option><option value="yes">Verified</option><option value="no">Unverified</option></select></div>` : ""}</div><div class="k-quick" id="k-quick" role="group" aria-label="${bi("দ্রুত ফিল্টার", "Quick views")}"></div><div class="k-chips" id="k-chips"></div></div>
    <div id="k-sum" class="ksum enquiry-summary" role="region" tabindex="0" aria-label="${bi("চেকের সারাংশ", "Cheque summary")}"></div>
+   <div class="cq-pulse k-pulse" id="k-pulse"></div>
    <section class="card flush enquiry-results" aria-label="${bi("চেকের ফলাফল", "Cheque results")}">
      <div class="enquiry-toolbar noprint">
        <div id="k-count" class="mut sm" role="status" tabindex="-1"></div>
        <div class="enquiry-actions">
+         <label class="cq-grp-t"><input type="checkbox" id="k-group"> ${bi("তারিখ অনুযায়ী গ্রুপ", "Group by date")}</label>
+         <div class="chips k-dens" role="group" aria-label="${bi("ঘনত্ব", "Density")}"><button type="button" class="chip sm" data-dens="" aria-pressed="true">${bi("স্বাভাবিক", "Comfortable")}</button><button type="button" class="chip sm" data-dens="compact" aria-pressed="false">${bi("কমপ্যাক্ট", "Compact")}</button></div>
          <button type="button" class="btn sm" id="k-reset">${bi("ফিল্টার মুছুন", "Clear filters")}</button>
          <label for="k-sort" class="mut sm">${bi("সাজান", "Sort by")}</label>
          <select class="in" id="k-sort"><option value="newest">${bi("নতুন চেক আগে", "Newest date")}</option>
@@ -2037,9 +2043,29 @@ async function vCheques(v) {
        <button type="button" class="btn sm fix" id="k-next">${bi("পরের", "Next")} ›</button>
      </div>
    </section>`;
+  /* smart search: >50000  <10k  >=1l  status:pending  by:name  ac:code  — everything else is plain text */
+  function parseQ(raw) {
+    const P = { text: [], min: null, max: null, status: "", ac: "", by: "", chips: [] };
+    for (const tok of String(raw || "").trim().split(/\s+/).filter(Boolean)) {
+      let m;
+      if (/^[a-z]+:$/i.test(tok)) continue;
+      if ((m = tok.match(/^(>=|<=|>|<)(.+)$/)) && Number.isFinite(chequeAmount(expandAmt(m[2])))) {
+        const n = chequeAmount(expandAmt(m[2])), op = m[1];
+        if (op[0] === ">") P.min = Math.max(P.min ?? 0, op === ">" ? n + 0.005 : n); else P.max = Math.min(P.max ?? Infinity, op === "<" ? n - 0.005 : n);
+        P.chips.push([tok, bi(`অঙ্ক ${op} ৳ ${money(n)}`, `Amount ${op} ৳ ${money(n)}`)]);
+      } else if ((m = tok.match(/^(?:status|st):(.+)$/i)) && STATUSES.find(x => x.toLowerCase().startsWith(m[1].toLowerCase()))) {
+        P.status = STATUSES.find(x => x.toLowerCase().startsWith(m[1].toLowerCase())); P.chips.push([tok, bi("স্ট্যাটাস: ", "Status: ") + P.status]);
+      } else if ((m = tok.match(/^ac:(.+)$/i))) { P.ac = m[1].toLowerCase(); P.chips.push([tok, "A/C: " + m[1]]); }
+      else if ((m = tok.match(/^by:(.+)$/i))) { P.by = m[1].toLowerCase(); P.chips.push([tok, bi("এন্ট্রি: ", "By: ") + m[1]]); }
+      else P.text.push(tok);
+    }
+    return P;
+  }
   const filt = (accounts = accMap()) => {
-    const [from, to] = pbRange(PF), matches = chequeMatcher(F.q, accounts);
-    return S.cheques.filter(c => c.date >= from && c.date <= to && (!F.code || c.code === F.code) && (!F.purpose || pKey(c.purpose) === pKey(F.purpose)) && matches(c));
+    const [from, to] = pbRange(PF), P = parseQ(F.q), matches = chequeMatcher(P.text.join(" "), accounts);
+    return S.cheques.filter(c => c.date >= from && c.date <= to && (!F.code || c.code === F.code) && (!F.purpose || pKey(c.purpose) === pKey(F.purpose))
+      && (P.min == null || c.amount >= P.min) && (P.max == null || c.amount <= P.max) && (!P.status || c.status === P.status)
+      && (!P.ac || c.code.toLowerCase().includes(P.ac)) && (!P.by || String(c.by || "").toLowerCase().includes(P.by)) && matches(c));
   };
   const withStatus = rows => rows.filter(c => (!F.status || c.status === F.status) && (!F.verification || (F.verification === "yes") === Boolean(statementVerification(c))));
   const newest = (a, b) => b.date.localeCompare(a.date) || b.no - a.no;
@@ -2066,7 +2092,7 @@ async function vCheques(v) {
     const offset = F.page * PS, part = arr.slice(offset, offset + PS);
     const live = arr.filter(isLive);
     const statusTotals = new Map(group(arr, c => c.status).map(total => [total.k, total]));
-    const kc = (label, count, amount, cls = "") => `<div class="kc ${cls}"><span>${label}</span><div class="kv"><b>${count}</b>${amount != null ? `<small class="num">৳ ${money(amount)}</small>` : ""}</div></div>`;
+    const kc = (label, count, amount, cls = "", st = "") => `<div class="kc ${cls}${st && F.status === st ? " on" : ""}"${st ? ` data-st="${st}" role="button" tabindex="0" aria-pressed="${F.status === st}"` : ""}><span>${label}</span><div class="kv"><b>${count}</b>${amount != null ? `<small class="num">৳ ${money(amount)}</small>` : ""}</div></div>`;
     let summary = kc(bi("মোট চেক", "Cheques"), arr.length, null) + kc(bi("কার্যকর মোট", "Live total"), live.length, sumAmt(live), "main");
     if (S.statementReady) {
       const verified = statementSummary(arr);
@@ -2074,9 +2100,35 @@ async function vCheques(v) {
     }
     for (const status of STATUSES) {
       const total = statusTotals.get(status);
-      if (total) summary += kc(stTag(status), total.n, total.amt, "st-" + status.toLowerCase());
+      if (total) summary += kc(stTag(status), total.n, total.amt, "st-" + status.toLowerCase(), status);
     }
     $("#k-sum", v).innerHTML = summary;
+    const P = parseQ(F.q), terms = P.text.filter(Boolean);
+    const topAc = group(live, c => c.code).sort((a, b) => b.amt - a.amt)[0], topP = group(live, c => pKey(c.purpose)).sort((a, b) => b.amt - a.amt)[0];
+    const largest = live.reduce((m, c) => !m || c.amount > m.amount ? c : m, null), sampleP = topP && live.find(c => pKey(c.purpose) === topP.k)?.purpose;
+    const pulse = live.length ? [
+      `<button type="button" class="cq-p" data-kact="open" data-id="${esc(largest.id)}"><span>${bi("সবচেয়ে বড় চেক", "Largest cheque")}</span><b class="num">৳ ${money(largest.amount)}</b><em>${esc(acLabel(largest.code))} · ${largest.no}</em></button>`,
+      topAc ? `<button type="button" class="cq-p" data-kact="ac" data-v="${esc(topAc.k)}"><span>${bi("শীর্ষ A/C", "Top account")}</span><b>${esc(acLabel(topAc.k))}</b><em class="num">৳ ${money(topAc.amt)} · ${topAc.n}${bi("টি", "")}</em></button>` : "",
+      topP ? `<button type="button" class="cq-p" data-kact="purpose" data-v="${esc(sampleP)}"><span>${bi("শীর্ষ খাত", "Top purpose")}</span><b>${esc(sampleP.split(" (")[0])}</b><em class="num">৳ ${money(topP.amt)} · ${topP.n}${bi("টি", "")}</em></button>` : "",
+      `<div class="cq-p ok"><span>${bi("গড় অঙ্ক", "Average amount")}</span><b class="num">৳ ${money(Math.round(sumAmt(live) / live.length))}</b><em>${live.length} ${bi("কার্যকর চেক", "live cheques")}</em></div>`
+    ].join("") : "";
+    if ($("#k-pulse", v).innerHTML !== pulse) $("#k-pulse", v).innerHTML = pulse; $("#k-pulse", v).hidden = !pulse;
+    const chipsList = [...P.chips.map(([tok, label]) => ["q:" + tok, label]), F.code && ["code", "A/C: " + acLabel(F.code)], F.status && ["status", bi("স্ট্যাটাস: ", "Status: ") + F.status], F.purpose && ["purpose", bi("খাত: ", "Purpose: ") + F.purpose.split(" (")[0]], F.verification && ["verification", F.verification === "yes" ? "Verified" : "Unverified"]].filter(Boolean);
+    const chipsHtml = chipsList.map(([k, label]) => `<button type="button" class="chip sm on" data-rm="${esc(k)}" title="${bi("সরান", "Remove")}">${esc(label)} <b>✕</b></button>`).join("");
+    if ($("#k-chips", v).innerHTML !== chipsHtml) $("#k-chips", v).innerHTML = chipsHtml; $("#k-chips", v).hidden = !chipsList.length;
+    const cashP = allPurposes(true).find(p => purposeKey(p) === "cash"), hvRe = /(^|\s)>=100000(?=\s|$)/;
+    const quick = [
+      [bi("সব", "All"), !F.status && !F.purpose && !F.verification && !hvRe.test(F.q), () => { F.status = F.purpose = F.verification = ""; F.q = F.q.replace(hvRe, "").trim(); }],
+      ["Pending", F.status === "Pending", () => { F.status = F.status === "Pending" ? "" : "Pending"; }],
+      ["Cleared", F.status === "Cleared", () => { F.status = F.status === "Cleared" ? "" : "Cleared"; }],
+      ["Bounced", F.status === "Bounced", () => { F.status = F.status === "Bounced" ? "" : "Bounced"; }],
+      cashP ? [bi("ক্যাশ উত্তোলন", "Cash withdrawal"), pKey(F.purpose) === pKey(cashP) && !!F.purpose, () => { F.purpose = F.purpose && pKey(F.purpose) === pKey(cashP) ? "" : cashP; }] : null,
+      [bi("বড় অঙ্ক ≥ ১ লাখ", "High value ≥ 1 lakh"), hvRe.test(F.q), () => { F.q = hvRe.test(F.q) ? F.q.replace(hvRe, "").trim() : (F.q.trim() + " >=100000").trim(); }],
+      S.statementReady ? [bi("অযাচাইকৃত", "Unverified"), F.verification === "no", () => { F.verification = F.verification === "no" ? "" : "no"; }] : null
+    ].filter(Boolean);
+    quickActs = quick.map(x => x[2]);
+    const quickHtml = `<span class="k-quick-l">${bi("দ্রুত ভিউ", "Quick views")}</span>` + quick.map(([label, on], i) => `<button type="button" class="chip sm${on ? " on" : ""}" data-q="${i}" aria-pressed="${on}">${label}</button>`).join("");
+    if ($("#k-quick", v).innerHTML !== quickHtml) $("#k-quick", v).innerHTML = quickHtml;
     const activeCount = Object.values(filterFields).filter(key => F[key].trim()).length;
     const reset = $("#k-reset", v);
     reset.disabled = activeCount === 0;
@@ -2085,28 +2137,68 @@ async function vCheques(v) {
       ? bi(`${money(offset + 1)}–${money(offset + part.length)} দেখাচ্ছে · মোট ${money(arr.length)} চেক`, `Showing ${money(offset + 1)}–${money(offset + part.length)} of ${money(arr.length)} cheques`)
       : bi("০টি চেক", "0 cheques");
     const cell = (index, content, cls = "") => `<td class="${cls}" data-l="${columns[index]}"><div>${content}</div></td>`;
-    $("#k-tab", v).innerHTML = part.length ? `<div class="tw cards"><table><thead><tr>${columns.map((column, i) => `<th scope="col"${i === 3 ? ' class="r"' : ""}>${column}</th>`).join("")}</tr></thead><tbody>${part.map(c => `<tr>
+    const hl = t => { t = String(t ?? ""); if (!terms.length) return esc(t); const re = new RegExp("(" + terms.map(x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")", "gi"); return t.split(re).map((x, i) => i % 2 ? `<mark>${esc(x)}</mark>` : esc(x)).join(""); };
+    const th = (i, col) => {
+      const k = i === 0 ? ["newest", "oldest"] : i === 3 ? ["highest", "lowest"] : null, r = i === 3 ? " r" : "";
+      if (!k) return `<th scope="col" class="${r.trim()}">${col}</th>`;
+      const on = k.includes(F.sort);
+      return `<th scope="col" class="k-th${r}${on ? " on" : ""}" data-ksort="${on && F.sort === k[0] ? k[1] : k[0]}" tabindex="0" role="button" aria-sort="${on ? (F.sort === k[0] ? "descending" : "ascending") : "none"}">${col} <i>${on ? (F.sort === k[0] ? "↓" : "↑") : "↕"}</i></th>`;
+    };
+    const dayTotals = new Map(); for (const c of arr) { const d = dayTotals.get(c.date) || { n: 0, amt: 0 }; d.n++; if (isLive(c)) d.amt += c.amount; dayTotals.set(c.date, d); }
+    const grouping = groupOn && (F.sort === "newest" || F.sort === "oldest"); let lastD = "";
+    $("#k-tab", v).className = dens ? "k-" + dens : "";
+    $("#k-tab", v).innerHTML = part.length ? `<div class="tw cards"><table><thead><tr>${columns.map((column, i) => th(i, column)).join("")}</tr></thead><tbody>${part.map(c => {
+      let g = ""; if (grouping && c.date !== lastD) { lastD = c.date; const d = dayTotals.get(c.date); g = `<tr class="k-grp"><td colspan="7"><b>${dmy(c.date)}</b><span>${bi(`${d.n}টি চেক`, `${d.n} cheque(s)`)} · ৳ ${money(d.amt)}</span></td></tr>`; }
+      return g + `<tr data-register-id="${esc(c.id)}"${c.id === activeRow ? ' class="k-act"' : ""}>
       ${cell(0, dmy(c.date))}
-      ${cell(1, `<button type="button" class="cq-link" data-register-id="${esc(c.id)}">${esc(acLabel(c.code))} · ${esc(c.no)}</button>${chqIcons(c)}`)}
-      ${cell(2, esc(accounts[c.code]?.holder || "—"), "mut sm")}
+      ${cell(1, `<button type="button" class="cq-link" data-register-id="${esc(c.id)}">${hl(acLabel(c.code) + " · " + c.no)}</button>${chqIcons(c)}`)}
+      ${cell(2, hl(accounts[c.code]?.holder || "—"), "mut sm")}
       ${cell(3, money(c.amount), "r num")}
-      ${cell(4, `${esc(c.purpose.split(" (")[0])}<div class="mut sm">${esc([c.taker, c.party, c.toac && "→ " + c.toac, c.remarks].filter(Boolean).join(" · "))}</div>`)}
+      ${cell(4, `${hl(c.purpose.split(" (")[0])}<div class="mut sm">${hl([c.taker, c.party, c.toac && "→ " + c.toac, c.remarks].filter(Boolean).join(" · "))}</div>`)}
       ${cell(5, `<span class="stc">${stTag(c.status)}${statementBadge(c)}${pendTag(c)}${c.sdate && c.status !== "Pending" ? `<span class="mut sm stc-d">${dmy(c.sdate)}</span>` : ""}</span>`)}
-      ${cell(6, esc(c.by || "—"), "mut sm")}
-    </tr>`).join("")}</tbody></table></div>` : `<div class="empty">${activeCount
+      ${cell(6, hl(c.by || "—"), "mut sm")}
+    </tr>`; }).join("")}</tbody></table></div>` : `<div class="empty">${activeCount || chipsList.length
       ? bi("কোনো চেক মেলেনি। ফিল্টার পরিবর্তন করে দেখুন।", "No cheques match these filters.")
       : bi("এই সময়সীমায় কোনো চেক নেই।", "No cheques in this period.")}</div>`;
+    try { sessionStorage.setItem("nabiad_reg_view", JSON.stringify({ group: groupOn, dens, sort: F.sort })); } catch { }
     const pager = $("#k-pg", v);
     pager.hidden = pages <= 1;
     $("#k-prev", v).disabled = F.page === 0;
     $("#k-next", v).disabled = F.page >= pages - 1;
     $("#k-page", v).textContent = bi(`পাতা ${F.page + 1} / ${pages}`, `Page ${F.page + 1} of ${pages}`);
   };
+  const syncInputs = () => { for (const [id, key] of Object.entries(filterFields)) { const f = $("#" + id, v); if (f) f.value = F[key]; } $("#k-sort", v).value = F.sort; F.page = 0; };
+  const openRow = id => { const row = S.cheques.find(c => c.id === id); if (row) chequeModal(row, draw); };
   $("#k-tab", v).onclick = event => {
+    const th = event.target.closest("[data-ksort]");
+    if (th) { F.sort = th.dataset.ksort; $("#k-sort", v).value = F.sort; F.page = 0; draw(); return; }
+    if (event.target.closest("a,input") || String(getSelection()).trim()) return;
     const id = event.target.closest("[data-register-id]")?.dataset.registerId;
-    const row = S.cheques.find(c => c.id === id);
-    if (row) chequeModal(row, draw);
+    if (id) { activeRow = id; openRow(id); }
   };
+  $("#k-tab", v).onkeydown = e => { const th = e.target.closest?.("[data-ksort]"); if (th && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); th.click(); } };
+  const kcToggle = el => { const st = el?.dataset.st; if (!st) return; F.status = F.status === st ? "" : st; syncInputs(); draw(); };
+  $("#k-sum", v).onclick = e => kcToggle(e.target.closest("[data-st]"));
+  $("#k-sum", v).onkeydown = e => { if ((e.key === "Enter" || e.key === " ") && e.target.dataset?.st) { e.preventDefault(); kcToggle(e.target); } };
+  $("#k-pulse", v).onclick = e => {
+    const b = e.target.closest("[data-kact]"); if (!b) return;
+    if (b.dataset.kact === "open") openRow(b.dataset.id);
+    else { F[b.dataset.kact === "ac" ? "code" : "purpose"] = b.dataset.v; syncInputs(); draw(); }
+  };
+  $("#k-quick", v).onclick = e => { const b = e.target.closest("[data-q]"); if (!b) return; quickActs[+b.dataset.q](); syncInputs(); draw(); };
+  $("#k-chips", v).onclick = e => {
+    const b = e.target.closest("[data-rm]"); if (!b) return; const k = b.dataset.rm;
+    if (k.startsWith("q:")) { const tok = k.slice(2), parts = F.q.trim().split(/\s+/); const i = parts.indexOf(tok); if (i >= 0) parts.splice(i, 1); F.q = parts.join(" "); } else F[k] = "";
+    syncInputs(); draw();
+  };
+  $("#k-tips", v).onmousedown = e => e.preventDefault();
+  $("#k-tips", v).onclick = e => {
+    const b = e.target.closest("[data-tip]"); if (!b) return; const q = $("#k-q", v), tip = b.dataset.tip;
+    q.value = (q.value.trim() + " " + tip).trim() + (tip.endsWith(":") ? "" : " "); F.q = q.value; F.page = 0; draw(); q.focus();
+  };
+  $("#k-group", v).checked = groupOn; $("#k-group", v).onchange = e => { groupOn = e.target.checked; draw(); };
+  $$("[data-dens]", v).forEach(b => { b.setAttribute("aria-pressed", String(b.dataset.dens === dens)); b.classList.toggle("on", b.dataset.dens === dens); b.onclick = () => { dens = b.dataset.dens; $$("[data-dens]", v).forEach(x => { x.setAttribute("aria-pressed", String(x.dataset.dens === dens)); x.classList.toggle("on", x.dataset.dens === dens); }); draw(); }; });
+  $("#k-sort", v).value = F.sort;
   const bind = (id, k) => { const el = $("#" + id, v); el.addEventListener("input", () => { F[k] = el.value; F.page = 0; draw(); }); };
   const pre = sessionStorage.getItem("nabiad_chq_ac"); if (pre) { sessionStorage.removeItem("nabiad_chq_ac"); F.code = pre; $("#k-c", v).value = pre; }
   pbBind(v, "k", PF, () => { F.page = 0; draw(); }, PBO);
@@ -2143,6 +2235,23 @@ async function vCheques(v) {
       repOne(repBox(`Cheques (${arr.length})`, ["~Date", "~A/C · Cheque", "~Holder", "Amount", "~Purpose / Detail", "Status", "~Statement"], arr.map(c => `<tr><td class="cd">${dmy(c.date)}</td><td><b>${esc(c.code)}</b> #${esc(c.no)}</td><td>${esc((am[c.code] || {}).holder || "")}</td><td class="r num b">${money(c.amount)}</td><td>${esc(c.purpose.split(" (")[0])}${c.party || c.taker || c.remarks ? `<div class="mut" style="font-size:10px">${esc([c.party, c.taker, c.remarks].filter(Boolean).join(" · "))}</div>` : ""}</td><td class="r">${esc(c.status)}</td><td>${statementLabel(c)}</td></tr>`).join(""), `<tr class="tot"><td colspan="3">TOTAL (live)</td><td class="r num">${money(sumAmt(live))}</td><td colspan="3"></td></tr>`)) + statementReportBlock(arr)), `Cheque_List_${f}_${t}`);
   };
   draw();
+  const onKey = e => {
+    if (!$("#k-tab", v)?.isConnected || e.ctrlKey || e.metaKey || e.altKey || document.querySelector(".mback")) return;
+    const t = e.target; if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+    const key = e.key.toLowerCase(), rows = $$("#k-tab tbody tr[data-register-id]", v), idx = rows.findIndex(r => r.dataset.registerId === activeRow);
+    const move = d => { if (!rows.length) return; const n = idx < 0 ? (d > 0 ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, idx + d)); activeRow = rows[n].dataset.registerId; rows.forEach(r => r.classList.toggle("k-act", r.dataset.registerId === activeRow)); rows[n].scrollIntoView({ block: "nearest" }); };
+    if (key === "/") { e.preventDefault(); $("#k-q", v).focus(); $("#k-q", v).select(); }
+    else if (key === "j" || (key === "arrowdown" && t.tagName !== "BUTTON")) { e.preventDefault(); move(1); }
+    else if (key === "k" || (key === "arrowup" && t.tagName !== "BUTTON")) { e.preventDefault(); move(-1); }
+    else if ((key === "enter" || key === "o") && activeRow && t.tagName !== "BUTTON" && t.tagName !== "A") { e.preventDefault(); openRow(activeRow); }
+  };
+  document.addEventListener("keydown", onKey);
+  let refreshing = false;
+  const poll = setInterval(async () => {
+    if (document.hidden || refreshing || document.querySelector(".mback") || document.activeElement === $("#k-q", v)) return;
+    refreshing = true; try { await reload(); draw(); } catch { } finally { refreshing = false; }
+  }, 30000);
+  return () => { clearInterval(poll); document.removeEventListener("keydown", onKey); };
 }
 
 /* ---------- daily closing ---------- */
