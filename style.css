@@ -3243,3 +3243,8 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .cq-queue-controls{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)}
 .cq-grp-s{min-width:0}
 @media (max-width:900px){.cq-queue-controls{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cq-grp-s{grid-column:1/-1}}
+
+/* ===== v6.148 — Cheque Status: separate Date by dropdown, nested group headers ===== */
+.cq-queue-controls{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,.8fr)}
+.cq-grp.l2{margin-inline-start:14px;font-size:.92em;border-inline-start:3px solid color-mix(in srgb,var(--pri) 35%,transparent)}
+@media (max-width:900px){.cq-queue-controls{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.cq-grp-s{grid-column:auto}}
