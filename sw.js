@@ -1,5 +1,5 @@
 /* Cache a complete release before it takes control. Bank data stays in the app's user cache. */
-const VERSION = "6.121-snapshot-style8";
+const VERSION = "6.122-bank-group1";
 const CACHE = "nabiad-v" + VERSION;
 const SCOPE = self.registration.scope;
 const SHELL = new URL("index.html", SCOPE).href;
