@@ -2635,3 +2635,7 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
   .tw.cards #ct td.acc-c{border-top:0;margin-top:0;padding-top:0;border-radius:0}
   .tw.cards #ct tbody tr[data-i] td::before{text-transform:none;letter-spacing:0;font-size:11.5px;font-weight:600;color:var(--mut)}
 }
+
+/* ===== v6.115 — Bank Closing polish ===== */
+@media (max-width:900px){ .bc-context #c-linked{width:100%} }
+.bc-controls input::placeholder{text-overflow:ellipsis}
