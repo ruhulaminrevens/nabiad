@@ -1701,11 +1701,12 @@ async function vStatus(v) {
       <div class="cq-filters" role="group" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}">${filters.map(([id, label, desc, ic]) => `<button type="button" class="btn" data-cq-filter="${id}" aria-pressed="false" aria-controls="s-list"><span class="cq-tl-t"><i>${ico(ic)}</i>${label}</span><strong class="num"></strong><small class="num"></small><em>${desc}</em></button>`).join("")}</div>
       <div class="cq-pulse" id="s-pulse"></div>
       <div class="cq-queue-controls">
-        <div class="cq-search"><label class="f" for="s-q">${bi("চেক খুঁজুন", "Search cheques")} <kbd>/</kbd></label><div class="cq-qw"><span aria-hidden="true">${ico("search")}</span><input class="in" id="s-q" type="search" autocomplete="off" placeholder="${bi("চেক নং, A/C, ব্যাংক, মন্তব্য বা অঙ্ক", "Cheque no, A/C, bank, remarks or amount")}"></div></div>
+        <div class="cq-search"><label class="f" for="s-q">${bi("চেক খুঁজুন", "Search cheques")} <kbd>/</kbd></label><div class="cq-qw"><span aria-hidden="true">${ico("search")}</span><input class="in" id="s-q" type="search" autocomplete="off" placeholder="${bi("চেক নং, A/C বা অঙ্ক", "Cheque no, A/C or amount")}"></div></div>
         <div><label class="f" for="s-ac">${bi("অ্যাকাউন্ট", "Account")}</label><select class="in" id="s-ac"></select></div>
         <div><label class="f" for="s-sort">${bi("সাজানোর ক্রম", "Sort by")}</label><select class="in" id="s-sort"><option value="">${bi("তালিকার ডিফল্ট ক্রম", "Queue default")}</option><option value="old">${bi("পুরনো চেক আগে", "Oldest cheque first")}</option><option value="new">${bi("নতুন চেক আগে", "Newest cheque first")}</option><option value="amount">${bi("বেশি অঙ্ক আগে", "Highest amount first")}</option></select></div>
+        <label class="cq-grp-t"><input type="checkbox" id="s-group"> ${bi("তারিখ অনুযায়ী গ্রুপ", "Group by cheque date")}</label>
       </div>
-      <div class="cq-chiprow"><div class="chips" id="s-age" role="group" aria-label="${bi("চেকের বয়স", "Cheque age")}"></div><label class="cq-grp-t"><input type="checkbox" id="s-group"> ${bi("তারিখ অনুযায়ী গ্রুপ", "Group by cheque date")}</label></div>
+      <div class="cq-chiprow"><div class="chips" id="s-age" role="group" aria-label="${bi("চেকের বয়স", "Cheque age")}"></div></div>
     </section>
     <div class="cq-queue-head">
       <div><h2 class="cq-queue-title" id="s-title"></h2><p id="s-info" class="cq-info mut sm" role="status"></p></div>
@@ -1760,8 +1761,8 @@ async function vStatus(v) {
     const acHtml = `<option value="">${bi("সব অ্যাকাউন্ট", "All accounts")} (${[...acCount.values()].reduce((a, b) => a + b, 0)})</option>` + [...acCount].sort((a, b) => b[1] - a[1]).map(([code, n]) => `<option value="${esc(code)}">${esc(acLabel(code))} (${n})</option>`).join("");
     if (acHtml !== lastAc) acSel.innerHTML = lastAc = acHtml; acSel.value = acF;
     const ageCount = {}; base.filter(c => !acF || c.code === acF).forEach(c => { const b = bucketOf(daysBetween(c.date, t)); ageCount[b] = (ageCount[b] || 0) + 1; });
-    const ageHtml = showAge ? buckets.map(([id, label]) => `<button type="button" class="chip sm${id === ageF ? " on" : ""}" data-age="${id}" aria-pressed="${id === ageF}">${label} <b>${id ? ageCount[id] || 0 : Object.values(ageCount).reduce((a, b) => a + b, 0)}</b></button>`).join("") : "";
-    if (ageHtml !== lastAge) ageBox.innerHTML = lastAge = ageHtml; ageBox.hidden = !showAge;
+    const ageOn = showAge && base.length > 0, ageHtml = ageOn ? buckets.map(([id, label]) => `<button type="button" class="chip sm${id === ageF ? " on" : ""}" data-age="${id}" aria-pressed="${id === ageF}">${label} <b>${id ? ageCount[id] || 0 : Object.values(ageCount).reduce((a, b) => a + b, 0)}</b></button>`).join("") : "";
+    if (ageHtml !== lastAge) ageBox.innerHTML = lastAge = ageHtml; ageBox.hidden = !ageOn;
     const order = sort.value;
     queue.sort((a, b) => {
       if (order === "amount") return b.amount - a.amount || b.date.localeCompare(a.date);
