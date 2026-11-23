@@ -682,3 +682,16 @@ button.ivd-ins:hover { transform:translateY(-2px); border-color:var(--pri); }
   .iv-flt:has(#ov-q)>div:nth-child(2) label.f{display:none}
 }
 .ov-pb s{min-height:4px}.ov-pb.lg s{min-height:6px}
+
+/* v6.166: Order vs Delivery toolbar — one Excel (header), compact; List & totals ASM fills the row on phone */
+.iv-flt:has(#ov-q){align-items:end}
+.iv-flt:has(#ov-q)>div:nth-child(2){flex:0 0 auto}
+.iv-flt:has(#ov-q)>div:nth-child(2) label.f{display:none}
+.iv-flt:has(#ov-q) .iv-chk{height:40px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+@media (max-width:640px){
+  .iv-flt:has(#ov-q){display:grid;grid-template-columns:1fr;gap:6px}
+  .iv-flt:has(#ov-q) .iv-chk{height:auto;padding:2px 0}
+  .iv-flt:has(.iv-stsel)>div:not(.pq):not(.iv-stsel){grid-column:1/-1;flex-basis:100%}
+}
+.pflt.iv-flt:has(#ov-q){grid-template-columns:minmax(220px,2fr) auto}
+@media (max-width:640px){.pflt.iv-flt:has(#ov-q){grid-template-columns:1fr}}
