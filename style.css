@@ -2709,7 +2709,12 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
   .sn-split .sn-hac{grid-column:1/-1}
   .sn-split .sn-hist{position:sticky;top:76px}
 }
-.sn-ph{padding:12px 16px 0;font-size:15px;font-weight:800}
+.sn-pc{padding:14px 16px 4px;display:grid;gap:10px}
+.sn-ph{font-size:15px;font-weight:800;margin:0}
+.sn-ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;min-width:0}
+.sn-ctl .dnav{flex:none}
+.sn-ctl .srch{flex:1 1 220px;min-width:0}
+@media (max-width:600px){ .sn-ctl .dnav{width:100%} .sn-ctl .srch{flex-basis:100%} .sn-pc{padding:12px 12px 2px} }
 
 /* bank group headers inside the daily report */
 .rep-t.grp-t tbody tr:not(.gh):not(.tot) td{background:#fff!important}
