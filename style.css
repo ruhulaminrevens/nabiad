@@ -3217,3 +3217,10 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
   #e-review-tools .cp-sel{order:2}
   #e-review-tools .cp-status{order:3;flex:1 1 100%;flex-wrap:wrap;overflow:visible;-webkit-mask-image:none;mask-image:none}
 }
+
+/* ===== v6.145 — Posting (desktop): one line — status chips | search | period select ===== */
+@media (min-width:641px){
+  #e-review-tools .cp-status{order:1;flex:0 0 auto;flex-wrap:nowrap}
+  #e-review-tools .cp-search{order:2;flex:1 1 11rem;min-width:0}
+  #e-review-tools .cp-sel{order:3}
+}
