@@ -3277,3 +3277,9 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 #k-tab tr.k-grp.l2 td{background:var(--surface);padding-left:30px;font-size:.8rem}
 #k-tab tr.k-grp.l2 td b{font-weight:600}
 @media (max-width:640px){.enquiry-actions{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px 10px;width:100%}.enquiry-actions .btn{grid-column:1/-1;order:9}.enquiry-actions .in{width:100%}}
+
+/* v6.151 — Clear all (Status + Register) */
+.cq-queue-controls{grid-template-columns:repeat(4,minmax(0,1fr)) auto}
+.cq-clear{align-self:end;display:flex}
+.cq-clear .btn{height:40px;white-space:nowrap}
+@media (max-width:900px){.cq-queue-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.cq-clear{grid-column:1/-1}.cq-clear .btn{width:100%}}
