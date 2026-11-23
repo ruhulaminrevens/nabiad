@@ -3271,3 +3271,9 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
   .cq-item:not(.has-sel) .cq-value{grid-column:2;grid-row:2/span 3;align-self:start}
   .cq-item:not(.has-sel) .cq-actions{grid-column:1/-1;margin-top:8px}
 }
+
+/* v6.150 — Cheque Register: Group by + Date by dropdowns */
+.enquiry-actions #k-group,.enquiry-actions #k-dateby{min-width:0}
+#k-tab tr.k-grp.l2 td{background:var(--surface);padding-left:30px;font-size:.8rem}
+#k-tab tr.k-grp.l2 td b{font-weight:600}
+@media (max-width:640px){.enquiry-actions{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px 10px;width:100%}.enquiry-actions .btn{grid-column:1/-1;order:9}.enquiry-actions .in{width:100%}}
