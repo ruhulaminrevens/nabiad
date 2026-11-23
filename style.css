@@ -2599,8 +2599,9 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 
 /* ===== v6.112 — Bank Closing: same buttons, pills, tiles and account cards as Cheque / Cash / Collection ===== */
 @media (max-width:700px){
-  .top.ph.bc-head .acts{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-  .top.ph.bc-head .acts>.btn{width:100%;height:auto;min-height:44px;justify-content:center;white-space:nowrap;font-size:.84rem}
+  .top.ph.bc-head .acts{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .top.ph.bc-head .acts>.btn{width:100%;height:auto;min-height:44px;justify-content:center;white-space:nowrap;font-size:.8rem;padding-inline:6px;gap:5px}
+  .top.ph.bc-head .acts>.btn .ico,.top.ph.bc-head .acts>.btn svg{flex:none}
 }
 /* filter pills (like Collection tabs) */
 .bc-filters{gap:6px}

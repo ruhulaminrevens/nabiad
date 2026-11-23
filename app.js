@@ -1897,7 +1897,7 @@ async function vClosing(v) {
   if (date > t) date = t;
   const searchLabel = bi("ব্যাংক অ্যাকাউন্ট খুঁজুন", "Search bank accounts");
   const reviews = [["all", bi("সব A/C", "All accounts")], ["mv", bi("লেনদেন", "Activity")], ["diff", bi("অমিল", "Differences")], ["remarks", bi("মন্তব্য বাকি", "Remarks needed")]];
-  v.innerHTML = head("ব্যাংক ক্লোজিং", `<a class="btn cb-action" id="c-report-link" href="#/reports">${ico("chart")}<span class="lb">${bi("রিপোর্ট", "Report")}</span></a><a class="btn cb-action cb-summary-link" id="c-summary-link" href="#/cashchk">${ico("list")}<span class="lb">${bi("সামারি", "Summary")}</span></a>`, "bc-head") + `<div class="card tbar navcard bc-controls">${dateNav("c", date)}
+  v.innerHTML = head("ব্যাংক ক্লোজিং", `<a class="btn cb-action cb-account-link" id="c-account-link" href="#/accounts">${ico("card")}<span class="lb">${bi("অ্যাকাউন্ট", "Account")}</span></a><a class="btn cb-action" id="c-report-link" href="#/reports">${ico("chart")}<span class="lb">${bi("রিপোর্ট", "Report")}</span></a><a class="btn cb-action cb-summary-link" id="c-summary-link" href="#/cashchk">${ico("list")}<span class="lb">${bi("সামারি", "Summary")}</span></a>`, "bc-head") + `<div class="card tbar navcard bc-controls">${dateNav("c", date)}
     ${searchBox("c-q", bi("কোড, হোল্ডার, ব্যাংক, A/C নং…", "Code, holder, bank, A/C no…"))}
     <div class="bc-filters" role="group" aria-label="${bi("অ্যাকাউন্ট ফিল্টার", "Account filters")}" hidden>${reviews.map(([key, label]) => `<button type="button" class="btn sm" data-review="${key}" aria-pressed="${key === "all"}">${label} <span class="bc-count"></span></button>`).join("")}</div>
     <div class="bc-context" hidden><div id="c-msg" role="status" hidden></div><div id="c-linked"></div></div></div>
