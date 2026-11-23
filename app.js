@@ -4093,7 +4093,9 @@ async function vReports(v) {
       out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`; dash.innerHTML = `<div class="skel" style="height:190px"></div>`;
       let rows; try { rows = (await cached(`br:${from}:${to}`, 120000, () => API.balancesRange(addDays(from, -10), to))).filter(r => hOk(r.code) && am[r.code]?.daily); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(isNetErr(e) ? "ইন্টারনেট নেই — ব্যাংক রিপোর্টের জন্য অনলাইন থাকতে হবে" : e.message)}</div>`; dash.innerHTML = ""; cur = null; syncSheet(); return; }
       const before = rows.filter(r => r.date < from), inR = rows.filter(r => r.date >= from);
-      const ser = balSeries(inR); if (!ser.length) { out.innerHTML = label + `<div class="card empty">${bi("এই সময়ে কোনো ব্যালেন্স সেভ নেই", "No saved balances in this period")}</div>`; dash.innerHTML = ""; cur = null; syncSheet(); return; }
+      const ser = balSeries(inR); if (!ser.length) { const lastD0 = S.lastBal && (S.lastBal < from || S.lastBal > to) ? S.lastBal : ""; out.innerHTML = label + `<div class="card empty">${bi("এই সময়ে কোনো ব্যালেন্স সেভ নেই", "No saved balances in this period")}${lastD0 ? `<div style="margin-top:12px"><button type="button" class="btn" id="p-last">${bi("সর্বশেষ সেভ করা তারিখে যান", "Go to last saved date")} · ${dmy(lastD0)} ›</button></div>` : ""}</div>`; dash.innerHTML = ""; cur = null; syncSheet();
+      const jb = $("#p-last", out); if (jb) jb.onclick = () => { F.d = lastD0; if (F.m === "custom") { F.f = addDays(lastD0, -29); F.t = lastD0; } $("#p", v).outerHTML = pbBar("p", F); pbBind(v, "p", F, draw); draw(); };
+      return; }
       const firstD = ser[0].date, lastD = ser[ser.length - 1].date, openD = before.length ? before[before.length - 1].date : firstD;
       const mapOn = (arr, d) => Object.fromEntries(arr.filter(r => r.date === d).map(r => [r.code, r]));
       const O = mapOn(before.length ? before : inR, openD), C = mapOn(inR, lastD);
