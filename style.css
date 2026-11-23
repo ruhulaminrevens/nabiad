@@ -2676,3 +2676,25 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
   .bc-register .cbar .bc-bartot{grid-column:1/-1;justify-content:space-between;gap:2px 8px;padding:0 2px 2px}
   .bc-register .cbar .bc-bartot .bt-n{display:none}
 }
+
+/* ===== v6.121 — Balance Snapshot: same coloured action buttons as Cash / Bank Closing, tidy Account history ===== */
+.cb-action.btn.sn-png{--cb-accent:var(--vi);--cb-tint:var(--vi-soft)}
+.cb-action.btn.sn-pdf{--cb-accent:var(--rd);--cb-tint:var(--rd-soft)}
+.cb-action.btn.sn-xl{--cb-accent:var(--gr);--cb-tint:var(--gr-soft)}
+.cb-action.btn.sn-sh{--cb-accent:var(--pri);--cb-tint:var(--pri-soft)}
+.top.ph.sn-head .acts>.btn{white-space:nowrap;line-height:1.2}
+@media (max-width:700px){
+  .top.ph.sn-head .acts{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .top.ph.sn-head .acts:has(#r-sh){grid-template-columns:repeat(4,minmax(0,1fr))}
+  .top.ph.sn-head .acts>.btn{width:100%;height:auto;min-height:44px;justify-content:center;font-size:.8rem;padding-inline:4px;gap:5px}
+}
+.sn-hist{margin-top:14px}
+.sn-hist h3{margin:0 0 10px;font-size:15px}
+.sn-hrow{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:end}
+.sn-hrow label.f{display:block;margin-bottom:4px}
+.sn-hout{margin-top:12px}
+.sn-hout:empty{display:none}
+@media (max-width:600px){
+  .sn-hrow{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sn-hac{grid-column:1/-1}
+}

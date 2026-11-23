@@ -2227,10 +2227,10 @@ async function vClosing(v) {
 async function vCrep(v) {
   let date = sessionStorage.getItem("nabiad_crep_date") || S.lastBal || today(); sessionStorage.removeItem("nabiad_crep_date");
   const canShare = !!navigator.share;
-  v.innerHTML = head("ব্যাংক ক্লোজিং রিপোর্ট", `<button class="btn" id="r-png">${ico("img")} ছবি</button><button class="btn" id="r-pdf">${ico("print")} PDF</button><button class="btn" id="r-xl">${ico("dl")} Excel</button>${canShare ? `<button class="btn" id="r-sh">${ico("share")} শেয়ার</button>` : ""}`) + `
+  v.innerHTML = head("ব্যাংক ক্লোজিং রিপোর্ট", `<button class="btn cb-action sn-png" id="r-png">${ico("img")}<span class="lb">${bi("ছবি", "Image")}</span></button><button class="btn cb-action sn-pdf" id="r-pdf">${ico("print")}<span class="lb">PDF</span></button><button class="btn cb-action sn-xl" id="r-xl">${ico("dl")}<span class="lb">Excel</span></button>${canShare ? `<button class="btn cb-action sn-sh" id="r-sh">${ico("share")}<span class="lb">${bi("শেয়ার", "Share")}</span></button>` : ""}`, "sn-head") + `
    <div class="card tbar noprint navcard">${dateNav("r", date)}${searchBox("r-q", "রিপোর্টে খুঁজুন — কোড, হোল্ডার, ব্যাংক…")}</div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="crep"></div></div></div>
-   <div class="card noprint" style="margin-top:14px"><h3>অ্যাকাউন্ট ইতিহাস</h3><div class="row"><div style="flex:2 1 240px"><label class="f">A/C</label><div><input class="in" id="h-ac" placeholder="কোড টাইপ করুন"></div></div><div><label class="f">From</label><input class="in" type="date" id="h-f" value="${addDays(today(), -60)}"></div><div><label class="f">To</label><input class="in" type="date" id="h-t" value="${today()}"></div></div><div id="h-out" style="margin-top:12px"></div></div>`;
+   <div class="card noprint sn-hist"><h3>${bi("অ্যাকাউন্ট ইতিহাস", "Account history")}</h3><div class="sn-hrow"><div class="sn-hac"><label class="f">A/C</label><div><input class="in" id="h-ac" placeholder="${bi("কোড টাইপ করুন", "Type a code")}"></div></div><div><label class="f">${bi("থেকে", "From")}</label><input class="in" type="date" id="h-f" value="${addDays(today(), -60)}"></div><div><label class="f">${bi("পর্যন্ত", "To")}</label><input class="in" type="date" id="h-t" value="${today()}"></div></div><div id="h-out" class="sn-hout"></div></div>`;
   let data = null, bm = {};
   async function load() { date = $("#r-d", v).value; bm = await balancesOn(date); draw(); }
   function draw() {
