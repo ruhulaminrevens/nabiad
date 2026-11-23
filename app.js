@@ -1216,10 +1216,11 @@ async function vEntry(v) {
     <ol class="cp-flow" id="e-flow" aria-label="${bi("এন্ট্রির ধাপ", "Entry steps")}">${[["e-date", bi("তারিখ", "Date")], ["e-ac", "A/C"], ["e-no", bi("চেক নং", "Cheque no")], ["e-amt", bi("টাকা", "Amount")], ["e-purp", bi("খাত", "Purpose")], ["e-rem", bi("মন্তব্য", "Remarks")]].map(([id, label], i) => `<li><button type="button" tabindex="-1" data-step="${id}"><i>${i + 1}</i><span>${label}</span></button></li>`).join("")}</ol>
     <div class="fgrid ef">
      <div class="s2"><label class="f" for="e-date">${dateLabel}</label><input class="in" type="date" id="e-date" value="${today()}"></div>
-     <div class="s2"><label class="f" for="e-ac">A/C Code</label><div><input class="in" id="e-ac" autocomplete="off" placeholder="${bi("কোড বা নাম", "Code or name")}" aria-describedby="e-achint"></div><div class="hint cp-hint" id="e-achint"></div></div>
+     <div class="s2"><label class="f" for="e-ac">A/C Code</label><div><input class="in" id="e-ac" autocomplete="off" placeholder="${bi("কোড বা নাম", "Code or name")}"></div></div>
      <div class="s4 cp-recent hide" id="e-recent-ac" aria-label="${bi("সাম্প্রতিক A/C", "Recent accounts")}"></div>
-     <div class="s2"><label class="f" for="e-no">${bi("চেক নং", "Cheque no")} <span class="cp-auto hide" id="e-auto">${bi("অটো", "auto")}</span></label><input class="in" id="e-no" inputmode="numeric" autocomplete="off" aria-describedby="e-nohint e-nberr"><div class="hint cp-hint" id="e-nohint"></div><div class="cp-nberr" id="e-nberr" role="alert" hidden></div></div>
+     <div class="s2"><label class="f" for="e-no">${bi("চেক নং", "Cheque no")} <span class="cp-auto hide" id="e-auto">${bi("অটো", "auto")}</span></label><input class="in" id="e-no" inputmode="numeric" autocomplete="off" aria-describedby="e-nohint e-nberr"><div class="hint cp-hint" id="e-nohint"></div></div>
      <div class="s2"><label class="f" for="e-amt">${bi("টাকা", "Amount")}</label><input class="in num" id="e-amt" inputmode="decimal" autocomplete="off" aria-describedby="e-amthint" placeholder="${bi("যেমন 50000 বা 5l", "e.g. 50000 or 5l")}"><div class="hint num cp-hint" id="e-amthint"></div></div>
+     <div class="s4 cp-nberr" id="e-nberr" role="alert" hidden></div>
      <div class="s4 cp-purpose"><div class="cp-section-head"><span class="f" id="e-purpose-label">${bi("খাত", "Purpose")}</span><div class="cp-purpose-tools">
        <button class="btn sm" type="button" id="e-padd">${ico("plus")} ${bi("নতুন খাত যোগ করুন", "New purpose")}</button>
        ${S.me.role === "admin" ? `<button class="btn sm" type="button" id="e-pmg">${ico("edit")} ${bi("খাত সম্পাদনা", "Edit purposes")}</button>` : ""}
@@ -1238,7 +1239,6 @@ async function vEntry(v) {
     <div class="fbar cp-footer">
       <div class="hint rd" id="e-err" role="alert"></div>
       <label class="keep"><input type="checkbox" id="keep" checked> ${bi("পরের এন্ট্রিতে A/C ও খাত ধরে রাখুন", "Keep A/C and purpose for next entry")}</label>
-      <div class="cp-keys" aria-hidden="true"><span><kbd>Enter</kbd> ${bi("পরের ঘর", "next")}</span><span><kbd>←</kbd><kbd>→</kbd> ${bi("খাত", "purpose")}</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> ${bi("সেভ", "save")}</span><span><kbd>/</kbd> ${bi("খুঁজুন", "search")}</span></div>
       <div class="entry-actions"><button type="button" class="btn lg" id="e-clear">${bi("পরিষ্কার", "Clear")}</button><button type="button" class="btn pri lg" id="e-save">${ico("save")} ${bi("সেভ", "Save")}</button></div>
     </div>
    </section>
@@ -1266,7 +1266,7 @@ async function vEntry(v) {
   const noHint = code => { const last = lastCheque(code); $e("e-nohint").textContent = last ? bi(`শেষ এন্ট্রি: ${last.no} (${dmy(last.date)})`, `Last entry: ${last.no} (${dmy(last.date)})`) : bi("এই অ্যাকাউন্টে এখনো এন্ট্রি নেই", "No entries for this account yet"); };
   const setAutoNo = code => { const n = nextNo(code); autoNo = n === "" ? "" : String(n); $e("e-no").value = autoNo; noHint(code); autoTag(); };
   const ac = suggest($e("e-ac"), () => acItems(), it => {
-    const a = it && accMap()[it.value]; $e("e-achint").innerHTML = a ? `${esc(a.bank)} ${a.branch ? "· " + esc(a.branch) : ""} ${a.acno ? "· " + esc(a.acno) : ""}` : "";
+    const a = it && accMap()[it.value]; 
     if (it) setAutoNo(it.value);
     sum(); drawRem(); flow();
   });
@@ -1320,7 +1320,7 @@ async function vEntry(v) {
     if (!code) { el.style.display = "none"; setErr(""); return; }
     const a = accMap()[code], dup = no ? findDup(code, +no) : null, bk = no ? bookForLeaf(code, +no) : null, nobk = !!no && !dup && !bk;
     if (dup) { setErr(`⛔ <b>${no}</b> ${bi("আগেই এন্ট্রি আছে", "is already entered")} (${dmy(dup.date)}, ৳ ${money(dup.amount)}, ${esc(dup.status)})`); el.style.display = "none"; return; }
-    if (nobk) { setErr(`⛔ ${bi("কোনো রেজিস্টার্ড চেক বইয়ে নেই — আগে বই যোগ করুন", "Not in any registered cheque book — register the book first")}`); el.style.display = "none"; return; }
+    if (nobk) { setErr(`⛔ ${bi("কোনো চেক বইয়ে নেই —", "Not in any cheque book —")} ` + (canAddBook() ? `<button type="button" class="cp-nblink" data-newbook>${bi("যোগ করুন", "register it")} ➜</button>` : bi("Admin-কে চেক বই যোগ করতে বলুন", "ask an admin to add the book"))); el.style.display = "none"; return; }
     setErr(""); el.style.display = ""; el.className = "s4 sumbox cp-tk";
     const date = $e("e-date").value, extra = k === "cash" ? $e("e-taker").value : k === "own" ? toac.get()?.value || "" : "", rem = $e("e-rem").value.trim();
     const words = amt ? takaWords(amt) : "", leaf = bk && bk.last != null ? bi(`পাতা ${no - bk.first + 1}/${bk.last - bk.first + 1}`, `Leaf ${no - bk.first + 1} of ${bk.last - bk.first + 1}`) : "";
@@ -1439,7 +1439,7 @@ async function vEntry(v) {
   function clearAll(full) {
     $e("e-err").textContent = "";
     $e("e-attach").open = false;
-    if (full || !$("#keep", v).checked) { ac.set(null); st.purpose = null; setTaker(""); $e("e-achint").textContent = ""; $e("e-nohint").textContent = ""; }
+    if (full || !$("#keep", v).checked) { ac.set(null); st.purpose = null; setTaker(""); $e("e-nohint").textContent = ""; }
     toac.set(null);
     if (ac.get()) setAutoNo(ac.get().value); else { autoNo = ""; $e("e-no").value = ""; autoTag(); }
     $e("e-amt").value = ""; $e("e-rem").value = ""; remIdx = -1; clearPhoto(); applyPurpose(); drawRecent(); flow();
@@ -1522,6 +1522,11 @@ async function vEntry(v) {
   };
   $e("e-dprev").onclick = () => stepActivityDate(-1);
   $e("e-dnext").onclick = () => stepActivityDate(1);
+  $e("e-nberr").onclick = e => {
+    if (!e.target.closest("[data-newbook]")) return;
+    const code = ac.get()?.value; if (!code) return;
+    bookModal({ code, series: "", first: "", last: "", track: "", status: "Active", note: "" }, () => { sum(); $e("e-no").focus(); });
+  };
   let findT = 0;
   $e("e-find").oninput = () => { activityLimit = activityPageSize; clearTimeout(findT); findT = setTimeout(list, 120); };
   $e("e-activity-filters").onclick = e => {

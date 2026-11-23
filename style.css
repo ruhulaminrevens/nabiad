@@ -3183,3 +3183,11 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .cp-nberr[hidden]{display:none}
 .cq-posting .in[aria-invalid="true"]{border-color:var(--rd);box-shadow:0 0 0 3px color-mix(in srgb,var(--rd) 14%,transparent)}
 @media (max-width:640px){#e-review-tools .cp-search{flex-basis:100%}#e-review-tools .cp-status{flex:1 1 auto;flex-wrap:wrap}}
+
+/* ===== v6.142 — Posting: full-width book error with action, one-line recent row ===== */
+.cp-nberr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:7px 12px}
+.cp-nberr b{font-weight:800}
+.cp-nblink{all:unset;cursor:pointer;font-weight:800;text-decoration:underline;text-underline-offset:2px;color:var(--rd)}
+.cp-nblink:hover{filter:brightness(.8)}
+.cp-nblink:focus-visible{outline:2px solid var(--rd);outline-offset:2px;border-radius:4px}
+.cp-recent{max-height:27px;overflow:hidden}
