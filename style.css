@@ -3376,3 +3376,29 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .rg-days i.r{background:#10b981}.rg-days i.p{background:#ef4444}
 .rg-days span:hover i{opacity:1}
 @media (max-width:640px){.rg-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Distribution parties v2 (v6.163): ASM list, by-area, party form */
+.ptab mark{background:#fde68a;color:inherit;border-radius:3px;padding:0 1px}
+.gx-list,.am-list{display:grid;gap:6px;margin-top:10px}
+.gx-dv{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.gx-dv[hidden],.gx-d[hidden],.am-it[hidden]{display:none!important}
+.gx-dv summary{display:grid;grid-template-columns:minmax(0,1fr) minmax(60px,30%) auto auto;gap:10px;align-items:center;padding:11px 14px;cursor:pointer;list-style:none;font-weight:700}
+.gx-dv summary::-webkit-details-marker{display:none}
+.gx-dv summary::before{content:"▸";position:absolute;opacity:0}
+.gx-dv[open] summary{background:var(--surface2);border-bottom:1px solid var(--line2)}
+.gx-dv summary em{font-style:normal;font-size:11.5px;color:var(--mut);font-weight:600;min-width:34px;text-align:right}
+.gx-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gx-bar{display:block;height:7px;border-radius:99px;background:var(--line2);overflow:hidden}.gx-bar.sm{height:5px}
+.gx-bar s{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#6366f1,#22d3ee)}
+.gx-ds{display:grid;padding:4px}
+.gx-d{display:grid;grid-template-columns:minmax(0,1fr) minmax(50px,28%) auto;gap:10px;align-items:center;padding:8px 10px 8px 22px;border:0;background:none;border-radius:9px;font:inherit;color:inherit;text-align:left;cursor:pointer;transition:background .12s}
+.gx-d:hover{background:var(--pri-soft)}.gx-d span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.am-it{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.am-it.dim{opacity:.65}
+.am-nm{flex:1;min-width:0;display:grid;gap:4px;border:0;background:none;padding:2px 0;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.am-nm b{overflow-wrap:anywhere;font-size:14px}.am-nm:hover b{color:var(--pri-ink)}
+.am-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--mut)}.am-meta .gx-bar{width:70px}
+.am-act{display:flex;gap:4px;flex:none}
+.dpx-dup{margin-top:6px;font-size:12px;line-height:1.45;color:#92400e;background:#fef3c7;border-radius:8px;padding:0 8px}
+.dpx-dup:empty{display:none}.dpx-dup:not(:empty){padding:6px 9px}.dpx-dup small{color:#b45309}
+@media (max-width:640px){.fgrid .dpx-h{grid-column:span 1!important}.fgrid{gap:10px}}
