@@ -2048,7 +2048,7 @@ async function vCheques(v) {
   const F = { q: "", code: "", status: "", purpose: "", verification: "", sort: "newest", page: 0 }, PF = pbInit("month"), PS = 100, PBO = { all: true };
   const filterFields = { "k-q": "q", "k-c": "code", "k-s": "status", "k-u": "purpose", "k-vf": "verification" };
   let saved = {}; try { saved = JSON.parse(sessionStorage.getItem("nabiad_reg_view") || "{}"); } catch { }
-  let groupOn = !!saved.group, dens = saved.dens || "", activeRow = "", quickActs = [];
+  let grp = ["bank", "ac", "day"].includes(saved.grp) ? saved.grp : saved.group ? "day" : "", dateBy = ["year", "month", "week"].includes(saved.dateBy) ? saved.dateBy : "", dens = saved.dens || "", activeRow = "", quickActs = [];
   if (["newest", "oldest", "highest", "lowest"].includes(saved.sort)) F.sort = saved.sort;
   const columns = [
     bi("তারিখ", "Date"), bi("A/C · চেক", "A/C · Cheque"), bi("হোল্ডার", "Holder"), bi("টাকা", "Amount"),
@@ -2066,7 +2066,10 @@ async function vCheques(v) {
      <div class="enquiry-toolbar noprint">
        <div id="k-count" class="mut sm" role="status" tabindex="-1"></div>
        <div class="enquiry-actions">
-         <label class="cq-grp-t"><input type="checkbox" id="k-group"> ${bi("তারিখ অনুযায়ী গ্রুপ", "Group by date")}</label>
+         <label for="k-group" class="mut sm">${bi("গ্রুপ করুন", "Group by")}</label>
+         <select class="in" id="k-group"><option value="">${bi("গ্রুপ ছাড়া", "No grouping")}</option><option value="bank">${bi("ব্যাংকের নাম", "Bank name")}</option><option value="ac">${bi("অ্যাকাউন্টের নাম", "Account name")}</option><option value="day">${bi("চেকের তারিখ", "Cheque date")}</option></select>
+         <label for="k-dateby" class="mut sm">${bi("তারিখ অনুযায়ী", "Date by")}</label>
+         <select class="in" id="k-dateby"><option value="">—</option><option value="year">${bi("বছর", "Year")}</option><option value="month">${bi("মাস", "Month")}</option><option value="week">${bi("সপ্তাহ", "Week")}</option></select>
          <div class="chips k-dens" role="group" aria-label="${bi("ঘনত্ব", "Density")}"><button type="button" class="chip sm" data-dens="" aria-pressed="true">${bi("স্বাভাবিক", "Comfortable")}</button><button type="button" class="chip sm" data-dens="compact" aria-pressed="false">${bi("কমপ্যাক্ট", "Compact")}</button></div>
          <button type="button" class="btn sm" id="k-reset">${bi("ফিল্টার মুছুন", "Clear filters")}</button>
          <label for="k-sort" class="mut sm">${bi("সাজান", "Sort by")}</label>
@@ -2127,6 +2130,20 @@ async function vCheques(v) {
     const accounts = accMap(), base = filt(accounts);
     stOpts(base);
     const arr = sorted(withStatus(base)), pages = Math.max(1, Math.ceil(arr.length / PS));
+    const MN = [bi("জানুয়ারি", "January"), bi("ফেব্রুয়ারি", "February"), bi("মার্চ", "March"), bi("এপ্রিল", "April"), bi("মে", "May"), bi("জুন", "June"), bi("জুলাই", "July"), bi("আগস্ট", "August"), bi("সেপ্টেম্বর", "September"), bi("অক্টোবর", "October"), bi("নভেম্বর", "November"), bi("ডিসেম্বর", "December")];
+    const dKey = c => dateBy === "year" ? c.date.slice(0, 4) : dateBy === "month" ? c.date.slice(0, 7) : dateBy === "week" ? pbWeek(c.date)[0] : c.date;
+    const levels = [];
+    if (grp === "bank" || grp === "ac") levels.push({ key: c => grp === "bank" ? (accounts[c.code]?.bank || "—") : c.code, label: (k, c) => grp === "ac" ? acLabel(c.code) : k, desc: false });
+    if (grp === "day" || dateBy) levels.push({ key: dKey, desc: F.sort !== "oldest", label: k => dateBy === "month" ? `${MN[+k.slice(5, 7) - 1]} ${k.slice(0, 4)}` : dateBy === "week" ? `${dmy(k)} – ${dmy(pbWeek(k)[1])}` : dateBy === "year" ? k : dmy(k) });
+    const gk = new Map(), gagg = new Map();
+    if (levels.length) {
+      for (const c of arr) {
+        let pre = ""; const raw = levels.map(L => L.key(c)), comp = raw.map(k => pre = pre + "\u0001" + k);
+        gk.set(c, { raw, comp });
+        for (const k of comp) { const o = gagg.get(k) || { n: 0, amt: 0 }; o.n++; if (isLive(c)) o.amt += c.amount; gagg.set(k, o); }
+      }
+      arr.sort((a, b) => { const x = gk.get(a).raw, y = gk.get(b).raw; for (let i = 0; i < levels.length; i++) if (x[i] !== y[i]) return levels[i].desc ? y[i].localeCompare(x[i]) : x[i].localeCompare(y[i]); return 0; });
+    }
     F.page = Math.min(F.page, pages - 1);
     const offset = F.page * PS, part = arr.slice(offset, offset + PS);
     const live = arr.filter(isLive);
@@ -2183,11 +2200,14 @@ async function vCheques(v) {
       const on = k.includes(F.sort);
       return `<th scope="col" class="k-th${r}${on ? " on" : ""}" data-ksort="${on && F.sort === k[0] ? k[1] : k[0]}" tabindex="0" role="button" aria-sort="${on ? (F.sort === k[0] ? "descending" : "ascending") : "none"}">${col} <i>${on ? (F.sort === k[0] ? "↓" : "↑") : "↕"}</i></th>`;
     };
-    const dayTotals = new Map(); for (const c of arr) { const d = dayTotals.get(c.date) || { n: 0, amt: 0 }; d.n++; if (isLive(c)) d.amt += c.amount; dayTotals.set(c.date, d); }
-    const grouping = groupOn && (F.sort === "newest" || F.sort === "oldest"); let lastD = "";
+    const last = [];
     $("#k-tab", v).className = dens ? "k-" + dens : "";
     $("#k-tab", v).innerHTML = part.length ? `<div class="tw cards"><table><thead><tr>${columns.map((column, i) => th(i, column)).join("")}</tr></thead><tbody>${part.map(c => {
-      let g = ""; if (grouping && c.date !== lastD) { lastD = c.date; const d = dayTotals.get(c.date); g = `<tr class="k-grp"><td colspan="7"><b>${dmy(c.date)}</b><span>${bi(`${d.n}টি চেক`, `${d.n} cheque(s)`)} · ৳ ${money(d.amt)}</span></td></tr>`; }
+      let g = "";
+      if (levels.length) {
+        const k = gk.get(c), from = levels.findIndex((_, i) => last[i] !== k.comp[i]);
+        if (from >= 0) for (let i = from; i < levels.length; i++) { last[i] = k.comp[i]; const t = gagg.get(k.comp[i]); g += `<tr class="k-grp${i > 0 ? " l2" : ""}"><td colspan="7"><b>${esc(levels[i].label(k.raw[i], c))}</b><span>${bi(`${t.n}টি চেক`, `${t.n} cheque(s)`)} · ৳ ${money(t.amt)}</span></td></tr>`; }
+      }
       return g + `<tr data-register-id="${esc(c.id)}"${c.id === activeRow ? ' class="k-act"' : ""}>
       ${cell(0, dmy(c.date))}
       ${cell(1, `<button type="button" class="cq-link" data-register-id="${esc(c.id)}">${hl(acLabel(c.code) + " · " + c.no)}</button>${chqIcons(c)}`)}
@@ -2199,7 +2219,7 @@ async function vCheques(v) {
     </tr>`; }).join("")}</tbody></table></div>` : `<div class="empty">${activeCount || chipsList.length
       ? bi("কোনো চেক মেলেনি। ফিল্টার পরিবর্তন করে দেখুন।", "No cheques match these filters.")
       : bi("এই সময়সীমায় কোনো চেক নেই।", "No cheques in this period.")}</div>`;
-    try { sessionStorage.setItem("nabiad_reg_view", JSON.stringify({ group: groupOn, dens, sort: F.sort })); } catch { }
+    try { sessionStorage.setItem("nabiad_reg_view", JSON.stringify({ grp, dateBy, dens, sort: F.sort })); } catch { }
     const pager = $("#k-pg", v);
     pager.hidden = pages <= 1;
     $("#k-prev", v).disabled = F.page === 0;
@@ -2235,7 +2255,9 @@ async function vCheques(v) {
     const b = e.target.closest("[data-tip]"); if (!b) return; const q = $("#k-q", v), tip = b.dataset.tip;
     q.value = (q.value.trim() + " " + tip).trim() + (tip.endsWith(":") ? "" : " "); F.q = q.value; F.page = 0; draw(); q.focus();
   };
-  $("#k-group", v).checked = groupOn; $("#k-group", v).onchange = e => { groupOn = e.target.checked; draw(); };
+  $("#k-group", v).value = grp; $("#k-dateby", v).value = dateBy;
+  $("#k-group", v).onchange = e => { grp = e.target.value; F.page = 0; draw(); };
+  $("#k-dateby", v).onchange = e => { dateBy = e.target.value; F.page = 0; draw(); };
   $$("[data-dens]", v).forEach(b => { b.setAttribute("aria-pressed", String(b.dataset.dens === dens)); b.classList.toggle("on", b.dataset.dens === dens); b.onclick = () => { dens = b.dataset.dens; $$("[data-dens]", v).forEach(x => { x.setAttribute("aria-pressed", String(x.dataset.dens === dens)); x.classList.toggle("on", x.dataset.dens === dens); }); draw(); }; });
   $("#k-sort", v).value = F.sort;
   const bind = (id, k) => { const el = $("#" + id, v); el.addEventListener("input", () => { F[k] = el.value; F.page = 0; draw(); }); };
