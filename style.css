@@ -2847,3 +2847,50 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
   .sn-ht th:nth-child(4),.sn-ht td:nth-child(4),.sn-ht th:nth-child(5),.sn-ht td:nth-child(5){display:none}
   .sn-pd i{display:none} .sn-ht td{padding:8px 8px;font-size:12.5px} .sn-ht thead th{padding:8px}
 }
+
+/* ===== v6.126 — Tax Help ===== */
+.tx-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-top:14px;align-items:start}
+@media (min-width:1100px){.tx-grid{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}}
+.tx-calc,.tx-notes,.tx-adm{padding:18px}
+.tx-side{display:grid;gap:14px}
+.tx-hh{display:flex;gap:12px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}
+.tx-hh h3,.tx-notes h3,.tx-adm h3{margin:0 0 4px;font-size:16px;font-weight:800;display:flex;align-items:center;gap:7px}
+.tx-hh h3 svg,.tx-notes h3 svg,.tx-adm h3 svg{width:18px;height:18px;color:var(--vi)}
+.tx-ay{min-width:210px} .tx-ay .in{height:42px;border-radius:11px;font-weight:600}
+.tx-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.tx-form .tx-c{grid-column:1/-1}
+.tx-form label.f{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11.5px;font-weight:700;color:var(--mut);margin-bottom:4px}
+.tx-form .in{height:46px;border-radius:12px;font-weight:700;font-size:15px}
+.tx-chk{grid-column:1/-1;display:flex;align-items:center;gap:9px;font-weight:600;color:var(--txt2);cursor:pointer}
+.tx-chk input{width:18px;height:18px;accent-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:99px;overflow:hidden;background:var(--surface2)}
+.seg button{border:0;background:transparent;padding:2px 10px;font:inherit;font-size:11px;font-weight:700;color:var(--mut);cursor:pointer}
+.seg button.on{background:var(--grad);color:#fff}
+#tx-out{margin-top:14px} #tx-warn:not(:empty){margin-bottom:12px}
+.tx-big{display:grid;gap:2px;padding:16px 18px;border-radius:16px;background:var(--grad);color:#fff;box-shadow:var(--sh-pri)}
+.tx-big.ok{background:var(--g-green)}
+.tx-big span{font-size:12px;font-weight:700;opacity:.85;text-transform:uppercase;letter-spacing:.4px}
+.tx-big b{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15}
+.tx-big em{font-style:normal;font-size:12.5px;opacity:.9}
+.tx-kp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.tx-kp>div{display:grid;gap:1px;padding:9px 11px;border-radius:12px;border:1px solid var(--line);background:var(--surface);min-width:0}
+.tx-kp span{font-size:10.5px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.3px}
+.tx-kp b{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
+.tx-kp .dn b{color:var(--rd)} .tx-kp .up b{color:var(--gr)}
+.tx-t{margin-top:12px;border:1px solid var(--line);border-radius:14px}
+.tx-t thead th{background:var(--surface2);font-size:11px;text-transform:uppercase;letter-spacing:.3px}
+.tx-t tfoot td{border-top:1px solid var(--line2);padding:8px 10px;font-weight:600}
+.tx-t tfoot tr.tot td{font-weight:800;background:var(--surface2)}
+.tx-t td.up{color:var(--gr);font-weight:700} .tx-t td.dn{color:var(--rd);font-weight:800}
+.tx-notes ul{margin:8px 0 0;padding-left:18px;display:grid;gap:8px;line-height:1.5}
+.tx-src{margin:12px 0 0} .tx-dis{margin:8px 0 0;padding:9px 11px;border-radius:10px;background:var(--am-soft);color:var(--am);font-size:12px;font-weight:600}
+.tx-ef{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}
+.tx-ef .tx-er{grid-column:1/-1}
+.tx-adm label.f{font-size:11.5px;font-weight:700;color:var(--mut);display:block;margin-bottom:4px}
+.tx-adm textarea.in{font-family:ui-monospace,Consolas,monospace;font-size:13px}
+.tx-eb{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+@media (max-width:560px){.tx-form{grid-template-columns:minmax(0,1fr)} .tx-kp{grid-template-columns:repeat(2,minmax(0,1fr))} .tx-big b{font-size:26px} .tx-calc,.tx-notes,.tx-adm{padding:14px}}
+@media print{.tx-adm{display:none!important}}
+.tx-form label.f{min-height:24px}
+.tx-t tfoot td{background:var(--surface2)} .tx-t tfoot tr.tot td{background:var(--pri-soft);color:var(--pri-ink)}
+.tx-t tfoot tr.tot td.dn{color:var(--rd)} .tx-t tfoot tr.tot td.up{color:var(--gr)}
