@@ -2663,3 +2663,16 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
   .bc-register .cbar .btn.lg{min-height:42px;padding:6px 10px;font-size:14px;border-radius:10px}
 }
 @media (min-width:901px){ html:has(.bc-register .cbar) #toasts{bottom:calc(var(--bc-save-bottom) + 76px)} }
+
+/* ===== v6.119 — save bar carries the running totals (always visible while scrolling) ===== */
+.bc-bartot{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 14px;min-width:0;font-size:12.5px;color:var(--mut);font-weight:600}
+.bc-bartot b{color:var(--txt);font-size:13.5px;font-weight:800;margin-inline-start:3px}
+.bc-bartot .bt-usa{color:var(--gr)} .bc-bartot .bt-bad{color:var(--rd)}
+@media (min-width:901px){
+  .bc-register .cbar .bc-bartot{flex:1;margin-inline-end:auto;gap:2px 22px;font-size:13px}
+  .bc-register .cbar .bc-bartot b{font-size:14.5px}
+}
+@media (max-width:900px){
+  .bc-register .cbar .bc-bartot{grid-column:1/-1;justify-content:space-between;gap:2px 8px;padding:0 2px 2px}
+  .bc-register .cbar .bc-bartot .bt-n{display:none}
+}
