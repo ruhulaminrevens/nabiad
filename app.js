@@ -2237,7 +2237,7 @@ async function vCrep(v) {
   function draw() {
     if (!$("#crep", v)) return;   // page already replaced (user navigated away)
     const q = norm($("#r-q", v).value);
-    const all = S.accounts.filter(a => a.daily && bm[a.code] && bm[a.code].total != null).sort((a, b) => a.sort - b.sort);
+    const all = S.accounts.filter(a => a.daily && bm[a.code] && bm[a.code].total != null).sort((a, b) => String(a.code).localeCompare(String(b.code), "en", { numeric: true, sensitivity: "base" })); /* A/C CODE A–Z (natural order: 2 before 10) */
     const rows = all.filter(a => !q || accHay(a).includes(q)).map(a => ({ n: 0, a, total: bm[a.code].total, block: bm[a.code].block || 0, remark: bm[a.code].remark || "" }));
     rows.forEach((r, i) => r.n = i + 1); const T = rows.reduce((s, r) => ({ t: s.t + r.total, b: s.b + r.block }), { t: 0, b: 0 }); data = { rows, T, filtered: rows.length !== all.length, all: all.length };
     const wd = new Date(date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long" }), dl = new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
