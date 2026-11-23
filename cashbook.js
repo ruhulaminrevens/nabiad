@@ -801,7 +801,7 @@ async function vCashBook(v) {
         <label>${cbVoucherLabel(side)}<input class="in cbref" autocomplete="off"></label>
         <label class="cb-compose-account" hidden>${bi("ব্যাংক A/C", "Bank account")}<select class="in cbac"><option value="">${bi("A/C বাছুন", "Select A/C")}</option>
         ${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)} · ${esc(a.holder || "")}</option>`).join("")}</select></label>
-        <div class="cb-row-actions"><button type="button" class="btn cb-cancel" hidden>${bi("বাতিল", "Cancel")}</button>
+        <div class="cb-row-actions"><button type="button" class="btn cb-cancel" data-role="close" hidden>${ico("xmark")} <span>${bi("বাতিল", "Cancel")}</span></button>
           <button type="submit" class="btn pri cbadd">${ico("plus")} <span>${bi("যোগ করুন", "Add")}</span></button></div>
       </form></section>`;
     const waiting = earlier.filter(day => day.status !== "final" && (!previous || day.date > previous.date)).pop();
@@ -946,7 +946,7 @@ async function vCashBook(v) {
       state.account.value = item.c || "";
       state.account.parentElement.hidden = !CB_BANK.includes(state.category);
       state.cancel.hidden = index == null;
-      $("button[type=submit] span", state.section).textContent = index == null ? bi("যোগ করুন", "Add") : bi("আপডেট", "Update");
+      $("button[type=submit]", state.section).innerHTML = `${ico(index == null ? "plus" : "check")} <span>${index == null ? bi("যোগ করুন", "Add") : bi("আপডেট", "Update")}</span>`;
       if (focus) state.name.focus();
     };
     for (const side of sides) {
