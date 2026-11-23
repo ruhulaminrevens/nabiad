@@ -3210,3 +3210,10 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
   #e-purp .chip{flex:0 0 auto;scroll-snap-align:start}
 }
 @media (max-width:520px){.sg-list [data-i]:not(:has(.sgn))>small{white-space:nowrap;max-width:100%}.sg-list [data-i]:not(:has(.sgn)){gap:3px}}
+
+/* ===== v6.144 — Posting (phone): search + period on one row, status chips on their own full row ===== */
+@media (max-width:640px){
+  #e-review-tools .cp-search{order:1;flex:1 1 0;min-width:0}
+  #e-review-tools .cp-sel{order:2}
+  #e-review-tools .cp-status{order:3;flex:1 1 100%;flex-wrap:wrap;overflow:visible;-webkit-mask-image:none;mask-image:none}
+}
