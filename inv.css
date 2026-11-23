@@ -643,3 +643,15 @@ button.ivd-ins:hover { transform:translateY(-2px); border-color:var(--pri); }
 @media (max-width:640px) { .iv-rmtool .in { max-width: none; flex: 1 1 100%; } .iv-rmi b { font-size: 13px; } }
 @media (prefers-reduced-motion:reduce) { .card.iv-rmq.flash { animation: none; } }
 .card.iv-rmq { scroll-margin-top: 84px; }
+/* RM product tabs (v6.158) */
+.card.iv-stock-entry { scroll-margin-top: 84px; } .card.iv-stock-entry.flash { animation: ivFlash 1.1s ease; }
+#rf-n { margin: 8px 0 0; }
+.iv-rd1 { gap: 8px; } .iv-rd1.neg { border-color: var(--rd); }
+.iv-rd1 header svg { width: 13px; height: 13px; color: var(--mut); }
+.iv-rd3 { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+.iv-rd3 span { display: grid; gap: 1px; padding: 6px 8px; border-radius: 9px; background: var(--surface2); min-width: 0; }
+.iv-rd3 small { font-size: 10.5px; font-weight: 600; color: var(--mut); } .iv-rd3 b { font-size: 15px; } .iv-rd3 i { font-style: normal; font-size: 11px; color: var(--mut); }
+.iv-rd3 .iv-stc { background: color-mix(in srgb,var(--vi) 10%,var(--surface)); } .iv-rd3 .iv-stc b { color: var(--vi); }
+.iv-stock-table tr[hidden] { display: none; }
+@media (prefers-reduced-motion:reduce) { .card.iv-stock-entry.flash { animation: none; } }
+.iv-rd3 b.mut { color: var(--mut); }
