@@ -2963,8 +2963,8 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 }
 .br-sheetbar .btn{max-width:100%;white-space:normal;text-align:left;height:auto;min-height:38px}
 /* v6.132: Reports filter row — period left, Holder + Bank side by side on the right */
-.tb-inl>.pb+.br-fl{flex:0 1 400px;display:flex;flex-wrap:wrap;gap:10px;min-width:260px;align-items:flex-end}
-.tb-inl>.pb+.br-fl>div{flex:1 1 150px;min-width:130px}
+.tb-inl>.pb+.br-fl{flex:0 1 300px;display:flex;flex-wrap:wrap;gap:10px;min-width:260px;align-items:flex-end}
+.tb-inl>.pb+.br-fl>div{flex:1 1 120px;min-width:120px}
 .tb-inl>.pb+.br-fl .in{width:100%}
 /* ===== v6.134 Cheque report dashboard ===== */
 .cq-pipe{display:flex;height:14px;border-radius:99px;overflow:hidden;background:var(--line2);gap:2px}
@@ -2976,3 +2976,8 @@ td:has(> .cp-row-actions) { width: 1%; white-space: nowrap; }
 .cq-ok{color:var(--gr);font-weight:800}
 .cq-sel{width:auto;min-width:150px;flex:0 0 auto}
 @media (max-width:640px){ .cq-sel{flex:1 1 100%} .br-mv .cq-st{display:none} }
+/* v6.135: filter bar stays put when switching to Custom (chips + inputs share one baseline, same heights) */
+.tb-inl>.pb{align-items:flex-end}
+.tb-inl>.pb .pbcu{align-items:flex-end}
+.tb-inl>.pb .pbcu .in{height:42px;box-sizing:border-box}
+.tb-inl>.pb .pbcu .f{margin-bottom:4px}
