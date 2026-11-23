@@ -263,6 +263,7 @@ function resetPwModal(u) {
   });
 }
 const ICON = {
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
   home: '<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   plus: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -2043,7 +2044,7 @@ async function vClosing(v) {
     const autoCr = r => (r.acc || r.acb) ? `${r.acc ? `<span><em>${bi("কালেকশন", "Collection")}</em> <b class="num">${money(r.acc)}</b></span>` : ""}${r.acb ? `<span><em>${bi("ক্যাশ জমা", "Cash dep.")}</em> <b class="num">${money(r.acb)}</b></span>` : ""}` : `<span class="mut">—</span>`;
     body.innerHTML = `<div class="bc-summary" aria-label="${bi("দিনের মোট", "Daily totals")}">${tiles.map(([i, label]) => `<div class="card bc-kpi" data-kpi="${i}"><span>${label}</span><strong class="num"></strong></div>`).join("")}</div>
     <section class="card bc-register" aria-label="${bi("অ্যাকাউন্ট পর্যালোচনা", "Account review")}">
-    <div class="bc-review">${locked ? "" : `<span class="mut sm" id="c-extra-help">${bi("অতিরিক্ত ডেবিট বা ক্রেডিট দিতে আগে ওই A/C-এর ব্যাংক ক্লোজিং লিখুন।", "Enter the account’s Bank Closing amount to enable extra debit and credit.")} <b class="xtip">${bi("টিপ: সরাসরি 4,93,582+500 বা 1,20,000-10000 লেখা যায়।", "Tip: you can type 4,93,582+500 or 1,20,000-10000 directly.")}</b></span>`}<span class="mut sm" id="c-shown" role="status"></span></div>
+    <div class="bc-review">${locked ? "" : `<button type="button" class="bc-info" id="c-tip" aria-expanded="false" aria-controls="c-extra-help">${ico("info")}<span>${bi("টিপ", "Tip")}</span></button>`}<span class="bc-dt" id="c-dt">${new Date(date + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span><span class="mut sm" id="c-shown" role="status"></span>${locked ? "" : `<div class="bc-tip" id="c-extra-help" role="tooltip" hidden><p>${bi("অতিরিক্ত ডেবিট বা ক্রেডিট দিতে আগে ওই A/C-এর ব্যাংক ক্লোজিং লিখুন।", "Enter the account’s Bank Closing amount to enable extra debit and credit.")}</p><p>${bi("সরাসরি হিসাব লেখা যায়: 4,93,582+500 বা 1,20,000-10000", "You can type a sum directly: 4,93,582+500 or 1,20,000-10000")}</p></div>`}</div>
     <div id="c-empty" class="empty" hidden>${bi("এই ফিল্টারে কোনো অ্যাকাউন্ট নেই", "No accounts match these filters")}</div>
     <div class="tw cards closing bc-table"><table id="ct"><thead><tr><th>#</th><th>A/C</th><th class="r">আগের ক্লোজিং</th><th class="r c-dr">${bi("ডেবিট / উত্তোলন", "Debit / Withdraw")}</th><th class="r c-cr">${bi("ক্রেডিট / জমা", "Credit / Deposit")}</th><th class="r">হিসাব মতে</th><th class="r c-bk">ব্যাংক ক্লোজিং</th><th class="r">${bi("ব্লক", "Block")}</th><th class="r">${bi("ব্যবহারযোগ্য", "Usable")}</th><th class="r">${bi("অমিল", "Diff")}</th><th>মন্তব্য</th></tr></thead><tbody>
     ${rows.map((r, i) => { const b = B(r.a); const bk = r.a.bank || bi("অন্যান্য", "Other"), first = i === 0 || (rows[i - 1].a.bank || "") !== (r.a.bank || ""); const gh = first ? `<tr class="gh"><td colspan="11" data-l=""><b>${esc(bk)}</b> <span class="gn">${rows.filter(y => (y.a.bank || "") === (r.a.bank || "")).length}</span></td></tr>` : ""; return gh + `<tr data-i="${i}" style="--b1:${b.c1}"><td class="mut">${i + 1}</td><td class="acc-c" style="--b1:${b.c1}"><b>${esc(r.code)}</b> <span class="mvdot" aria-label="${bi("লেনদেন", "Activity")}" hidden>●</span><div class="mut sm">${esc(r.holder)}</div></td><td class="r num">${money(r.prevT)}</td>
@@ -2179,6 +2180,15 @@ async function vClosing(v) {
       });
       inp.addEventListener("keydown", e => { if (e.key !== "Enter") return; e.preventDefault(); let tr = inp.closest("tr").nextElementSibling; while (tr && tr.style.display === "none") tr = tr.nextElementSibling; const cls = [...inp.classList].find(c => ["od", "odp", "tot", "blk"].includes(c)); const nx = tr && $("." + cls, tr); if (nx) nx.focus(); });
     });
+    const tipB = $("#c-tip", body), tipP = $("#c-extra-help", body);
+    if (tipB && tipP) {
+      const show = on => { tipP.hidden = !on; tipB.setAttribute("aria-expanded", String(on)); };
+      const hov = matchMedia("(hover:hover)").matches;
+      tipB.onclick = e => { e.stopPropagation(); show(hov ? true : tipP.hidden); };
+      if (hov) { tipB.onmouseenter = () => show(true); tipB.onmouseleave = () => show(false); }
+      body.addEventListener("click", e => { if (!tipP.hidden && !tipP.contains(e.target)) show(false); });
+      body.addEventListener("keydown", e => { if (e.key === "Escape" && !tipP.hidden) { show(false); tipB.focus(); } });
+    }
     const bq = $("#c-bq", body);
     query.oninput = () => { if (bq) bq.value = query.value; filter(); };
     if (bq) { bq.value = query.value; bq.oninput = () => { query.value = bq.value; filter(); }; }
