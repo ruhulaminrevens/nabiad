@@ -58,7 +58,7 @@ async function cbLearn(force) {
   const L = { r: new Map(), p: new Map(), nm: { r: new Map(), p: new Map() }, t: Date.now() };
   try {
     const rows = await API.cbRange(addDays(today(), -240), today());
-    rows.forEach(d => ["r", "p"].forEach(t => (d.lines?.[t] || []).forEach(l => { const n = cbNorm(l.n); if (!n) return; if (l.k) L[t].set(n, { k: cashCategory(l.k), ...(l.c ? { c: l.c } : {}) }); L.nm[t].set(n, { n: l.n, c: (L.nm[t].get(n)?.c || 0) + 1 }); })));
+    rows.forEach(d => ["r", "p"].forEach(t => (d.lines?.[t] || []).filter(cbLive).forEach(l => { const n = cbNorm(l.n); if (!n) return; if (l.k) L[t].set(n, { k: cashCategory(l.k), ...(l.c ? { c: l.c } : {}) }); L.nm[t].set(n, { n: l.n, c: (L.nm[t].get(n)?.c || 0) + 1 }); })));
   } catch { }
   return CBL = L;
 }
@@ -133,9 +133,10 @@ function cbGuess(name, t) {
   return null;
 }
 /* lines → the Cash Checker's items ({key:{a, n, accs}}); unassigned lines go to Others and are counted */
+const cbLive = l => !l?.x;
 function cbGroup(bk) {
   const items = {}, warn = { un: 0, noAc: 0 };
-  [["r", "cz_oth"], ["p", "p_oth"]].forEach(([t, dflt]) => (bk?.lines?.[t] || []).forEach(l => {
+  [["r", "cz_oth"], ["p", "p_oth"]].forEach(([t, dflt]) => (bk?.lines?.[t] || []).filter(cbLive).forEach(l => {
     const a = +l.a || 0; if (!a) return;
     let k = cashCategory(l.k); if (!k || !CB_CAT[t].includes(k)) { k = dflt; warn.un++; }
     const it = items[k] ||= { a: 0, _n: [] }; it.a += a; if (l.n) it._n.push(l.n);
@@ -144,7 +145,7 @@ function cbGroup(bk) {
   Object.values(items).forEach(it => { it.a = Math.round(it.a * 100) / 100; if (it.accs) it.accs.forEach(z => z.a = Math.round(z.a * 100) / 100); const n = [...new Set(it._n)].join(", "); delete it._n; if (n) it.n = n.slice(0, 240); });
   return { items, warn };
 }
-const cbTot = bk => { const s = t => (bk?.lines?.[t] || []).reduce((q, l) => q + (+l.a || 0), 0), R = s("r"), P = s("p"); return { R, P, exp: (+bk?.opening_cash || 0) + R - P }; };
+const cbTot = bk => { const s = t => (bk?.lines?.[t] || []).filter(cbLive).reduce((q, l) => q + (+l.a || 0), 0), R = s("r"), P = s("p"); return { R, P, exp: (+bk?.opening_cash || 0) + R - P }; };
 
 /* ---------- Cash Checker: problems & differences ---------- */
 function cbChecksHtml(L) {
@@ -272,7 +273,7 @@ const cbRegisterLineLabel = (line, rawTally = false) =>
 
 const cbPendingParty = () => bi("পার্টির নাম যাচাই বাকি", "Party name pending");
 const cbPendingReceipts = book => book?.importedForCashBook
-  ? (book.lines?.r || []).filter(line => line.needsPartyName) : [];
+  ? (book.lines?.r || []).filter(line => line.needsPartyName && cbLive(line)) : [];
 function cbPartyWarning(book) {
   const count = cbPendingReceipts(book).length;
   return count ? bi(
@@ -378,7 +379,7 @@ function cbNotesText(remarks) {
 }
 
 function cbRegisterSheet(book, paper = false) {
-  const lines = book.lines || {}, receipts = lines.r || [], payments = lines.p || [], ref = lines.register;
+  const lines = book.lines || {}, receipts = (lines.r || []).filter(cbLive), payments = (lines.p || []).filter(cbLive), ref = lines.register;
   const [[, opening], [, receipt], [, payment], [, expected], [, counted], [, difference], [movementLabel, movement]] = cbRegisterTotals(book);
   const tally = book.source === "tally";
   const openingLabel = bi("শুরুর নগদ", "Opening cash");
@@ -439,7 +440,8 @@ async function cbRegisterExcel(book) {
     ...(!rawTally ? [l?.ref || (l?.needsPartyName ? l.sourceRef : "")] : []),
     [cbPendingPartyRef(l, rawTally), l?.note].filter(Boolean).join(" · ")];
   const headings = side => [cbSideLabel(side), "৳", ...(!rawTally ? [cbVoucherLabel(side)] : []), cbNarrationLabel()];
-  const rows = Array.from({ length: Math.max(lines.r?.length || 0, lines.p?.length || 0) }, (_, i) => [i + 1, ...entry(lines.r?.[i]), ...entry(lines.p?.[i])]);
+  const liveR = (lines.r || []).filter(cbLive), liveP = (lines.p || []).filter(cbLive);
+  const rows = Array.from({ length: Math.max(liveR.length, liveP.length) }, (_, i) => [i + 1, ...entry(liveR[i]), ...entry(liveP[i])]);
   const cells = [
     [cbRegisterTitle(), book.date, cbRegisterSource(book), cbRegisterDate(book.updated_at), book.entered_by || ""],
     ["#", ...headings("r"), ...headings("p")],
@@ -633,6 +635,8 @@ function cbWorkflowError(error) {
   const message = error.message || String(error);
   if (/cashbook_conflict/.test(message)) return bi("অন্য কেউ হিসাব বদলেছেন। তারিখটি আবার খুলে মিলিয়ে নিন।", "Another user updated this day. Reopen the date and review before retrying.");
   if (/cashbook_permission/.test(message)) return bi("এই এন্ট্রি বদলানোর অনুমতি বা সময়সীমা নেই।", "Permission denied or the edit window has closed.");
+  if (/cashbook_cancelled/.test(message)) return bi("বাতিল লেনদেন এডিট করা যায় না — আগে ফিরিয়ে আনুন।", "A cancelled entry can't be edited — restore it first.");
+  if (/cashbook_action/.test(message)) return bi("বাতিল/ফিরিয়ে আনার জন্য database update (schema_cashbook_cancel.sql) এখনো প্রয়োগ করা হয়নি।", "Cancel / restore needs the database update (schema_cashbook_cancel.sql), which hasn't been applied yet.");
   if (/cashbook_write|cashbook_edit_imported|PGRST202/.test(message)) return bi("Cash Book-এর database update এখনো প্রয়োগ করা হয়নি।", "The Cash Book database update is required.");
   if (/cashbook_invalid_line/.test(message)) return bi("বিবরণ, অঙ্ক, রেফারেন্স ও নোট যাচাই করুন।", "Check the particulars, amount, reference and note.");
   return message;
@@ -678,6 +682,8 @@ Object.assign(DemoAPI, {
     if (action === "add") (book.lines[side] ||= []).push({ ...data, uid: S.me.id, created_at: new Date().toISOString() });
     if (action === "edit") Object.assign(book.lines[side][index], data);
     if (action === "delete") book.lines[side].splice(index, 1);
+    if (action === "cancel") Object.assign(book.lines[side][index], { x: true, xby: S.me.name, xat: new Date().toISOString() });
+    if (action === "restore") for (const key of ["x", "xby", "xat"]) delete book.lines[side][index][key];
     if (action === "balance" || action === "close") {
       Object.assign(book, data);
       if (action === "close") {
@@ -909,16 +915,19 @@ async function vCashBook(v) {
       const rawTally = cbIsTallyReport(activityBook);
       for (const button of $$("[data-cb-side]", body)) {
         button.setAttribute("aria-pressed", String(button.dataset.cbSide === activitySide));
-        $(".cb-side-count", button).textContent = activityBook ? (activityBook.lines[button.dataset.cbSide]?.length || 0) : "—";
+        $(".cb-side-count", button).textContent = activityBook ? ((activityBook.lines[button.dataset.cbSide] || []).filter(cbLive).length) : "—";
       }
       const entries = activityBook?.lines[activitySide] || [];
-      get("activity-lines").innerHTML = entries.length ? `<table><thead><tr><th scope="col">SL</th><th scope="col">${bi("লেজার", "Ledger")}</th><th scope="col" class="r">${bi("টাকা", "Amount")}</th><th scope="col">${bi("অ্যাকশন", "Action")}</th></tr></thead><tbody>${entries.map((item, index) => `<tr class="cba s${activitySide}"><td class="num cb-sl" data-l="SL">${index + 1}</td><td data-l=""><span class="cb-led-name">${esc(cbRegisterLineLabel(item, rawTally))}</span>
+      get("activity-lines").innerHTML = entries.length ? `<table><thead><tr><th scope="col">SL</th><th scope="col">${bi("লেজার", "Ledger")}</th><th scope="col" class="r">${bi("টাকা", "Amount")}</th><th scope="col">${bi("অ্যাকশন", "Action")}</th></tr></thead><tbody>${entries.map((item, index) => `<tr class="cba s${activitySide}${item.x ? " cxl" : ""}"><td class="num cb-sl" data-l="SL">${index + 1}</td><td data-l=""><span class="cb-led-name">${esc(cbRegisterLineLabel(item, rawTally))}</span>
         ${item.ref || item.c ? `<div class="mut sm">${esc([item.ref && cbVoucherLabel(activitySide) + " " + item.ref, item.c].filter(Boolean).join(" · "))}</div>` : ""}
         ${cbPendingPartyRef(item, rawTally) ? `<div class="am sm">${esc(cbPendingPartyRef(item, rawTally))}</div>` : ""}
-        ${item.note ? `<div class="mut sm cb-narr">${esc(item.note)}</div>` : ""}</td>
+        ${item.note ? `<div class="mut sm cb-narr">${esc(item.note)}</div>` : ""}${item.x ? `<div class="cb-cxl-tag"><span class="tag rd">${bi("বাতিল", "Cancelled")}</span>${item.xby ? ` <span class="mut xs">${esc(item.xby)}</span>` : ""}</div>` : ""}</td>
         <td class="r num" data-l="${bi("টাকা", "Amount")}"><strong>${moneyText(item.a)}</strong></td>
         <td data-l="${bi("অ্যাকশন", "Action")}"><div class="cb-record-actions">
-          ${(imported ? mayUpdateImported() : mayUpdate(item)) ? `<button type="button" class="iconbtn sm cpi am" data-cb-edit="${index}" title="${esc(bi("এডিট", "Edit"))}" aria-label="${esc(bi("এডিট", "Edit"))}">${ico("edit")}</button>` : `<button type="button" class="iconbtn sm cpi am" disabled title="${esc(bi("এডিটের অনুমতি বা সময় নেই", "No edit permission or edit window closed"))}" aria-label="${esc(bi("এডিট", "Edit"))}">${ico("edit")}</button>`}
+          ${(imported ? mayUpdateImported() : mayUpdate(item) && !item.x) ? `<button type="button" class="iconbtn sm cpi am" data-cb-edit="${index}" title="${esc(bi("এডিট", "Edit"))}" aria-label="${esc(bi("এডিট", "Edit"))}">${ico("edit")}</button>` : `<button type="button" class="iconbtn sm cpi am" disabled title="${esc(item.x ? bi("বাতিল লেনদেন এডিট করা যায় না — আগে ফিরিয়ে আনুন", "A cancelled entry can't be edited — restore it first") : bi("এডিটের অনুমতি বা সময় নেই", "No edit permission or edit window closed"))}" aria-label="${esc(bi("এডিট", "Edit"))}">${ico("edit")}</button>`}
+          ${!imported && !rawTally && mayUpdate(item) ? (item.x
+            ? `<button type="button" class="iconbtn sm cpi vi" data-cb-restore="${index}" title="${esc(bi("ফিরিয়ে আনুন", "Restore"))}" aria-label="${esc(bi("ফিরিয়ে আনুন", "Restore"))}">${ico("refresh")}</button>`
+            : `<button type="button" class="iconbtn sm cpi rd" data-cb-cancel="${index}" title="${esc(bi("লেনদেন বাতিল", "Cancel entry"))}" aria-label="${esc(bi("লেনদেন বাতিল", "Cancel entry"))}">${ico("xmark")}</button>`) : ""}
           ${!imported && admin ? `<button type="button" class="iconbtn sm cpi rd" data-cb-delete="${index}" title="${esc(bi("মুছুন", "Delete"))}" aria-label="${esc(bi("মুছুন", "Delete"))}">${ico("trash")}</button>` : ""}
         </div></td></tr>`).join("")}</tbody></table>` : "";
       get("activity-lines").hidden = !entries.length;
@@ -1003,16 +1012,23 @@ async function vCashBook(v) {
     }
     for (const button of $$("[data-cb-side]", body)) button.onclick = () => { activitySide = button.dataset.cbSide; drawActivity(); };
     get("activity-lines").onclick = event => {
-      const target = event.target.closest("[data-cb-edit], [data-cb-delete]");
+      const target = event.target.closest("[data-cb-edit], [data-cb-delete], [data-cb-cancel], [data-cb-restore]");
       if (!target || !activityBook || cbIsTallyReport(activityBook)) return;
       const side = activitySide, imported = activityBook.importedForCashBook;
-      const index = Number(target.dataset.cbEdit ?? target.dataset.cbDelete);
+      const index = Number(target.dataset.cbEdit ?? target.dataset.cbDelete ?? target.dataset.cbCancel ?? target.dataset.cbRestore);
       const item = activityBook.lines[side]?.[index];
       if (!item) return;
       if (target.hasAttribute("data-cb-edit")) {
         if (imported ? !mayUpdateImported() : !mayUpdate(item)) return;
         if (hasEditedLine()) return fail(new Error(bi("চলতি এডিট আগে আপডেট বা বাতিল করুন।", "Update or cancel the current edit first.")));
         loadForm(side, imported ? { ...item, n: cbRegisterLineLabel(item) } : item, index, true, imported ? item : null);
+      } else if (target.hasAttribute("data-cb-cancel")) {
+        if (imported || !mayUpdate(item) || item.x) return;
+        if (hasEditedLine()) return fail(new Error(bi("চলতি এডিট আগে আপডেট বা বাতিল করুন।", "Update or cancel the current edit first.")));
+        if (ask(bi("এই লেনদেনটি বাতিল করবেন? (মোট হিসাব থেকে বাদ যাবে, পরে ফিরিয়ে আনা যাবে)", "Cancel this entry? (It leaves the totals and can be restored later.)"))) post("cancel", side, index);
+      } else if (target.hasAttribute("data-cb-restore")) {
+        if (imported || !mayUpdate(item) || !item.x) return;
+        post("restore", side, index);
       } else if (!imported && admin && ask(bi("এই লেনদেনটি মুছে ফেলবেন?", "Delete this transaction?"))) post("delete", side, index);
     };
     for (const button of $$("[data-cb-recover]", body)) button.onclick = () => {

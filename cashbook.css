@@ -517,3 +517,12 @@
   .cb-compose .cb-row-actions:not(:has(.cb-cancel:not([hidden]))) { grid-template-columns: minmax(0, 1fr); width: 100%; }
   .cb-compose:has(.cb-cancel:not([hidden])) .cb-row-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 }
+
+/* v6.111: cancelled Cash Book entries — struck through, muted, kept for audit */
+.cb-act-table tr.cxl td:not(:last-child) { opacity: .55; }
+.cb-act-table tr.cxl .cb-led-name, .cb-act-table tr.cxl td.num strong { text-decoration: line-through; }
+.cb-act-table tr.cxl .cb-cxl-tag { opacity: 1; margin-top: 2px; }
+@media (max-width:900px){
+  .tw.cards.cb-act-table tr.cba.cxl{border-left-color:var(--mut)}
+  .tw.cards.cb-act-table tbody tr.cba.cxl td:not(:last-child){opacity:.6}
+}
