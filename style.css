@@ -3296,3 +3296,25 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
   .cq-item:not(.has-sel) .cqs-age{grid-column:1/-1;grid-row:6}
   .cq-item:not(.has-sel) .cq-actions{grid-column:1/-1;grid-row:7;margin-top:8px}
 }
+
+/* Collection v2 (v6.159): week strip, insight cards, active filters */
+.dcx-week{flex:1 1 230px;max-width:300px;display:grid;gap:4px;padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface2)}
+.dcx-wkh{display:flex;justify-content:space-between;align-items:baseline;font-size:11.5px;color:var(--mut);font-weight:600}.dcx-wkh b{color:var(--txt);font-size:13px}
+.dcx-wkb{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;height:58px;align-items:end}
+.dcx-wkb button{height:100%;display:grid;grid-template-rows:1fr auto;align-items:end;justify-items:center;gap:2px;border:0;background:none;padding:0;cursor:pointer;color:var(--mut);font:inherit}
+.dcx-wkb i{display:block;width:70%;height:var(--h);min-height:3px;border-radius:4px 4px 2px 2px;background:linear-gradient(0deg,#a5b4fc,#818cf8);transition:transform .15s,background .15s;transform-origin:bottom}
+.dcx-wkb button:hover i{transform:scaleY(1.06);background:linear-gradient(0deg,#6366f1,#8b5cf6)}
+.dcx-wkb button.on i{background:linear-gradient(0deg,#d97706,#f59e0b)}.dcx-wkb button.on small{color:var(--txt);font-weight:700}
+.dcx-wkb button.z i{background:var(--line2)}
+.dcx-wkb small{font-size:10px;line-height:1}
+.iv-desc kbd{font:600 11px ui-monospace,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;background:var(--surface)}
+.dcv-big{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:6px}.dcv-big b{font-size:24px}
+.dcv-d{font-weight:700;font-size:13px;padding:2px 8px;border-radius:99px}.dcv-d.up{color:#047857;background:#d1fae5}.dcv-d.dn{color:#b91c1c;background:#fee2e2}
+.dcv-big-p{margin:8px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dcv-cols button{flex:1;height:var(--h);min-height:3px;border:0;padding:0;border-radius:3px 3px 0 0;background:linear-gradient(0deg,#4338ca,#8b5cf6);opacity:.75;cursor:pointer;transition:opacity .15s}
+.dcv-cols button:not([data-day]){cursor:default}.dcv-cols button:hover{opacity:1}.dcv-cols button.on{opacity:1;background:linear-gradient(0deg,#d97706,#f59e0b)}
+.ir-hb button.on{background:var(--pri-soft);box-shadow:inset 3px 0 0 var(--pri)}
+.ir-hb .bdot{margin-right:5px}
+.dr-act{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 2px 10px}
+.dr-act .dr-x{cursor:pointer}
+@media (max-width:640px){.dcx-week{max-width:none;flex-basis:100%}.dr-act{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.dr-act>*{flex:none}}

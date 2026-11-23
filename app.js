@@ -6313,7 +6313,8 @@ async function vDcol(v) {
   let date = sessionStorage.getItem("nabiad_dc_date") || today(); sessionStorage.removeItem("nabiad_dc_date");
   const F = { st: "", ac: "", q: "" }; let rows = [], sel = new Set(), busy = false;
   v.innerHTML = head("কালেকশন এন্ট্রি", `<a class="btn" href="#/dsum">${ico("clock")} সামারি</a><a class="btn" href="#/drep">${ico("chart")} রিপোর্ট</a>`) + `
-   <div class="card tbar dcx-bar"><div class="dcx-date">${dateNav("dc", date)}</div><div class="dcx-stats" id="dc-kpi"></div></div>
+   <div class="card tbar dcx-bar"><div class="dcx-date">${dateNav("dc", date)}</div><div class="dcx-stats" id="dc-kpi"></div><div class="dcx-week noprint" id="dc-wk"></div></div>
+   <p class="iv-desc noprint">${ico("info")}<span>${bi("পার্টি লিখে বাছুন → Account → টাকা → Enter চাপলেই যোগ হবে। নতুন এন্ট্রি Pending থাকে, Approve করলে হিসাবে ধরা হয়। <kbd>/</kbd> চাপলে সার্চ।", "Pick a party → account → amount → press Enter to add. New entries stay Pending until approved. Press <kbd>/</kbd> to search.")}</span></p>
    <div class="dcx-split">
    <div class="card dcx-entry" ${moduleCan("collection", "entry") ? "" : "hidden"}><div class="dcx-et"><h3>${ico("plus")} নতুন এন্ট্রি</h3></div>
     <div class="dcx-grid">
@@ -6381,6 +6382,14 @@ async function vDcol(v) {
     const ids = new Set(rows.map(r => r.id)); dcPending().filter(r => r.date === date && !ids.has(r.id)).forEach(r => rows.push(r));
     draw();
   }
+  let wkKey = "", wkRows = [];
+  async function week() {
+    const box = $("#dc-wk", v); if (!box) return; const f = addDays(date, -6), key = f + date;
+    if (key !== wkKey) { try { wkRows = await API.dcolRange(f, date); wkKey = key; } catch { box.innerHTML = ""; return; } }
+    const ds = Array.from({ length: 7 }, (_, i) => addDays(f, i)), live = r => r.status !== "cancelled";
+    const byDay = ds.map(d => { const rs = (d === date ? rows : wkRows.filter(r => r.date === d)).filter(live); return { d, amt: dcSum(rs), n: rs.length }; }), mx = Math.max(1, ...byDay.map(x => x.amt)), wt = byDay.reduce((s2, x) => s2 + x.amt, 0);
+    box.innerHTML = `<div class="dcx-wkh" title="${bi("Cancelled বাদে, সব Status", "All statuses except Cancelled")}"><span>${bi("শেষ ৭ দিন", "Last 7 days")} · ${bi("বারে চাপলে সেই দিন", "tap a bar to open")}</span><b class="num">৳ ${money0(wt)}</b></div><div class="dcx-wkb">${byDay.map(x => `<button type="button" data-wd="${x.d}" class="${x.d === date ? "on" : ""}${x.amt ? "" : " z"}" title="${dmy(x.d)} · ${x.n} · ৳ ${money0(x.amt)}"><i style="--h:${Math.max(4, x.amt / mx * 100).toFixed(1)}%"></i><small>${new Date(x.d + "T00:00:00").toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", { weekday: "short" })}</small></button>`).join("")}</div>`;
+  }
   function visible() { const q = norm(F.q); return rows.filter(r => (!F.st || r.status === F.st) && (!F.ac || r.account === F.ac) && (!q || norm([r.party, r.asm, r.account, r.remarks, r.amount].join(" ")).includes(q))); }
   function selbar() {
     const el = $("#dc-selbar", v); sel = new Set([...sel].filter(id => rows.some(r => r.id === id))); if (!sel.size) return el.classList.add("hide");
@@ -6408,14 +6417,17 @@ async function vDcol(v) {
     $$("[data-st]", list).forEach(b => b.onclick = () => dcDecide([b.dataset.id], b.dataset.st, load));
     $$("[data-ed]", list).forEach(b => b.onclick = () => dcEditModal(rows.find(r => r.id === b.dataset.ed), load));
     $$("[data-dl]", list).forEach(b => b.onclick = async () => { const r = rows.find(x => x.id === b.dataset.dl); if (!ask(bi(`"${r.party}" — ৳ ${money0(r.amount)} মুছে ফেলবেন?`, `Delete "${r.party}" — ৳ ${money0(r.amount)}?`))) return; try { await API.dcolDelete(r.id); DCACHE.dcol = null; toast("✔ মুছে ফেলা হয়েছে"); load(); } catch (e) { toast(dcErr(e), "err"); } });
-    selbar(); qa();
+    selbar(); qa(); week();
   }
   $("#dc-q", v).oninput = e => { F.q = e.target.value; draw(); };
+  $("#dc-wk", v).onclick = e => { const b = e.target.closest("[data-wd]"); if (!b || b.dataset.wd === date) return; $("#dc-d", v).value = b.dataset.wd; load(); };
+  const onSlash = e => { if (e.key === "/" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && !document.querySelector(".mback")) { e.preventDefault(); $("#dc-q", v)?.focus(); } };
+  document.addEventListener("keydown", onSlash);
   $("#dc-register", v).onclick = () => dcRegisterModal(rows, date);
   bindDateNav(v, "dc", load);
   window.__dcolRefresh = () => { if (CUR === "dcol" && !busy) load(); };
   await load(); if (innerWidth > 800 && moduleCan("collection", "entry")) pIn.focus();
-  return () => { window.__dcolRefresh = null; };
+  return () => { window.__dcolRefresh = null; document.removeEventListener("keydown", onSlash); };
 }
 
 /* ---------- Collection register: View / Export (Excel · PDF · Image · Print) ---------- */
@@ -6491,6 +6503,28 @@ function dcRegisterModal(rows, date) {
   });
 }
 
+
+/* ---------- Collection insights (v6.159): previous period + clickable insight strip (screen only) ---------- */
+const dcPrevRange = (f, t) => {
+  const mEnd = d => { const x = new Date(d.slice(0, 7) + "-01T00:00:00"); x.setMonth(x.getMonth() + 1); x.setDate(0); return iso(x); };
+  if (f.endsWith("-01") && t === mEnd(f)) { const x = new Date(f + "T00:00:00"); x.setMonth(x.getMonth() - 1); const pf = iso(x); return [pf, mEnd(pf)]; }
+  const n = Math.round((new Date(t + "T00:00:00") - new Date(f + "T00:00:00")) / 864e5) + 1, pt = addDays(f, -1); return [addDays(pt, -(n - 1)), pt];
+};
+const dcLakh = n => n >= 1e7 ? (n / 1e7).toFixed(2) + bi(" কোটি", " Cr") : n >= 1e5 ? (n / 1e5).toFixed(2) + bi(" লাখ", " L") : money0(n);
+const dcVcard = (title, sub, body) => `<section class="ir-vc card"><div class="iv-section-head"><div><h3>${title}</h3>${sub ? `<p class="mut sm">${sub}</p>` : ""}</div></div>${body}</section>`;
+const dcHbars = (arr, attr, cur, color) => { const mx = Math.max(1, ...arr.map(x => x.amt)); return `<ul class="ir-hb">${arr.map(x => `<li><button type="button" ${attr && x.k !== "—" ? `${attr}="${esc(x.k)}"` : "data-none"} class="${cur === x.k ? "on" : ""}" title="${esc(x.k)} · ${x.n} · ৳ ${money0(x.amt)}"><span class="ir-hl">${color ? `<i class="bdot" style="background:${color(x.k)}"></i>` : ""}${esc(x.k)}</span><i><s style="width:${(x.amt / mx * 100).toFixed(1)}%"></s></i><b class="num">${dcLakh(x.amt)}</b></button></li>`).join("")}</ul>`; };
+function dcViz(rows, prev, f, t, o = {}) {
+  if (!rows.length) return "";
+  const tot = dcSum(rows), pt = dcSum(prev || []), d = pt ? (tot - pt) / pt * 100 : null, big = rows.reduce((a, r) => r.amount > a.amount ? r : a, rows[0]);
+  const [pf, pe] = dcPrevRange(f, t), days = f !== t ? dcGroup(rows, r => r.date).sort((a, b) => a.k.localeCompare(b.k)) : [], mxD = Math.max(1, ...days.map(x => x.amt));
+  const cmp = dcVcard(bi("এই সময়ের মোট", "Total this period"), prev ? `${bi("আগের সময়", "Previous")}: ${dcRangeLabel(pf, pe)}` : "", `<div class="dcv-big"><b class="num">৳ ${money0(tot)}</b>${d === null ? (prev ? `<span class="dcv-d mut">${bi("আগের সময়ে কিছু নেই", "Nothing in the previous period")}</span>` : "") : `<span class="dcv-d ${d >= 0 ? "up" : "dn"}">${d >= 0 ? "▲" : "▼"} ${Math.abs(d).toFixed(1)}%</span>`}</div>${prev ? `<p class="mut sm">${bi("আগের সময়ে", "Previous period")} ৳ ${money0(pt)} · ${prev.length} ${bi("টি", "entries")}</p>` : ""}<div class="ir-mini"><span><small class="mut">${bi("এন্ট্রি", "Entries")}</small><b class="num">${rows.length}</b></span><span><small class="mut">${bi("গড়/এন্ট্রি", "Avg / entry")}</small><b class="num">${dcLakh(tot / rows.length)}</b></span><span title="${esc(big.party)}"><small class="mut">${bi("সবচেয়ে বড়", "Largest")}</small><b class="num">${dcLakh(big.amount)}</b></span></div><p class="mut xs dcv-big-p">${bi("সবচেয়ে বড় এন্ট্রি", "Largest entry")}: ${esc(big.party)} · ${dcShort(big.date)}</p>`);
+  const trend = days.length > 1 ? dcVcard(bi("দিন অনুযায়ী কালেকশন", "Collection per day"), o.click ? bi("কলামে ক্লিক করলে সেই দিনটা আলাদা দেখাবে", "Click a column to show only that day") : `${days.length} ${bi("দিন", "days")}`, `<div class="ir-cols dcv-cols" style="--n:${days.length}">${days.map(x => `<button type="button" ${o.click ? `data-day="${x.k}"` : ""} class="${o.day === x.k ? "on" : ""}" title="${dmy(x.k)} · ${x.n} · ৳ ${money0(x.amt)}" style="--h:${(x.amt / mxD * 100).toFixed(1)}%"></button>`).join("")}</div><div class="iv-bx"><span>${dcShort(days[0].k)}</span><span>${bi("সেরা দিন", "Best day")}: ${dcShort(days.reduce((a, x) => x.amt > a.amt ? x : a).k)}</span><span>${dcShort(days.at(-1).k)}</span></div>`) : "";
+  const acc = dcVcard(bi("শীর্ষ Account", "Top accounts"), o.click ? bi("ক্লিক করলে সেই Account বাছাই হবে", "Click to filter by account") : "", dcHbars(dcGroup(rows, r => r.account || "—").slice(0, 6), o.click ? "data-ac" : "", o.ac, dcBrand));
+  const asm = dcVcard(bi("শীর্ষ ASM", "Top ASM"), o.click ? bi("ক্লিক করলে সেই ASM বাছাই হবে", "Click to filter by ASM") : "", dcHbars(dcGroup(rows, r => r.asm || "—").slice(0, 6), o.click ? "data-asm" : "", o.asm));
+  const pty = dcVcard(bi("শীর্ষ পার্টি", "Top parties"), o.click ? bi("ক্লিক করলে সেই পার্টি খুঁজবে", "Click to search that party") : "", dcHbars(dcGroup(rows, r => r.party).slice(0, 6), o.click ? "data-pq" : "", o.q));
+  return cmp + trend + acc + asm + pty;
+}
+
 /* ---------- period bar shared by Summary and Report ---------- */
 const dcPeriodBar = pbBar;
 const dcEmptyPeriod = msg => `<div class="dcx-empty big"><span class="ei">${ico("chart")}</span><b>${msg}</b><span class="mut">${LANG === "en" ? "Try another period" : "অন্য সময় বেছে দেখুন"}</span><div class="chips" style="justify-content:center">${PB_M().filter(x => x[0] !== "day" && x[0] !== "week").map(([k, l]) => `<span class="chip" data-qp="${k}">${l}</span>`).join("")}</div></div>`;
@@ -6560,15 +6594,19 @@ async function vDsum(v) {
      <label class="fx-fld dcx-lm" id="ds-lmw"><span class="fx-k">${bi("লেজার", "Ledger")}</span><select class="in" id="ds-lm"><option value="entry">${bi("এন্ট্রি অনুযায়ী", "Entry-wise")}</option><option value="party">${bi("পার্টি অনুযায়ী মোট", "Party-wise total")}</option></select></label></div></div>
     <div class="fx2-r dcx-tg" id="ds-tg"><span class="fx-lb">${ico("grid")}<span>${bi("সামারিতে দেখাও", "Show in Summary")}</span><em class="fx-n" id="ds-shn"></em></span>${SH.map(([k, en, bn]) => `<label class="keep"><input type="checkbox" data-sh="${k}" ${show[k] ? "checked" : ""}> ${bi(bn, en)}</label>`).join("")}<span class="fx-qa"><button type="button" class="fx-lnk" data-shall="1">${bi("সব", "All")}</button><button type="button" class="fx-lnk" data-shall="0">${bi("কোনোটি না", "None")}</button></span>
      <label class="fx-sw fx-end"><input type="checkbox" id="ds-z"><i class="swt"></i><span>${bi("০ টাকার Account/ASM-ও দেখাও", "Also show accounts/ASM with 0")}</span></label></div></div>
+   <p class="iv-desc noprint">${ico("info")}<span>${bi("নিচের শীটটাই Screenshot / PDF / Share হয়। উপরের কার্ডগুলো শুধু স্ক্রিনে — আগের সময়ের সাথে তুলনা, দিনভিত্তিক গতি আর শীর্ষ Account / ASM / পার্টি দেখায়।", "The sheet below is what Screenshot / PDF / Share export. The cards above it are screen-only: comparison with the previous period, the daily trend and the top accounts, ASM and parties.")}</span></p>
+   <div class="ir-viz noprint" id="ds-viz"></div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="ds-out"></div></div></div>`;
-  const out = $("#ds-out", v);
+  const out = $("#ds-out", v); let prevAll = null;
   async function load() {
     const [f, t] = dcRange(F); out.innerHTML = `<div class="skel" style="height:160px"></div>`;
-    try { await dpLoad().catch(() => { }); all = await API.dcolRange(f, t); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(dcErr(e))}</div>`; cur = null; all = []; return; }
+    const [pf, pt] = dcPrevRange(f, t); prevAll = null;
+    try { await dpLoad().catch(() => { }); const pp = API.dcolRange(pf, pt).catch(() => null); all = await API.dcolRange(f, t); prevAll = await pp; } catch (e) { out.innerHTML = `<div class="alert rd">${esc(dcErr(e))}</div>`; cur = null; all = []; $("#ds-viz", v).innerHTML = ""; return; }
     draw();
   }
   function draw() {
     const [f, t] = dcRange(F), rows = all.filter(r => dcStatPass(r, F.s)), tot = dcSum(rows);
+    { const vz = $("#ds-viz", v); vz.innerHTML = dcViz(rows, prevAll && prevAll.filter(r => dcStatPass(r, F.s)), f, t); vz.classList.remove("go"); void vz.offsetWidth; vz.classList.add("go"); }
     let banks = dcGroup(rows, r => r.account || "(No account)"), asms = dcGroup(rows, r => r.asm || "(No ASM)");
     if (F.all) { dcAccounts().forEach(a => { if (!banks.some(x => x.k === a)) banks.push({ k: a, n: 0, amt: 0 }); }); dcAsms().forEach(a => { if (!asms.some(x => x.k === a)) asms.push({ k: a, n: 0, amt: 0 }); }); }
     const days = t > f ? dcGroup(rows, r => r.date).sort((a, b) => a.k.localeCompare(b.k)) : [];
@@ -6627,10 +6665,14 @@ async function vDrep(v) {
     <div class="fx2-r">${dcPeriodBar("dr", F)}<div class="fx2-g"><div class="fx2-q"><input class="in" id="dr-q" type="search" autocomplete="off" aria-label="${bi("পার্টি খুঁজুন", "Search party")}" placeholder="${bi("পার্টি, টাকা, মন্তব্য খুঁজুন…", "Search party, amount…")}"></div></div></div>
     <div class="fx2-r fx2-sels"><label class="fx-fld"><span class="fx-k">Status</span><select class="in" id="dr-s">${dcStatOpts(F.s)}</select></label><div class="fx2-g"><select class="in" id="dr-asm" aria-label="ASM"><option value="">${bi("সব ASM", "All ASM")}</option></select><select class="in" id="dr-ac" aria-label="Account"><option value="">${bi("সব Account", "All accounts")}</option></select><select class="in" id="dr-dv" aria-label="${bi("বিভাগ", "Division")}"><option value="">${bi("সব বিভাগ", "All divisions")}</option></select><select class="in" id="dr-ds" aria-label="${bi("জেলা", "District")}"><option value="">${bi("সব জেলা", "All districts")}</option></select></div>
      <span class="fx-sepv"></span><span class="fx-lb">${bi("কলাম", "Columns")}</span><label class="keep"><input type="checkbox" id="dr-ca"> ASM</label><label class="keep"><input type="checkbox" id="dr-cd"> ${bi("জেলা", "District")}</label><label class="keep"><input type="checkbox" id="dr-cs"> Status</label><label class="keep"><input type="checkbox" id="dr-sub" checked> ${bi("দিনের সাবটোটাল", "Daily subtotal")}</label></div></div>
+   <div class="dr-act noprint" id="dr-act"></div>
+   <div class="ir-viz noprint" id="dr-viz"></div>
    <div class="card rep-wrap"><div class="rep-scroll"><div id="dr-out"></div></div></div>`;
+  let prevAll = null;
   async function load() {
     const [f, t] = dcRange(F), out = $("#dr-out", v); out.innerHTML = `<div class="skel" style="height:160px"></div>`;
-    try { await dpLoad().catch(() => { }); all = await API.dcolRange(f, t); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(dcErr(e))}</div>`; cur = null; return; }
+    const [pf, pt] = dcPrevRange(f, t); prevAll = null; F.day = "";
+    try { await dpLoad().catch(() => { }); const pp = API.dcolRange(pf, pt).catch(() => null); all = await API.dcolRange(f, t); prevAll = await pp; } catch (e) { out.innerHTML = `<div class="alert rd">${esc(dcErr(e))}</div>`; cur = null; $("#dr-viz", v).innerHTML = ""; return; }
     const asmSel = $("#dr-asm", v), acSel = $("#dr-ac", v), a0 = asmSel.value, c0 = acSel.value;
     asmSel.innerHTML = `<option value="">${bi("সব ASM", "All ASM")}</option>` + [...new Set(all.map(r => r.asm).filter(Boolean))].sort().map(a => `<option ${a === a0 ? "selected" : ""}>${esc(a)}</option>`).join("");
     acSel.innerHTML = `<option value="">${bi("সব Account", "All accounts")}</option>` + [...new Set(all.map(r => r.account).filter(Boolean))].sort().map(a => `<option ${a === c0 ? "selected" : ""}>${esc(a)}</option>`).join("");
@@ -6646,7 +6688,8 @@ async function vDrep(v) {
   function draw() {
     const [f, t] = dcRange(F), out = $("#dr-out", v), q = norm(F.q);
     const gm = dpGeoMap(), gOf = r => dpGeoOf(gm, r);
-    const rows = all.filter(r => dcStatPass(r, F.s) && (!F.asm || r.asm === F.asm) && (!F.ac || r.account === F.ac) && (!F.dv || gOf(r).division === F.dv) && (!F.ds || gOf(r).district === F.ds) && (!q || norm([r.party, r.amount, r.remarks, r.account].join(" ")).includes(q)));
+    const base = all.filter(r => dcStatPass(r, F.s)), rows = all.filter(r => dcStatPass(r, F.s) && (!F.day || r.date === F.day) && (!F.asm || r.asm === F.asm) && (!F.ac || r.account === F.ac) && (!F.dv || gOf(r).division === F.dv) && (!F.ds || gOf(r).district === F.ds) && (!q || norm([r.party, r.amount, r.remarks, r.account].join(" ")).includes(q)));
+    { const vz = $("#dr-viz", v), sc = vz.scrollLeft; vz.innerHTML = dcViz(rows.length ? rows : base, prevAll && prevAll.filter(r => dcStatPass(r, F.s)), f, t, { click: true, ac: F.ac, asm: F.asm, q: F.q, day: F.day }); vz.scrollLeft = sc; actBar(rows, base); }
     cur = { f, t, rows }; if (!rows.length) { out.innerHTML = dcEmptyPeriod(all.length ? "ফিল্টারের সাথে কোনো এন্ট্রি মেলেনি" : "এই সময়ে কোনো এন্ট্রি নেই"); $$("[data-qp]", out).forEach(b => b.onclick = () => $(`#dr [data-m="${b.dataset.qp}"]`, v).click()); return; }
     const multi = f !== t && F.sub, cols = 4 + (F.ca ? 1 : 0) + (F.cd ? 1 : 0) + (F.cs ? 1 : 0); let n = 0, html = "", day = null, dsum = 0, dn = 0;
     const flush = () => { if (multi && day) html += `<tr class="dsub"><td></td><td colspan="${cols - 2}">${dcShort(day)} — ${dn}টি</td><td class="r num">${money0(dsum)}</td>${F.cs ? "<td></td>" : ""}</tr>`; dsum = 0; dn = 0; };
@@ -6657,6 +6700,19 @@ async function vDrep(v) {
      <table class="rep-t"><thead><tr><th class="r">#</th><th>TxnDate</th><th>Party</th>${F.ca ? "<th>ASM</th>" : ""}${F.cd ? "<th>District</th>" : ""}<th>Bank</th><th class="r">Amount</th>${F.cs ? "<th>Status</th>" : ""}</tr></thead><tbody>${html}<tr class="tot"><td></td><td colspan="${cols - 2}">GRAND TOTAL</td><td class="r num">${money0(tot)}</td>${F.cs ? "<td></td>" : ""}</tr></tbody></table>${dcFoot()}</div>`;
     dcFit(v, "dr-in");
   }
+  function actBar(rows, base) {
+    const gm = dpGeoMap(), chips = [F.day && ["day", bi("দিন", "Day") + ": " + dmy(F.day)], F.q && ["q", bi("খোঁজ", "Search") + ": “" + F.q + "”"], F.asm && ["asm", "ASM: " + F.asm], F.ac && ["ac", "Account: " + F.ac], F.dv && ["dv", bi("বিভাগ", "Division") + ": " + F.dv], F.ds && ["ds", bi("জেলা", "District") + ": " + F.ds]].filter(Boolean);
+    $("#dr-act", v).innerHTML = `<span class="mut sm">${bi(`${base.length}টির মধ্যে ${rows.length}টি এন্ট্রি · ৳ ${money0(dcSum(rows))}`, `Showing ${rows.length} of ${base.length} entries · ৳ ${money0(dcSum(rows))}`)}</span>${chips.map(([k, l]) => `<button type="button" class="chip sm on dr-x" data-x="${k}" title="${bi("সরান", "Remove")}">${esc(l)} ✕</button>`).join("")}${chips.length > 1 ? `<button type="button" class="btn sm" data-x="all">${bi("সব মুছুন", "Clear all")}</button>` : ""}`;
+    void gm;
+  }
+  const setSel = (id, val) => { const el = $("#" + id, v); if (el) el.value = val; };
+  $("#dr-act", v).onclick = e => { const b = e.target.closest("[data-x]"); if (!b) return; const k = b.dataset.x; if (k === "all" || k === "day") F.day = ""; if (k === "all" || k === "q") { F.q = ""; setSel("dr-q", ""); } if (k === "all" || k === "asm") { F.asm = ""; setSel("dr-asm", ""); } if (k === "all" || k === "ac") { F.ac = ""; setSel("dr-ac", ""); } if (k === "all" || k === "dv") { F.dv = ""; F.ds = ""; geoSel(); } if (k === "ds") { F.ds = ""; geoSel(); } draw(); };
+  $("#dr-viz", v).onclick = e => { let b;
+    if ((b = e.target.closest("[data-day]"))) F.day = F.day === b.dataset.day ? "" : b.dataset.day;
+    else if ((b = e.target.closest("[data-ac]"))) { F.ac = F.ac === b.dataset.ac ? "" : b.dataset.ac; setSel("dr-ac", F.ac); }
+    else if ((b = e.target.closest("[data-asm]"))) { F.asm = F.asm === b.dataset.asm ? "" : b.dataset.asm; setSel("dr-asm", F.asm); }
+    else if ((b = e.target.closest("[data-pq]"))) { F.q = F.q === b.dataset.pq ? "" : b.dataset.pq; setSel("dr-q", F.q); }
+    else return; draw(); };
   dcBindPeriod(v, "dr", F, load);
   $("#dr-s", v).onchange = e => { F.s = e.target.value; draw(); }; $("#dr-asm", v).onchange = e => { F.asm = e.target.value; draw(); }; $("#dr-ac", v).onchange = e => { F.ac = e.target.value; draw(); };
   $("#dr-dv", v).onchange = e => { F.dv = e.target.value; F.ds = ""; geoSel(); draw(); }; $("#dr-ds", v).onchange = e => { F.ds = e.target.value; draw(); };
