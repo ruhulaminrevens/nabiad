@@ -711,31 +711,44 @@ const OVD_FROM = "2026-01-01";
 let OVD = null;
 async function ovdLoad(force) { if (OVD && !force && Date.now() - OVD.t < 120000) return OVD.d; const d = await API.ovdAll(); OVD = { d, t: Date.now() }; return d; }
 function ivLedger(box) {
-  let data = [], cut = "", unT = [], unO = [], show0 = false, qs = "", stF = "", asmF = "", sortF = "bal";
-  box.innerHTML = `<div class="card tbar noprint"><div class="row pflt iv-flt"><div class="pq"><label class="f">${bi("খুঁজুন", "Search")}</label><input class="in" id="ov-q" placeholder="${bi("পার্টি বা ASM…", "Party or ASM…")}"></div><div><label class="f">${bi("দেখান", "Show")}</label><label class="iv-chk"><input type="checkbox" id="ov-z"> ${bi("শূন্য হিসাবের পার্টিও", "Also zero-balance parties")}</label></div></div></div><div class="ksum iv-ks" id="ov-kpi"></div><div class="ir-viz noprint" id="ov-viz"></div><div class="card flush"><div class="ch"><h3>${bi("অর্ডার বনাম ডেলিভারি", "Order vs Delivery")}</h3><span class="tag" id="ov-cnt">0</span><div class="sp"></div><label class="ov-sort"><span class="mut xs">${bi("সাজান", "Sort")}</span><select class="in sm" id="ov-sort"><option value="bal">${bi("বাকি বেশি আগে", "Highest balance")}</option><option value="days">${bi("পুরনো Pending আগে", "Oldest pending")}</option><option value="dl">${bi("ডেলিভারি বেশি আগে", "Most delivered")}</option><option value="pct">${bi("কালেকশন হার কম আগে", "Lowest collection rate")}</option><option value="name">${bi("নাম (A–Z)", "Name (A–Z)")}</option></select></label></div><div class="ov-chips noprint" id="ov-chips"></div><div id="ov-nt"></div><div id="ov-out"></div></div>`;
+  let data = [], rows0 = [], cut = "", unT = [], unO = [], show0 = false, qs = "", stF = "", asmF = "", sortF = "bal";
+  const P = Object.assign(pbInit("month"), { m: "all" });
+  box.innerHTML = `<div class="card tbar noprint">${pbBar("ovpb", P, { all: true })}<div class="row pflt iv-flt ov-flt"><div class="pq"><label class="f">${bi("খুঁজুন", "Search")}</label><input class="in" id="ov-q" placeholder="${bi("পার্টি বা ASM…", "Party or ASM…")}"></div><div class="iv-stsel"><label class="f">${bi("পেমেন্ট অবস্থা", "Payment status")}</label><select class="in" id="ov-st"></select></div><div><label class="f">ASM / RSM</label><select class="in" id="ov-asm"></select></div><div class="ov-z"><label class="f">${bi("দেখান", "Show")}</label><label class="iv-chk"><input type="checkbox" id="ov-z"> ${bi("শূন্য হিসাবের পার্টিও", "Also zero-balance parties")}</label></div></div></div><div class="ksum iv-ks" id="ov-kpi"></div><div class="ir-viz noprint" id="ov-viz"></div><div class="card flush"><div class="ch"><h3>${bi("অর্ডার বনাম ডেলিভারি", "Order vs Delivery")}</h3><span class="tag" id="ov-cnt">0</span><div class="sp"></div><label class="ov-sort"><span class="mut xs">${bi("সাজান", "Sort")}</span><select class="in sm" id="ov-sort"><option value="bal">${bi("বাকি বেশি আগে", "Highest balance")}</option><option value="days">${bi("পুরনো Pending আগে", "Oldest pending")}</option><option value="dl">${bi("ডেলিভারি বেশি আগে", "Most delivered")}</option><option value="pct">${bi("কালেকশন হার কম আগে", "Lowest collection rate")}</option><option value="name">${bi("নাম (A–Z)", "Name (A–Z)")}</option></select></label></div><div class="ov-chips noprint" id="ov-chips"></div><div id="ov-nt"></div><div id="ov-out"></div></div>`;
   async function load() {
     const out = $("#ov-out", box), td = today();
     try { await dpLoad(); await invLoad(); var [d, cols] = await Promise.all([ovdLoad(), ivCols(OVD_FROM, td)]); } catch (e) { out.innerHTML = `<div class="alert rd" style="margin:12px">${esc(ivErr(e))}</div>`; return; }
     cut = d.sales.reduce((m, s) => s.sale_date > m ? s.sale_date : m, d.opening.length ? OVD_FROM : "");
-    const g = Object.create(null), row = k => g[k] ||= { k, pid: null, name: "", op: 0, reg: 0, app: 0, aq: 0, col: 0, pq: 0, old: "", note: "" };
+    const g = Object.create(null), row = k => g[k] ||= { k, pid: null, name: "", op0: 0, ev: [], po: [], note: "" };
     const key = (pid, nm) => pid || "n:" + nm;
-    d.opening.forEach(o => { const x = row(key(o.party_id, o.party_name)); x.pid = o.party_id; x.name = o.party_name; x.op += o.opening; if (o.note === "NEW" || o.note === "INACTIVE") x.note = o.note; });
-    d.sales.forEach(s => { const x = row(key(s.party_id, s.party_name)); x.pid = s.party_id; x.name ||= s.party_name; x.reg += s.amount; });
+    d.opening.forEach(o => { const x = row(key(o.party_id, o.party_name)); x.pid = o.party_id; x.name = o.party_name; x.op0 += o.opening; if (o.note === "NEW" || o.note === "INACTIVE") x.note = o.note; });
+    d.sales.forEach(s => { const x = row(key(s.party_id, s.party_name)); x.pid = s.party_id; x.name ||= s.party_name; x.ev.push([s.sale_date || OVD_FROM, "reg", s.amount, 0]); });
     unO = []; const L = INV.orders.filter(o => o.ch === "dist" && o.status !== "cancel");
     L.forEach(o => {
       const dd = o.delivery_date || o.date, isOk = o.status === "ok", open = !isOk;
       if (!o.party_id) { if (open || (dd > cut && dd >= OVD_FROM)) unO.push(o); return; }
       const x = row(o.party_id); x.pid = o.party_id;
-      if (isOk && dd > cut && dd >= OVD_FROM && dd <= td) { x.app += o.value; x.aq += o.total_qty; }
-      if (open) { x.pq += o.total_qty; if (!x.old || o.date < x.old) x.old = o.date; }
+      if (isOk && dd > cut && dd >= OVD_FROM && dd <= td) x.ev.push([dd, "app", o.value, o.total_qty]);
+      if (open) x.po.push([o.date, o.total_qty]);
     });
-    cols.forEach(c => { if (c.party_id && c.status === "approved") { const x = row(c.party_id); x.pid = c.party_id; x.col += c.amount; } });
-    data = Object.values(g).map(x => {
-      const p = x.pid ? ivParty(x.pid) : null; x.name = p?.name || x.name || x.pid || "—"; x.asm = p?.asm || ""; x.dl = x.reg + x.app; x.bal = x.op + x.dl - x.col; x.days = x.old ? Math.max(0, ivDays(x.old, td)) : 0;
+    cols.forEach(c => { if (c.party_id && c.status === "approved") { const x = row(c.party_id); x.pid = c.party_id; x.ev.push([c.date, "col", c.amount, 0]); } });
+    rows0 = Object.values(g).map(x => { const p = x.pid ? ivParty(x.pid) : null; x.name = p?.name || x.name || x.pid || "—"; x.asm = p?.asm || ""; return x; });
+    compute(); asmOpts(); draw();
+  }
+  /* period view: opening = balance before the period, delivered / collected inside it, balance at its end */
+  function compute() {
+    const [f0, t0] = pbRange(P), all = P.m === "all", f = all ? "0000-01-01" : f0, t = all ? "9999-12-31" : t0, td = today(), end = t < td ? t : td;
+    data = rows0.map(r => {
+      const x = { ...r, op: r.op0, reg: 0, app: 0, aq: 0, col: 0, pq: 0, old: "" };
+      for (const [d, k, a, q] of r.ev) { if (d > t) continue; if (d < f) { x.op += k === "col" ? -a : a; continue; } if (k === "col") x.col += a; else { x[k] += a; if (k === "app") x.aq += q; } }
+      for (const [d, q] of r.po) if (d <= t) { x.pq += q; if (!x.old || d < x.old) x.old = d; }
+      x.dl = x.reg + x.app; x.bal = x.op + x.dl - x.col; x.days = x.old ? Math.max(0, ivDays(x.old, end)) : 0;
       x.st = Math.abs(x.bal) < 1 ? "clear" : x.bal < 0 ? "adv" : x.col > 0 ? "part" : "due"; x.zero = !x.op && !x.dl && !x.col && !x.pq; return x;
     });
     unT = data.filter(x => !x.pid && (x.op || x.reg));
-    draw();
+  }
+  function asmOpts() {
+    const a = $("#ov-asm", box); if (!a) return; const as = [...new Set(rows0.map(x => x.asm || "—"))].sort();
+    a.innerHTML = `<option value="">${bi("সব", "All")}</option>` + as.map(x => `<option value="${esc(x)}" ${x === asmF ? "selected" : ""}>${esc(x === "—" ? bi("ASM নেই", "No ASM") : x)}</option>`).join("");
   }
   const ST = { due: ["#dc2626", bi("বাকি", "Due")], part: ["#d97706", bi("আংশিক", "Partial")], clear: ["#059669", bi("পরিশোধিত", "Clear")], adv: ["#4f46e5", bi("অগ্রিম", "Advance")] };
   const owed = x => x.op + x.dl, pct = x => owed(x) > 0 ? Math.min(100, Math.max(0, x.col / owed(x) * 100)) : 100;
@@ -747,9 +760,9 @@ function ivLedger(box) {
     const out = $("#ov-out", box); if (!out) return;
     const L = visible();
     const T = k => ivSum(L, x => x[k]), td = today();
-    $("#ov-kpi", box).innerHTML = ivTile("#dc2626", "coins", bi("মোট বাকি (Balance)", "Total balance"), "৳ " + money0(T("bal")), `${L.filter(x => x.bal >= 1).length} ${bi("পার্টির বাকি আছে", "parties owe")}`) + ivTile("#64748b", "flag", bi("Opening (০১-০১-২০২৬)", "Opening (01-01-2026)"), "৳ " + money0(T("op")), bi("সব পার্টির যোগফল", "all parties")) + ivTile("#059669", "check", bi("ডেলিভারি", "Delivered"), "৳ " + money0(T("dl")), `${bi("Tally", "Tally")} ৳ ${money0(T("reg"))} + ${bi("অ্যাপ", "App")} ৳ ${money0(T("app"))}`) + ivTile("#4f46e5", "coins", bi("কালেকশন (Approved)", "Collected (approved)"), "৳ " + money0(T("col")), bi("০১-০১-২০২৬ থেকে", "since 01-01-2026")) + ivTile("#d97706", "ivcart", bi("Pending অর্ডার", "Pending orders"), ivQ(T("pq")) + " ctn", `${L.filter(x => x.pq).length} ${bi("পার্টি", "parties")}`);
+    $("#ov-kpi", box).innerHTML = ivTile("#dc2626", "coins", bi("মোট বাকি (Balance)", "Total balance"), "৳ " + money0(T("bal")), `${L.filter(x => x.bal >= 1).length} ${bi("পার্টির বাকি আছে", "parties owe")}`) + ivTile("#64748b", "flag", P.m === "all" ? bi("Opening (০১-০১-২০২৬)", "Opening (01-01-2026)") : bi(`Opening (${dmy(pbRange(P)[0])})`, `Opening (${dmy(pbRange(P)[0])})`), "৳ " + money0(T("op")), P.m === "all" ? bi("সব পার্টির যোগফল", "all parties") : bi("এই সময়ের আগের বাকি", "balance before this period")) + ivTile("#059669", "check", bi("ডেলিভারি", "Delivered"), "৳ " + money0(T("dl")), `${bi("Tally", "Tally")} ৳ ${money0(T("reg"))} + ${bi("অ্যাপ", "App")} ৳ ${money0(T("app"))}`) + ivTile("#4f46e5", "coins", bi("কালেকশন (Approved)", "Collected (approved)"), "৳ " + money0(T("col")), P.m === "all" ? bi("০১-০১-২০২৬ থেকে", "since 01-01-2026") : dcRangeLabel(...pbRange(P))) + ivTile("#d97706", "ivcart", bi("Pending অর্ডার", "Pending orders"), ivQ(T("pq")) + " ctn", `${L.filter(x => x.pq).length} ${bi("পার্টি", "parties")}`);
     const nt = [];
-    if (cut) nt.push(`<div class="mut sm" style="margin:10px 12px 0">${bi(`হিসাব: Opening + বিক্রয় − Approved কালেকশন। বিক্রয় ${dmy(cut)} পর্যন্ত Tally Sales Register থেকে, তার পরের ডেলিভারি অ্যাপ থেকে।`, `Balance = Opening + sales − approved collections. Sales come from the Tally Sales Register up to ${dmy(cut)}, then from app deliveries.`)}</div>`);
+    if (cut) nt.push(`<div class="mut sm" style="margin:10px 12px 0">${bi(`হিসাব: Opening + বিক্রয় − Approved কালেকশন। বিক্রয় ${dmy(cut)} পর্যন্ত Tally Sales Register থেকে, তার পরের ডেলিভারি অ্যাপ থেকে।`, `Balance = Opening + sales − approved collections. Sales come from the Tally Sales Register up to ${dmy(cut)}, then from app deliveries.`)}${P.m === "all" ? "" : " " + bi(`এই সময়: ${dcRangeLabel(...pbRange(P))} — Opening মানে এর আগের বাকি, Balance মানে শেষ দিনের বাকি।`, `Period ${dcRangeLabel(...pbRange(P))}: Opening = balance before it, Balance = balance at its end.`)}</div>`);
     if (unT.length) nt.push(`<div class="alert am" style="margin:10px 12px 0">${bi(`${unT.length}টি Tally পার্টি (Balance ৳ ${money0(ivSum(unT, x => x.bal))}) কালেকশন তালিকার সাথে মেলানো নেই — এদের কালেকশন বাদ যাচ্ছে।`, `${unT.length} Tally parties (balance ৳ ${money0(ivSum(unT, x => x.bal))}) are not linked to the collection list, so their collections are not counted.`)}${S.me.role === "admin" ? ` <a href="#" id="ov-mt">${bi("Tally পার্টি মেলান ›", "Match Tally parties ›")}</a>` : ""}</div>`);
     if (unO.length) nt.push(`<div class="alert am" style="margin:10px 12px 0">${bi(`${unO.length}টি অর্ডার (৳ ${money0(ivSum(unO, o => o.value))}) পার্টির সাথে মেলানো নেই — হিসাবে আসেনি।`, `${unO.length} orders (৳ ${money0(ivSum(unO, o => o.value))}) are not linked to a party and are left out.`)}${S.me.role === "admin" ? ` <a href="#" id="ov-mo">${bi("অর্ডারের পার্টি মেলান ›", "Match order parties ›")}</a>` : ""}</div>`);
     $("#ov-nt", box).innerHTML = nt.join("");
@@ -758,6 +771,7 @@ function ivLedger(box) {
     $("#ov-cnt", box).textContent = L.length;
     { const B = base().filter(x => !asmF || (x.asm || "—") === asmF), c = k => B.filter(x => stPass(x, k)).length;
       const opts = [["", bi("সব", "All")], ["due", ST.due[1]], ["part", ST.part[1]], ["clear", ST.clear[1]], ["adv", ST.adv[1]], ["pend", bi("Pending অর্ডার আছে", "Has pending orders")], ["old", bi("৭+ দিনের Pending", "Pending 7+ days")]].map(([k, l]) => [k, l, c(k)]).filter(x => !x[0] || x[2] || x[0] === stF);
+      { const sel = $("#ov-st", box); if (sel) sel.innerHTML = opts.map(([k, l, n]) => `<option value="${k}" ${k === stF ? "selected" : ""}>${l} (${n})</option>`).join(""); const a = $("#ov-asm", box); if (a) a.value = asmF; }
       $("#ov-chips", box).innerHTML = opts.map(([k, l, n]) => `<button type="button" class="chip sm${k === stF ? " on" : ""}" data-ovs="${k}" aria-pressed="${k === stF}">${k && ST[k] ? `<i class="sdot" style="background:${ST[k][0]}"></i>` : ""}${l} <b>${n}</b></button>`).join("") + (asmF ? `<button type="button" class="chip sm on" data-ova="">ASM: ${esc(asmF)} ✕</button>` : "") + `<span class="mut xs ov-hint">${bi("সারিতে চাপলে পার্টির লেজার খুলবে", "Tap a row to open the party ledger")}</span>`;
       const BV = base().filter(x => stPass(x, stF)), am = new Map(); BV.forEach(x => { const k = x.asm || "—", o = am.get(k) || { k, n: 0, amt: 0 }; o.n++; o.amt += Math.max(0, x.bal); am.set(k, o); });
       const arr = [...am.values()].filter(x => x.amt > 0).sort((a, b) => b.amt - a.amt).slice(0, 7), mx = Math.max(1, ...arr.map(x => x.amt));
@@ -772,12 +786,15 @@ function ivLedger(box) {
   }
   let ovT = 0; $("#ov-q", box).oninput = e => { clearTimeout(ovT); ovT = setTimeout(() => { qs = e.target.value; draw(); }, 90); };
   $("#ov-sort", box).onchange = e => { sortF = e.target.value; draw(); };
+  $("#ov-st", box).onchange = e => { stF = e.target.value; draw(); };
+  $("#ov-asm", box).onchange = e => { asmF = e.target.value; draw(); };
+  pbBind(box, "ovpb", P, () => { if (rows0.length) { compute(); draw(); } }, { all: true });
   box.addEventListener("click", e => { let b;
     if ((b = e.target.closest("[data-ovs]"))) { stF = b.dataset.ovs; draw(); return; }
     if ((b = e.target.closest("[data-ova]"))) { asmF = asmF === b.dataset.ova ? "" : b.dataset.ova; draw(); return; }
     if ((b = e.target.closest("[data-ovp]")) && !getSelection().toString()) { const x = data.find(y => y.k === b.dataset.ovp), p = x?.pid && ivParty(x.pid); if (p && typeof partyLedgerModal === "function") partyLedgerModal(p); else if (x && !x.pid) toast(bi("এই Tally পার্টি কালেকশন তালিকার সাথে মেলানো নেই", "This Tally party is not linked to the collection list"), "err"); } });
   $("#ov-z", box).onchange = e => { show0 = e.target.checked; draw(); };
-  const xl = () => { const td = today(); exportXlsx({ "Order vs Delivery": [["Party", "ASM", "Pending (ctn)", "Pending (days)", "Opening 01-01-2026", "Tally sales to " + (cut || "-"), "App deliveries after", "Delivered", "Collected (approved)", "Payment status", "Balance"], ...visible().map(x => [x.name, x.asm, x.pq || 0, x.pq ? x.days : 0, x.op, x.reg, x.app, x.dl, x.col, ({ due: "Due", part: "Partial", clear: "Clear", adv: "Advance" })[x.st], x.bal])] }, `Order_vs_Delivery_${td}.xlsx`); };
+  const xl = () => { const td = today(); exportXlsx({ "Order vs Delivery": [["Party", "ASM", "Pending (ctn)", "Pending (days)", P.m === "all" ? "Opening 01-01-2026" : "Opening " + pbRange(P)[0], "Tally sales to " + (cut || "-"), "App deliveries after", "Delivered", "Collected (approved)", "Payment status", "Balance"], ...visible().map(x => [x.name, x.asm, x.pq || 0, x.pq ? x.days : 0, x.op, x.reg, x.app, x.dl, x.col, ({ due: "Due", part: "Partial", clear: "Clear", adv: "Advance" })[x.st], x.bal])] }, `Order_vs_Delivery_${P.m === "all" ? td : pbRange(P).join("_")}.xlsx`); };
   return { draw: load, xl };
 }
 /* link Tally names (opening / sales register) to the collection party list */

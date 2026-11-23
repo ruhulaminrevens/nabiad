@@ -695,3 +695,8 @@ button.ivd-ins:hover { transform:translateY(-2px); border-color:var(--pri); }
 }
 .pflt.iv-flt:has(#ov-q){grid-template-columns:minmax(220px,2fr) auto}
 @media (max-width:640px){.pflt.iv-flt:has(#ov-q){grid-template-columns:1fr}}
+
+/* v6.167: Order vs Delivery filters like List & totals */
+.pflt.iv-flt.ov-flt{grid-template-columns:minmax(200px,2fr) repeat(2,minmax(0,1fr)) auto;margin-top:12px}
+.ov-flt .ov-z label.f{display:none}.ov-flt .ov-z .iv-chk{height:40px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+@media (max-width:640px){.pflt.iv-flt.ov-flt{grid-template-columns:1fr;gap:8px}.ov-flt .ov-z .iv-chk{height:auto}}
