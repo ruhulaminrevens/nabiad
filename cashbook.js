@@ -1057,7 +1057,7 @@ async function vCashBook(v) {
       const tone = diff === 0 ? "gr" : diff > 0 ? "am" : diff < 0 ? "rd" : "mut";
       for (const [id, value] of Object.entries({Tr: R, Tp: P})) get(id).textContent = moneyText(value);
       get("inline-closing").textContent = bi("ক্যাশ ক্লোজিং", "Cash Closing") + " = " + (Number.isFinite(open) && Number.isFinite(exp) ? moneyText(exp) : "—");
-      get("inline-diff").textContent = bi("পার্থক্য", "Diff.") + " = " + direction;
+      get("inline-diff").textContent = bi("পার্থক্য", "Variance") + " = " + direction;
       get("inline-diff").className = tone;
       return {open, counted, diff};
     };
