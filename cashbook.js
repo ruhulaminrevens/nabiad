@@ -834,7 +834,7 @@ async function vCashBook(v) {
           ${mayBalance ? `<div class="cb-row-actions"><button type="button" class="btn" id="cb-note-save" disabled>${ico("save")} ${bi("নোট সেভ করুন", "Save notes")}</button></div>` : ""}
         </details>
         ${mayBalance ? `<div class="cb-row-actions">${final
-          ? `<button type="button" class="btn pri" id="cb-balance">${ico("refresh")} ${bi("নগদের হিসাব আপডেট", "Update cash count")}</button>`
+          ? `<button type="button" class="btn pri" id="cb-balance">${ico("refresh")} ${bi("গণনা আপডেট", "Update Count")}</button>`
           : `<button type="button" class="btn pri" id="cb-close-day">${ico("check")} ${bi("দিন বন্ধ করুন", "Close day")}</button>`}</div>` : ""}
       </section>
       <div class="hint rd" id="cb-err" role="alert"></div>
@@ -1178,7 +1178,7 @@ async function vCashBook(v) {
 function cbLedgerModal(after, {mappingOnly = false} = {}) {
   const admin = S.me.role === "admin";
   const canAdd = !mappingOnly || moduleCan("cash","entry"), canEdit = !mappingOnly || moduleCan("cash","edit");
-  const title = mappingOnly ? bi("লেজার খাত নির্ধারণ", "Ledger → Purpose/Group") : bi("লেজার তালিকা", "Ledger list");
+  const title = mappingOnly ? bi("লেজার ম্যাপ", "Map Ledgers") : bi("লেজার তালিকা", "Ledger list");
   modal(`<h2>📒 ${title}</h2>
    ${mappingOnly ? `<p class="mut sm">${bi("Tally voucher ও নতুন Cash Book এন্ট্রির Receipt এবং Payment খাত নির্ধারণ করুন। কোনো খাতে একটিমাত্র সক্রিয় লেজার ম্যাপ করা থাকলে Cash Review-এর খাতের মোটে সেই নাম দেখা যাবে।","Set receipt and payment groups for Tally vouchers and future Cash Book entries. Cash Review category totals show a ledger label where one active ledger is mapped.")}</p>` : `<p class="mut sm">${bi("এখানে ক্যাশ এন্ট্রির লেজার, প্রাপ্তি ও পরিশোধের খাত এবং ব্যাংক অ্যাকাউন্ট নির্ধারণ করুন।", "Set up the ledgers, receipt and payment categories, and bank accounts used for Cash Book entry.")}</p>`}
    <div id="lg-err" aria-live="polite"></div>

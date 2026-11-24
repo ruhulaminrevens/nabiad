@@ -1232,7 +1232,7 @@ async function vEntry(v) {
      <details class="s4 cp-attachment" id="e-attach"><summary>${ico("cam")} <span>${bi("চেকের ছবি", "Cheque photo")}</span> <span class="mut sm" id="e-photo-state">${bi("ঐচ্ছিক", "Optional")}</span></summary>
        <div class="photo-in"><button type="button" class="btn" id="e-camera">${ico("cam")} ${bi("ক্যামেরা", "Camera")}</button><button type="button" class="btn" id="e-gallery">${ico("img")} ${bi("গ্যালারি", "Gallery")}</button>
        <input type="file" id="e-ph-c" accept="image/*" capture="environment" hidden><input type="file" id="e-ph" accept="image/*" hidden><img id="e-phv" class="hide" alt="${bi("চেকের ছবির প্রিভিউ", "Cheque photo preview")}"><button type="button" class="btn sm ghost hide" id="e-phx" aria-label="${bi("ছবি বাদ দিন", "Remove photo")}">✕</button></div>
-       <div id="e-ocrw" class="hide noprint"><button type="button" class="btn sm" id="e-ocr">${ico("search")} ${bi("ছবি থেকে পড়ুন", "Read from photo")}</button><div id="e-ocro"></div></div>
+       <div id="e-ocrw" class="hide noprint"><button type="button" class="btn sm" id="e-ocr">${ico("search")} ${bi("ছবি স্ক্যান", "Scan Photo")}</button><div id="e-ocro"></div></div>
      </details>
      <div class="s4" id="e-sum" style="display:none"></div>
     </div>
@@ -1307,7 +1307,7 @@ async function vEntry(v) {
     const entered = cashAccSum(src, "bank_in")[code] || 0;
     const posted = S.cheques.filter(c => c.date === date && c.code === code && purposeKey(c.purpose) === "cash" && isLive(c)).reduce((q, c) => q + c.amount, 0), cur = chequeAmount($e("e-amt").value) || 0;
     el.style.display = ""; el.className = "s4 cbm";
-    el.innerHTML = `<div class="cbm-h"><span>${ico("link")} Cash Review (${dmy(date)}) · Receipt › Bank · <b>${esc(code)}</b>: <b class="num">${src ? "৳ " + money0(entered) : ok ? bi("এখনো এন্ট্রি নেই", "no entry yet") : "—"}</b> · ${bi("চেক পোস্টিং", "Cheque Posting")}: <b class="num">৳ ${money0(posted)}</b>${cur ? ` <span class="mut xs">(+ ৳ ${money0(cur)} ${bi("এই চেক", "this cheque")})</span>` : ""}</span><a class="btn sm" href="#/cashchk" id="e-cashgo">${bi("Cash Review খুলুন", "Open Cash Review")}</a></div>`;
+    el.innerHTML = `<div class="cbm-h"><span>${ico("link")} Cash Review (${dmy(date)}) · Receipt › Bank · <b>${esc(code)}</b>: <b class="num">${src ? "৳ " + money0(entered) : ok ? bi("এখনো এন্ট্রি নেই", "no entry yet") : "—"}</b> · ${bi("চেক পোস্টিং", "Cheque Posting")}: <b class="num">৳ ${money0(posted)}</b>${cur ? ` <span class="mut xs">(+ ৳ ${money0(cur)} ${bi("এই চেক", "this cheque")})</span>` : ""}</span><a class="btn sm" href="#/cashchk" id="e-cashgo">${bi("ক্যাশ যাচাই", "Cash Review")}</a></div>`;
     $("#e-cashgo", el).onclick = () => sessionStorage.setItem("nabiad_cash_date", date);
   }
   function amtVal() { return expandAmt($e("e-amt").value); }
@@ -1717,7 +1717,7 @@ async function vStatus(v) {
     <div id="s-list" class="cq-list" role="region" aria-labelledby="s-title"></div>
     <div class="cq-keys" aria-hidden="true"><span><kbd>J</kbd><kbd>K</kbd> ${bi("ওঠানামা", "move")}</span><span><kbd>C</kbd> ${bi("ক্লিয়ার", "clear")}</span><span><kbd>S</kbd> ${bi("স্ট্যাটাস", "status")}</span><span><kbd>X</kbd> ${bi("বাছাই", "select")}</span><span><kbd>E</kbd> ${bi("বিস্তারিত", "details")}</span><span><kbd>/</kbd> ${bi("খুঁজুন", "search")}</span></div>
     <div class="cq-pager" id="s-pager" hidden><button class="btn" type="button" id="s-prev">‹ ${bi("আগের", "Previous")}</button><span class="mut sm" id="s-page"></span><button class="btn" type="button" id="s-next">${bi("পরের", "Next")} ›</button></div>
-    <div class="cq-bulk" id="s-bulk" hidden role="region" aria-label="${bi("বাছাই করা চেক", "Selected cheques")}"><div><strong id="s-bn" class="num"></strong><span class="mut sm" id="s-bt"></span></div><div class="cq-bulk-a"><button type="button" class="btn" id="s-bx">${bi("বাতিল", "Deselect")}</button><button type="button" class="btn ok" id="s-bc">${ico("check")} ${bi("সব ক্লিয়ার করুন", "Mark all cleared")}</button></div></div>`;
+    <div class="cq-bulk" id="s-bulk" hidden role="region" aria-label="${bi("বাছাই করা চেক", "Selected cheques")}"><div><strong id="s-bn" class="num"></strong><span class="mut sm" id="s-bt"></span></div><div class="cq-bulk-a"><button type="button" class="btn" id="s-bx">${bi("বাতিল", "Deselect")}</button><button type="button" class="btn ok" id="s-bc">${ico("check")} ${bi("সব ক্লিয়ার", "Clear All")}</button></div></div>`;
   const q = $("#s-q", v), date = $("#s-d", v), list = $("#s-list", v), info = $("#s-info", v);
   const pager = $("#s-pager", v), prev = $("#s-prev", v), next = $("#s-next", v), sort = $("#s-sort", v), title = $("#s-title", v);
   const acSel = $("#s-ac", v), ageBox = $("#s-age", v), tiles = $$("[data-cq-filter]", v), pageSize = 40;
@@ -1834,7 +1834,7 @@ async function vStatus(v) {
         }
         html += card(c);
       }
-    } else html = `<div class="card empty cp-empty"><strong>${q.value.trim() || acF || ageF ? bi("ফিল্টারে কোনো চেক মেলেনি", "No cheques match these filters") : mode === "pending" ? bi("সব চেক হালনাগাদ ✓ — কোনো অপেক্ষমাণ চেক নেই", "All caught up ✓ — no pending cheques") : bi("এই তালিকায় কোনো চেক নেই", "No cheques in this queue")}</strong>${q.value.trim() || acF || ageF ? `<button type="button" class="btn sm" id="s-reset-q">${bi("ফিল্টার মুছুন", "Clear filters")}</button>` : mode === "pending" ? `<button type="button" class="btn sm" data-cq-go="all">${bi("সব চেক দেখুন", "View all cheques")}</button>` : ""}</div>`;
+    } else html = `<div class="card empty cp-empty"><strong>${q.value.trim() || acF || ageF ? bi("ফিল্টারে কোনো চেক মেলেনি", "No cheques match these filters") : mode === "pending" ? bi("সব চেক হালনাগাদ ✓ — কোনো অপেক্ষমাণ চেক নেই", "All caught up ✓ — no pending cheques") : bi("এই তালিকায় কোনো চেক নেই", "No cheques in this queue")}</strong>${q.value.trim() || acF || ageF ? `<button type="button" class="btn sm" id="s-reset-q">${bi("ফিল্টার মুছুন", "Clear filters")}</button>` : mode === "pending" ? `<button type="button" class="btn sm" data-cq-go="all">${bi("সব দেখুন", "View All")}</button>` : ""}</div>`;
     if (html !== lastHtml) {
       const f = document.activeElement, key = list.contains(f) ? f.dataset.k : "";
       list.innerHTML = lastHtml = html;
@@ -3158,7 +3158,7 @@ function leafMarkModal(book0, after) {
   modal(`<h2>✂️ ${bi("পাতা মার্ক করুন", "Mark leaves")}</h2>
    <label class="f" for="lm-b">${bi("চেক বই", "Cheque book")}</label><select class="in" id="lm-b">${books.map(b => `<option value="${b.id}" ${book0 && book0.id === b.id ? "selected" : ""}>${esc(b.code)} · ${esc(b.series || "")} ${b.first}–${b.last ?? "?"} · ${esc((am[b.code] || {}).holder || "")}</option>`).join("")}</select>
    <div id="lm-info" class="mut sm" style="margin:6px 0 10px"></div>
-   <label class="f">${bi("পাতা বাছুন (ট্যাপ করুন)", "Pick leaves (tap)")}</label><div class="row" style="gap:6px;margin-bottom:6px"><button class="btn sm" style="flex:none" id="lm-all">${bi("এই পাতার নম্বরগুলো বাছুন", "Select this page")}</button><button class="btn sm" style="flex:none" id="lm-none">${bi("কিছু না", "None")}</button></div>
+   <label class="f">${bi("পাতা বাছুন (ট্যাপ করুন)", "Pick leaves (tap)")}</label><div class="row" style="gap:6px;margin-bottom:6px"><button class="btn sm" style="flex:none" id="lm-all">${bi("পাতা বাছুন", "Select Page")}</button><button class="btn sm" style="flex:none" id="lm-none">${bi("কিছু না", "None")}</button></div>
    <div class="lm-chips" id="lm-ch"></div><div class="cq-pager" id="lm-pager" hidden><button type="button" class="btn sm" id="lm-prev" aria-label="${bi("আগের পাতা", "Previous page")}">‹</button><span id="lm-page" class="mut sm"></span><button type="button" class="btn sm" id="lm-next" aria-label="${bi("পরের পাতা", "Next page")}">›</button></div>
    <label class="f" for="lm-x" style="margin-top:10px">${bi("অন্য পাতা (নম্বর বা রেঞ্জ, যেমন 1223, 1230-1235)", "Other leaves (numbers or ranges, e.g. 1223, 1230-1235)")}</label><input class="in" id="lm-x" inputmode="numeric" autocomplete="off" placeholder="5291222, 5291230-5291235">
    <div id="lm-sum" class="b" style="margin:8px 0"></div>
@@ -3837,7 +3837,7 @@ async function vAdmin(v) {
       if (!DEMO) {
         $("#adm-history",out).insertAdjacentHTML("afterend", `<section class="adm-import-tally"><h3>${bi("Tally ভাউচার ইতিহাস","Tally voucher history")}</h3>
           <p class="mut sm">${bi("একবার import করলে Cash Register-এর Tally vouchers-এ সেভ করা ইতিহাস পাবেন।","Import once to view saved history under Cash Register → Tally vouchers.")}</p>
-          <button type="button" class="btn" id="adm-tally-import">${ico("book")} ${bi("Tally ইতিহাস ইমপোর্ট","Import Tally history")}</button>
+          <button type="button" class="btn" id="adm-tally-import">${ico("book")} ${bi("Tally ইমপোর্ট","Import Tally")}</button>
           <input type="file" hidden accept=".json,application/json" id="adm-tally-file"><p class="mut sm" role="status" id="adm-tally-result"></p></section>`);
         const input = $("#adm-tally-file",out), button = $("#adm-tally-import",out), status = $("#adm-tally-result",out);
         button.onclick = () => { if (navigator.onLine) input.click(); else toast(bi("ইন্টারনেট প্রয়োজন","Connect to the internet to import"),"err"); };
@@ -4667,7 +4667,7 @@ async function vReports(v) {
       out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`; dash.innerHTML = `<div class="skel" style="height:190px"></div>`;
       let rows; try { rows = (await cached(`br:${from}:${to}`, 120000, () => API.balancesRange(addDays(from, -10), to))).filter(r => hOk(r.code) && am[r.code]?.daily); } catch (e) { out.innerHTML = `<div class="alert rd">${esc(isNetErr(e) ? "ইন্টারনেট নেই — ব্যাংক রিপোর্টের জন্য অনলাইন থাকতে হবে" : e.message)}</div>`; dash.innerHTML = ""; cur = null; syncSheet(); return; }
       const before = rows.filter(r => r.date < from), inR = rows.filter(r => r.date >= from);
-      const ser = balSeries(inR); if (!ser.length) { const lastD0 = S.lastBal && (S.lastBal < from || S.lastBal > to) ? S.lastBal : ""; out.innerHTML = label + `<div class="card empty">${bi("এই সময়ে কোনো ব্যালেন্স সেভ নেই", "No saved balances in this period")}${lastD0 ? `<div style="margin-top:12px"><button type="button" class="btn" id="p-last">${bi("সর্বশেষ সেভ করা তারিখে যান", "Go to last saved date")} · ${dmy(lastD0)} ›</button></div>` : ""}</div>`; dash.innerHTML = ""; cur = null; syncSheet();
+      const ser = balSeries(inR); if (!ser.length) { const lastD0 = S.lastBal && (S.lastBal < from || S.lastBal > to) ? S.lastBal : ""; out.innerHTML = label + `<div class="card empty">${bi("এই সময়ে কোনো ব্যালেন্স সেভ নেই", "No saved balances in this period")}${lastD0 ? `<div style="margin-top:12px"><button type="button" class="btn" id="p-last">${bi("শেষ সেভ তারিখ", "Last Saved")} · ${dmy(lastD0)} ›</button></div>` : ""}</div>`; dash.innerHTML = ""; cur = null; syncSheet();
       const jb = $("#p-last", out); if (jb) jb.onclick = () => { F.d = lastD0; if (F.m === "custom") { F.f = addDays(lastD0, -29); F.t = lastD0; } $("#p", v).outerHTML = pbBar("p", F); pbBind(v, "p", F, draw); draw(); };
       return; }
       const firstD = ser[0].date, lastD = ser[ser.length - 1].date, openD = before.length ? before[before.length - 1].date : firstD;
@@ -4924,7 +4924,7 @@ async function vCash(v) {
       <div class="card cs-source"><div role="status"><strong>${source}</strong><span class="tag ${record?.status === "final" ? "ok" : ""}">${status}</span><time datetime="${day}">${dmy(day)}</time></div>
       ${book?.updated_at ? `<small class="mut">${bi("সর্বশেষ আপডেট", "Last updated")} · ${esc(cbRegisterDate(book.updated_at))}</small>` : ""}</div>
       ${noRecord ? `<section class="card empty cs-empty"><strong>${bi("এই তারিখে কোনো ক্যাশ এন্ট্রি নেই", "No cash entries for this date")}</strong>
-        ${$("#cs-book", v) ? `<a id="cs-open-book" href="#/cash" class="btn">${ico("book")} ${bi("ক্যাশ খাতা খুলুন", "Open Cash Book")}</a>` : ""}</section>` : ""}
+        ${$("#cs-book", v) ? `<a id="cs-open-book" href="#/cash" class="btn">${ico("book")} ${bi("ক্যাশ খাতা", "Cash Book")}</a>` : ""}</section>` : ""}
       <div class="cs-metrics">${[[expected, amount(expectedCash), ""], [counted, amount(countedCash), ""],
         [bi("নগদে পার্থক্য", "Cash difference"), diffLabel(cashDiff), cashDiff == null ? "" : cashDiff === 0 ? "gr" : cashDiff < 0 ? "rd" : "am"],
         [bi("সেভ করা ব্যাংক ক্লোজিং", "Saved bank closing"), amount(closingBank), "",
@@ -5105,7 +5105,7 @@ async function vRegister(v) {
   const mappedCategoryTotal = bi("ম্যাপ করা লেজার · খাতের মোট", "Mapped ledger · category total");
   const sources = { checker: bi("ক্যাশ যাচাই", "Cash Review"), book: bi("ক্যাশ খাতা", "Cash Book"), tally: "Tally" };
   const all = bi("সব", "All");
-  v.innerHTML = head("ক্যাশ লেজার", `${canMap ? `<button type="button" class="btn" id="rg-map">${ico("sliders")} ${bi("লেজার খাত নির্ধারণ", "Ledger → Purpose/Group")}</button>` : ""}<button type="button" class="btn" id="rg-x">${ico("dl")} Excel</button>`) +
+  v.innerHTML = head("ক্যাশ লেজার", `${canMap ? `<button type="button" class="btn" id="rg-map">${ico("sliders")} ${bi("লেজার ম্যাপ", "Map Ledgers")}</button>` : ""}<button type="button" class="btn" id="rg-x">${ico("dl")} Excel</button>`) +
     `<div class="card tbar rg-tools noprint">
        <div class="rg-source chips" id="rg-source" role="group" aria-label="${bi("রেকর্ডের উৎস", "Record source")}">
          <button type="button" class="chip on" data-rg-source="app" aria-pressed="true">${bi("অ্যাপ রেকর্ড", "App records")}</button>
@@ -5817,7 +5817,7 @@ function backupRestoreModal(snapshot, preview, refresh, applyRestore = tables =>
     <div class="hint" id="bk-restore-result" role="status" aria-live="polite"></div>
     <div id="bk-restore-breakdown"></div>
     <div class="modal-actions"><button class="btn" type="button" id="bk-restore-close">${bi("বন্ধ", "Close")}</button>
-    ${eligible.length ? `<button class="btn pri" type="button" id="bk-restore-apply" disabled>${bi("নির্বাচিত রেকর্ড রিস্টোর করুন", "Restore selected records")}</button>` : ""}</div>`, (root, close) => {
+    ${eligible.length ? `<button class="btn pri" type="button" id="bk-restore-apply" disabled>${bi("নির্বাচিত রিস্টোর", "Restore Selected")}</button>` : ""}</div>`, (root, close) => {
     const panel = $("#bk-restore-result", root), apply = $("#bk-restore-apply", root), closeButton = $("#bk-restore-close", root);
     const input = $("#bk-restore-confirm", root), tables = $$("[data-restore-table]", root);
     let busy = false, completed = false;
@@ -5877,7 +5877,7 @@ function offsiteStatus(runs, kind) {
   return { card: [label, auditStamp(ok.at), sub], warn: stale || failedLast ? bi(`${kind === "db" ? "ডাটাবেস" : "ছবি"} off-site backup ${stale ? "সময়মতো হয়নি" : "শেষবার ব্যর্থ হয়েছে"} — GitHub Actions দেখুন।`, `${kind === "db" ? "Database" : "Photo"} off-site backup ${stale ? "is overdue" : "failed on its last run"}. Check GitHub Actions.`) : "" };
 }
 async function vBackup(out) {
-  out.innerHTML = head(bi("ব্যাকআপ ও রিস্টোর", "Backup & Restore"), `${!DEMO ? `<button class="btn" type="button" id="bk-upload">${ico("plus")} ${bi("ব্যাকআপ আপলোড ও রিস্টোর", "Upload backup & restore")}</button>` : ""}<button class="btn pri" type="button" id="bk-now">${ico("save")} ${bi("এখনই Backup","Backup now")}</button><button class="btn" type="button" id="bk-dl">${ico("dl")} ${bi("বর্তমান ডাটা (Excel)","Current data (Excel)")}</button>`) +
+  out.innerHTML = head(bi("ব্যাকআপ ও রিস্টোর", "Backup & Restore"), `${!DEMO ? `<button class="btn" type="button" id="bk-upload">${ico("plus")} ${bi("আপলোড ও রিস্টোর", "Upload & Restore")}</button>` : ""}<button class="btn pri" type="button" id="bk-now">${ico("save")} ${bi("এখনই Backup","Backup now")}</button><button class="btn" type="button" id="bk-dl">${ico("dl")} ${bi("বর্তমান ডাটা (Excel)","Current data (Excel)")}</button>`) +
     `${!DEMO ? `<input type="file" hidden id="bk-upload-file" accept=".json,application/json">
       <p class="mut sm" id="bk-upload-status" role="status"></p>` : ""}
       <div id="bk-kpi"></div><div class="card flush" id="bk-archive">
@@ -5908,7 +5908,7 @@ async function vBackup(out) {
     list.innerHTML = visible.length ? visible.map(r => `<article class="bkr"><span class="bki ${r.kind === "auto" ? "auto" : "manual"}">${ico(r.kind === "auto" ? "clock" : "save")}</span>
       <div class="bkb"><b>${esc(auditStamp(r.at))}</b><div class="mut sm">${kind(r.kind)} · ${bi("রেকর্ড","Records")} ${money0(r.size_rows)}</div></div>
       <div class="bka"><button type="button" class="btn sm" data-backup="details" data-id="${esc(r.id)}">${bi("বিস্তারিত","Details")}</button><button type="button" class="btn sm" data-backup="json" data-id="${esc(r.id)}">JSON</button>
-      ${!DEMO ? `<button type="button" class="btn sm" data-backup="restore" data-id="${esc(r.id)}">${bi("রিস্টোর দেখুন","Preview restore")}</button>` : ""}
+      ${!DEMO ? `<button type="button" class="btn sm" data-backup="restore" data-id="${esc(r.id)}">${bi("প্রিভিউ","Preview")}</button>` : ""}
       <button type="button" class="btn sm" data-backup="xlsx" data-id="${esc(r.id)}">Excel</button>
       ${r.kind === "manual" ? `<button class="btn sm rdo" type="button" data-backup="remove" data-id="${esc(r.id)}" aria-label="${bi("ম্যানুয়াল ব্যাকআপ মুছুন","Delete manual backup")}">${ico("trash")}</button>` : ""}</div></article>`).join("") :
       `<div class="empty">${bi("এই ধরনের কোনো snapshot নেই","No snapshots match this type")}</div>`;
@@ -6055,7 +6055,7 @@ async function vSec(out, _options, open) {
     ]);
     g("sc-devices").innerHTML = `<h3>${bi("আপনার সাইন-ইন সেশন","Your signed-in sessions")}</h3><p class="mut sm as-break">${esc(S.me.email || "")}</p>${own ? own.length ? own.map(row => `<div class="scrow">${sessionDevice(row)}
       ${!row.mine ? `<button type="button" class="btn sm" data-sc-device="${esc(row.id)}">${bi("লগআউট","Sign out")}</button>` : ""}</div>`).join("") : `<p class="mut sm">${bi("কোনো সক্রিয় সেশন নেই","No active sessions")}</p>` : `<p class="mut sm">${bi("সেশনের তথ্য লোড হয়নি","Session information could not load")}</p>`}
-      <div class="adm-actions st-btns"><button type="button" class="btn" id="sc-oth" ${own && !own.some(row => !row.mine) ? "disabled" : ""}>${bi("অন্য সব ডিভাইস থেকে লগআউট","Sign out other devices")}</button><a class="btn" href="#/settings">${bi("পাসওয়ার্ড ও 2FA","Password and 2FA")}</a></div>`;
+      <div class="adm-actions st-btns"><button type="button" class="btn" id="sc-oth" ${own && !own.some(row => !row.mine) ? "disabled" : ""}>${bi("অন্য ডিভাইস লগআউট","Sign Out Others")}</button><a class="btn" href="#/settings">${bi("পাসওয়ার্ড ও 2FA","Password and 2FA")}</a></div>`;
     g("sc-recent").innerHTML = `<h3>${bi("গত ৭ দিনের সাম্প্রতিক ডিলিট","Recent deletions · 7 days")}</h3>${recent ? recent.length ? recent.map(r => `<div class="scrow"><div class="as-break"><b>${esc(auditTable(r.tbl))} · ${esc(r.row_key || "—")}</b><div class="mut sm">${esc(auditActor(r))} · ${esc(auditStamp(r.at))}</div></div></div>`).join("") : `<p class="mut sm">${bi("এই সময়ে ডিলিট নেই","No deletions in this period")}</p>` : `<p class="mut sm">${bi("ডিলিটের রেকর্ড লোড হয়নি","Deletion activity could not load")}</p>`}
       <button type="button" class="btn sm" id="sc-audit-link">${bi("অডিট লগে দেখুন","View in Audit Log")}</button>`;
     g("sc-audit-link").onclick = () => open("audit",{deletions:true});
