@@ -12,11 +12,10 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
 }
 python --version
 
-# 2. Today's Tally backup must exist
-$bk = Get-ChildItem 'E:\Tally_Backup\Daily' -Recurse -File -ErrorAction SilentlyContinue |
-  Where-Object { $_.LastWriteTime.Date -eq (Get-Date).Date } | Select-Object -First 1
-if (-not $bk) { Write-Host 'STOP: no backup from today in E:\Tally_Backup\Daily. Take a backup first.'; exit }
-Write-Host "Today's backup found: $($bk.FullName)"
+# 2. Today's Tally backup folder must exist
+$bkPath = 'E:\Tally_Backup\123 TALLY BACK UP\' + (Get-Date).ToString('dd.MM.yyyy')
+if (-not (Test-Path $bkPath)) { Write-Host "STOP: no backup folder for today: $bkPath"; exit }
+Write-Host "Today's backup found: $bkPath (made $((Get-Item $bkPath).LastWriteTime))"
 
 # 3. Tally port
 if (-not (Test-NetConnection localhost -Port 9000 -InformationLevel Quiet)) { Write-Host 'STOP: Tally is not answering on port 9000.'; exit }
