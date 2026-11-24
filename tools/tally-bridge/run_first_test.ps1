@@ -1,16 +1,24 @@
 # Nabiad Bridge - first safe test. READ-ONLY dry run: one company, 3 days, nothing uploaded.
 # Run:  powershell -ExecutionPolicy Bypass -File .\run_first_test.ps1
 $ErrorActionPreference = 'Stop'
-Set-Location (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$src = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# 1. Python
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-  Write-Host 'Python not found. Installing with winget...'
+# 1. Real Python (the Microsoft Store 'python' stub does not count)
+$py = $null
+foreach ($name in 'python', 'py') {
+  if (Get-Command $name -ErrorAction SilentlyContinue) {
+    $v = (& $name --version 2>&1 | Out-String)
+    if ($v -match 'Python 3') { $py = $name; break }
+  }
+}
+if (-not $py) {
+  Write-Host 'Python 3 is not installed. Installing with winget...'
   winget install -e --id Python.Python.3.12 --accept-package-agreements --accept-source-agreements
-  Write-Host 'Done. Close this window, open a NEW PowerShell and run this script again.'
+  Write-Host 'If that worked: close this window, open a NEW PowerShell and run this script again.'
+  Write-Host 'If winget is missing: install Python 3 from python.org (tick "Add python.exe to PATH"), then run again.'
   exit
 }
-python --version
+Write-Host ("Using: " + (& $py --version 2>&1))
 
 # 2. Today's Tally backup folder must exist
 $bkPath = 'E:\Tally_Backup\123 TALLY BACK UP\' + (Get-Date).ToString('dd.MM.yyyy')
@@ -24,11 +32,17 @@ if (-not (Test-NetConnection localhost -Port 9000 -InformationLevel Quiet)) { Wr
 $ok = Read-Host 'Tally open, companies loaded, nobody entering data right now? Type YES to continue'
 if ($ok -ne 'YES') { Write-Host 'Cancelled. Nothing was sent to Tally.'; exit }
 
-if (-not (Test-Path config.json)) { Copy-Item config.example.json config.json }
+# 5. Work in a folder you can write to
+$work = Join-Path $env:USERPROFILE 'NabiadBridge'
+New-Item -ItemType Directory -Force -Path $work | Out-Null
+Copy-Item (Join-Path $src 'bridge.py') $work -Force
+Copy-Item (Join-Path $src 'config.example.json') (Join-Path $work 'config.json') -Force
+Set-Location $work
 
-# 5. One company, 3 days, standard reports only
-python bridge.py --config config.json --company "Nabiad Distribution Ltd." --from 2026-11-20 --to 2026-11-22 --confirm-live --save-raw
+# 6. One company, 3 days, standard reports only
+& $py bridge.py --config config.json --company "Nabiad Distribution Ltd." --from 2026-11-20 --to 2026-11-22 --confirm-live --save-raw
 if ($LASTEXITCODE -ne 0) { Write-Host 'The run stopped early (see message above). Tally was not contacted again.'; exit }
 
-Compress-Archive -Path bridge_out -DestinationPath bridge_out.zip -Force
+Compress-Archive -Path (Join-Path $work 'bridge_out') -DestinationPath (Join-Path $work 'bridge_out.zip') -Force
 Write-Host 'Done. Upload bridge_out.zip to the Claude chat. It holds real company data (raw Tally XML), so share it only here.'
+explorer.exe /select,(Join-Path $work 'bridge_out.zip')
