@@ -301,11 +301,11 @@ Object.assign(I18N, {
   "মুছে ফেলবেন?": "Delete?", "নতুন": "New", "লিস্ট": "List", "ডাটা নেই": "No data", "এডিট": "Edit", "মুছুন": "Delete", "সেভ": "Save", "বন্ধ": "Close", "বাতিল": "Cancel", "সামারি": "Summary",
   // v6.30 — page names + Old data import
   "নতুন চেক": "New Cheque", "চেক পোস্টিং": "Cheque Posting", "চেক স্ট্যাটাস": "Cheque Status", "চেক রেজিস্টার": "Cheque Register",
-  "ব্যাংক ক্লোজিং": "Bank Closing", "ব্যালেন্স স্ন্যাপশট": "Balance Snapshot", "ব্যাংক রিপোর্ট": "Bank Reports", "ব্যাংক সামারি": "Bank Summary", "ব্যাংক বিশ্লেষণ": "Bank Analysis",
+  "ব্যাংক ক্লোজিং": "Bank Closing", "ব্যালেন্স স্ন্যাপশট": "Balance Snapshot", "ব্যাংক রিপোর্ট": "Bank Reports", "ব্যাংক সামারি": "Bank Summary", "ব্যাংক বিবরণ": "Bank Detail",
   "ক্যাশ এন্ট্রি": "Cash Entry", "ক্যাশ খাতা": "Cash Book", "ক্যাশ যাচাই": "Cash Review", "ক্যাশ লেজার": "Cash Ledger", "ক্যাশ সামারি": "Cash Summary", "ক্যাশ রিপোর্ট": "Cash Reports",
   "কালেকশন এন্ট্রি": "Collection Entry", "কালেকশন সামারি": "Collection Summary", "কালেকশন রিপোর্ট": "Collection Reports",
   "অ্যাকাউন্টস": "Accounts", "পার্টি তালিকা": "Parties",
-  "অডিট ও সিকিউরিটি": "Audit & Security", "অ্যাডমিনিস্ট্রেশন": "Administration",
+  "অডিট ও সিকিউরিটি": "Audit & Security", "অ্যাডমিন": "Admin",
   "সবচেয়ে পুরনো তারিখ": "Oldest date", "সর্বশেষ তারিখ": "Latest date",
   "২০২৬ ডাটা পুনরুদ্ধার": "Restore 2026 data",
   "২০২৬-এর সব রেকর্ড + ২০২৬-এর ঠিক আগের শেষ দিনটি (ওটাই ১ জানুয়ারির Opening)": "All 2026 records + the last day before 2026 (it becomes the 1 January Opening)",
