@@ -302,7 +302,7 @@ Object.assign(I18N, {
   // v6.30 — page names + Old data import
   "নতুন চেক": "New Cheque", "চেক পোস্টিং": "Cheque Posting", "চেক স্ট্যাটাস": "Cheque Status", "চেক রেজিস্টার": "Cheque Register",
   "ব্যাংক ক্লোজিং": "Bank Closing", "ব্যালেন্স স্ন্যাপশট": "Balance Snapshot", "ব্যাংক রিপোর্ট": "Bank Reports", "ব্যাংক সামারি": "Bank Summary", "ব্যাংক বিশ্লেষণ": "Bank Analysis",
-  "ক্যাশ এন্ট্রি": "Cash Entry", "ক্যাশ খাতা": "Cash Book", "ক্যাশ যাচাই": "Cash Reconciliation", "ক্যাশ লেজার": "Cash Ledger", "ক্যাশ সামারি": "Cash Summary", "ক্যাশ রিপোর্ট": "Cash Reports",
+  "ক্যাশ এন্ট্রি": "Cash Entry", "ক্যাশ খাতা": "Cash Book", "ক্যাশ যাচাই": "Cash Review", "ক্যাশ লেজার": "Cash Ledger", "ক্যাশ সামারি": "Cash Summary", "ক্যাশ রিপোর্ট": "Cash Reports",
   "কালেকশন এন্ট্রি": "Collection Entry", "কালেকশন সামারি": "Collection Summary", "কালেকশন রিপোর্ট": "Collection Reports",
   "অ্যাকাউন্ট ডিরেক্টরি": "Account Directory", "পার্টি তালিকা": "Parties",
   "অডিট ও সিকিউরিটি": "Audit & Security", "অ্যাডমিনিস্ট্রেশন": "Administration",
