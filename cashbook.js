@@ -1,7 +1,7 @@
 /* NABIAD — CASH BOOK / ক্যাশ খাতা (v6.76)
    Daily paper-book style entry: Cash in Hand (opening) → Receipt lines → Payment lines → counted cash in hand.
    Every line = a name + an amount; its category (Cosmetics / Food / Bank A/C / Suppliers …) is guessed from the name
-   (from the ledger mapping or earlier entries). The Cash Checker (old Cash Entry page) groups these lines into
+   (from the ledger mapping or earlier entries). The Cash Review (old Cash Entry page) groups these lines into
    its categories and compares everything. Loaded after app.js; uses its helpers (head, dateNav, evalAmt, CASH, bi …). */
 "use strict";
 
@@ -132,7 +132,7 @@ function cbGuess(name, t) {
   for (const [re, k] of CB_KW[t]) if (re.test(name)) return { k };
   return null;
 }
-/* lines → the Cash Checker's items ({key:{a, n, accs}}); unassigned lines go to Others and are counted */
+/* lines → the Cash Review's items ({key:{a, n, accs}}); unassigned lines go to Others and are counted */
 const cbLive = l => !l?.x;
 function cbGroup(bk) {
   const items = {}, warn = { un: 0, noAc: 0 };
@@ -147,11 +147,11 @@ function cbGroup(bk) {
 }
 const cbTot = bk => { const s = t => (bk?.lines?.[t] || []).filter(cbLive).reduce((q, l) => q + (+l.a || 0), 0), R = s("r"), P = s("p"); return { R, P, exp: (+bk?.opening_cash || 0) + R - P }; };
 
-/* ---------- Cash Checker: problems & differences ---------- */
+/* ---------- Cash Review: problems & differences ---------- */
 function cbChecksHtml(L) {
   const n = lv => L.filter(x => x.lv === lv).length, e = n("err"), w = n("warn");
   const ord = { err: 0, warn: 1, info: 2, ok: 3 }, ic = { err: "✖", warn: "⚠", info: "ℹ", ok: "✔" };
-  return `<div class="cbchk-h"><b>🔎 ${bi("ক্যাশ চেকার — সমস্যা ও পার্থক্য", "Cash Checker — problems & differences")}</b><span class="cbchip ${e ? "err" : w ? "warn" : "ok"}">${e ? `${e} ${bi("সমস্যা", "problem(s)")}` : w ? `${w} ${bi("সতর্কতা", "warning(s)")}` : bi("তথ্য", "Info")}</span>${e && w ? `<span class="cbchip warn">${w} ${bi("সতর্কতা", "warning(s)")}</span>` : ""}</div><ul class="cbchk-l">${[...L].sort((a, b) => ord[a.lv] - ord[b.lv]).map(x => `<li class="${x.lv}"><i>${ic[x.lv]}</i><span>${esc(x.t)}</span></li>`).join("")}</ul>`;
+  return `<div class="cbchk-h"><b>🔎 ${bi("ক্যাশ যাচাই — সমস্যা ও পার্থক্য", "Cash Review — problems & differences")}</b><span class="cbchip ${e ? "err" : w ? "warn" : "ok"}">${e ? `${e} ${bi("সমস্যা", "problem(s)")}` : w ? `${w} ${bi("সতর্কতা", "warning(s)")}` : bi("তথ্য", "Info")}</span>${e && w ? `<span class="cbchip warn">${w} ${bi("সতর্কতা", "warning(s)")}</span>` : ""}</div><ul class="cbchk-l">${[...L].sort((a, b) => ord[a.lv] - ord[b.lv]).map(x => `<li class="${x.lv}"><i>${ic[x.lv]}</i><span>${esc(x.t)}</span></li>`).join("")}</ul>`;
 }
 
 /* ---------- daily register: source totals are references, never cash lines ---------- */
@@ -707,7 +707,7 @@ async function vCashBook(v) {
   const initial = handoff || last || localDay;
   sessionStorage.removeItem("nabiad_cash_date");
   v.innerHTML = head(ROUTES[CUR].t, `<button type="button" class="btn cb-action" id="cb-led">${ico("list")}<span>${bi("লেজার", "Ledgers")}</span></button>
-    <a class="btn cb-action" href="#/cashchk" id="cb-checker">${ico("check")}<span>${bi("ক্যাশ চেকার", "Cash Checker")}</span></a>
+    <a class="btn cb-action" href="#/cashchk" id="cb-checker">${ico("check")}<span>${bi("ক্যাশ যাচাই", "Cash Review")}</span></a>
     <a class="btn cb-action cb-summary-link" href="#/cashsum">${ico("chart")}<span>${bi("সামারি", "Summary")}</span></a>`, "tc cb-page-head") +
     `<div class="card tbar navcard cb-date-card"><div class="cb-date-row">
       ${dateNav("cb", initial > localDay ? localDay : initial)}
@@ -834,7 +834,7 @@ async function vCashBook(v) {
           ${mayBalance ? `<div class="cb-row-actions"><button type="button" class="btn" id="cb-note-save" disabled>${ico("save")} ${bi("নোট সেভ করুন", "Save notes")}</button></div>` : ""}
         </details>
         ${mayBalance ? `<div class="cb-row-actions">${final
-          ? `<button type="button" class="btn pri" id="cb-balance">${ico("refresh")} ${bi("নগদের হিসাব আপডেট", "Update cash count")}</button>`
+          ? `<button type="button" class="btn pri" id="cb-balance">${ico("refresh")} ${bi("গণনা আপডেট", "Update Count")}</button>`
           : `<button type="button" class="btn pri" id="cb-close-day">${ico("check")} ${bi("দিন বন্ধ করুন", "Close day")}</button>`}</div>` : ""}
       </section>
       <div class="hint rd" id="cb-err" role="alert"></div>
@@ -1057,7 +1057,7 @@ async function vCashBook(v) {
       const tone = diff === 0 ? "gr" : diff > 0 ? "am" : diff < 0 ? "rd" : "mut";
       for (const [id, value] of Object.entries({Tr: R, Tp: P})) get(id).textContent = moneyText(value);
       get("inline-closing").textContent = bi("ক্যাশ ক্লোজিং", "Cash Closing") + " = " + (Number.isFinite(open) && Number.isFinite(exp) ? moneyText(exp) : "—");
-      get("inline-diff").textContent = bi("পার্থক্য", "Diff.") + " = " + direction;
+      get("inline-diff").textContent = bi("পার্থক্য", "Variance") + " = " + direction;
       get("inline-diff").className = tone;
       return {open, counted, diff};
     };
@@ -1178,9 +1178,9 @@ async function vCashBook(v) {
 function cbLedgerModal(after, {mappingOnly = false} = {}) {
   const admin = S.me.role === "admin";
   const canAdd = !mappingOnly || moduleCan("cash","entry"), canEdit = !mappingOnly || moduleCan("cash","edit");
-  const title = mappingOnly ? bi("লেজার খাত নির্ধারণ", "Ledger → Purpose/Group") : bi("লেজার তালিকা", "Ledger list");
+  const title = mappingOnly ? bi("লেজার ম্যাপ", "Map Ledgers") : bi("লেজার তালিকা", "Ledger list");
   modal(`<h2>📒 ${title}</h2>
-   ${mappingOnly ? `<p class="mut sm">${bi("Tally voucher ও নতুন Cash Book এন্ট্রির Receipt এবং Payment খাত নির্ধারণ করুন। কোনো খাতে একটিমাত্র সক্রিয় লেজার ম্যাপ করা থাকলে Cash Checker-এর খাতের মোটে সেই নাম দেখা যাবে।","Set receipt and payment groups for Tally vouchers and future Cash Book entries. Cash Checker category totals show a ledger label where one active ledger is mapped.")}</p>` : `<p class="mut sm">${bi("এখানে ক্যাশ এন্ট্রির লেজার, প্রাপ্তি ও পরিশোধের খাত এবং ব্যাংক অ্যাকাউন্ট নির্ধারণ করুন।", "Set up the ledgers, receipt and payment categories, and bank accounts used for Cash Book entry.")}</p>`}
+   ${mappingOnly ? `<p class="mut sm">${bi("Tally voucher ও নতুন Cash Book এন্ট্রির Receipt এবং Payment খাত নির্ধারণ করুন। কোনো খাতে একটিমাত্র সক্রিয় লেজার ম্যাপ করা থাকলে Cash Review-এর খাতের মোটে সেই নাম দেখা যাবে।","Set receipt and payment groups for Tally vouchers and future Cash Book entries. Cash Review category totals show a ledger label where one active ledger is mapped.")}</p>` : `<p class="mut sm">${bi("এখানে ক্যাশ এন্ট্রির লেজার, প্রাপ্তি ও পরিশোধের খাত এবং ব্যাংক অ্যাকাউন্ট নির্ধারণ করুন।", "Set up the ledgers, receipt and payment categories, and bank accounts used for Cash Book entry.")}</p>`}
    <div id="lg-err" aria-live="polite"></div>
    ${mappingOnly && canEdit ? `<fieldset class="cblg-group-editor" id="lg-head-editor" hidden disabled>
      <legend>${bi("খাতের নাম", "Purpose / Group name")}</legend>
