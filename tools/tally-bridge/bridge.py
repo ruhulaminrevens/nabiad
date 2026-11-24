@@ -255,6 +255,12 @@ def sb_mark_deleted(cfg, hdr, company, days, fetched_guids):
             break
         off += 1000
     gone = missing_guids(rows, fetched_guids)
+    # Safety: a company that is not loaded in Tally (or an odd answer) looks like "everything vanished".
+    # Never flag a large share as deleted automatically; leave it for a manual --resync after a look.
+    if len(gone) > max(2, len(rows) // 5):
+        print(f"warning: {company}: {len(gone)} of {len(rows)} stored vouchers are missing from Tally for "
+              f"{min(days)}..{max(days)}; NOT marking them deleted. Check the company is loaded in Tally.", flush=True)
+        return 0
     for i in range(0, len(gone), 50):
         ids = ",".join(gone[i:i + 50])
         qs = urllib.parse.urlencode({"company": "eq." + company, "guid": f"in.({ids})"})

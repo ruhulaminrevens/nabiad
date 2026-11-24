@@ -162,6 +162,19 @@ class T(unittest.TestCase):
         finally:
             sb.shutdown(); sb.server_close(); tally.shutdown(); tally.server_close()
 
+    def test_mass_missing_is_not_marked_deleted(self):
+        sb = HTTPServer(("127.0.0.1", 0), FakeSupabase); FakeSupabase.tables = {}; FakeSupabase.runs = []
+        threading.Thread(target=sb.serve_forever, daemon=True).start()
+        tally, h = mock_tally.start(); out = tempfile.mkdtemp(); url = f"http://127.0.0.1:{sb.server_address[1]}"
+        try:
+            rng = ["--from", "2026-11-01", "--to", "2026-11-14", "--skip-ledgers"]
+            self._upload(url, tally, out, {}, rng)
+            h.drop = {"g-1", "g-2", "g-3"}                     # company not loaded: Tally returns nothing
+            self.assertEqual(self._upload(url, tally, out, {}, rng), 0)
+            self.assertFalse(any(r["deleted"] for r in FakeSupabase.tables["tally_vouchers"].values()))
+        finally:
+            sb.shutdown(); sb.server_close(); tally.shutdown(); tally.server_close()
+
     def test_nightly_mode_walks_history_and_saves_progress(self):
         sb = HTTPServer(("127.0.0.1", 0), FakeSupabase); FakeSupabase.tables = {}; FakeSupabase.runs = []
         threading.Thread(target=sb.serve_forever, daemon=True).start()

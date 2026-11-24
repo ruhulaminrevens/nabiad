@@ -11,7 +11,7 @@ On 24-11-2026 a hand-written custom TDL query made the live TallyPrime crash. So
 - only companies in the config file; port 9000 needs `--confirm-live`; the default is a dry run (JSON files only)
 - if Tally answers for a different date than asked, the run stops and writes nothing (exit code 3)
 
-## How it keeps up with late and old edits (data goes back to 2016)
+## How it keeps up with late and old edits (the app needs data from 2023-01-01)
 Vouchers are upserted by GUID, so edits overwrite. Each night (default mode, with `--upload`):
 1. re-reads the last `window_days` (60) days,
 2. plus the next `deep_days` (150) days of history, moving forward each night and wrapping around from `start_date` (progress is kept in `bridge_state.json`), so an old edit is found within one cycle,
