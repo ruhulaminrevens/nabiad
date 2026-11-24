@@ -1,7 +1,7 @@
 {
   "tally_url": "http://localhost:9000",
   "companies": ["Nabiad-Cash & Bank", "Nabiad Distribution Ltd.", "Nabiad-ChawkBazar-2026", "Nabiad Savar Coil Factory", "Niramoy Traders- Naogaon"],
-  "start_date": "2016-01-01",
+  "start_date": "2018-04-01",
   "window_days": 60,
   "deep_days": 150,
   "batch_days": 30,
