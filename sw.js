@@ -1,5 +1,5 @@
 /* Cache a complete release before it takes control. Bank data stays in the app's user cache. */
-const VERSION = "6.168-sheetjs-0203";
+const VERSION = "6.169-ui-labels";
 const CACHE = "nabiad-v" + VERSION;
 const SCOPE = self.registration.scope;
 const SHELL = new URL("index.html", SCOPE).href;

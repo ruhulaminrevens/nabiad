@@ -836,22 +836,22 @@ const ROUTES = {
   cheques: { t: "চেক রেজিস্টার", ic: "list", roles: "asb", sec: "main", f: () => vCheques },
   closing: { t: "ব্যাংক ক্লোজিং", ic: "bank", roles: "as", sec: "bank", f: () => vClosing },
   crep: { t: "ব্যাংক সামারি", ic: "img", roles: "asb", sec: "bank", f: () => vCrep },
-  reports: { t: "ব্যাংক বিস্তারিত রিপোর্ট", ic: "chart", roles: "asb", sec: "bank", f: () => vReports },
+  reports: { t: "ব্যাংক বিশ্লেষণ", ic: "chart", roles: "asb", sec: "bank", f: () => vReports },
   cash: { t: "ক্যাশ খাতা", ic: "book", roles: "as", sec: "cash", f: () => vCashBook },
-  cashchk: { t: "ক্যাশ চেকার", ic: "check", roles: "as", sec: "cash", f: () => vCash },
+  cashchk: { t: "ক্যাশ যাচাই", ic: "check", roles: "as", sec: "cash", f: () => vCash },
   cashsum: { t: "ক্যাশ সামারি", ic: "pulse", roles: "asb", sec: "cash", f: () => vCashSum },
   cashrep: { t: "ক্যাশ রিপোর্ট", ic: "pie", roles: "asb", sec: "cash", f: () => vCashRep },
   dcol: { t: "কালেকশন এন্ট্রি", ic: "coins", roles: "as", sec: "dist", f: () => vDcol },
   dsum: { t: "কালেকশন সামারি", ic: "trend", roles: "asb", sec: "dist", f: () => vDsum },
   drep: { t: "কালেকশন রিপোর্ট", ic: "table", roles: "asb", sec: "dist", f: () => vDrep },
   books: { t: "চেক বই", ic: "book", roles: "asb", sec: "more", f: () => vBooks },
-  accounts: { t: "অ্যাকাউন্ট ফাইন্ডার", ic: "card", roles: "asb", sec: "more", f: () => vAccounts },
+  accounts: { t: "অ্যাকাউন্ট ডিরেক্টরি", ic: "card", roles: "asb", sec: "more", f: () => vAccounts },
   register: { t: "ক্যাশ লেজার", ic: "ledger", roles: "asb", sec: "more", f: () => vRegister },
   dparty: { t: "পার্টি তালিকা", ic: "users", roles: "asb", sec: "more", f: () => vDparty },
   rem: { t: "রিমাইন্ডার", ic: "bell", roles: "asb", sec: "more", f: () => vRem },
   settings: { t: "সেটিংস", ic: "gear", roles: "asb", sec: "more", f: () => vSettings },
   audit: { t: "অডিট ও সিকিউরিটি", ic: "shield", roles: "b", sec: "more", f: () => vSecurity },
-  admin: { t: "অ্যাডমিন প্যানেল", ic: "sliders", roles: "a", sec: "more", f: () => vAdmin }
+  admin: { t: "অ্যাডমিনিস্ট্রেশন", ic: "sliders", roles: "a", sec: "more", f: () => vAdmin }
 };
 const SECS = { top: "", main: "চেক", bank: "ব্যাংক", cash: "ক্যাশ", dist: "ডিস্ট্রিবিউশন কালেকশন", more: "অন্যান্য" };
 const roleKey = () => ({ admin: "a", staff: "s", boss: "b" }[S.me.role]);
@@ -1297,7 +1297,7 @@ async function vEntry(v) {
     const k = purpKey(); $e("x-cash").style.display = k === "cash" ? "" : "none"; $e("x-own").style.display = k === "own" ? "" : "none"; sum(); drawRem(); flow();
   }
   drawPurp(); loadPurposes().then(drawPurp);
-  /* Cheque Posting (Cash Withdrawal) ↔ Cash Checker "Total Bank" link */
+  /* Cheque Posting (Cash Withdrawal) ↔ Cash Reconciliation "Total Bank" link */
   async function cashLink() {
     const el = $e("e-cashlink"), tok = ++clTok; if (!el) return;
     const code = ac.get()?.value, date = $e("e-date").value;
@@ -1307,7 +1307,7 @@ async function vEntry(v) {
     const entered = cashAccSum(src, "bank_in")[code] || 0;
     const posted = S.cheques.filter(c => c.date === date && c.code === code && purposeKey(c.purpose) === "cash" && isLive(c)).reduce((q, c) => q + c.amount, 0), cur = chequeAmount($e("e-amt").value) || 0;
     el.style.display = ""; el.className = "s4 cbm";
-    el.innerHTML = `<div class="cbm-h"><span>${ico("link")} Cash Checker (${dmy(date)}) · Receipt › Bank · <b>${esc(code)}</b>: <b class="num">${src ? "৳ " + money0(entered) : ok ? bi("এখনো এন্ট্রি নেই", "no entry yet") : "—"}</b> · ${bi("চেক পোস্টিং", "Cheque Posting")}: <b class="num">৳ ${money0(posted)}</b>${cur ? ` <span class="mut xs">(+ ৳ ${money0(cur)} ${bi("এই চেক", "this cheque")})</span>` : ""}</span><a class="btn sm" href="#/cashchk" id="e-cashgo">${bi("Cash Checker খুলুন", "Open Cash Checker")}</a></div>`;
+    el.innerHTML = `<div class="cbm-h"><span>${ico("link")} Cash Reconciliation (${dmy(date)}) · Receipt › Bank · <b>${esc(code)}</b>: <b class="num">${src ? "৳ " + money0(entered) : ok ? bi("এখনো এন্ট্রি নেই", "no entry yet") : "—"}</b> · ${bi("চেক পোস্টিং", "Cheque Posting")}: <b class="num">৳ ${money0(posted)}</b>${cur ? ` <span class="mut xs">(+ ৳ ${money0(cur)} ${bi("এই চেক", "this cheque")})</span>` : ""}</span><a class="btn sm" href="#/cashchk" id="e-cashgo">${bi("Cash Reconciliation খুলুন", "Open Cash Reconciliation")}</a></div>`;
     $("#e-cashgo", el).onclick = () => sessionStorage.setItem("nabiad_cash_date", date);
   }
   function amtVal() { return expandAmt($e("e-amt").value); }
@@ -2434,7 +2434,7 @@ async function vClosing(v) {
     const accs = S.accounts.filter(a => a.daily && (a.status === "Active" || ex[a.code]) && (!has || canEntry || ex[a.code]?.total != null)).sort((a, b) => String(a.bank || "~").localeCompare(String(b.bank || "~"), "en", { sensitivity: "base" }) || String(a.code).localeCompare(String(b.code), "en", { numeric: true, sensitivity: "base" })); /* bank A–Z, then A/C code A–Z */
     const locked = has ? !canEdit || Object.values(ex).some(r => r.pending) : !canEntry;
     const draft = has ? null : await Draft.get(date); const dr = draft?.rows || {};
-    /* Debit/Withdraw ← Cash Checker "Total Bank" · Credit/Deposit ← approved Collection + Cash Checker "Bank" (per A/C, this date) */
+    /* Debit/Withdraw ← Cash Reconciliation "Total Bank" · Credit/Deposit ← approved Collection + Cash Reconciliation "Bank" (per A/C, this date) */
     const [ce, colRows] = await Promise.all([cashEff(date), API.dcolRange(date, date).catch(() => null)]);
     if (!current()) return;
     const srcOk = ce.ok && colRows !== null, aDr = cashAccSum(ce.src, "bank_in"), aCb = cashAccSum(ce.src, "bank_out"), aCc = {};
@@ -2486,12 +2486,12 @@ async function vClosing(v) {
     const amount = (ok, field) => ok ? "৳ " + money(linkedTotal(field)) : "—";
     const stTxt = !ce.ok ? (ce.src ? bi("এই ডিভাইসের ড্রাফট", "Local draft") : bi("ডাটা পাওয়া যায়নি", "Unavailable")) : ce.state === "final" ? bi("ফাইনাল", "Final") : ce.state === "draft" ? bi("ড্রাফট", "Draft") : bi("এন্ট্রি নেই", "No entry");
     const linkBox = `<div class="clink"><div class="cl-h"><b>${bi("লিংক করা লেনদেন", "Linked transactions")}</b></div>
-      <div class="cl-g"><span class="c-dr"><i>${bi("ডেবিট", "Debit")}</i><em>${bi("ক্যাশ চেকার", "Cash Checker")} · ${stTxt}</em><b class="num">${amount(ce.ok || ce.src, "adr")}</b></span><span class="c-cr"><i>${bi("ক্রেডিট", "Credit")}</i><em>${bi("অনুমোদিত কালেকশন", "Approved Collection")}</em><b class="num">${amount(colRows !== null, "acc")}</b></span><span class="c-cr"><i>${bi("ক্রেডিট", "Credit")}</i><em>${bi("ক্যাশ চেকার", "Cash Checker")}</em><b class="num">${amount(ce.ok || ce.src, "acb")}</b></span></div>
-      ${lostDr || lostCb || lostCc ? `<div class="cl-w">${bi("দৈনিক ক্লোজিংয়ের A/C-তে লিংক হয়নি", "Unlinked to a daily-closing account")} · ${[lostDr ? `Cash Checker debit ৳ ${money(lostDr)}` : "", lostCb ? `Cash Checker credit ৳ ${money(lostCb)}` : "", lostCc ? `Collection ৳ ${money(lostCc)}` : ""].filter(Boolean).join(" · ")}</div>` : ""}</div>`;
+      <div class="cl-g"><span class="c-dr"><i>${bi("ডেবিট", "Debit")}</i><em>${bi("ক্যাশ যাচাই", "Cash Reconciliation")} · ${stTxt}</em><b class="num">${amount(ce.ok || ce.src, "adr")}</b></span><span class="c-cr"><i>${bi("ক্রেডিট", "Credit")}</i><em>${bi("অনুমোদিত কালেকশন", "Approved Collection")}</em><b class="num">${amount(colRows !== null, "acc")}</b></span><span class="c-cr"><i>${bi("ক্রেডিট", "Credit")}</i><em>${bi("ক্যাশ যাচাই", "Cash Reconciliation")}</em><b class="num">${amount(ce.ok || ce.src, "acb")}</b></span></div>
+      ${lostDr || lostCb || lostCc ? `<div class="cl-w">${bi("দৈনিক ক্লোজিংয়ের A/C-তে লিংক হয়নি", "Unlinked to a daily-closing account")} · ${[lostDr ? `Cash Reconciliation debit ৳ ${money(lostDr)}` : "", lostCb ? `Cash Reconciliation credit ৳ ${money(lostCb)}` : "", lostCc ? `Collection ৳ ${money(lostCc)}` : ""].filter(Boolean).join(" · ")}</div>` : ""}</div>`;
     linked.innerHTML = linkBox;
     context.hidden = false;
     const tiles = [[4, bi("মোট ক্লোজিং", "Closing total")], [3, bi("হিসাব মতে", "Expected balance")], [5, bi("ব্লক / লিয়েন", "Blocked / lien")], [6, bi("ব্যবহারযোগ্য", "Usable balance")]];
-    const autoDr = r => r.adr ? `<span><em>${bi("ক্যাশ চেকার", "Cash Checker")}</em> <b class="num">${money(r.adr)}</b></span>` : `<span class="mut">—</span>`;
+    const autoDr = r => r.adr ? `<span><em>${bi("ক্যাশ যাচাই", "Cash Reconciliation")}</em> <b class="num">${money(r.adr)}</b></span>` : `<span class="mut">—</span>`;
     const autoCr = r => (r.acc || r.acb) ? `${r.acc ? `<span><em>${bi("কালেকশন", "Collection")}</em> <b class="num">${money(r.acc)}</b></span>` : ""}${r.acb ? `<span><em>${bi("ক্যাশ জমা", "Cash dep.")}</em> <b class="num">${money(r.acb)}</b></span>` : ""}` : `<span class="mut">—</span>`;
     body.innerHTML = `<div class="bc-summary" aria-label="${bi("দিনের মোট", "Daily totals")}">${tiles.map(([i, label]) => `<div class="card bc-kpi" data-kpi="${i}"><span>${label}</span><strong class="num"></strong></div>`).join("")}</div>
     <section class="card bc-register" aria-label="${bi("অ্যাকাউন্ট পর্যালোচনা", "Account review")}">
@@ -3690,7 +3690,7 @@ async function vAdmin(v) {
     const nav = sections.map(([label, entries], index) => `<div class="adm-nav-group">
       ${index ? `<span class="mut xs adm-nav-label">${esc(label)}</span>` : ""}
       ${entries.map(([id, icon, name]) => `<a href="#/admin?tab=${id}" data-admin-tab="${id}" ${id === tab ? 'aria-current="page"' : ""}>${ico(icon)}${esc(name)}</a>`).join("")}</div>`).join("");
-    v.innerHTML = head("অ্যাডমিন প্যানেল") + `<div class="adm-layout">
+    v.innerHTML = head("অ্যাডমিনিস্ট্রেশন") + `<div class="adm-layout">
       <div class="adm-nav-wrap"><button class="btn adm-nav-toggle" id="adm-nav-toggle" type="button" aria-expanded="false" aria-controls="adm-nav">${ico("list")} ${esc(pages.get(tab).label)}</button>
       <nav id="adm-nav" class="card adm-nav" aria-label="${bi("অ্যাডমিন বিভাগ", "Admin sections")}">${nav}</nav></div>
       <div id="ad" class="adm-content" tabindex="-1"></div></div>`;
@@ -4296,7 +4296,7 @@ async function vDash(v) {
   const todayC = S.cheques.filter(c => c.date === t && isLive(c)), pend = S.cheques.filter(c => c.status === "Pending"), old = pendingOld();
   const mon = S.cheques.filter(c => c.date.startsWith(ym) && isLive(c)), due = dueList(), sys = sysAlerts();
   const upcoming = (S.reminders || []).filter(r => !r.done).sort((a, b) => remDue(a) - remDue(b)).slice(0, 5);
-  const acts = boss ? [["crep", "img", "ব্যাংক সামারি", "qa1"], ["cashsum", "pulse", "ক্যাশ সামারি", "qa2"], ["reports", "chart", "ব্যাংক বিস্তারিত রিপোর্ট", "qa3"], ["dsum", "trend", "কালেকশন সামারি", "qa4"]]
+  const acts = boss ? [["crep", "img", "ব্যাংক সামারি", "qa1"], ["cashsum", "pulse", "ক্যাশ সামারি", "qa2"], ["reports", "chart", "ব্যাংক বিশ্লেষণ", "qa3"], ["dsum", "trend", "কালেকশন সামারি", "qa4"]]
     : [["entry", "plus", "চেক পোস্টিং", "qa1"], ["closing", "bank", "ব্যাংক ক্লোজিং", "qa2"], ["cash", "book", "ক্যাশ খাতা", "qa3"], ["dcol", "coins", "কালেকশন এন্ট্রি", "qa4"]];
   const bankDone = S.lastBal === t, cashDone = S.lastCash === t || S.lastBook === t, workday = !isFri(t);
   const st = (ok, l, go, sub) => `<a class="stchip ${ok ? "ok" : "no"}" href="${go}"><i>${ok ? "✓" : "!"}</i><span><b>${l}</b><small>${sub}</small></span></a>`;
@@ -4647,7 +4647,7 @@ async function vReports(v) {
   const date = sessionStorage.getItem("nabiad_bank_report_date");
   sessionStorage.removeItem("nabiad_bank_report_date");
   const F = { ...pbInit("month"), ...(date ? { m: "day", d: date } : {}), tab: date ? "bank" : sessionStorage.getItem("nabiad_rep_tab") || "bank", holder: "", bank: "", bs: "t", bg: "weekly", as: "cl", ad: -1, aq: "", az: false, sheet: false, cs: "a", cg: "", cgU: "", cd: "pur", qq: "", qf: "", qz: false, qss: "date", qsd: -1 }; const holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort(), banksL = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort();
-  v.innerHTML = head("ব্যাংক বিস্তারিত রিপোর্ট", `${repBtns("p")}<button class="btn" id="p-x">${ico("dl")} Excel</button>`) + `
+  v.innerHTML = head("ব্যাংক বিশ্লেষণ", `${repBtns("p")}<button class="btn" id="p-x">${ico("dl")} Excel</button>`) + `
    <div class="tabs noprint">${[["bank", ico("bank") + " ব্যাংক ব্যালেন্স"], ["chq", ico("list") + " চেক"]].map(([k, l]) => `<span class="chip ${k === F.tab ? "on" : ""}" data-tab="${k}">${l}</span>`).join("")}</div>
    <div class="card tbar noprint tb-inl">${pbBar("p", F)}
    <div class="row br-fl" ><div><label class="f">${bi("অ্যাকাউন্ট হোল্ডার", "Account holder")}</label><select class="in" id="p-h"><option value="">${bi("সব", "All")}</option>${holders.map(h => `<option>${esc(h)}</option>`).join("")}</select></div><div><label class="f">${bi("ব্যাংক", "Bank")}</label><select class="in" id="p-b"><option value="">${bi("সব", "All")}</option>${banksL.map(h => `<option>${esc(h)}</option>`).join("")}</select></div></div></div>
@@ -4809,7 +4809,7 @@ async function vCash(v) {
       <button class="btn" id="cs-refresh" type="button">${bi("রিফ্রেশ", "Refresh")}</button></div><div id="cs-body" class="cs-workspace"></div>`;
   const body = $("#cs-body", v), dateInput = $("#cs-d", v), refresh = $("#cs-refresh", v);
   dateInput.max = todayDhaka;
-  dateInput.setAttribute("aria-label", bi("ক্যাশ চেকারের তারিখ", "Cash Checker date"));
+  dateInput.setAttribute("aria-label", bi("ক্যাশ যাচাইের তারিখ", "Cash Reconciliation date"));
   $("#cs-register", v).onclick = () => sessionStorage.setItem("nabiad_register_date", dateInput.value);
   $("#cs-book", v)?.addEventListener("click", () => sessionStorage.setItem("nabiad_cash_date", dateInput.value));
   const amount = n => n == null ? "—" : "৳ " + money(n);
@@ -5103,7 +5103,7 @@ async function vRegister(v) {
   const ungrouped = bi("খাত নির্ধারিত নয়","Unmapped");
   const categoryTotal = bi("খাতের মোট", "Category total");
   const mappedCategoryTotal = bi("ম্যাপ করা লেজার · খাতের মোট", "Mapped ledger · category total");
-  const sources = { checker: bi("ক্যাশ চেকার", "Cash Checker"), book: bi("ক্যাশ খাতা", "Cash Book"), tally: "Tally" };
+  const sources = { checker: bi("ক্যাশ যাচাই", "Cash Reconciliation"), book: bi("ক্যাশ খাতা", "Cash Book"), tally: "Tally" };
   const all = bi("সব", "All");
   v.innerHTML = head("ক্যাশ রেজিস্টার", `${canMap ? `<button type="button" class="btn" id="rg-map">${ico("sliders")} ${bi("লেজার খাত নির্ধারণ", "Ledger → Purpose/Group")}</button>` : ""}<button type="button" class="btn" id="rg-x">${ico("dl")} Excel</button>`) +
     `<div class="card tbar rg-tools noprint">
@@ -5166,7 +5166,7 @@ async function vRegister(v) {
         setLedgers(ledgers.list);
         lines = rows;
         if (ledgers.err) showNotice(bi("লেজারের খাত লোড হয়নি। আবার চেষ্টা করুন।","Ledger mappings could not load. Try again."));
-        else if (!rows.length) showNotice(bi("এই সময়ে Tally voucher নেই। Admin Panel → Setup থেকে ইতিহাস import করা যায়।","No Tally vouchers for this period. Import history from Admin Panel → Setup."));
+        else if (!rows.length) showNotice(bi("এই সময়ে Tally voucher নেই। Administration → Setup থেকে ইতিহাস import করা যায়।","No Tally vouchers for this period. Import history from Administration → Setup."));
       } catch (error) {
         if (current()) out.innerHTML = `<div class="alert rd">${esc(tallySchemaMissing(error) ? bi("Tally history এখনো চালু হয়নি।","Tally history is not configured yet.") : cashErr(error))}</div>`;
         return;
@@ -5192,8 +5192,8 @@ async function vRegister(v) {
             return Math.abs(bookTotal - checkerTotal) > 0.5;
           });
         });
-        if (allBooks === null) showNotice(bi("Cash Book লোড হয়নি। আপাতত Cash Checker-এর খাতভিত্তিক মোট দেখানো হচ্ছে।", "Cash Book could not load. Showing Cash Checker category totals."));
-        else if (diffs.length) showNotice(bi("Cash Book ও Cash Checker-এর মোটে অমিল · ", "Cash Book and Cash Checker totals differ · ") + diffs.map(b => dmy(b.date)).join(", "));
+        if (allBooks === null) showNotice(bi("Cash Book লোড হয়নি। আপাতত Cash Reconciliation-এর খাতভিত্তিক মোট দেখানো হচ্ছে।", "Cash Book could not load. Showing Cash Reconciliation category totals."));
+        else if (diffs.length) showNotice(bi("Cash Book ও Cash Reconciliation-এর মোটে অমিল · ", "Cash Book and Cash Reconciliation totals differ · ") + diffs.map(b => dmy(b.date)).join(", "));
         const fromChecker = rows.filter(r => !bookDays.has(r.date)).flatMap(r => Object.entries(r.items || {}).filter(([, it]) => +it?.a).map(([k, it]) => ({
           date: r.date, k, type: cashType(k), a: +it.a, led: "", n: it.n, x: it.x,
           accounts: Array.isArray(it.accs) ? [...new Set(it.accs.filter(z => z?.c && +z.a).map(z => z.c))].join(", ") : "",
@@ -5233,7 +5233,7 @@ async function vRegister(v) {
     return { type, typeLabel, groupFields, groups, dates, id: String(row.id).padStart(2, "0") };
   }
   const rgHl = txt => typeof ivHl === "function" ? ivHl(txt, F.q) : esc(txt);
-  const rgDesc = () => { const d = g("rg-desc"); if (!d) return; d.innerHTML = ico("info") + "<span>" + (source === "ledgers" ? bi("Tally-র সব লেজার আর প্রতিটি লেজার কোন খাতে (Purpose / Group) যায়। “খাত নির্ধারিত নয়” লেজারগুলোর voucher রিপোর্টে আলাদা থাকে — উপরের “লেজার খাত নির্ধারণ” থেকে ঠিক করুন।", "Every Tally ledger and the purpose / group it maps to. Vouchers of “Unmapped” ledgers stay separate in reports — fix them with “Ledger → Purpose/Group” above.") : source === "tally" ? bi("Tally থেকে import করা Cash Book voucher — লেজারের খাত অনুযায়ী সাজানো।", "Cash Book vouchers imported from Tally, grouped by each ledger's purpose.") : bi("অ্যাপে লেখা ক্যাশের হিসাব: যেদিন Cash Book আছে সেদিনের লেজারভিত্তিক লাইন, না থাকলে Cash Checker-এর খাতভিত্তিক মোট।", "Cash recorded in the app: ledger lines from the Cash Book where a day has one, otherwise the Cash Checker category totals.")) + ` <kbd>/</kbd> ${bi("চাপলে সার্চ", "to search")}</span>`; };
+  const rgDesc = () => { const d = g("rg-desc"); if (!d) return; d.innerHTML = ico("info") + "<span>" + (source === "ledgers" ? bi("Tally-র সব লেজার আর প্রতিটি লেজার কোন খাতে (Purpose / Group) যায়। “খাত নির্ধারিত নয়” লেজারগুলোর voucher রিপোর্টে আলাদা থাকে — উপরের “লেজার খাত নির্ধারণ” থেকে ঠিক করুন।", "Every Tally ledger and the purpose / group it maps to. Vouchers of “Unmapped” ledgers stay separate in reports — fix them with “Ledger → Purpose/Group” above.") : source === "tally" ? bi("Tally থেকে import করা Cash Book voucher — লেজারের খাত অনুযায়ী সাজানো।", "Cash Book vouchers imported from Tally, grouped by each ledger's purpose.") : bi("অ্যাপে লেখা ক্যাশের হিসাব: যেদিন Cash Book আছে সেদিনের লেজারভিত্তিক লাইন, না থাকলে Cash Reconciliation-এর খাতভিত্তিক মোট।", "Cash recorded in the app: ledger lines from the Cash Book where a day has one, otherwise the Cash Reconciliation category totals.")) + ` <kbd>/</kbd> ${bi("চাপলে সার্চ", "to search")}</span>`; };
   const tile = (label, value, cls, attr = "") => `<${attr ? `button type="button" ${attr}` : "div"} class="card${attr ? " rg-click" : ""}"><span class="mut sm">${label}</span><strong class="${cls}">${value}</strong></${attr ? "button" : "div"}>`;
   function rgViz(rows) {
     const box = g("rg-viz"); if (!box) return;
@@ -5444,7 +5444,7 @@ async function vRem(v) {
     const nbStats = () => `<div class="dcx-stats s4 nb-stats">${[["rd", "t", "bell"], ["am", "a", "clock"], ["vi", "p", "list"]].map(([k, c, ic]) => `<button class="dcx-stat ${c} kclick ${lv === k ? "on" : ""}" data-lv="${k}"><span class="si">${ico(ic)}</span><span><b>${cnt(k)}</b><small>${LVN[k]}</small></span></button>`).join("")}<button class="dcx-stat h kclick" data-t="up"><span class="si">${ico("list")}</span><span><b>${nUp}</b><small>${bi("চালু রিমাইন্ডার", "Active reminders")}</small></span></button></div>`;
     const nbBoard = () => `<div class="card nb"><div class="nb-hd"><h3>${ico("bell").replace("<svg", '<svg width="18" height="18"')} ${bi("নোটিফিকেশন বোর্ড", "Notification board")} <span class="tag">${items.length}</span></h3><div class="chips nb-f">${[["all", bi("সব", "All"), items.length], ["rd", LVN.rd, cnt("rd")], ["am", LVN.am, cnt("am")], ["vi", LVN.vi, cnt("vi")]].map(([k, l, n]) => `<span class="chip ${k === lv ? "on" : ""}" data-lv="${k}">${l} <b>${n}</b></span>`).join("")}</div></div>
       ${shown.length ? `<div class="nb-list">${shown.map(x => `<div class="nb-it lv-${x.k}" data-hay="${esc(norm([x.t, x.sub, x.src, LVN[x.k]].join(" ")))}"><div class="nb-ic">${ico(x.ic).replace("<svg", '<svg width="18" height="18"')}</div><div class="nb-b"><div class="nb-m"><span class="nb-tg">${LVN[x.k]}</span><span class="nb-src">${x.src}</span>${x.when ? `<span class="nb-tm">${relTime(x.when)}</span>` : ""}</div><b>${esc(x.t)}</b>${x.sub ? `<div class="mut sm">${esc(x.sub)}</div>` : ""}</div><div class="nb-a">${x.rid ? `<button class="btn ok sm" data-dn="${x.rid}">✓ ${bi("সম্পন্ন", "Done")}</button>${snoozeBtns(x.rid)}${x.cid ? `<button class="btn sm" data-oc="${x.cid}">${bi("চেক", "Cheque")}</button>` : ""}` : x.go ? `<a class="btn sm" href="${x.go}">${bi("খুলুন", "Open")} →</a>` : ""}</div></div>`).join("")}</div>` : `<div class="nb-ok">${ico("check").replace("<svg", '<svg width="22" height="22"')}<b>${bi("সব ঠিক আছে", "All clear")}</b><span class="mut sm">${bi("কোনো নোটিফিকেশন বা সতর্কতা নেই", "No notifications or alerts")}</span></div>`}</div>`;
-    v.innerHTML = head(bi("রিমাইন্ডার ও নোটিফিকেশন", "Reminders & Notifications"), `<button class="btn pri" id="rm-add2">${ico("plus")} ${bi("নতুন রিমাইন্ডার", "New reminder")}</button>`) +
+    v.innerHTML = head(bi("রিমাইন্ডার ও অ্যালার্ট", "Reminders & Alerts"), `<button class="btn pri" id="rm-add2">${ico("plus")} ${bi("নতুন রিমাইন্ডার", "New reminder")}</button>`) +
       `<p class="iv-desc">${ico("info")}<span>${bi("<b>বোর্ড</b>-এ থাকে যেসব রিমাইন্ডারের সময় হয়ে গেছে আর সিস্টেমের সতর্কতা (ব্যাংক ক্লোজিং বাকি, চেকের পাতা মিসিং, পুরনো Pending)। নিচের তালিকা আপনার নিজের রিমাইন্ডার — দিন অনুযায়ী সাজানো।", "The <b>board</b> shows reminders that are due now plus system alerts (bank closing pending, missing cheque leaves, old pending cheques). The list below is your own reminders, grouped by when they are due.")}</span></p>
       <div class="rem-find"><div class="ivd-find"><span class="ivd-find-i" aria-hidden="true">${ico("search")}</span><input class="in" id="rm-q" type="search" autocomplete="off" value="${esc(rq)}" placeholder="${bi("রিমাইন্ডার বা সতর্কতা খুঁজুন…", "Search reminders and alerts…")}" aria-label="${bi("খুঁজুন", "Search")}"></div><span class="mut sm" id="rm-qn" role="status"></span></div>` + nbStats() + nbBoard() +
       (S.remErr ? `<div class="alert rd" style="margin-bottom:12px">${esc(remErrMsg({ message: S.remErr }))}</div>` : "") +
