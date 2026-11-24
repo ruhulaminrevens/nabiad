@@ -3427,3 +3427,9 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
   .adm-toolbar{grid-template-columns:minmax(0,1fr) auto!important}
   .adm-toolbar #u-new span{display:none}.adm-toolbar #u-new{padding-inline:12px}
 }
+
+/* Touch targets (v6.168): small icon buttons keep their look but get a 44px hit area on touch screens. */
+@media (pointer:coarse){
+  .iconbtn.sm{position:relative}
+  .iconbtn.sm::after{content:"";position:absolute;inset:-7px}
+}
