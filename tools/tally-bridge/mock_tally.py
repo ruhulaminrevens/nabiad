@@ -34,7 +34,7 @@ class Handler(BaseHTTPRequestHandler):
             out = LEDGERS
         elif rid == "Day Book":
             a, b = re.search(r"<SVFROMDATE>(\d+)", body).group(1), re.search(r"<SVTODATE>(\d+)", body).group(1)
-            hit = [v for v in VOUCHERS if a <= re.search(r"<DATE>(\d+)", v).group(1) <= b]
+            hit = [v for v in VOUCHERS if re.search(r"<DATE>(\d+)", v).group(1) == b]  # real Tally returned only the last day of a range
             out = "<ENVELOPE><BODY><IMPORTDATA><REQUESTDATA>" + "".join(hit) + "</REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>"
         else:
             out = "<ENVELOPE>unknown report</ENVELOPE>"

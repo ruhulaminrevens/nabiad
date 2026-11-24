@@ -8,7 +8,7 @@ def run(cfg_extra, args, crash_after=None):
     h.crash_after = crash_after
     out = tempfile.mkdtemp()
     cfg = {"tally_url": f"http://127.0.0.1:{srv.server_address[1]}", "companies": ["Co A", "Co B"], "start_date": "2026-11-01",
-           "chunk_days": 7, "pause_seconds": 0, "supabase_url": "x", "supabase_anon_key": "x", **cfg_extra}
+           "chunk_days": 1, "pause_seconds": 0, "supabase_url": "x", "supabase_anon_key": "x", **cfg_extra}
     cpath = os.path.join(out, "c.json")
     with open(cpath, "w") as f:
         json.dump(cfg, f)
@@ -36,7 +36,7 @@ class T(unittest.TestCase):
         _, _, h = run({}, ["--company", "Co A"])
         self.assertTrue(all("<TALLYREQUEST>Export</TALLYREQUEST>" in b and "<TYPE>Data</TYPE>" in b for b in h.log))
         self.assertFalse(any("TDL" in b or "Import" in b for b in h.log))
-        self.assertEqual(len(h.log), 1 + 2)   # ledgers + two 7-day chunks
+        self.assertEqual(len(h.log), 1 + 14)  # ledgers + one request per day
 
     def test_company_not_in_config_is_refused(self):
         with self.assertRaises(SystemExit):

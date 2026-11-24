@@ -42,10 +42,11 @@ $work = Join-Path $env:USERPROFILE 'NabiadBridge'
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 Copy-Item (Join-Path $src 'bridge.py') $work -Force
 Copy-Item (Join-Path $src 'config.example.json') (Join-Path $work 'config.json') -Force
+Remove-Item (Join-Path $work 'bridge_out') -Recurse -Force -ErrorAction SilentlyContinue
 Set-Location $work
 
 # 6. One company, 3 days, standard reports only
-& $py bridge.py --config config.json --company "Nabiad Distribution Ltd." --from 2026-11-20 --to 2026-11-22 --confirm-live --save-raw
+& $py bridge.py --config config.json --company "Nabiad Distribution Ltd." --from 2026-11-21 --to 2026-11-22 --skip-ledgers --confirm-live --save-raw
 if ($LASTEXITCODE -ne 0) { Write-Host 'The run stopped early (see message above). Tally was not contacted again.'; exit }
 
 Compress-Archive -Path (Join-Path $work 'bridge_out') -DestinationPath (Join-Path $work 'bridge_out.zip') -Force

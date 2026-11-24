@@ -140,19 +140,28 @@ def ymd(d):
 
 def export_company(cfg, company, d1, d2, log, raw_dir=None):
     url, pause = cfg["tally_url"], cfg.get("pause_seconds", 2)
-    log(f"{company}: ledgers")
-    text = tally_post(url, request_xml("List of Accounts", company, {"ACCOUNTTYPE": "Ledgers"}))
-    if raw_dir:
-        save_raw(raw_dir, company, "ledgers", text)
-    ledgers = parse_ledgers(text, company)
+    ledgers = []
+    if cfg.get("skip_ledgers"):
+        log(f"{company}: ledgers skipped")
+    else:
+        log(f"{company}: ledgers")
+        text = tally_post(url, request_xml("List of Accounts", company, {"ACCOUNTTYPE": "Ledgers"}))
+        if raw_dir:
+            save_raw(raw_dir, company, "ledgers", text)
+        ledgers = parse_ledgers(text, company)
     vouchers = []
-    for a, b in chunks(d1, d2, cfg.get("chunk_days", 7)):
+    for a, b in chunks(d1, d2, cfg.get("chunk_days", 1)):
         time.sleep(pause)
         log(f"{company}: day book {a} to {b}")
         text = tally_post(url, request_xml("Day Book", company, {"SVFROMDATE": ymd(a), "SVTODATE": ymd(b)}))
         if raw_dir:
             save_raw(raw_dir, company, f"daybook_{ymd(a)}", text)
-        vouchers += parse_vouchers(text, company, cfg.get("intercompany_ledgers"))
+        got = parse_vouchers(text, company, cfg.get("intercompany_ledgers"))
+        per_day = {}
+        for v in got:
+            per_day[v["vdate"]] = per_day.get(v["vdate"], 0) + 1
+        log(f"{company}: vouchers per date {dict(sorted(per_day.items()))}")
+        vouchers += got
     return ledgers, list({v["guid"]: v for v in vouchers}.values())
 
 
@@ -202,10 +211,12 @@ def main(argv=None):
     ap.add_argument("--company", help="only this company (must be in the config)")
     ap.add_argument("--from", dest="d_from"); ap.add_argument("--to", dest="d_to")
     ap.add_argument("--out", default="bridge_out", help="folder for dry-run JSON and raw XML")
+    ap.add_argument("--skip-ledgers", action="store_true", help="do not fetch the (large) ledger list")
     ap.add_argument("--save-raw", action="store_true", help="keep raw Tally XML (to check the real format)")
     a = ap.parse_args(argv)
     with open(a.config, encoding="utf-8") as f:
         cfg = json.load(f)
+    cfg["skip_ledgers"] = a.skip_ledgers
     port = urllib.parse.urlparse(cfg["tally_url"]).port
     if port == 9000 and not a.confirm_live:
         sys.exit("This would talk to the real Tally (port 9000). Re-run with --confirm-live after a fresh Tally backup.")
@@ -232,7 +243,8 @@ def main(argv=None):
             return 2
         log(f"{company}: {len(ledgers)} ledgers, {len(vouchers)} vouchers")
         if a.upload:
-            sb_upsert(cfg, hdr, "tally_ledgers", ledgers, "company,name")
+            if ledgers:
+                sb_upsert(cfg, hdr, "tally_ledgers", ledgers, "company,name")
             sb_upsert(cfg, hdr, "tally_vouchers", vouchers, "company,guid")
             http_json(
                 "POST", cfg["supabase_url"] + "/rest/v1/tally_sync_runs", {**hdr, "Prefer": "return=minimal"},
