@@ -4,3 +4,7 @@ private_data/
 *.plain.json
 history.json
 accounts.json
+
+tools/tally-bridge/config.json
+tools/tally-bridge/bridge_out/
+__pycache__/

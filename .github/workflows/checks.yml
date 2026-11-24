@@ -22,3 +22,5 @@ jobs:
         run: python3 scripts/check-version.py
       - name: Backup table lists agree
         run: python3 scripts/check-backup-tables.py
+      - name: Tally bridge tests (mock server only)
+        run: python3 -m unittest discover -s tools/tally-bridge -p 'test_*.py'

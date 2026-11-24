@@ -1,0 +1,11 @@
+{
+  "tally_url": "http://localhost:9000",
+  "companies": ["Nabiad-Cash & Bank", "Nabiad Distribution Ltd."],
+  "start_date": "2026-11-01",
+  "chunk_days": 7,
+  "overlap_days": 3,
+  "pause_seconds": 2,
+  "intercompany_ledgers": {},
+  "supabase_url": "https://YOUR-PROJECT.supabase.co",
+  "supabase_anon_key": "PUBLISHABLE-KEY-ONLY"
+}
