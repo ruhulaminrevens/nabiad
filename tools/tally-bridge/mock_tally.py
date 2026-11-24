@@ -23,6 +23,7 @@ VOUCHERS = [
 class Handler(BaseHTTPRequestHandler):
     log = []
     ignore_dates = False
+    drop = set()          # GUIDs Tally "no longer has" (deleted vouchers)
     crash_after = None  # int: close the connection once this many requests were served
 
     def do_POST(self):
@@ -39,7 +40,8 @@ class Handler(BaseHTTPRequestHandler):
             day = _dt.datetime.strptime(m.group(1), "%d-%b-%Y").strftime("%Y%m%d") if m else "20261110"
             if Handler.ignore_dates:
                 day = "20261110"   # simulate a Tally that ignores the requested date
-            hit = [v for v in VOUCHERS if re.search(r"<DATE>(\d+)", v).group(1) == day]  # real Tally follows SVCURRENTDATE
+            hit = [v for v in VOUCHERS if re.search(r"<DATE>(\d+)", v).group(1) == day
+                   and re.search(r"<GUID>(.*?)</GUID>", v).group(1) not in Handler.drop]  # real Tally follows SVCURRENTDATE
             out = "<ENVELOPE><BODY><IMPORTDATA><REQUESTDATA>" + "".join(hit) + "</REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>"
         else:
             out = "<ENVELOPE>unknown report</ENVELOPE>"
@@ -49,7 +51,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
 def start():
-    Handler.log = []; Handler.crash_after = None; Handler.ignore_dates = False
+    Handler.log = []; Handler.crash_after = None; Handler.ignore_dates = False; Handler.drop = set()
     srv = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, Handler

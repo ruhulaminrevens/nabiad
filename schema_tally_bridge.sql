@@ -1,7 +1,9 @@
 -- Tally Bridge Phase 1 (read-only mirror of TallyPrime data). NOT applied yet.
 -- Apply only after the owner's explicit "yes" and select make_backup('manual').
--- Before applying: add tally_ledgers, tally_vouchers (and tally_sync_runs if wanted) to the three backup
--- lists (app.js BACKUP_TABLES, schema_admin_restore.sql, scripts/backup/offsite-backup.sh) in the same PR.
+-- Backups: these tables are deliberately NOT in the three backup lists (app.js BACKUP_TABLES,
+-- schema_admin_restore.sql, scripts/backup/offsite-backup.sh). They are a re-creatable mirror of Tally
+-- (the source of truth, backed up by Tally itself) and can reach hundreds of thousands of rows, so a restore
+-- of app data must not roll them back. Re-run the bridge to rebuild them.
 
 -- The bridge is an ordinary auth user with NO profile (so my_role() is null and it can read nothing else).
 -- The admin registers its user id here once: insert into public.tally_bridge_users(user_id) values ('<id>');
@@ -29,6 +31,7 @@ create table if not exists public.tally_vouchers (
   entries jsonb not null default '[]'::jsonb, -- [{ledger, amount}] amount < 0 = debit, as Tally exports it
   counter_company text,                       -- set when the other side is another Nabiad company (inter-company)
   alter_id bigint, cancelled boolean not null default false,
+  deleted boolean not null default false,     -- removed in Tally (soft delete; the bridge never hard-deletes)
   synced_at timestamptz not null default now(),
   primary key (company, guid));
 create index if not exists tally_vouchers_company_date on public.tally_vouchers (company, vdate);
