@@ -5,9 +5,14 @@ $src = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # 1. Real Python (the Microsoft Store 'python' stub does not count)
 $py = $null
-foreach ($name in 'python', 'py') {
+foreach ($name in 'py', 'python') {
   if (Get-Command $name -ErrorAction SilentlyContinue) {
-    $v = (& $name --version 2>&1 | Out-String)
+    $v = ''
+    try {
+      $ErrorActionPreference = 'Continue'
+      $v = (& $name --version 2>&1 | Out-String)
+    } catch { $v = '' }
+    $ErrorActionPreference = 'Stop'
     if ($v -match 'Python 3') { $py = $name; break }
   }
 }
@@ -18,7 +23,7 @@ if (-not $py) {
   Write-Host 'If winget is missing: install Python 3 from python.org (tick "Add python.exe to PATH"), then run again.'
   exit
 }
-Write-Host ("Using: " + (& $py --version 2>&1))
+Write-Host ("Using: " + $py)
 
 # 2. Today's Tally backup folder must exist
 $bkPath = 'E:\Tally_Backup\123 TALLY BACK UP\' + (Get-Date).ToString('dd.MM.yyyy')
