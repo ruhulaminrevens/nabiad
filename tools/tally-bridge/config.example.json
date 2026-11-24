@@ -33,8 +33,6 @@
   "supabase_url": "https://YOUR-PROJECT.supabase.co",
   "supabase_anon_key": "PUBLISHABLE-KEY-ONLY",
   "company_start_dates": {
-    "Nabiad-ChawkBazar-2026": "2026-01-01",
-    "N.Zaman Ch.": "2026-01-01",
-    "N.Zaman Veg. Cr.": "2026-01-01"
+    "Nabiad-ChawkBazar-2026": "2026-01-01"
   }
 }
