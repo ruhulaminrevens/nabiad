@@ -5866,15 +5866,15 @@ function backupRestoreModal(snapshot, preview, refresh, applyRestore = tables =>
 /* Off-site backup status for the Backup page. runs: array (newest first) | null (log table not installed) | undefined (could not load) */
 const OFFSITE_STALE_H = { db: 36, storage: 9 * 24 };
 function offsiteStatus(runs, kind) {
-  const label = kind === "db" ? bi("শেষ off-site (ডেটাবেস)", "Last off-site (database)") : bi("শেষ off-site (ছবি)", "Last off-site (photos)");
+  const label = kind === "db" ? bi("শেষ off-site (ডাটাবেস)", "Last off-site (database)") : bi("শেষ off-site (ছবি)", "Last off-site (photos)");
   if (runs === undefined) return { card: [label, asUnavailable(), ""], warn: "" };
-  if (runs === null) return { card: [label, bi("সেটআপ হয়নি", "Not set up"), bi("schema_offsite_backup_runs.sql প্রয়োগ ও workflow চালু করুন", "Apply schema_offsite_backup_runs.sql and enable the workflow")], warn: kind === "db" ? bi("Off-site backup এখনো চালু নেই — ডেটাবেস নষ্ট হলে এই Backup-ও হারাবে।", "Off-site backup is not set up yet. If the database is lost, these backups are lost with it.") : "" };
+  if (runs === null) return { card: [label, bi("সেটআপ হয়নি", "Not set up"), bi("schema_offsite_backup_runs.sql প্রয়োগ ও workflow চালু করুন", "Apply schema_offsite_backup_runs.sql and enable the workflow")], warn: kind === "db" ? bi("Off-site backup এখনো চালু নেই — ডাটাবেস নষ্ট হলে এই Backup-ও হারাবে।", "Off-site backup is not set up yet. If the database is lost, these backups are lost with it.") : "" };
   const mine = runs.filter(r => r.kind === kind), ok = mine.find(r => r.ok), last = mine[0];
   const failedLast = !!last && !last.ok;
   if (!ok) return { card: [label, "—", failedLast ? bi("শেষ run ব্যর্থ", "Last run failed") : bi("এখনো সফল run নেই", "No successful run yet")], warn: failedLast ? bi("শেষ off-site run ব্যর্থ হয়েছে।", "The last off-site run failed.") : "" };
   const hours = (Date.now() - Date.parse(ok.at)) / 36e5, stale = hours > OFFSITE_STALE_H[kind];
   const sub = [relTime(ok.at), stale ? "⚠ " + bi("পুরনো", "stale") : "", failedLast ? bi("শেষ run ব্যর্থ", "last run failed") : ""].filter(Boolean).join(" · ");
-  return { card: [label, auditStamp(ok.at), sub], warn: stale || failedLast ? bi(`${kind === "db" ? "ডেটাবেস" : "ছবি"} off-site backup ${stale ? "সময়মতো হয়নি" : "শেষবার ব্যর্থ হয়েছে"} — GitHub Actions দেখুন।`, `${kind === "db" ? "Database" : "Photo"} off-site backup ${stale ? "is overdue" : "failed on its last run"}. Check GitHub Actions.`) : "" };
+  return { card: [label, auditStamp(ok.at), sub], warn: stale || failedLast ? bi(`${kind === "db" ? "ডাটাবেস" : "ছবি"} off-site backup ${stale ? "সময়মতো হয়নি" : "শেষবার ব্যর্থ হয়েছে"} — GitHub Actions দেখুন।`, `${kind === "db" ? "Database" : "Photo"} off-site backup ${stale ? "is overdue" : "failed on its last run"}. Check GitHub Actions.`) : "" };
 }
 async function vBackup(out) {
   out.innerHTML = head(bi("ব্যাকআপ ও রিস্টোর", "Backup & Restore"), `${!DEMO ? `<button class="btn" type="button" id="bk-upload">${ico("plus")} ${bi("ব্যাকআপ আপলোড ও রিস্টোর", "Upload backup & restore")}</button>` : ""}<button class="btn pri" type="button" id="bk-now">${ico("save")} ${bi("এখনই Backup","Backup now")}</button><button class="btn" type="button" id="bk-dl">${ico("dl")} ${bi("বর্তমান ডাটা (Excel)","Current data (Excel)")}</button>`) +
