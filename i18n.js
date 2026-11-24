@@ -10,7 +10,7 @@ let LANG = savedAppLanguage();
 const I18N = {
   // navigation / shell
   "ড্যাশবোর্ড": "Dashboard", "চেক এন্ট্রি": "Cheque Entry", "স্ট্যাটাস": "Status", "চেক তালিকা": "Cheque List", "দৈনিক ক্লোজিং": "Daily Closing",
-  "ব্যালেন্স রিপোর্ট": "Balance Report", "রিপোর্ট": "Reports", "অ্যাকাউন্ট খুঁজুন": "Account Directory", "চেক বই": "Cheque Books", "অ্যাডমিন": "Admin",
+  "ব্যালেন্স রিপোর্ট": "Balance Report", "রিপোর্ট": "Reports", "অ্যাকাউন্ট খুঁজুন": "Accounts", "চেক বই": "Cheque Books", "অ্যাডমিন": "Admin",
   "ব্যাংক ও রিপোর্ট": "Bank & Reports", "অন্যান্য": "More", "আরও": "More", "লগআউট": "Logout", "লাইট থিম": "Light theme", "ডার্ক থিম": "Dark theme", "থিম": "Theme",
   "চেক / অ্যাকাউন্ট খুঁজুন…": "Search cheque / account…", "চেক নং, A/C কোড, হোল্ডার, পার্টি, টাকা বা পাতার নাম…": "Cheque no, A/C code, holder, party, amount or page…",
   "পাতা": "Pages", "অ্যাকাউন্ট": "Account", "লোড হচ্ছে…": "Loading…", "ডাটা লোড হচ্ছে…": "Loading data…",
@@ -304,7 +304,7 @@ Object.assign(I18N, {
   "ব্যাংক ক্লোজিং": "Bank Closing", "ব্যালেন্স স্ন্যাপশট": "Balance Snapshot", "ব্যাংক রিপোর্ট": "Bank Reports", "ব্যাংক সামারি": "Bank Summary", "ব্যাংক বিশ্লেষণ": "Bank Analysis",
   "ক্যাশ এন্ট্রি": "Cash Entry", "ক্যাশ খাতা": "Cash Book", "ক্যাশ যাচাই": "Cash Review", "ক্যাশ লেজার": "Cash Ledger", "ক্যাশ সামারি": "Cash Summary", "ক্যাশ রিপোর্ট": "Cash Reports",
   "কালেকশন এন্ট্রি": "Collection Entry", "কালেকশন সামারি": "Collection Summary", "কালেকশন রিপোর্ট": "Collection Reports",
-  "অ্যাকাউন্ট ডিরেক্টরি": "Account Directory", "পার্টি তালিকা": "Parties",
+  "অ্যাকাউন্টস": "Accounts", "পার্টি তালিকা": "Parties",
   "অডিট ও সিকিউরিটি": "Audit & Security", "অ্যাডমিনিস্ট্রেশন": "Administration",
   "সবচেয়ে পুরনো তারিখ": "Oldest date", "সর্বশেষ তারিখ": "Latest date",
   "২০২৬ ডাটা পুনরুদ্ধার": "Restore 2026 data",
