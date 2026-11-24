@@ -132,6 +132,11 @@ class T(unittest.TestCase):
         segs, _ = bridge.plan_days({"start_date": "2026-11-12", "window_days": 3}, {}, today)
         self.assertEqual(len(segs), 1)             # short history: nothing older than the window
 
+    def test_company_start_override(self):
+        cfg = {"start_date": "2023-01-01", "company_start_dates": {"N.Zaman Ch.": "2026-01-01"}}
+        self.assertEqual(bridge.company_cfg(cfg, "N.Zaman Ch.")["start_date"], "2026-01-01")
+        self.assertEqual(bridge.company_cfg(cfg, "Other")["start_date"], "2023-01-01")
+
     def test_missing_guids(self):
         self.assertEqual(bridge.missing_guids([{"guid": "a"}, {"guid": "b"}, {"guid": "c"}], {"a", "c"}), ["b"])
 

@@ -142,6 +142,13 @@ def daterange(d1, d2):
         d += dt.timedelta(days=1)
 
 
+def company_cfg(cfg, company):
+    """Config for one company: `company_start_dates` can give a later start (e.g. companies split off on 2026-01-01)."""
+    c = dict(cfg)
+    c["start_date"] = (cfg.get("company_start_dates") or {}).get(company, cfg.get("start_date", "2016-01-01"))
+    return c
+
+
 def plan_days(cfg, st, today):
     """Nightly plan as contiguous day segments: [recent window, next slice of history].
     The history slice moves forward a little each night and wraps around, so even a years-old edit
@@ -324,7 +331,7 @@ def main(argv=None):
             d2 = dt.date.fromisoformat(a.d_to) if a.d_to else today
             segments, next_cursor = [list(daterange(d1, d2))], None
         else:
-            segments, next_cursor = plan_days(cfg, st, today)
+            segments, next_cursor = plan_days(company_cfg(cfg, company), st, today)
         total_days = sum(len(x) for x in segments)
         log(f"{company}: {total_days} days to read ({'explicit period' if explicit else 'recent window + history slice'})")
         started = dt.datetime.now(dt.timezone.utc).isoformat()
