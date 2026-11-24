@@ -1696,7 +1696,7 @@ async function vStatus(v) {
   let saved = {}; try { saved = JSON.parse(sessionStorage.getItem("nabiad_status_view") || "{}"); } catch { }
   let mode = filters.some(f => f[0] === saved.mode) ? saved.mode : "pending", page = 0, ageF = saved.age || "", acF = "", grp = ["bank", "ac", "day"].includes(saved.grp) ? saved.grp : saved.group ? "day" : "", dateBy = ["year", "month", "week"].includes(saved.dateBy) ? saved.dateBy : ["year", "month", "week"].includes(saved.grp) ? saved.grp : "", activeId = "", bulkBusy = false, lastQueue = [];
   const sel = new Set(), open = new Set();
-  v.innerHTML = head("চেক স্ট্যাটাস আপডেট", `<button class="btn" type="button" id="s-xl">${ico("dl")} ${bi("এক্সেল", "Excel")}</button>${moduleCan("cheque", "entry") ? `<a class="btn" href="#/entry">${ico("plus")} ${bi("চেক পোস্টিং", "Cheque Posting")}</a>` : ""}<a class="btn" href="#/cheques">${ico("list")} ${bi("চেক তালিকা", "Register")}</a>`) + `
+  v.innerHTML = head("চেক স্ট্যাটাস", `<button class="btn" type="button" id="s-xl">${ico("dl")} ${bi("এক্সেল", "Excel")}</button>${moduleCan("cheque", "entry") ? `<a class="btn" href="#/entry">${ico("plus")} ${bi("চেক পোস্টিং", "Cheque Posting")}</a>` : ""}<a class="btn" href="#/cheques">${ico("list")} ${bi("চেক তালিকা", "Register")}</a>`) + `
     <section class="card cq-tools cq-workspace" aria-label="${bi("চেক স্ট্যাটাস তালিকা", "Cheque status queue")}">
       <div class="cq-filters" role="group" aria-label="${bi("স্ট্যাটাস ফিল্টার", "Status filters")}">${filters.map(([id, label, desc, ic]) => `<button type="button" class="btn" data-cq-filter="${id}" aria-pressed="false" aria-controls="s-list"><span class="cq-tl-t"><i>${ico(ic)}</i>${label}</span><strong class="num"></strong><small class="num"></small><em>${desc}</em></button>`).join("")}</div>
       <div class="cq-pulse" id="s-pulse"></div>
@@ -2059,7 +2059,7 @@ async function vCheques(v) {
     bi("তারিখ", "Date"), bi("A/C · চেক", "A/C · Cheque"), bi("হোল্ডার", "Holder"), bi("টাকা", "Amount"),
     bi("খাত / বিবরণ", "Purpose / Details"), bi("স্ট্যাটাস", "Status"), bi("কে", "Entered by")
   ];
-  v.innerHTML = head("চেক তালিকা ও এনকোয়ারি", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>${S.me.role !== "boss" && moduleCan("cheque", "edit") ? `<button class="btn" id="k-verify">${ico("check")} ${bi("স্টেটমেন্ট যাচাই", "Verify statement")}</button>` : ""}`) + `<div class="card tbar noprint">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
+  v.innerHTML = head("চেক রেজিস্টার", `<button class="btn" id="k-x">${ico("dl")} Excel</button><button class="btn" id="k-p">${ico("print")} প্রিন্ট</button>${S.me.role !== "boss" && moduleCan("cheque", "edit") ? `<button class="btn" id="k-verify">${ico("check")} ${bi("স্টেটমেন্ট যাচাই", "Verify statement")}</button>` : ""}`) + `<div class="card tbar noprint">${pbBar("k", PF, PBO)}<div class="row cflt" style="margin-top:12px">
    <div class="k-sw" style="flex:2 1 220px"><label class="f" for="k-q">${bi("চেক খুঁজুন", "Search cheques")} <kbd>/</kbd></label><input class="in" id="k-q" type="search" autocomplete="off" placeholder="${bi("চেক নং, A/C, নাম… বা >50000 status:pending", "Cheque no, A/C, name… or >50000 status:pending")}"><div class="k-tips" id="k-tips" aria-hidden="true"><span>${bi("স্মার্ট সার্চ:", "Smart search:")}</span>${[[">=1l", bi("≥ ১ লাখ", "≥ 1 lakh")], ["<10k", bi("< ১০ হাজার", "< 10k")], ["status:pending", "status:pending"], ["status:bounced", "status:bounced"], ["by:", "by:name"], ["ac:", "ac:code"]].map(([t, l]) => `<button type="button" tabindex="-1" data-tip="${t}">${l}</button>`).join("")}</div></div>
    <button type="button" class="btn sm k-more" id="k-more" aria-expanded="false" aria-controls="k-c">${ico("sliders")}<span>${bi("আরও ফিল্টার", "More filters")}</span><b id="k-moren"></b></button>
    <div style="flex:1 1 220px"><label class="f" for="k-c">A/C</label><select class="in" id="k-c"><option value="">সব</option>${S.accounts.map(a => `<option value="${esc(a.code)}">${esc(a.code)}${a.holder ? " · " + esc(a.holder) : ""}${a.bank ? " · " + esc(a.bank) : ""}</option>`).join("")}</select></div>
@@ -3045,7 +3045,7 @@ async function vBooks(v) {
       ["open", bi("ফলো-আপ বাকি", "Open follow-ups"), open]
     ];
     const current = BK_TAB === "books" ? filters.mode : LF_F.st === "open" ? "open" : "";
-    v.innerHTML = head(bi("চেক বই ও মিসিং পাতা", "Cheque Books & Missing Leaves"), (canMark ? `<button class="btn ${admin ? "" : "pri"}" id="bk-mk">${ico("flag")} ${bi("পাতা মার্ক করুন", "Mark leaves")}</button>` : "") + (canAddBook() ? `<button class="btn pri" id="bk-add">${ico("plus")} ${bi("নতুন বই", "New book")}</button>` : "")) +
+    v.innerHTML = head(bi("চেক বই", "Cheque Books"), (canMark ? `<button class="btn ${admin ? "" : "pri"}" id="bk-mk">${ico("flag")} ${bi("পাতা মার্ক করুন", "Mark leaves")}</button>` : "") + (canAddBook() ? `<button class="btn pri" id="bk-add">${ico("plus")} ${bi("নতুন বই", "New book")}</button>` : "")) +
       `<div class="bk-overview" aria-label="${bi("চেক বইয়ের সারাংশ", "Cheque book overview")}">${groups.map(([id, label, n]) => `<button type="button" class="bk-stat" data-bk-mode="${id}" aria-pressed="${id === current}" ${S.marksOff && ["low", "missing", "open"].includes(id) ? "disabled" : ""}><span>${label}</span><strong class="num">${["open", "missing", "low"].includes(id) && S.marksOff ? "—" : money0(n)}</strong></button>`).join("")}</div>
       <div class="pbm bk-tabs"><button type="button" class="chip ${BK_TAB === "books" ? "on" : ""}" data-t="books" aria-pressed="${BK_TAB === "books"}">${bi("চেক বই", "Books")}</button><button type="button" class="chip ${BK_TAB === "leaves" ? "on" : ""}" data-t="leaves" aria-pressed="${BK_TAB === "leaves"}">${bi("পাতার রেজিস্টার", "Leaf register")}</button></div><div id="bk-body"></div>`;
     const show = (tab, focus) => { BK_TAB = tab; draw(); $(focus, v)?.focus({ preventScroll: true }); };
@@ -3538,7 +3538,7 @@ async function vAccounts(v, F = { q: "", b: "", h: "", st: "Active", miss: "", v
   const banks = [...new Set(S.accounts.map(a => a.bank).filter(Boolean))].sort(compare), holders = [...new Set(S.accounts.map(a => a.holder).filter(Boolean))].sort(compare);
   if (!banks.includes(F.b)) F.b = "";
   if (!holders.includes(F.h)) F.h = "";
-  v.innerHTML = head("অ্যাকাউন্ট খুঁজুন", admin ? `<button class="btn" id="acf-imp">${ico("cam")} ছবি ইমপোর্ট</button><button class="btn pri" id="acf-add">${ico("plus")} নতুন অ্যাকাউন্ট</button>` : "") + `<div class="card tbar noprint">
+  v.innerHTML = head("অ্যাকাউন্টস", admin ? `<button class="btn" id="acf-imp">${ico("cam")} ছবি ইমপোর্ট</button><button class="btn pri" id="acf-add">${ico("plus")} নতুন অ্যাকাউন্ট</button>` : "") + `<div class="card tbar noprint">
     ${searchBox("acf-q", "কোড, নাম, ব্যাংক, শাখা, A/C বা Routing নং — যেমন: 483, pubali")}
     <div class="acf-filters">
       <select class="in" id="acf-b" aria-label="${bi("ব্যাংক", "Bank")}"><option value="">সব ব্যাংক</option>${banks.map(b => `<option${selected(b, F.b)}>${esc(b)}</option>`).join("")}</select>
@@ -4954,7 +4954,7 @@ const cashPeriod = F => pbRange(F);
 const cashErr = e => /relation|does not exist|schema cache|not find/i.test(e.message || "") ? "ক্যাশ টেবিল নেই — Supabase-এ schema_v3.sql চালাতে হবে" : isNetErr(e) ? "ইন্টারনেট নেই" : (e.message || String(e));
 async function vCashSum(v) {
   const F = pbInit("month");
-  v.innerHTML = head("ক্যাশ সামারি ও ইতিহাস", `${repBtns("cm")}<button class="btn" id="cm-x">${ico("dl")} Excel</button>${S.me.role !== "boss" ? `<a class="btn pri" href="#/cash">${ico("plus")} আজকের রেকর্ড</a>` : ""}`) + `<div class="card tbar noprint">${pbBar("cm", F)}</div><div class="card rep-wrap"><div class="rep-scroll"><div id="cm-out"></div></div></div>`;
+  v.innerHTML = head("ক্যাশ সামারি", `${repBtns("cm")}<button class="btn" id="cm-x">${ico("dl")} Excel</button>${S.me.role !== "boss" ? `<a class="btn pri" href="#/cash">${ico("plus")} আজকের রেকর্ড</a>` : ""}`) + `<div class="card tbar noprint">${pbBar("cm", F)}</div><div class="card rep-wrap"><div class="rep-scroll"><div id="cm-out"></div></div></div>`;
   let rows = [];
   async function draw() {
     const [f, t] = cashPeriod(F), out = $("#cm-out", v); out.innerHTML = `<div class="card"><div class="skel" style="height:120px"></div></div>`;
@@ -5105,7 +5105,7 @@ async function vRegister(v) {
   const mappedCategoryTotal = bi("ম্যাপ করা লেজার · খাতের মোট", "Mapped ledger · category total");
   const sources = { checker: bi("ক্যাশ যাচাই", "Cash Review"), book: bi("ক্যাশ খাতা", "Cash Book"), tally: "Tally" };
   const all = bi("সব", "All");
-  v.innerHTML = head("ক্যাশ রেজিস্টার", `${canMap ? `<button type="button" class="btn" id="rg-map">${ico("sliders")} ${bi("লেজার খাত নির্ধারণ", "Ledger → Purpose/Group")}</button>` : ""}<button type="button" class="btn" id="rg-x">${ico("dl")} Excel</button>`) +
+  v.innerHTML = head("ক্যাশ লেজার", `${canMap ? `<button type="button" class="btn" id="rg-map">${ico("sliders")} ${bi("লেজার খাত নির্ধারণ", "Ledger → Purpose/Group")}</button>` : ""}<button type="button" class="btn" id="rg-x">${ico("dl")} Excel</button>`) +
     `<div class="card tbar rg-tools noprint">
        <div class="rg-source chips" id="rg-source" role="group" aria-label="${bi("রেকর্ডের উৎস", "Record source")}">
          <button type="button" class="chip on" data-rg-source="app" aria-pressed="true">${bi("অ্যাপ রেকর্ড", "App records")}</button>
@@ -6769,7 +6769,7 @@ async function vDrep(v) {
 /* =================== Distribution Party (master list) =================== */
 async function vDparty(v) {
   const admin = S.me.role === "admin", canAdd = S.me.role !== "boss"; const F = { q: "", asm: "", dv: "", ds: "", act: "1", lim: 200 }; let list = [];
-  v.innerHTML = head("ডিস্ট্রিবিউশন পার্টি", `<button class="btn" id="dp-asm">${ico("users")} ASM তালিকা</button><button class="btn" id="dp-geo">${ico("map")} এলাকা অনুযায়ী</button><button class="btn" id="dp-xl">${ico("dl")} Excel</button>${canAdd ? `<button class="btn pri" id="dp-new">${ico("plus")} নতুন পার্টি</button>` : ""}`) + `<div class="card tbar tb-stack noprint"><div class="dcx-stats s4" id="dp-kpi"></div><div class="row pflt"><div class="pq"><label class="f">খুঁজুন</label><input class="in" id="dp-q" type="search" autocomplete="off" placeholder="পার্টি, ASM, জেলা, ফোন, ঠিকানা…"></div><div><label class="f">ASM</label><select class="in" id="dp-fa"></select></div><div><label class="f">বিভাগ</label><select class="in" id="dp-fv"></select></div><div><label class="f">জেলা</label><select class="in" id="dp-fd"></select></div><div><label class="f">অবস্থা</label><select class="in" id="dp-fs"><option value="1">সক্রিয়</option><option value="0">নিষ্ক্রিয়</option><option value="">সব</option></select></div></div></div>
+  v.innerHTML = head("পার্টি তালিকা", `<button class="btn" id="dp-asm">${ico("users")} ASM তালিকা</button><button class="btn" id="dp-geo">${ico("map")} এলাকা অনুযায়ী</button><button class="btn" id="dp-xl">${ico("dl")} Excel</button>${canAdd ? `<button class="btn pri" id="dp-new">${ico("plus")} নতুন পার্টি</button>` : ""}`) + `<div class="card tbar tb-stack noprint"><div class="dcx-stats s4" id="dp-kpi"></div><div class="row pflt"><div class="pq"><label class="f">খুঁজুন</label><input class="in" id="dp-q" type="search" autocomplete="off" placeholder="পার্টি, ASM, জেলা, ফোন, ঠিকানা…"></div><div><label class="f">ASM</label><select class="in" id="dp-fa"></select></div><div><label class="f">বিভাগ</label><select class="in" id="dp-fv"></select></div><div><label class="f">জেলা</label><select class="in" id="dp-fd"></select></div><div><label class="f">অবস্থা</label><select class="in" id="dp-fs"><option value="1">সক্রিয়</option><option value="0">নিষ্ক্রিয়</option><option value="">সব</option></select></div></div></div>
    <p class="iv-desc noprint">${ico("info")}<span>${bi("উপরের কার্ডে চাপলে যেসব পার্টির ASM বা জেলা বসানো নেই শুধু সেগুলো দেখাবে। “ASM তালিকা” বা “এলাকা অনুযায়ী” থেকে কোনো নাম বা জেলায় চাপলে তালিকা সেটা দিয়ে ফিল্টার হবে।", "Tap a card above to see parties with no ASM or district. In “ASM list” or “By area”, tap a name or district to filter this list by it.")}</span></p>
    <div class="card flush"><div class="ch"><h3>পার্টি তালিকা</h3><span class="tag" id="dp-cnt">0</span><div class="sp"></div><button class="btn sm hide" id="dp-rs">${ico("x")} ${bi("ফিল্টার মুছুন", "Clear filters")}</button></div><div id="dp-out"></div></div>`;
   const out = $("#dp-out", v);
