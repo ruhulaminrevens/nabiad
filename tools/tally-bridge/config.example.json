@@ -14,7 +14,13 @@
   "ledgers_every_days": 7,
   "pause_seconds": 2,
   "intercompany_ledgers": {
-    "NABIAD-CASH & BANK": "Nabiad-Cash & Bank"
+    "Nabiad-Cash & Bank": "Nabiad-Cash & Bank",
+    "Nabiad-ChawkBazar-2026": "Nabiad-ChawkBazar-2026",
+    "Nabiad Distribution Ltd.": "Nabiad Distribution Ltd.",
+    "Nabiad Savar Coil Factory": "Nabiad Savar Coil Factory",
+    "Nabiad Saver Coil Factory": "Nabiad Savar Coil Factory",
+    "Niramoy Traders-Naogaon": "Niramoy Traders- Naogaon",
+    "Niramoy Traders- Naogaon": "Niramoy Traders- Naogaon"
   },
   "supabase_url": "https://YOUR-PROJECT.supabase.co",
   "supabase_anon_key": "PUBLISHABLE-KEY-ONLY"
