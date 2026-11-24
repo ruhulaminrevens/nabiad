@@ -3,9 +3,10 @@ sys.path.insert(0, os.path.dirname(__file__))
 import bridge, mock_tally
 
 
-def run(cfg_extra, args, crash_after=None):
+def run(cfg_extra, args, crash_after=None, ignore_dates=False):
     srv, h = mock_tally.start()
     h.crash_after = crash_after
+    h.ignore_dates = ignore_dates
     out = tempfile.mkdtemp()
     cfg = {"tally_url": f"http://127.0.0.1:{srv.server_address[1]}", "companies": ["Co A", "Co B"], "start_date": "2026-11-01",
            "chunk_days": 1, "pause_seconds": 0, "supabase_url": "x", "supabase_anon_key": "x", **cfg_extra}
@@ -46,6 +47,11 @@ class T(unittest.TestCase):
         code, out, h = run({}, [], crash_after=1)   # ledgers ok, first day-book request: connection closed
         self.assertEqual(code, 2)
         self.assertEqual(len(h.log), 2)             # never retried, second company never contacted
+        self.assertFalse(os.path.exists(os.path.join(out, "Co_A.json")))
+
+    def test_wrong_date_from_tally_stops_without_output(self):
+        code, out, h = run({}, ["--company", "Co A"], ignore_dates=True)
+        self.assertEqual(code, 3)
         self.assertFalse(os.path.exists(os.path.join(out, "Co_A.json")))
 
     def test_live_port_needs_flag(self):

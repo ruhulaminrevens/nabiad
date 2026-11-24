@@ -15,6 +15,10 @@ import xml.etree.ElementTree as ET
 VERSION = "0.1.0"
 
 
+class DataMismatch(Exception):
+    """Tally answered for a different date than requested; the data cannot be trusted."""
+
+
 class TallyDown(Exception):
     """Tally did not answer (closed, crashed or unreachable). The run must stop."""
 
@@ -150,18 +154,26 @@ def export_company(cfg, company, d1, d2, log, raw_dir=None):
             save_raw(raw_dir, company, "ledgers", text)
         ledgers = parse_ledgers(text, company)
     vouchers = []
-    for a, b in chunks(d1, d2, cfg.get("chunk_days", 1)):
+    # This Tally's Day Book export ignores SVFROMDATE/SVTODATE and follows SVCURRENTDATE (verified 24-11-2026),
+    # so: one request per day. SVCURRENTDATE stays set inside Tally's XML session afterwards (the Gateway date is unaffected).
+    day = d1
+    while day <= d2:
         time.sleep(pause)
-        log(f"{company}: day book {a} to {b}")
-        text = tally_post(url, request_xml("Day Book", company, {"SVFROMDATE": ymd(a), "SVTODATE": ymd(b)}))
+        label = day.strftime("%d-%b-%Y")
+        log(f"{company}: day book {day}")
+        text = tally_post(url, request_xml("Day Book", company, {"SVCURRENTDATE": label, "SVFROMDATE": label, "SVTODATE": label}))
         if raw_dir:
-            save_raw(raw_dir, company, f"daybook_{ymd(a)}", text)
+            save_raw(raw_dir, company, f"daybook_{ymd(day)}", text)
         got = parse_vouchers(text, company, cfg.get("intercompany_ledgers"))
         per_day = {}
         for v in got:
             per_day[v["vdate"]] = per_day.get(v["vdate"], 0) + 1
         log(f"{company}: vouchers per date {dict(sorted(per_day.items()))}")
+        wrong = [d for d in per_day if d != str(day)]
+        if wrong:
+            raise DataMismatch(f"asked for {day} but Tally returned {wrong}. Nothing is written or uploaded.")
         vouchers += got
+        day += dt.timedelta(days=1)
     return ledgers, list({v["guid"]: v for v in vouchers}.values())
 
 
@@ -241,6 +253,9 @@ def main(argv=None):
         except TallyDown as e:
             log(f"STOP: {e}. Not contacting Tally again in this run.")
             return 2
+        except DataMismatch as e:
+            log(f"STOP: {e}")
+            return 3
         log(f"{company}: {len(ledgers)} ledgers, {len(vouchers)} vouchers")
         if a.upload:
             if ledgers:
