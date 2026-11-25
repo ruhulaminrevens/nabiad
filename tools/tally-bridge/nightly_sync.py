@@ -28,6 +28,8 @@ LOG = os.path.join(HERE, "nightly_log.txt")
 STATUS = os.path.join(HERE, "nightly_status.json")
 LOCK = os.path.join(HERE, "nightly.lock")
 STOP_FLAG = os.path.join(HERE, "nightly_stop.flag")
+SCHEDULE_STATE = os.path.join(HERE, "schedule_state.json")
+SCHEDULE_REVISION = 2  # raise when the way the task is created changes; the app then asks for one click on "Install schedule"
 TASK_NAME = "NabiadBridgeNightly"
 CREATE_NO_WINDOW = 0x08000000
 
@@ -284,6 +286,26 @@ def write_run_bat(until):
     return path
 
 
+def _write_schedule_state(start, until):
+    try:
+        with open(SCHEDULE_STATE, "w", encoding="utf-8") as f:
+            json.dump({"revision": SCHEDULE_REVISION, "start": start, "until": until, "installed": dt.datetime.now().isoformat(timespec="seconds")}, f)
+    except OSError:
+        pass
+
+
+def schedule_revision_installed():
+    """Revision of the app that created the installed task (0 = unknown / created before revisions existed)."""
+    try:
+        return int(json.load(open(SCHEDULE_STATE, encoding="utf-8")).get("revision", 0))
+    except (OSError, ValueError, TypeError):
+        return 0
+
+
+def schedule_needs_refresh():
+    return schedule_revision_installed() < SCHEDULE_REVISION
+
+
 def install_schedule(start="00:30", until="06:00"):
     """Daily task for the current Windows user. Tries a full XML task (wake PC, run late if it was off), else plain."""
     bat = write_run_bat(until)  # kept for running by hand
@@ -313,10 +335,12 @@ def install_schedule(start="00:30", until="06:00"):
     r = subprocess.run(["schtasks", "/Create", "/TN", TASK_NAME, "/XML", xml_path, "/F"], capture_output=True, text=True,
                        creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
     if r.returncode == 0:
+        _write_schedule_state(start, until)
         return True, f"Scheduled daily at {start} (stops by {until}), wakes the PC, runs late if the PC was off."
     r2 = subprocess.run(["schtasks", "/Create", "/TN", TASK_NAME, "/TR", f'"{pyw}" ' + (f"--engine --until {until}" if FROZEN else f'"{os.path.join(HERE, "nightly_sync.py")}" --until {until}'), "/SC", "DAILY", "/ST", start, "/F"],
                         capture_output=True, text=True, creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
     if r2.returncode == 0:
+        _write_schedule_state(start, until)
         return True, f"Scheduled daily at {start} (basic mode: the PC must be on and you signed in). {r.stderr.strip()[:120]}"
     return False, (r.stderr or r.stdout or r2.stderr or r2.stdout).strip()[:300]
 
@@ -333,6 +357,11 @@ def query_schedule():
 def remove_schedule():
     r = subprocess.run(["schtasks", "/Delete", "/TN", TASK_NAME, "/F"], capture_output=True, text=True,
                        creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0)
+    if r.returncode == 0:
+        try:
+            os.remove(SCHEDULE_STATE)
+        except OSError:
+            pass
     return r.returncode == 0
 
 

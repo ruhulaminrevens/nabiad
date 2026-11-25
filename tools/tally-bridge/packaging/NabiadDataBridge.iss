@@ -31,6 +31,8 @@ Name: "{autodesktop}\NABIAD DATA BRIDGE"; Filename: "{app}\NabiadDataBridge.exe"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 [Run]
 Filename: "{app}\NabiadDataBridge.exe"; Description: "Start NABIAD DATA BRIDGE"; Flags: nowait postinstall skipifsilent
+; in-app update runs this installer silently: start the new version when it is done
+Filename: "{app}\NabiadDataBridge.exe"; Parameters: "--after-update"; Flags: nowait skipifnotsilent
 [UninstallRun]
 ; remove the nightly task so it does not point to a deleted program
 Filename: "schtasks.exe"; Parameters: "/Delete /TN NabiadBridgeNightly /F"; Flags: runhidden; RunOnceId: "RemoveNightlyTask"

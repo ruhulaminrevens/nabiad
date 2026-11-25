@@ -18,9 +18,10 @@ Windows desktop app plus a command-line engine that copy TallyPrime ledgers and 
 | `ui_kit.py` | Design tokens, Toast, inline Alert, Accordion, Pill, Tour (coach marks), English/Bangla strings. No sync logic. |
 | `nightly_sync.py` | Nightly runner and helpers: Tally/Supabase checks, schedule install (Windows Task Scheduler), encrypted login (DPAPI), job lock, stop flag. |
 | `bridge.py` | The sync engine (one company at a time). Dry run by default. |
+| `updater.py`, `update_manifest.json` | In-app update (Settings → Updates): what may be installed, with SHA-256 per file. Standard library only. |
 | `setup.bat`, `setup_gui.pyw` | Run from source: installs PySide6 if missing and starts the app (`setup_gui.pyw` is a tkinter fallback). |
-| `packaging/` | PyInstaller spec, Inno Setup script, icon generator. |
-| `test_bridge.py`, `test_desktop.py`, `mock_tally.py` | Tests (mock Tally and fake Supabase only; no real Tally or database is touched). |
+| `packaging/` | PyInstaller spec, Inno Setup script, icon generator, `make_manifest.py` + `update_notes.json` (release notes for the update list). |
+| `test_bridge.py`, `test_desktop.py`, `test_updater.py`, `mock_tally.py` | Tests (mock Tally and fake Supabase only; no real Tally or database is touched). |
 
 ## Install
 
@@ -31,6 +32,25 @@ Windows desktop app plus a command-line engine that copy TallyPrime ledgers and 
 A portable zip is built too.
 
 **From source.** Python 3.10+ on Windows, then double-click `setup.bat`.
+
+## Updating (no `setup.bat` needed)
+Open **Settings → Updates**. The app checks for a newer version by itself at start (at most twice a day; switch off with the checkbox),
+the **Overview** shows a banner and a button when one is found, and **Check for updates** looks right now.
+
+- **Run from source:** *Update now* reads `update_manifest.json` from this repository (`main`), downloads only the files that
+  changed, and checks each one (SHA-256, Python syntax, and that its version is the one promised) **before** anything is replaced.
+  The old files are copied to `update_backup/` (the last 3 are kept); **Restore previous version** puts them back. If anything fails,
+  nothing is installed (or the old files are put back). The window then restarts itself.
+- **Installed with the installer (`.exe`):** *Update now* downloads the newest `bridge-v*` GitHub release installer, verifies its
+  SHA-256, and runs it silently; it closes the app, keeps your settings, login and logs, and starts the new version.
+- An update never touches Tally or the database. It is refused while a sync or the nightly job is running.
+- If a new version changes how the nightly task is created, the **Scheduler** page says so and one click on *Install schedule* refreshes it.
+- Integrity is checked against the manifest on the same repository, so the repository's `main` branch is the trusted source.
+  Keep merging to `main` a deliberate step.
+
+**Releasing a new version** (maintainers): raise `APP_VERSION` in `nabiad_bridge_app.pyw`, write the notes in
+`packaging/update_notes.json`, run `python packaging/make_manifest.py`, commit all of it, merge. CI fails if the manifest is stale.
+For installer users also push a tag `bridge-vX.Y.Z` (same number as `APP_VERSION`) so the Windows workflow publishes the release.
 
 ## First-time setup (5 steps)
 1. Open TallyPrime and load every company you want to copy (Tally does not reload companies by itself after a restart).
@@ -52,7 +72,8 @@ full load resumes from `bridge_state.json`. Vouchers Tally no longer returns for
 ## Files the app creates next to itself
 `config.json` (settings, no password) · `bridge_secret.json` (encrypted login) · `bridge_state.json` (progress) ·
 `nightly_log.txt`, `nightly_status.json` (job log and summary) · `ui_settings.json` (theme, language, window) ·
-`app_error_log.txt` (app errors). None of these are committed (see `.gitignore`).
+`app_error_log.txt` (app errors) · `schedule_state.json` (which app version created the nightly task) · `update_backup/` (old files of the last updates).
+None of these are committed (see `.gitignore`).
 
 ## Tests
 ```

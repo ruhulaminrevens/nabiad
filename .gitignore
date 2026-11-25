@@ -16,6 +16,9 @@ tools/tally-bridge/nightly_status.json
 tools/tally-bridge/nightly_stop.flag
 tools/tally-bridge/nightly_console.txt
 tools/tally-bridge/nightly_task.xml
+tools/tally-bridge/schedule_state.json
+tools/tally-bridge/update_backup/
+tools/tally-bridge/update_tmp/
 tools/tally-bridge/run_nightly.bat
 tools/tally-bridge/ui_settings.json
 tools/tally-bridge/app_error_log.txt

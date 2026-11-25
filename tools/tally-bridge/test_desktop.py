@@ -8,6 +8,7 @@ from unittest import mock
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("NABIAD_BRIDGE_NO_NET", "1")  # the window must not look for updates while testing
 import bridge, mock_tally, nightly_sync as ns  # noqa: E402
 from test_bridge import FakeSupabase  # noqa: E402
 
@@ -330,6 +331,65 @@ class Ui(unittest.TestCase):
             w.set_lang_choice(0); self._settle(w, 0.3)
             self.assertEqual(self.K.LANG, "en")
             w.set_dirty(True); self.assertTrue(w.al_dirty.isVisible() or True)
+        finally:
+            w._really_quit = True; w.timer.stop(); self._settle(w, 0.2); w.close()
+
+    def test_updates_card_check_apply_busy_failure_rollback_language(self):
+        mod, Window = self._window()
+        mod.HERE = tempfile.mkdtemp()  # the real app folder must never be touched by a test
+        w = Window(); w.ui["tour_done"] = True; w.show(); self._settle(w)
+        avail = {"status": "available", "mode": "source", "version": "9.9.9", "notes_en": "EN notes", "notes_bn": "বাংলা নোট", "manifest": {"version": "9.9.9", "files": {}}}
+        try:
+            self.assertFalse(w.b_up_now.isEnabled()); self.assertTrue(w.al_update.isHidden()); self.assertTrue(w.b_up_ov.isHidden())
+            with mock.patch.object(mod.U, "check", lambda v, f=False: dict(avail)):
+                w.check_updates(True); self._settle(w)
+            self.assertTrue(w.b_up_now.isEnabled()); self.assertFalse(w.al_update.isHidden()); self.assertFalse(w.b_up_ov.isHidden())
+            self.assertIn("9.9.9", w.al_update.tx.text()); self.assertIn("EN notes", w.up_notes.text()); self.assertIn("9.9.9", w.up_latest.text())
+            # a sync or the nightly job running blocks the update, and nothing is applied
+            called = []
+            with mock.patch.object(mod.U, "apply_source_update", lambda *a, **k: called.append(a) or {"version": "9.9.9"}), \
+                 mock.patch.object(mod.QMessageBox, "question", return_value=mod.QMessageBox.Yes):
+                w.job = mock.Mock(isRunning=lambda: True); w.update_now(); self.assertEqual(called, []); w.job = None
+                with mock.patch.object(mod.ns, "lock_is_free", lambda: False):
+                    w.update_now(); self.assertEqual(called, [])
+            # declined: nothing happens
+            with mock.patch.object(mod.U, "apply_source_update", lambda *a, **k: called.append(a)), mock.patch.object(mod.QMessageBox, "question", return_value=mod.QMessageBox.No):
+                w.update_now(); self._settle(w, 0.2); self.assertEqual(called, [])
+            # failure shows the plain reason and leaves the app usable
+            def boom(*a, **k):
+                raise mod.U.UpdateError("checksum did not match")
+            with mock.patch.object(mod.U, "apply_source_update", boom), mock.patch.object(mod.QMessageBox, "question", return_value=mod.QMessageBox.Yes):
+                w.update_now(); self._settle(w)
+            self.assertEqual(w.upd_msg[0], "error"); self.assertIn("checksum did not match", w.up_status.text()); self.assertIsNone(w._up_prog); self.assertTrue(w.b_up_check.isEnabled())
+            # success: files applied into the temp folder, new window started, this one closes
+            quits, restarts = [], []
+            w.quit_app = lambda: quits.append(1)
+            with mock.patch.object(mod.U, "apply_source_update", lambda m, here, **k: called.append(here) or {"updated": ["ui_kit.py"], "backup": here, "version": "9.9.9"}), \
+                 mock.patch.object(mod.U, "restart_app", lambda *a, **k: restarts.append(a)), mock.patch.object(mod.QMessageBox, "question", return_value=mod.QMessageBox.Yes):
+                w.update_now(); self._settle(w, 1.6)
+            self.assertEqual(called, [mod.HERE]); self.assertEqual(len(restarts), 1); self.assertEqual(quits, [1])
+            # language switch keeps the update state and shows it in Bangla
+            w.set_lang_choice(1); self._settle(w, 0.3)
+            self.assertIn("আপডেট", w.up_pill.text()); self.assertIn("বাংলা নোট", w.up_notes.text())
+            w.set_lang_choice(0); self._settle(w, 0.3)
+            # rollback: needs a backup, asks, restores, restarts
+            with mock.patch.object(mod.U, "has_backup", lambda h: False):
+                w.render_update(); self.assertFalse(w.b_up_rb.isEnabled())
+            restores = []
+            with mock.patch.object(mod.U, "has_backup", lambda h: True), mock.patch.object(mod.U, "last_backup_version", lambda h: "1.0.0"), \
+                 mock.patch.object(mod.U, "rollback", lambda h: restores.append(h) or {"version": "1.0.0", "files": []}), \
+                 mock.patch.object(mod.U, "restart_app", lambda *a, **k: restarts.append(a)), mock.patch.object(mod.QMessageBox, "question", return_value=mod.QMessageBox.Yes):
+                w.render_update(); self.assertTrue(w.b_up_rb.isEnabled()); w.rollback_update(); self._settle(w, 0.2)
+            self.assertEqual(restores, [mod.HERE]); self.assertEqual(len(restarts), 2)
+            # up to date and a failed check
+            with mock.patch.object(mod.U, "check", lambda v, f=False: {"status": "uptodate", "mode": "source", "version": mod.APP_VERSION, "notes_en": "", "notes_bn": ""}):
+                w.check_updates(True); self._settle(w)
+            self.assertFalse(w.b_up_now.isEnabled()); self.assertTrue(w.al_update.isHidden())
+            def offline(*a, **k):
+                raise mod.U.UpdateError("No connection to the update server")
+            with mock.patch.object(mod.U, "check", offline):
+                w.check_updates(True); self._settle(w)
+            self.assertEqual(w.upd_msg[0], "error"); self.assertIn("No connection", w.up_status.text())
         finally:
             w._really_quit = True; w.timer.stop(); self._settle(w, 0.2); w.close()
 

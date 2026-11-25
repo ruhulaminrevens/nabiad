@@ -14,9 +14,12 @@ HERE = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", 
 sys.path.insert(0, HERE)
 import nightly_sync as ns  # noqa: E402
 import ui_kit as K  # noqa: E402
+import updater as U  # noqa: E402
 from ui_kit import t  # noqa: E402
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
+FROZEN = bool(getattr(sys, "frozen", False))
+UPDATE_EVERY_S = 12 * 3600  # automatic check at most twice a day
 UI_SETTINGS = os.path.join(HERE, "ui_settings.json")
 ERR_LOG = os.path.join(HERE, "app_error_log.txt")
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
@@ -157,6 +160,7 @@ class Window(QMainWindow):
         self.co_rows = {}; self.vouchers_seen = 0; self.failed = 0
         self.toasts = K.ToastHost(self)
         self.tour = None
+        self.upd = None; self.upd_msg = None; self.upd_busy = False; self._up_prog = None; self.upd_latest = None
         self._restore_geometry()
         self._build()
         self.apply_theme(self.ui.get("theme", "dark"))
@@ -165,6 +169,7 @@ class Window(QMainWindow):
         self._shortcuts()
         QTimer.singleShot(300, self.refresh_all)
         QTimer.singleShot(900, self.maybe_tour)
+        QTimer.singleShot(6000, self.auto_check_updates)
         self.timer = QTimer(self); self.timer.timeout.connect(self.refresh_light); self.timer.start(30000)
 
     # ---------------------------------------------------------------- settings / config
@@ -286,6 +291,10 @@ class Window(QMainWindow):
             hl.addLayout(tb, 1)
             hl.addWidget(button(t("b.sync_now"), "primary", lambda: self.start_job(["--until", self._until_for_now()], t("b.incr")), "Ctrl+R"), 0, Qt.AlignVCenter)
             v.addWidget(hero)
+            ur = QHBoxLayout(); ur.setSpacing(K.SP["md"])
+            self.al_update = self.alert("info", "", False); ur.addWidget(self.al_update, 1)
+            self.b_up_ov = button(t("up.now"), "primary", self.update_now); self.b_up_ov.hide(); ur.addWidget(self.b_up_ov, 0, Qt.AlignVCenter)
+            v.addLayout(ur)
             top = QHBoxLayout(); top.setSpacing(K.SP["md"])
             self.c_tally = card(t("card.tally"), t("s.nottested"), "")
             self.c_db = card(t("card.db"), t("s.login"), "")
@@ -534,6 +543,7 @@ class Window(QMainWindow):
             g.addWidget(QLabel(t("set.lang")), 1, 0); g.addWidget(self.s_lang, 1, 1)
             g.addWidget(self.s_tray, 2, 0, 1, 2); g.addWidget(self.s_notif, 3, 0, 1, 2); g.addWidget(self.s_startup, 4, 0, 1, 2); g.setColumnStretch(2, 1)
             v.addWidget(f)
+            v.addWidget(self._updates_card())
             row = QHBoxLayout(); row.setSpacing(K.SP["md"])
             row.addWidget(button(t("b.backup"), "", self.backup_cfg)); row.addWidget(button(t("b.restore"), "", self.restore_cfg))
             row.addWidget(button(t("b.tour"), "", self.start_tour)); row.addStretch(); v.addLayout(row)
@@ -587,6 +597,8 @@ class Window(QMainWindow):
         if self.tour:
             self.tour.retheme(self.p)
         self.update_cards(); self.refresh_light()
+        if hasattr(self, "up_pill"):
+            self.render_update()
 
     def _tray(self):
         self.tray = None
@@ -941,6 +953,8 @@ class Window(QMainWindow):
                 self.set_state(self.c_sch, t("s.notinst"), "warn"); self.c_sch.note.setText("")
             if os.path.exists(ns.STATUS):
                 self.sched_out.appendPlainText("\nLast run summary:\n" + open(ns.STATUS, encoding="utf-8").read())
+            if res and ns.schedule_needs_refresh():
+                self.al_sched.set("warn", t("al.sched_old"))
         self.run_bg(ns.query_schedule, cb)
 
     def run_sched_now(self):
@@ -954,6 +968,181 @@ class Window(QMainWindow):
         def cb(res, err):
             self.sched_out.setPlainText("Schedule removed." if res else "Nothing to remove."); self.toast(t("t.sched_rm"), "info"); self.sched_status()
         self.run_bg(ns.remove_schedule, cb)
+
+    # ---------------------------------------------------------------- updates
+    def _updates_card(self):
+        u = QFrame(); u.setObjectName("card"); ug = QGridLayout(u); ug.setContentsMargins(20, 18, 20, 18); ug.setVerticalSpacing(10); ug.setHorizontalSpacing(14)
+        hd = QLabel(t("up.title")); hd.setObjectName("h2"); ug.addWidget(hd, 0, 0, 1, 3)
+        ug.addWidget(QLabel(t("up.installed")), 1, 0); self.up_cur = QLabel(f"v{APP_VERSION}"); ug.addWidget(self.up_cur, 1, 1)
+        ug.addWidget(QLabel(t("up.latest")), 2, 0); self.up_latest = QLabel(t("up.unknown")); ug.addWidget(self.up_latest, 2, 1)
+        self.up_pill = K.Pill(t("up.unknown"), "info", self.p); ug.addWidget(self.up_pill, 1, 2, 2, 1, Qt.AlignRight | Qt.AlignVCenter)
+        self.up_notes = QLabel(""); self.up_notes.setObjectName("muted"); self.up_notes.setWordWrap(True); ug.addWidget(self.up_notes, 3, 0, 1, 3)
+        self.up_bar = QProgressBar(); self.up_bar.setRange(0, 100); self.up_bar.hide(); ug.addWidget(self.up_bar, 4, 0, 1, 3)
+        self.up_status = QLabel(""); self.up_status.setObjectName("muted"); self.up_status.setWordWrap(True); ug.addWidget(self.up_status, 5, 0, 1, 3)
+        row = QHBoxLayout(); row.setSpacing(K.SP["md"])
+        self.b_up_check = button(t("up.check"), "", lambda: self.check_updates(True))
+        self.b_up_now = button(t("up.now"), "primary", self.update_now)
+        self.b_up_rb = button(t("up.rollback"), "", self.rollback_update)
+        for b in (self.b_up_check, self.b_up_now, self.b_up_rb):
+            row.addWidget(b)
+        row.addStretch(); ug.addLayout(row, 6, 0, 1, 3)
+        self.s_autoupd = QCheckBox(t("up.auto")); self.s_autoupd.setChecked(self.ui.get("auto_update", True))
+        self.s_autoupd.toggled.connect(lambda b: (self.ui.update(auto_update=b), self._save_ui()))
+        ug.addWidget(self.s_autoupd, 7, 0, 1, 3)
+        note = QLabel(t("up.exe_note") if FROZEN else t("up.src_note")); note.setObjectName("caption"); note.setWordWrap(True); ug.addWidget(note, 8, 0, 1, 3)
+        ug.setColumnStretch(1, 1)
+        self.render_update()
+        return u
+
+    def render_update(self):
+        """Paint the Settings card and the Overview banner from self.upd / self.upd_msg."""
+        try:
+            kind, text = self.upd_msg or ("info", "")
+            if self.upd_busy:
+                self.up_pill.set(t("up.checking"), "info", self.p)
+            elif self.upd:
+                self.up_pill.set(t("up.available"), "warn", self.p)
+            elif kind == "error":
+                self.up_pill.set(t("up.failed"), "error", self.p)
+            elif self.upd_msg:
+                self.up_pill.set(t("up.uptodate"), "success", self.p)
+            else:
+                self.up_pill.set(t("up.unknown"), "info", self.p)
+            self.up_latest.setText(f"v{self.upd['version']}" if self.upd else (f"v{self.upd_latest}" if getattr(self, "upd_latest", None) else t("up.unknown")))
+            notes = ""
+            if self.upd:
+                notes = (self.upd.get("notes_bn") if K.LANG == "bn" else self.upd.get("notes_en")) or self.upd.get("notes_en") or ""
+            self.up_notes.setText(notes); self.up_notes.setVisible(bool(notes))
+            if not self._up_prog:
+                self.up_status.setText(text if kind == "error" else "")
+            self.up_status.setVisible(bool(self.up_status.text()))
+            busy = self.upd_busy or bool(self._up_prog)
+            self.b_up_check.setEnabled(not busy); self.b_up_now.setEnabled(bool(self.upd) and not busy)
+            self.b_up_rb.setVisible(not FROZEN); self.b_up_rb.setEnabled(not busy and U.has_backup(HERE))
+            if not FROZEN and U.has_backup(HERE):
+                self.b_up_rb.setToolTip(f"v{U.last_backup_version(HERE) or '?'}")
+            self.al_update.set("info", t("up.ov", self.upd["version"]) if self.upd else "", self.p)
+            self.b_up_ov.setVisible(bool(self.upd)); self.b_up_ov.setEnabled(not busy)
+        except RuntimeError:  # widgets of the previous language were already deleted
+            pass
+
+    def auto_check_updates(self):
+        if os.environ.get("NABIAD_BRIDGE_NO_NET") or not self.ui.get("auto_update", True):
+            return
+        if time.time() - float(self.ui.get("last_update_check", 0)) < UPDATE_EVERY_S:
+            return
+        self.check_updates(False)
+
+    def check_updates(self, manual=True):
+        if self.upd_busy or self._up_prog:
+            return
+        self.upd_busy = True; self.upd_msg = None; self.up_status.setText(""); self.render_update()
+        def cb(res, err):
+            self.upd_busy = False
+            if not err:
+                self.ui["last_update_check"] = time.time(); self._save_ui()
+            if err:
+                self.upd = None; self.upd_msg = ("error", t("up.msg_fail", err))
+                if manual:
+                    self.toast(self.upd_msg[1], "error")
+            elif res["status"] == "available":
+                first = not self.upd or self.upd.get("version") != res["version"]
+                self.upd = res; self.upd_latest = res["version"]; self.upd_msg = ("warn", t("up.msg_available", res["version"]))
+                self.log(f"Update available: v{res['version']} (installed v{APP_VERSION}).", "INFO")
+                if manual or first:
+                    self.toast(self.upd_msg[1], "info")
+                if not manual:
+                    self.notify(self.upd_msg[1])
+            else:
+                self.upd = None; self.upd_latest = res["version"]; self.upd_msg = ("success", t("up.msg_uptodate", APP_VERSION))
+                if manual:
+                    self.toast(self.upd_msg[1], "success")
+            self.render_update()
+        self.run_bg(self._guard(lambda: U.check(APP_VERSION, FROZEN)), cb)
+
+    @staticmethod
+    def _guard(fn):
+        """Show an UpdateError as its plain message (Task turns SystemExit into the error text)."""
+        def run(*a):
+            try:
+                return fn(*a)
+            except U.UpdateError as e:
+                raise SystemExit(str(e))
+        return run
+
+    def _update_blocker(self):
+        if self.job and self.job.isRunning():
+            return t("up.busy_job")
+        if not ns.lock_is_free():
+            return t("up.busy_night")
+        return None
+
+    def update_now(self):
+        if not self.upd or self._up_prog:
+            return
+        why = self._update_blocker()
+        if why:
+            self.toast(why, "warn"); return
+        info = self.upd
+        q = t("up.confirm_exe" if FROZEN else "up.confirm", APP_VERSION, info["version"])
+        if QMessageBox.question(self, "NABIAD DATA BRIDGE", q) != QMessageBox.Yes:
+            return
+        self._up_prog = (0, 0, ""); self.up_bar.setValue(0); self.up_bar.setVisible(True); self.up_status.setText(""); self.render_update()
+        def progress(i, n, name):
+            self._up_prog = (i, n, name)
+        def work():
+            if FROZEN:
+                tmp = os.path.join(HERE, U.TMP_DIR)
+                path = U.download_installer(info, tmp, progress=lambda got, total: progress(got, total, ""))
+                return {"installer": path, "version": info["version"]}
+            return U.apply_source_update(info["manifest"], HERE, progress=progress)
+        tick = QTimer(self)
+        def paint():
+            i, n, name = self._up_prog or (0, 0, "")
+            if FROZEN:
+                pct = int(i * 100 / n) if n else 0; self.up_bar.setValue(pct); self.up_status.setText(t("up.progress_exe", pct))
+            else:
+                self.up_bar.setValue(int((i - 1) * 100 / n) if n else 0); self.up_status.setText(t("up.progress", i, n, name) if n else "")
+            self.up_status.setVisible(True)
+        tick.timeout.connect(paint); tick.start(150)
+        def cb(res, err):
+            tick.stop(); self._up_prog = None; self.up_bar.setVisible(False)
+            if err:
+                self.upd_msg = ("error", t("up.failed_apply", err)); self.up_status.setText(self.upd_msg[1])
+                self.toast(self.upd_msg[1], "error"); self.log("Update failed: " + err, "ERROR"); self.render_update(); return
+            self.log(f"Updated to v{res['version']}.", "SUCCESS"); self.toast(t("up.done", res["version"]), "success")
+            self.up_status.setText(t("up.done", res["version"])); self.up_status.setVisible(True)
+            self._relaunch(res.get("installer"))
+        self.run_bg(self._guard(work), cb)
+
+    def _relaunch(self, installer=None):
+        """Start the new version, then close this window. The new process waits for this one to let go of the lock."""
+        try:
+            if installer:
+                U.run_installer(installer)
+            else:
+                U.restart_app(HERE, FROZEN)
+        except OSError as e:
+            self.toast(t("t.err", str(e)), "error"); return
+        QTimer.singleShot(900, self.quit_app)
+
+    def rollback_update(self):
+        if self._up_prog or self.upd_busy:
+            return
+        ver = U.last_backup_version(HERE)
+        if not ver:
+            self.toast(t("up.rb_none"), "warn"); return
+        why = self._update_blocker()
+        if why:
+            self.toast(why, "warn"); return
+        if QMessageBox.question(self, "NABIAD DATA BRIDGE", t("up.rb_confirm", ver)) != QMessageBox.Yes:
+            return
+        try:
+            res = U.rollback(HERE)
+        except U.UpdateError as e:
+            self.toast(t("up.failed_apply", str(e)), "error"); return
+        self.log(f"Restored v{res['version']} from the backup.", "SUCCESS"); self.toast(t("up.rb_done", res["version"]), "success")
+        self._relaunch()
 
     # ---------------------------------------------------------------- data refresh
     def refresh_all(self):
@@ -1064,7 +1253,12 @@ def main():
     if not shot:  # one window only
         lock = QLockFile(os.path.join(QStandardPaths.writableLocation(QStandardPaths.TempLocation), "nabiad_data_bridge.lock"))
         lock.setStaleLockTime(0)
-        if not lock.tryLock(100):
+        locked = lock.tryLock(100)
+        if not locked and "--after-update" in sys.argv:  # started by the old window of an update: wait until it has closed
+            end = time.time() + 25
+            while not locked and time.time() < end:
+                time.sleep(0.4); locked = lock.tryLock(100)
+        if not locked:
             QMessageBox.information(None, "NABIAD DATA BRIDGE", "NABIAD DATA BRIDGE is already open (check the system tray).")
             sys.exit(0)
     def hook(et, ev, tb):
@@ -1074,6 +1268,8 @@ def main():
             w.toast(t("t.err", f"{et.__name__}: {ev}"), "error")
     sys.excepthook = hook
     w = Window(); w.show()
+    if "--after-update" in sys.argv:
+        QTimer.singleShot(1500, lambda: w.toast(t("up.after", APP_VERSION), "success"))
     if shot:
         out = sys.argv[sys.argv.index("--shot") + 1]
         w.ui["tour_done"] = True
