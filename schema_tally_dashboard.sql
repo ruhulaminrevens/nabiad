@@ -1,5 +1,5 @@
 -- Tally Dashboard (admin-only) — one read-only summary function for the app's "Tally Dashboard" page.
--- NOT applied yet. Apply only after the owner's explicit "yes" and `select make_backup('manual');`.
+-- Applied 2026-11-25 with the owner's explicit "yes" (function only, no data change). Re-runnable (create or replace).
 -- Needs the Tally bridge tables (schema_tally_bridge.sql). Creates no table and changes no data.
 -- The query body was run read-only against production on 2026-11-25 (9 companies, 318,527 rows) before this file was written.
 create or replace function public.tally_dashboard_summary() returns jsonb
@@ -40,7 +40,7 @@ begin
       'failed_7d', (select count(*) from tally_sync_runs where ok is false and started_at > now() - interval '7 days'),
       'recent_runs', coalesce((select jsonb_agg(to_jsonb(x) order by x.started_at desc) from (
           select id, company, kind, from_date, to_date, started_at, finished_at, ok, ledgers, vouchers, left(error, 300) as error, bridge_version
-          from tally_sync_runs order by started_at desc limit 40) x), '[]'::jsonb));
+          from tally_sync_runs order by started_at desc limit 40) x), '[]'::jsonb))
   );
 end $$;
 revoke execute on function public.tally_dashboard_summary() from public, anon;
