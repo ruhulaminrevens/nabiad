@@ -1,0 +1,456 @@
+{
+ "date": "2026-11-26",
+ "environment": {
+  "engine": "PostgreSQL 16.15 (local, synthetic data)",
+  "vcpu_limit": 2,
+  "ram_gb": 8,
+  "shared_buffers_mb": 256,
+  "note": "sandbox CPU is not Supabase compute; use for scaling shape, not absolute latency. Production calibration: snapshot refresh 6.6-37 s (median ~12 s) at 318k rows while the Bridge was loading."
+ },
+ "data_shape": "9 synthetic companies, production mix of company/voucher-type shares, 2 entries per voucher (92%), ~273 B/row (production 309 B), 1.5% shared GUIDs between two companies",
+ "scaling_median_ms": {
+  "1M": {
+   "label": "1M",
+   "rows": 1004628,
+   "table_mb": 283,
+   "index_mb": 99,
+   "results": [
+    {
+     "query": "overview_default_LIVE (full-history compute)",
+     "ms_median": 2125,
+     "ms_max": 2253
+    },
+    {
+     "query": "overview_company_month (live)",
+     "ms_median": 103,
+     "ms_max": 193
+    },
+    {
+     "query": "filters_compute (company/type counts)",
+     "ms_median": 417,
+     "ms_max": 462
+    },
+    {
+     "query": "snapshot_refresh (overview+collisions+filters)",
+     "ms_median": 3400,
+     "ms_max": 3562
+    },
+    {
+     "query": "snapshot_read (what the app calls)",
+     "ms_median": 0,
+     "ms_max": 0
+    },
+    {
+     "query": "voucher_search month, no text",
+     "ms_median": 13,
+     "ms_max": 16
+    },
+    {
+     "query": "voucher_search company+type+year",
+     "ms_median": 89,
+     "ms_max": 106
+    },
+    {
+     "query": "voucher_search TEXT all history (ilike entries)",
+     "ms_median": 983,
+     "ms_max": 984
+    },
+    {
+     "query": "ledger_list company, one year",
+     "ms_median": 178,
+     "ms_max": 187
+    },
+    {
+     "query": "ledger_list ALL companies, all history",
+     "ms_median": 1603,
+     "ms_max": 1619
+    },
+    {
+     "query": "ledger_statement one ledger, all history",
+     "ms_median": 566,
+     "ms_max": 574
+    },
+    {
+     "query": "recon_shared first page (shared GUID join)",
+     "ms_median": 763,
+     "ms_max": 777
+    }
+   ]
+  },
+  "3M": {
+   "label": "3M",
+   "rows": 3013520,
+   "table_mb": 857,
+   "index_mb": 301,
+   "results": [
+    {
+     "query": "overview_default_LIVE (full-history compute)",
+     "ms_median": 6256,
+     "ms_max": 6257
+    },
+    {
+     "query": "overview_company_month (live)",
+     "ms_median": 335,
+     "ms_max": 377
+    },
+    {
+     "query": "filters_compute (company/type counts)",
+     "ms_median": 1064,
+     "ms_max": 1074
+    },
+    {
+     "query": "snapshot_refresh (overview+collisions+filters)",
+     "ms_median": 11958,
+     "ms_max": 13240
+    },
+    {
+     "query": "snapshot_read (what the app calls)",
+     "ms_median": 0,
+     "ms_max": 0
+    },
+    {
+     "query": "voucher_search month, no text",
+     "ms_median": 59,
+     "ms_max": 80
+    },
+    {
+     "query": "voucher_search company+type+year",
+     "ms_median": 368,
+     "ms_max": 389
+    },
+    {
+     "query": "voucher_search TEXT all history (ilike entries)",
+     "ms_median": 3145,
+     "ms_max": 3166
+    },
+    {
+     "query": "ledger_list company, one year",
+     "ms_median": 1039,
+     "ms_max": 1083
+    },
+    {
+     "query": "ledger_list ALL companies, all history",
+     "ms_median": 4457,
+     "ms_max": 4579
+    },
+    {
+     "query": "ledger_statement one ledger, all history",
+     "ms_median": 900,
+     "ms_max": 923
+    },
+    {
+     "query": "recon_shared first page (shared GUID join)",
+     "ms_median": 3244,
+     "ms_max": 3250
+    }
+   ]
+  },
+  "5M": {
+   "label": "5M",
+   "rows": 5022378,
+   "table_mb": 1431,
+   "index_mb": 495,
+   "results": [
+    {
+     "query": "overview_default_LIVE (full-history compute)",
+     "ms_median": 10233,
+     "ms_max": 10346
+    },
+    {
+     "query": "overview_company_month (live)",
+     "ms_median": 552,
+     "ms_max": 568
+    },
+    {
+     "query": "filters_compute (company/type counts)",
+     "ms_median": 1798,
+     "ms_max": 1833
+    },
+    {
+     "query": "snapshot_refresh (overview+collisions+filters)",
+     "ms_median": 18942,
+     "ms_max": 20383
+    },
+    {
+     "query": "snapshot_read (what the app calls)",
+     "ms_median": 0,
+     "ms_max": 0
+    },
+    {
+     "query": "voucher_search month, no text",
+     "ms_median": 93,
+     "ms_max": 101
+    },
+    {
+     "query": "voucher_search company+type+year",
+     "ms_median": 379,
+     "ms_max": 392
+    },
+    {
+     "query": "voucher_search TEXT all history (ilike entries)",
+     "ms_median": 4696,
+     "ms_max": 4724
+    },
+    {
+     "query": "ledger_list company, one year",
+     "ms_median": 1061,
+     "ms_max": 1066
+    },
+    {
+     "query": "ledger_list ALL companies, all history",
+     "ms_median": 6020,
+     "ms_max": 6031
+    },
+    {
+     "query": "ledger_statement one ledger, all history",
+     "ms_median": 1175,
+     "ms_max": 1175
+    },
+    {
+     "query": "recon_shared first page (shared GUID join)",
+     "ms_median": 6560,
+     "ms_max": 8485
+    }
+   ]
+  },
+  "10M": {
+   "label": "10M",
+   "rows": 10044940,
+   "table_mb": 2866,
+   "index_mb": 984,
+   "results": [
+    {
+     "query": "overview_default_LIVE (full-history compute)",
+     "ms_median": 21537,
+     "ms_max": 21742
+    },
+    {
+     "query": "overview_company_month (live)",
+     "ms_median": 1618,
+     "ms_max": 1643
+    },
+    {
+     "query": "filters_compute (company/type counts)",
+     "ms_median": 3046,
+     "ms_max": 3054
+    },
+    {
+     "query": "snapshot_refresh (overview+collisions+filters)",
+     "ms_median": 41346,
+     "ms_max": 43932
+    },
+    {
+     "query": "snapshot_read (what the app calls)",
+     "ms_median": 0,
+     "ms_max": 1
+    },
+    {
+     "query": "voucher_search month, no text",
+     "ms_median": 325,
+     "ms_max": 338
+    },
+    {
+     "query": "voucher_search company+type+year",
+     "ms_median": 788,
+     "ms_max": 797
+    },
+    {
+     "query": "voucher_search TEXT all history (ilike entries)",
+     "ms_median": 9595,
+     "ms_max": 9799
+    },
+    {
+     "query": "ledger_list company, one year",
+     "ms_median": 1906,
+     "ms_max": 1918
+    },
+    {
+     "query": "ledger_list ALL companies, all history",
+     "ms_median": 11411,
+     "ms_max": 11661
+    },
+    {
+     "query": "ledger_statement one ledger, all history",
+     "ms_median": 2565,
+     "ms_max": 2568
+    },
+    {
+     "query": "recon_shared first page (shared GUID join)",
+     "ms_median": 23383,
+     "ms_max": 24271
+    }
+   ]
+  }
+ },
+ "concurrency_mixed_reads": [
+  {
+   "dataset_rows": 339967,
+   "clients": 5,
+   "bridge_like_writer": false,
+   "seconds": 40,
+   "reads": 2472,
+   "tps": 61.8,
+   "p50_ms": 18.4,
+   "p95_ms": 400.0,
+   "p99_ms": 693.7,
+   "writer_batches": 0,
+   "writer_p50_ms": null,
+   "writer_p95_ms": null
+  },
+  {
+   "dataset_rows": 339967,
+   "clients": 5,
+   "bridge_like_writer": true,
+   "seconds": 40,
+   "reads": 2093,
+   "tps": 52.3,
+   "p50_ms": 20.4,
+   "p95_ms": 464.0,
+   "p99_ms": 829.0,
+   "writer_batches": 833,
+   "writer_p50_ms": 46.5,
+   "writer_p95_ms": 71.9
+  },
+  {
+   "dataset_rows": 339967,
+   "clients": 10,
+   "bridge_like_writer": false,
+   "seconds": 40,
+   "reads": 2803,
+   "tps": 70.1,
+   "p50_ms": 32.6,
+   "p95_ms": 736.2,
+   "p99_ms": 1245.4,
+   "writer_batches": 0,
+   "writer_p50_ms": null,
+   "writer_p95_ms": null
+  },
+  {
+   "dataset_rows": 339967,
+   "clients": 10,
+   "bridge_like_writer": true,
+   "seconds": 40,
+   "reads": 2376,
+   "tps": 59.4,
+   "p50_ms": 35.7,
+   "p95_ms": 856.8,
+   "p99_ms": 1400.9,
+   "writer_batches": 694,
+   "writer_p50_ms": 56.0,
+   "writer_p95_ms": 78.2
+  },
+  {
+   "dataset_rows": 339967,
+   "clients": 20,
+   "bridge_like_writer": false,
+   "seconds": 40,
+   "reads": 2831,
+   "tps": 70.8,
+   "p50_ms": 54.5,
+   "p95_ms": 1862.0,
+   "p99_ms": 2153.9,
+   "writer_batches": 0,
+   "writer_p50_ms": null,
+   "writer_p95_ms": null
+  },
+  {
+   "dataset_rows": 339967,
+   "clients": 20,
+   "bridge_like_writer": true,
+   "seconds": 40,
+   "reads": 2673,
+   "tps": 66.8,
+   "p50_ms": 56.5,
+   "p95_ms": 1906.8,
+   "p99_ms": 2231.1,
+   "writer_batches": 493,
+   "writer_p50_ms": 80.0,
+   "writer_p95_ms": 112.1
+  },
+  {
+   "dataset_rows": 10065440,
+   "clients": 5,
+   "bridge_like_writer": false,
+   "seconds": 40,
+   "reads": 109,
+   "tps": 2.7,
+   "p50_ms": 1107.3,
+   "p95_ms": 7856.0,
+   "p99_ms": 9699.9,
+   "writer_batches": 0,
+   "writer_p50_ms": null,
+   "writer_p95_ms": null
+  },
+  {
+   "dataset_rows": 10065440,
+   "clients": 5,
+   "bridge_like_writer": true,
+   "seconds": 40,
+   "reads": 86,
+   "tps": 2.1,
+   "p50_ms": 1279.4,
+   "p95_ms": 8307.2,
+   "p99_ms": 17713.6,
+   "writer_batches": 636,
+   "writer_p50_ms": 60.0,
+   "writer_p95_ms": 104.0
+  },
+  {
+   "dataset_rows": 10065440,
+   "clients": 10,
+   "bridge_like_writer": false,
+   "seconds": 40,
+   "reads": 132,
+   "tps": 3.3,
+   "p50_ms": 1698.2,
+   "p95_ms": 15385.0,
+   "p99_ms": 27293.7,
+   "writer_batches": 0,
+   "writer_p50_ms": null,
+   "writer_p95_ms": null
+  },
+  {
+   "dataset_rows": 10065440,
+   "clients": 10,
+   "bridge_like_writer": true,
+   "seconds": 40,
+   "reads": 125,
+   "tps": 3.1,
+   "p50_ms": 1863.0,
+   "p95_ms": 14976.4,
+   "p99_ms": 25939.6,
+   "writer_batches": 406,
+   "writer_p50_ms": 91.0,
+   "writer_p95_ms": 168.0
+  },
+  {
+   "dataset_rows": 10065440,
+   "clients": 20,
+   "bridge_like_writer": false,
+   "seconds": 40,
+   "reads": 125,
+   "tps": 3.1,
+   "p50_ms": 3318.5,
+   "p95_ms": 40183.6,
+   "p99_ms": 43445.6,
+   "writer_batches": 0,
+   "writer_p50_ms": null,
+   "writer_p95_ms": null
+  },
+  {
+   "dataset_rows": 10065440,
+   "clients": 20,
+   "bridge_like_writer": true,
+   "seconds": 40,
+   "reads": 125,
+   "tps": 3.1,
+   "p50_ms": 3340.4,
+   "p95_ms": 34289.6,
+   "p99_ms": 44159.9,
+   "writer_batches": 241,
+   "writer_p50_ms": 144.3,
+   "writer_p95_ms": 333.9
+  }
+ ],
+ "read_mix": "40% snapshot read, 40% voucher search (month), 10% ledger list (company, one year), 10% ledger statement; writer = 500-voucher upsert batches on a fixed 20k key space"
+}
