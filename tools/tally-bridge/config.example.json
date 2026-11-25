@@ -1,0 +1,38 @@
+{
+  "tally_url": "http://localhost:9000",
+  "companies": [
+    "Nabiad-Cash & Bank",
+    "Nabiad Distribution Ltd.",
+    "Nabiad-ChawkBazar-2026",
+    "Nabiad Savar Coil Factory",
+    "Niramoy Traders- Naogaon",
+    "N.Zaman Ch.",
+    "N.Zaman Veg. Cr."
+  ],
+  "start_date": "2023-01-01",
+  "window_days": 60,
+  "deep_days": 150,
+  "batch_days": 30,
+  "ledgers_every_days": 7,
+  "pause_seconds": 2,
+  "intercompany_ledgers": {
+    "Nabiad-Cash & Bank": "Nabiad-Cash & Bank",
+    "Nabiad-ChawkBazar-2026": "Nabiad-ChawkBazar-2026",
+    "Nabiad Distribution Ltd.": "Nabiad Distribution Ltd.",
+    "Nabiad Savar Coil Factory": "Nabiad Savar Coil Factory",
+    "Nabiad Saver Coil Factory": "Nabiad Savar Coil Factory",
+    "Niramoy Traders-Naogaon": "Niramoy Traders- Naogaon",
+    "Niramoy Traders- Naogaon": "Niramoy Traders- Naogaon",
+    "Nabiad Detergent Factory": "Nabiad Detergent Factory",
+    "Nabiad Dertergent Factory": "Nabiad Detergent Factory",
+    "Nabiad Sub Contact Cosmetics": "Nabiad Sub Contact Cosmetics",
+    "N.Zaman Ch.": "N.Zaman Ch.",
+    "NZaman Ch.": "N.Zaman Ch.",
+    "N.Zaman Veg. Cr.": "N.Zaman Veg. Cr."
+  },
+  "supabase_url": "https://YOUR-PROJECT.supabase.co",
+  "supabase_anon_key": "PUBLISHABLE-KEY-ONLY",
+  "company_start_dates": {
+    "Nabiad-ChawkBazar-2026": "2026-01-01"
+  }
+}

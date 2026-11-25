@@ -1,0 +1,5 @@
+# Update checksums are taken from the committed bytes, so these files must not be converted to CRLF on a Windows checkout.
+*.py text eol=lf
+*.pyw text eol=lf
+update_manifest.json text eol=lf
+packaging/update_notes.json text eol=lf
