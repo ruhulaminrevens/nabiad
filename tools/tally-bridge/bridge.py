@@ -12,7 +12,7 @@ Credentials come from the environment (TALLY_BRIDGE_EMAIL / TALLY_BRIDGE_PASSWOR
 import argparse, datetime as dt, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 
 class DataMismatch(Exception):
@@ -106,6 +106,28 @@ def tally_date(s):
     return f"{s[0:4]}-{s[4:6]}-{s[6:8]}" if re.fullmatch(r"\d{8}", s or "") else None
 
 
+def add_inventory_postings(voucher_el, entries):
+    """Item-invoice vouchers (Sales, Purchase, Credit/Debit Note) keep the sales/purchase ledger posting inside
+    ALLINVENTORYENTRIES > ACCOUNTINGALLOCATIONS, not among the direct ledger entries, so the voucher looks one-sided.
+    Those postings are summed per ledger and added only when they bring the voucher closer to balance
+    (a voucher that already balances, or where they would not help, is left exactly as it was)."""
+    extra = {}
+    for inv in voucher_el:
+        if not local(inv.tag).startswith(("ALLINVENTORYENTRIES", "INVENTORYENTRIES")):
+            continue
+        for al in inv:
+            if local(al.tag).startswith("ACCOUNTINGALLOCATIONS"):
+                name = child_text(al, "LEDGERNAME")
+                if name:
+                    extra[name] = extra.get(name, 0.0) + num(child_text(al, "AMOUNT"))
+    if not extra:
+        return entries
+    merged = entries + [{"ledger": n, "amount": round(a, 2)} for n, a in extra.items() if abs(a) >= 0.005]
+    if abs(sum(e["amount"] for e in merged)) < abs(sum(e["amount"] for e in entries)) - 0.005:
+        return merged
+    return entries
+
+
 def parse_vouchers(text, company, intercompany=None):
     ic = {k.strip().lower(): v for k, v in (intercompany or {}).items()}
     out = []
@@ -122,6 +144,7 @@ def parse_vouchers(text, company, intercompany=None):
                 name = child_text(c, "LEDGERNAME")
                 if name:
                     entries.append({"ledger": name, "amount": num(child_text(c, "AMOUNT"))})
+        entries = add_inventory_postings(el, entries)
         counter = next((ic[e["ledger"].strip().lower()] for e in entries
                         if e["ledger"].strip().lower() in ic and ic[e["ledger"].strip().lower()] != company), None)
         out.append({

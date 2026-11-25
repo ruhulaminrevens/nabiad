@@ -87,6 +87,23 @@ class T(unittest.TestCase):
         self.assertTrue(v["g-3"]["cancelled"])
         self.assertEqual(v["g-1"]["vdate"], "2026-11-02")
 
+    def test_invoice_voucher_gets_sales_ledger_from_inventory_postings(self):
+        def v(inner):
+            return ('<ENVELOPE><TALLYMESSAGE><VOUCHER REMOTEID="x"><DATE>20261105</DATE><GUID>x</GUID><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>'
+                    '<VOUCHERNUMBER>9</VOUCHERNUMBER>' + inner + '</VOUCHER></TALLYMESSAGE></ENVELOPE>')
+        party = '<ALLLEDGERENTRIES.LIST><LEDGERNAME>Test Party</LEDGERNAME><AMOUNT>-1000.00</AMOUNT></ALLLEDGERENTRIES.LIST>'
+        inv = ('<ALLINVENTORYENTRIES.LIST><STOCKITEMNAME>Item A</STOCKITEMNAME><ACCOUNTINGALLOCATIONS.LIST><LEDGERNAME>Sales Account</LEDGERNAME><AMOUNT>600.00</AMOUNT></ACCOUNTINGALLOCATIONS.LIST></ALLINVENTORYENTRIES.LIST>'
+               '<ALLINVENTORYENTRIES.LIST><STOCKITEMNAME>Item B</STOCKITEMNAME><ACCOUNTINGALLOCATIONS.LIST><LEDGERNAME>Sales Account</LEDGERNAME><AMOUNT>400.00</AMOUNT></ACCOUNTINGALLOCATIONS.LIST></ALLINVENTORYENTRIES.LIST>')
+        got = bridge.parse_vouchers(v(party + inv), "Co")[0]
+        self.assertEqual(got["entries"], [{"ledger": "Test Party", "amount": -1000.0}, {"ledger": "Sales Account", "amount": 1000.0}])
+        self.assertEqual(got["amount"], 1000.0)
+        # already balanced by direct entries: inventory postings are not added again (no double counting)
+        both = party + '<ALLLEDGERENTRIES.LIST><LEDGERNAME>Sales Account</LEDGERNAME><AMOUNT>1000.00</AMOUNT></ALLLEDGERENTRIES.LIST>'
+        self.assertEqual(len(bridge.parse_vouchers(v(both + inv), "Co")[0]["entries"]), 2)
+        # postings that would not bring the voucher closer to balance are ignored
+        bad = inv.replace("600.00", "-600.00").replace("400.00", "-400.00")
+        self.assertEqual(len(bridge.parse_vouchers(v(party + bad), "Co")[0]["entries"]), 1)
+
     def test_only_standard_export_requests(self):
         _, _, h = run({}, ["--company", "Co A"])
         self.assertTrue(all("<TALLYREQUEST>Export</TALLYREQUEST>" in b and "<TYPE>Data</TYPE>" in b for b in h.log))
