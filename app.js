@@ -339,13 +339,16 @@ const isLive = c => !["Cancelled", "Bounced", "Stopped"].includes(c.status);
 /* ---------- data layer: Supabase ---------- */
 let sb = null;
 async function fetchAll(table, order = "id", columns = "*") {
-  let out = [], from = 0; const step = 1000;
-  for (;;) {
-    let q = sb.from(table).select(columns);
-    for (const col of [].concat(order)) q = q.order(col);
-    const { data, error } = await q.range(from, from + step - 1);
-    if (error) throw error; out = out.concat(data); if (data.length < step) break; from += step;
+  const step = 1000, mk = (from, count) => { let q = sb.from(table).select(columns, count ? { count: "exact" } : undefined); for (const col of [].concat(order)) q = q.order(col); return q.range(from, from + step - 1); };
+  const first = await mk(0, true); if (first.error) throw first.error;
+  let out = first.data || []; if (out.length < step) return out;
+  const total = first.count;
+  if (Number.isFinite(total) && total > step) {   // v6.175: remaining pages in parallel (one round trip instead of N, matters on a far-away server)
+    const pages = []; for (let f = step; f < total; f += step) pages.push(mk(f));
+    const rest = await Promise.all(pages); for (const r of rest) { if (r.error) throw r.error; out = out.concat(r.data); }
+    return out;
   }
+  for (let from = step; ; from += step) { const { data, error } = await mk(from); if (error) throw error; out = out.concat(data); if (data.length < step) break; }
   return out;
 }
 /* BACKUP_TABLES:start - table -> stable order column(s). Keep equal to public.nabiad_restore_tables() + profiles, leaf_marks (run scripts/check-backup-tables.py) */
@@ -652,6 +655,11 @@ async function balancesOn(d) {
   if (!balCache.has(d)) balCache.set(d, API.balancesOn(d).then(m => { if (!DEMO && d === S.lastBal) { S.snap = { date: d, map: m }; saveCache(); } return m; }).catch(e => { balCache.delete(d); throw e; }));
   const m = await balCache.get(d); return Object.keys(pb).length ? { ...m, ...pb } : m;
 }
+/* v6.175: background refresh used by the 30 s pollers. Skips while the user is typing in this page and redraws only when the data changed. */
+const dataSig = () => (S.cheques || []).map(c => c.id + ":" + (c.events || []).length + ":" + c.status + ":" + (c.amount || 0) + ":" + (c.remarks || "")).join("|") + "#" + (S.books || []).length + "#" + (S.accounts || []).length + "#" + (S.reminders || []).length + "#" + (S.marks || []).length;
+const userTyping = () => { const a = document.activeElement; return !!(a && a.closest && a.closest("#view") && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); };
+async function quietReload(redraw) { if (userTyping()) return; const before = dataSig(); await reload(); if (dataSig() !== before) redraw(); }
+
 async function reload() {
   const [d, lb, lc, lbk, rm, mk] = await Promise.all([API.loadAll(), API.lastBalDate(), API.lastCashDate().then(x => { S.cashOff = false; return x; }).catch(() => { S.cashOff = true; return S.lastCash || null; }), API.lastBookDate().catch(() => S.lastBook || null), API.reminders().then(x => { S.remErr = null; return x; }).catch(e => { S.remErr = e.message || String(e); return null; }), API.marks().then(x => { S.marksOff = false; return x; }).catch(() => { S.marksOff = true; return null; })]);
   if (rm) S.reminders = rm; if (mk) S.marks = mk; S.lastCash = lc; S.lastBook = lbk;
@@ -1602,7 +1610,7 @@ async function vEntry(v) {
   const poll = setInterval(async () => {
     if (document.hidden || refreshing || busy) return;
     refreshing = true;
-    try { await reload(); list(); drawRecent(); } catch { } finally { refreshing = false; }
+    try { await quietReload(() => { list(); drawRecent(); }); } catch { } finally { refreshing = false; }
   }, 30000);
   drawRecent(); drawRem(); flow();
   return () => { clearInterval(poll); clearTimeout(clT); document.removeEventListener("keydown", onSlash); };
@@ -1918,7 +1926,7 @@ async function vStatus(v) {
   const poll = setInterval(async () => {
     if (document.hidden || refreshing || bulkBusy || document.querySelector(".mback")) return;
     refreshing = true;
-    try { await reload(); draw(); } catch { } finally { refreshing = false; }
+    try { await quietReload(draw); } catch { } finally { refreshing = false; }
   }, 30000);
   return () => { clearInterval(poll); document.removeEventListener("keydown", onKey); };
 }
@@ -2321,7 +2329,7 @@ async function vCheques(v) {
   let refreshing = false;
   const poll = setInterval(async () => {
     if (document.hidden || refreshing || document.querySelector(".mback") || document.activeElement === $("#k-q", v)) return;
-    refreshing = true; try { await reload(); draw(); } catch { } finally { refreshing = false; }
+    refreshing = true; try { await quietReload(draw); } catch { } finally { refreshing = false; }
   }, 30000);
   return () => { clearInterval(poll); document.removeEventListener("keydown", onKey); };
 }
