@@ -373,7 +373,7 @@ const SbAPI = {
   },
   async login(email, pw) { const { error } = await sb.auth.signInWithPassword({ email, password: pw }); if (error) throw error; return this.session(); },
   async logout() {
-    try { localStorage.removeItem(CACHE_KEY); localStorage.removeItem("nabiad_locked"); } catch { }
+    clearTimeout(saveT); saveT = 0; try { localStorage.removeItem(CACHE_KEY); localStorage.removeItem("nabiad_locked"); } catch { }
     await sb.auth.signOut();
   },
   async loadAll() {
@@ -562,7 +562,12 @@ const API = DEMO ? DemoAPI : SbAPI;
 
 /* local cache: app opens instantly with last known data, then refreshes in background */
 const CACHE_KEY = "nabiad_cache_v2";
-function saveCache() { if (DEMO) return; try { const old = readCache() || {}; localStorage.setItem(CACHE_KEY, JSON.stringify({ u: S.me?.id, me: S.me, t: Date.now(), accounts: S.accounts, books: S.books, marks: S.marks, cheques: S.cheques.filter(c => !c.pending), reminders: S.reminders, lastBal: S.lastBal, lastCash: S.lastCash, snap: S.snap || (old.u === S.me?.id ? old.snap : null) }));
+/* v6.176: the offline cache is written once, shortly after the last change (it used to re-read and re-serialise every cheque on every change), and always before the page is hidden or closed. */
+let saveT = 0;
+function saveCache() { if (DEMO) return; clearTimeout(saveT); saveT = setTimeout(saveCacheNow, 400); }
+function flushCache() { if (saveT) { clearTimeout(saveT); saveCacheNow(); } }
+window.addEventListener("pagehide", flushCache); document.addEventListener("visibilitychange", () => { if (document.hidden) flushCache(); });
+function saveCacheNow() { saveT = 0; if (DEMO || !S.me) return; try { const old = readCache() || {}; localStorage.setItem(CACHE_KEY, JSON.stringify({ u: S.me?.id, me: S.me, t: Date.now(), accounts: S.accounts, books: S.books, marks: S.marks, cheques: S.cheques.filter(c => !c.pending), reminders: S.reminders, lastBal: S.lastBal, lastCash: S.lastCash, snap: S.snap || (old.u === S.me?.id ? old.snap : null) }));
   window.dispatchEvent(new Event("pwa-state"));
 } catch { } }
 function readCache() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); } catch { return null; } }
@@ -1008,11 +1013,13 @@ let ROUTE_TOK = 0;
   ];
   const VARIANT = /\b(pri|ok|bad|rdo|ghost|s-close|s-del|s-edit|s-view|s-print|s-share|s-photo|s-remind)\b/;
   const SKIP = ".dnav, .chips, .chip, .cp-header, .bk-tabs, .nav, .mnav, .sheet2, .topbar, .tabs";
-  let queued = false;
+  let queued = false, roots = [document.documentElement];   // v6.176: scan only newly added nodes, not the whole document, after each change
+  const scan = sel => { const out = []; for (const r of roots) { if (r.nodeType !== 1) continue; if (r.matches(sel)) out.push(r); r.querySelectorAll(sel).forEach(e => out.push(e)); } return out; };
   const decorate = () => {
     queued = false;
-    document.querySelectorAll("button[title]:not([aria-label]),a[title]:not([aria-label])").forEach(el => { if (!el.textContent.trim()) el.setAttribute("aria-label", el.getAttribute("title")); });
-    document.querySelectorAll(".btn:not([data-role-done]):not(.iconbtn)").forEach(el => {
+    const jobs = [scan("button[title]:not([aria-label]),a[title]:not([aria-label])"), scan(".btn:not([data-role-done]):not(.iconbtn)")]; roots = [];
+    jobs[0].forEach(el => { if (!el.textContent.trim()) el.setAttribute("aria-label", el.getAttribute("title")); });
+    jobs[1].forEach(el => {
       el.setAttribute("data-role-done", "1");
       if (el.closest(SKIP)) return;
       let role = el.dataset.role;
@@ -1027,7 +1034,7 @@ let ROUTE_TOK = 0;
     });
   };
   const queue = () => { if (!queued) { queued = true; requestAnimationFrame(decorate); } };
-  new MutationObserver(queue).observe(document.documentElement, { childList: true, subtree: true });
+  new MutationObserver(ms => { for (const m of ms) m.addedNodes.forEach(x => { const e = x.nodeType === 1 ? x : x.parentElement; if (e) roots.push(e); }); queue(); }).observe(document.documentElement, { childList: true, subtree: true });
   queue();
 })();
 

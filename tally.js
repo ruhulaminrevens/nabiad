@@ -1,4 +1,4 @@
-/* NABIAD — TALLY DASHBOARD (v6.174) — admin only. Tabs: Overview (sync state), Companies, Voucher Explorer, Ledger Explorer, Reconciliation and Sync Health.
+/* NABIAD — TALLY DASHBOARD (v6.176) — admin only. Tabs: Overview (sync state), Companies, Voucher Explorer, Ledger Explorer, Reconciliation and Sync Health.
    Shows the state of the read-only TallyPrime → Supabase mirror (written by the NABIAD DATA BRIDGE desktop app).
    Loaded after app.js and inv.js; uses their helpers (head, bi, esc, ico, money0, dmy, toast, ROUTES, API, DEMO, sb).
    Data comes from admin-only RPCs (schema_tally_dashboard.sql, schema_tally_explorer.sql). Nothing here writes to the database. */
@@ -58,7 +58,7 @@ async function vTallyDash(v) {
     cleanup = r?.cleanup || null; reload = r?.reload || (() => {});
   }
   btns.forEach(b => b.onclick = () => { if (b.dataset.tdTab !== tab) open(b.dataset.tdTab); });
-  $("#td-refresh", v).onclick = () => { Promise.resolve(reload()).then(() => toast(bi("রিফ্রেশ হয়েছে", "Refreshed"), "info")); };
+  $("#td-refresh", v).onclick = () => { tdBust(); Promise.resolve(reload()).then(() => toast(bi("রিফ্রেশ হয়েছে", "Refreshed"), "info")); };
   TD.go = (k, patch) => { Object.assign(TD, patch || {}); open(k); window.scrollTo(0, 0); };
   await open("overview");
   return () => { epoch++; cleanup?.(); TD.go = null; };
@@ -132,7 +132,7 @@ function tdDemoVouchers() {
 async function tdVFilters() {
   if (DEMO) { const r = tdDemoVouchers(), cnt = k => Object.entries(r.reduce((a, x) => (a[x[k]] = (a[x[k]] || 0) + 1, a), {})).map(([n, c]) => [n, c]).sort((a, b) => b[1] - a[1]);
     return { data: { companies: cnt("company").map(([company, n]) => ({ company, n })), types: cnt("vtype").map(([vtype, n]) => ({ vtype, n })) } }; }
-  const { data, error } = await sb.rpc("tally_voucher_filters"); return { data, error };
+  const r = await tdRpc("tally_voucher_filters"); return { data: r.data, error: r.error };
 }
 async function tdVSearch(f, offset, limit = TD_PAGE) {
   if (DEMO) {
@@ -329,7 +329,17 @@ async function tdLedgers(out) {
 /* ======================= Phase 1–3 (v6.174): Overview, Companies, Reconciliation, Sync Health ======================= */
 /* Shared filter state: Overview filters drive drill-downs; a company click opens the explorers already scoped to it. */
 const TD = { company: "", from: "", to: "", vtype: "", go: null };
-const tdRpc = async (name, args) => { const { data, error } = await sb.rpc(name, args); return { data, error, missing: tdRpcMissing(error) }; };
+/* v6.176: one in-flight request per identical read, short result cache (per signed-in user), errors never cached. Refresh button clears it. */
+const TD_TTL = { tally_voucher_filters: 600000, tally_overview: 30000, tally_sync_health: 30000, tally_recon_shared: 60000, tally_recon_coverage: 120000, tally_recon_changes: 60000 };
+const tdMem = new Map(), tdFly = new Map();
+const tdBust = () => tdMem.clear();
+const tdRpc = (name, args) => {
+  const ttl = TD_TTL[name] || 0, key = (S.me?.id || "") + "|" + name + "|" + JSON.stringify(args || {}), hit = ttl && tdMem.get(key);
+  if (hit && Date.now() - hit.t < ttl) return Promise.resolve(hit.v);
+  if (tdFly.has(key)) return tdFly.get(key);
+  const p = (async () => { try { const { data, error } = await sb.rpc(name, args); const v = { data, error, missing: tdRpcMissing(error) }; if (ttl && !error) tdMem.set(key, { t: Date.now(), v }); return v; } finally { tdFly.delete(key); } })();
+  tdFly.set(key, p); return p;
+};
 const tdPct = (a, b) => b ? Math.round(a * 1000 / b) / 10 : 0;
 const tdNA = () => `<span class="mut">${bi("পাওয়া যায়নি", "Not available")}</span>`;
 const tdBars = (items, lab, val) => { const max = Math.max(1, ...items.map(x => +x[val] || 0)), tot = items.reduce((s, x) => s + (+x[val] || 0), 0);
@@ -356,14 +366,15 @@ const tdDemoHealth = () => { const c = tdDemo().companies.map(x => ({ company: x
 /* ---------- Overview ---------- */
 async function tdOverview(out) {
   let gone = false, epoch = 0;
-  const fl = await tdVFilters();
-  if (gone || !out.isConnected) return {};
+  const flP = tdVFilters();
   const opt = (v, l, cur) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`;
-  out.innerHTML = `<form class="card td-vf" id="to-f"><div><label class="f" for="to-co">${bi("কোম্পানি", "Company")}</label><select class="in" id="to-co">${opt("", bi("সব কোম্পানি", "All companies"), TD.company)}${((fl.data || {}).companies || []).map(c => opt(c.company, c.company, TD.company)).join("")}</select></div>
-    <div><label class="f" for="to-ty">${bi("ধরন", "Voucher type")}</label><select class="in" id="to-ty">${opt("", bi("সব ধরন", "All types"), TD.vtype)}${((fl.data || {}).types || []).map(t => opt(t.vtype, t.vtype || "—", TD.vtype)).join("")}</select></div>
+  out.innerHTML = `<form class="card td-vf" id="to-f"><div><label class="f" for="to-co">${bi("কোম্পানি", "Company")}</label><select class="in" id="to-co">${opt("", bi("সব কোম্পানি", "All companies"), TD.company)}</select></div>
+    <div><label class="f" for="to-ty">${bi("ধরন", "Voucher type")}</label><select class="in" id="to-ty">${opt("", bi("সব ধরন", "All types"), TD.vtype)}</select></div>
     <div><label class="f" for="to-fr">${bi("থেকে", "From")}</label><input class="in" id="to-fr" type="date" value="${esc(TD.from)}"></div><div><label class="f" for="to-to">${bi("পর্যন্ত", "To")}</label><input class="in" id="to-to" type="date" value="${esc(TD.to)}"></div>
     <div class="td-vb"><button class="btn pri" type="submit">${bi("প্রয়োগ", "Apply")}</button><button class="btn" type="button" id="to-r">${bi("রিসেট", "Reset")}</button></div></form><div id="to-body" aria-live="polite"></div>`;
   const body = $("#to-body", out);
+  flP.then(fl => { if (gone || !out.isConnected) return; const co = $("#to-co", out), ty = $("#to-ty", out); if (!co || !ty) return;
+    co.insertAdjacentHTML("beforeend", ((fl.data || {}).companies || []).map(c => opt(c.company, c.company, TD.company)).join("")); ty.insertAdjacentHTML("beforeend", ((fl.data || {}).types || []).map(t => opt(t.vtype, t.vtype || "—", TD.vtype)).join("")); co.value = TD.company; ty.value = TD.vtype; }).catch(() => { });
   async function load() {
     const my = ++epoch; body.innerHTML = `<div class="card" style="margin-top:12px"><div class="skel" style="width:40%"></div><div class="skel" style="margin-top:12px"></div></div>`;
     const args = { p_company: TD.company || null, p_from: TD.from || null, p_to: TD.to || null, p_vtype: TD.vtype || null };
@@ -373,6 +384,7 @@ async function tdOverview(out) {
     if (o.missing) { const r = await tdLoad().catch(e => ({ error: e })); if (gone || my !== epoch) return; body.innerHTML = `<div class="alert am" style="margin:12px 0"><span>⚠ <b>${bi("নতুন Overview ফাংশন বসানো হয়নি", "The new Overview function is not installed yet")}</b> — <code>schema_tally_dashboard_v2.sql</code>. ${bi("আগের সারসংক্ষেপ দেখানো হচ্ছে।", "Showing the previous summary.")}</span></div>` + (r.error ? tdError(r) : tdView(r.data, r.demo)); return; }
     if (o.error) { body.innerHTML = tdError(o); return; }
     body.innerHTML = tdOverviewView(o.data, h?.data);
+    if (o.data && !o.data.collisions) tdRpc("tally_recon_shared", { p_limit: 1, p_offset: 0, p_only_differing: false }).then(r => { const el = !gone && my === epoch && $("#to-col", body); if (el && r.data) el.innerHTML = `<b>${money0(r.data.total)}</b> ${bi("GUID একাধিক কোম্পানিতে আছে; এর মধ্যে বিষয়বস্তু হুবহু এক", "GUIDs appear in more than one company; of these the content is identical for")} <b>${money0(r.data.identical)}</b>.`; else if (el) el.textContent = "—"; });
     tdWireDrill(body);
     body.querySelectorAll("[data-go]").forEach(b => b.onclick = () => TD.go(b.dataset.go, {}));
   }
@@ -408,7 +420,7 @@ function tdOverviewView(d, h) {
       <div class="card"><h3 style="margin:0 0 8px">${bi("দৈনিক কার্যকলাপ (শেষ ৩০ দিন)", "Daily activity (last 30 days of data)")}</h3>${tdCols((d.daily || []).map(x => ({ m: "--" + x.d.slice(5), n: x.n })))}</div>
     </div>
     <div class="card" style="margin-top:12px"><h3 style="margin:0 0 8px">${bi("ডেটা ইন্টেগ্রিটি", "Data integrity")}</h3>
-      <p class="sm" style="margin:0 0 6px"><b>${money0(col.identities || 0)}</b> ${bi("GUID একাধিক কোম্পানিতে আছে; এর মধ্যে বিষয়বস্তু হুবহু এক", "GUIDs appear in more than one company; of these the content is identical for")} <b>${money0(col.identical || 0)}</b>.</p>
+      <p class="sm" id="to-col" style="margin:0 0 6px"><b>${d.collisions ? money0(col.identities || 0) : "…"}</b> ${bi("GUID একাধিক কোম্পানিতে আছে; এর মধ্যে বিষয়বস্তু হুবহু এক", "GUIDs appear in more than one company; of these the content is identical for")} <b>${d.collisions ? money0(col.identical || 0) : "…"}</b>.</p>
       <p class="mut sm" style="margin:0 0 8px">${bi("তাই এগুলো ডুপ্লিকেট নয় — একই ID-র আলাদা লেনদেন। GUID ধরে বাদ দিলে লেনদেন হারাবে; কোম্পানি যোগ করে মোট করাও ভুল। বিস্তারিত: Reconciliation → Shared GUIDs।", "so these are not duplicates — different transactions sharing an ID. Removing them by GUID would lose transactions, and summing companies blindly is wrong too. Details: Reconciliation → Shared GUIDs.")}</p>
       <button type="button" class="btn sm" data-go="recon">${bi("Reconciliation খুলুন", "Open Reconciliation")}</button></div>
     <div class="card" style="margin-top:12px"><h3 style="margin:0 0 8px">${bi("কোম্পানি ভিত্তিক সারসংক্ষেপ", "Company overview")}</h3><div class="tw"><table class="td-t"><thead><tr><th>${bi("কোম্পানি", "Company")}</th><th class="r">${bi("ফিল্টারে", "In filter")}</th><th class="r">${bi("মোট", "All time")}</th><th class="r">${bi("লেজার", "Ledgers")}</th><th class="r">${bi("বাতিল", "Cancelled")}</th><th>${bi("ডেটার সীমা", "Data range")}</th><th></th></tr></thead><tbody>${compRows || `<tr><td colspan="7" class="mut">—</td></tr>`}</tbody></table></div></div>
@@ -420,7 +432,7 @@ function tdOverviewView(d, h) {
 async function tdCompanies(out) {
   let gone = false, rows = [], sort = { k: "rows", d: -1 }, q = "";
   out.innerHTML = `<div class="card"><div class="skel" style="width:40%"></div></div>`;
-  const [o, h] = DEMO ? [{ data: tdDemoOverview({}) }, { data: tdDemoHealth() }] : await Promise.all([tdRpc("tally_overview", {}), tdRpc("tally_sync_health", { p_days: 7 })]);
+  const [o, h] = DEMO ? [{ data: tdDemoOverview({}) }, { data: tdDemoHealth() }] : await Promise.all([tdRpc("tally_overview", { p_company: null, p_from: null, p_to: null, p_vtype: null }), tdRpc("tally_sync_health", { p_days: 7 })]);
   if (gone || !out.isConnected) return {};
   if (o.error) { out.innerHTML = tdError({ error: o.error, missing: o.missing, explorer: true }); return { cleanup: () => { gone = true; } }; }
   const hm = Object.fromEntries((h?.data?.companies || []).map(c => [c.company, c]));
