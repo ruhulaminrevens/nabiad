@@ -597,6 +597,7 @@ async function tdSync(out) {
   last = rl0.data; paint();
   $("#ts-co", out).onchange = () => run(0); $("#ts-ok", out).onchange = () => run(0);
   out.querySelectorAll("[data-f-ok]").forEach(b => b.onclick = () => { $("#ts-ok", out).value = b.dataset.fOk; run(0); hist.scrollIntoView({ behavior: "smooth", block: "start" }); });
+  if (DEMO) { const f = $("#ts-fresh", out); if (f) f.innerHTML = `<span class="mut sm">${bi("DEMO মোডে সতেজতার তথ্য নেই", "No freshness data in demo mode")}</span>`; }
   if (!DEMO) Promise.all([tdRpc("tally_overview", { p_company: null, p_from: null, p_to: null, p_vtype: null }), tdRpc("tally_balance_check", { p_company: null, p_live: false })]).then(([o, b]) => {
     const el = !gone && $("#ts-fresh", out); if (!el) return;
     el.innerHTML = [o.data ? tdFresh(bi("Overview সারাংশ", "Overview summary"), o.data.generated_at, o.data.from_snapshot ? 10 : 0) : `<span class="mut sm">${bi("Overview সারাংশ", "Overview summary")}: —</span>`,

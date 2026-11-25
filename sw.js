@@ -1,5 +1,5 @@
 /* Cache a complete release before it takes control. Bank data stays in the app's user cache. */
-const VERSION = "6.178-tally-v2";
+const VERSION = "6.179-pwa-fresh";
 const CACHE = "nabiad-v" + VERSION;
 const SCOPE = self.registration.scope;
 const SHELL = new URL("index.html", SCOPE).href;
@@ -14,7 +14,9 @@ const VENDOR_PATH = new URL("vendor/", SCOPE).pathname;
 
 async function cacheRelease() {
   const cache = await caches.open(CACHE);
-  const shell = await fetch(SHELL, {cache:"reload"});
+  // GitHub Pages serves every file with max-age=600 from its own CDN, so a plain fetch can return the PREVIOUS index.html for up to 10 min after a deploy.
+  // A unique query string is ignored by Pages but is a different CDN cache key, so install always verifies the shell that is really live.
+  const shell = await fetch(SHELL + "?r=" + Date.now(), {cache:"reload"});
   if (!shell.ok || !(await shell.clone().text()).includes('src="app.js?v=' + VERSION + '"')) {
     throw new Error("Nabiad offline shell does not match this release");
   }
