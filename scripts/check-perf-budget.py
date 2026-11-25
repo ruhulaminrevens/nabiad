@@ -3,7 +3,7 @@
 that protect the v6.175-6.177 fixes from being undone by accident. Raise a budget only on purpose, with a measurement."""
 import gzip, pathlib, re, sys
 root = pathlib.Path(__file__).resolve().parent.parent
-BUDGET_GZ = {"app.js": 290_000, "inv.js": 80_000, "cashbook.js": 36_000, "tally.js": 30_000, "i18n.js": 40_000, "style.css": 60_000}
+BUDGET_GZ = {"app.js": 290_000, "inv.js": 80_000, "cashbook.js": 36_000, "tally.js": 36_000, "i18n.js": 40_000, "style.css": 60_000}
 bad = []
 for f, cap in BUDGET_GZ.items():
     p = root / f

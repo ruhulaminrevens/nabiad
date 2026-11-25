@@ -1,5 +1,5 @@
 /* Cache a complete release before it takes control. Bank data stays in the app's user cache. */
-const VERSION = "6.177-perf-p0b";
+const VERSION = "6.178-tally-v2";
 const CACHE = "nabiad-v" + VERSION;
 const SCOPE = self.registration.scope;
 const SHELL = new URL("index.html", SCOPE).href;

@@ -186,3 +186,36 @@ Baseline 2026-11-26 (v6.177, sandbox CPU), page switch hash-change -> content re
 | Tally Dashboard | 22 / 32 | 76 / 92 |
 
 Start-up long tasks during login: 71 and 56 ms (1x); 229 and 173 ms (4x). This proves rendering and JavaScript are not the bottleneck on a 4x-slower CPU. It says nothing about network or database latency (no network in the test); those come only from the owner's `tools/perf-capture.js` capture on production.
+
+---
+## Update 2026-11-26 (night): Tally Dashboard v2 (v6.178) and SQL v4
+
+### Confirmed production failures and the fix (`schema_tally_perf_v4.sql`, NOT applied yet: needs owner "yes" + Bridge idle)
+The admin role has `statement_timeout = 8s`. Measured on production with the Bridge syncing (real conditions):
+
+| RPC | Before | After v4 (rolled-back test on production data) | Same result? |
+|---|---:|---:|---|
+| tally_balance_check() all | 11,093 ms -> timeout | 13 ms (snapshot) | rows identical |
+| tally_balance_check(company, live) | 572 ms | 570 ms | identical |
+| tally_recon_cash default period | 12,001-15,532 ms -> timeout | 309-465 ms (set-based rewrite) | all exception rows identical in 5 cases (42..2,643 rows) |
+| tally_recon_coverage(7) | 7,984 ms (at the limit) | 5 ms (snapshot) | identical |
+| tally_recon_shared page | 1,442-2,992 ms | 10-15 ms (precomputed pairs) | identical; table == live join |
+| tally_recon_changes | 3,205 ms (seq scan for 2 rows) | 162 ms (partial index) | identical |
+Role tests in the same transaction: staff/boss/anon denied; staff cannot read `tally_shared_pairs`, call refresh or the compute functions. New cron job `tally_recon_refresh` at :05 and :35 (does not overlap the :00/:10 overview job); adds roughly 25 s of one core every 30 min at today's size. Backup of the replaced bodies: `fn_backup_20261126`. Rollback in the file header.
+Note: the old recon_cash paging was not deterministic when rows tie (same date/type/amount); v4 adds a tie-break (ledger, vno). The set of exception rows is unchanged.
+
+### UI changes (tally.js, style.css, app.js palette hook) — no new dependency, no new request on page open except one 13 ms snapshot read
+- Sticky section nav; tab, Reconciliation sub-tab and filters kept across page changes and reload; links `#/tallydash?tab=…`; Alt+1..6 and `/`.
+- Date presets (Dhaka calendar, week from Saturday); rows per page 25/50/100 (remembered) with the pager above and below; sticky table headers in scroll boxes; compact/comfortable density.
+- Voucher Explorer: live search while typing only when the period is under 13 months (otherwise Enter), older request aborted in the browser; recent searches (device only); detail row shows debit/credit totals and a Balanced / Difference / Not verified tag.
+- Ledger Explorer: presets, pagers, live search only inside one company, printable statement.
+- Overview: freshness strip (summary computed vs last successful sync, never mixed); every bar and month/day column opens the matching vouchers; integrity card shows debit = credit from the 30-min snapshot.
+- Reconciliation: computed-at labels and stale flag; classes Matched / Unmatched (app only, Tally only) / Ambiguous / Review required / Not verified; Tally-side numbers open the voucher; shared-GUID "only different" filter and full Excel export; coverage day-coverage % and "vouchers around this gap"; Debit = credit loads instantly with company/type breakdown, largest differences and a live one-company check; "Not available yet" became the Setup & Readiness Center (14 modules, Available / Partial / Not ready, with prerequisites).
+- Sync Health: connection layers (browser, Supabase with measured ms, Bridge last report + version, TallyPrime "unknown" with the evidence), data freshness, runs per company, run duration, Bridge version, collapsible errors, clickable failure KPIs.
+- Ctrl+K: admins get "Search Tally vouchers / ledgers" and matching companies.
+- Size: tally.js 23.2 -> 33.9 KB gzip (budget raised 30 -> 36 KB on purpose; the file is cached by the service worker; total JS about 409 KB gzip, below the 450 KB split threshold). Browser bench results below.
+
+### Not done (deliberately)
+- Server-side column sorting for the explorers (needs new RPC parameters; the server order is date desc / amount desc).
+- Saved named filters (recent searches cover the common case); PDF export (Print works, Excel is the full-data export).
+- Opening balances, group hierarchy, bill-wise, stock: not mirrored by the Bridge, so no financial statements are shown (Readiness Center explains each).
