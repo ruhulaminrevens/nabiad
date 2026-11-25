@@ -1,5 +1,5 @@
 {
  "released": "2026-11-25",
- "notes_en": "Update from inside the app (Settings > Updates): checks the repository, verifies every file, keeps a backup and can restore the previous version. The nightly schedule now tells you when it was created by an older version and needs one click on Install schedule.",
- "notes_bn": "app-এর ভেতর থেকেই আপডেট (সেটিংস > আপডেট): রিপোজিটরি দেখে, প্রতিটি ফাইল যাচাই করে, ব্যাকআপ রাখে এবং আগের ভার্সনে ফেরা যায়। রাতের শিডিউল পুরোনো ভার্সনে বসানো থাকলে এখন জানিয়ে দেয়; তখন একবার Install schedule চাপুন।"
+ "notes_en": "Check status now answers with the next and last run (toast + message). A failed run that a later run fixed is shown as 'fixed later' and no longer counted as an open failure. Company Manager status follows the database instead of staying 'Not verified'.",
+ "notes_bn": "Check status এখন পরের ও শেষ run জানায় (toast + বার্তা)। পরের run-এ ঠিক হয়ে যাওয়া ব্যর্থতা 'পরে ঠিক' দেখায়, খোলা ব্যর্থতা হিসেবে গোনে না। Company Manager-এর অবস্থা এখন database অনুযায়ী, 'Not verified' আটকে থাকে না।"
 }
