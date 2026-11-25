@@ -25,6 +25,7 @@ class Handler(BaseHTTPRequestHandler):
     ignore_dates = False
     drop = set()          # GUIDs Tally "no longer has" (deleted vouchers)
     crash_after = None  # int: close the connection once this many requests were served
+    loaded = None       # set of company names Tally has open; None = every company is loaded
 
     def do_POST(self):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0))).decode("utf-8")
@@ -32,7 +33,15 @@ class Handler(BaseHTTPRequestHandler):
         if Handler.crash_after is not None and len(Handler.log) > Handler.crash_after:
             self.connection.close(); return
         rid = re.search(r"<ID>(.*?)</ID>", body).group(1)
-        if rid == "List of Accounts":
+        cm = re.search(r"<SVCURRENTCOMPANY>(.*?)</SVCURRENTCOMPANY>", body)
+        cname = cm.group(1).replace("&amp;", "&") if cm else None
+        if rid == "List of Companies":
+            names = sorted(Handler.loaded or [])
+            out = "<ENVELOPE><BODY><DATA><COLLECTION>" + "".join(
+                f'<COMPANY NAME="{n.replace("&", "&amp;")}"><NAME>{n.replace("&", "&amp;")}</NAME></COMPANY>' for n in names) + "</COLLECTION></DATA></BODY></ENVELOPE>"
+        elif Handler.loaded is not None and cname is not None and cname not in Handler.loaded:
+            out = "<RESPONSE><LINEERROR>Could not set 'SVCurrentCompany' to '%s'</LINEERROR></RESPONSE>" % cname
+        elif rid == "List of Accounts":
             out = LEDGERS
         elif rid == "Day Book":
             import datetime as _dt
@@ -51,7 +60,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
 def start():
-    Handler.log = []; Handler.crash_after = None; Handler.ignore_dates = False; Handler.drop = set()
+    Handler.log = []; Handler.crash_after = None; Handler.ignore_dates = False; Handler.drop = set(); Handler.loaded = None
     srv = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, Handler

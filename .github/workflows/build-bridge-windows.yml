@@ -1,0 +1,65 @@
+name: Build NABIAD DATA BRIDGE (Windows)
+
+# Builds the EXE and the installer on a Windows runner. Run it by hand (Actions > Run workflow) or push a tag like bridge-v1.0.0.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["bridge-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: tools/tally-bridge
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tools
+        run: python -m pip install --upgrade pip pyside6-essentials pyinstaller
+      - name: Tests (mock Tally + fake Supabase; includes the window tests and DPAPI)
+        run: python -W ignore -m unittest discover -s . -p "test_*.py"
+      - name: App version
+        id: ver
+        run: |
+          $v = (Select-String -Path nabiad_bridge_app.pyw -Pattern 'APP_VERSION = "([^"]+)"').Matches[0].Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
+      - name: Icon
+        run: python packaging/make_icon.py
+      - name: PyInstaller (windowed, one folder)
+        run: python -m PyInstaller packaging/NabiadDataBridge.spec --noconfirm --distpath dist --workpath build
+      - name: Smoke test the built exe (engine mode must start without a console and stop with exit 5 = no login saved)
+        run: |
+          Copy-Item config.example.json dist/NabiadDataBridge/config.json
+          $p = Start-Process -FilePath dist/NabiadDataBridge/NabiadDataBridge.exe -ArgumentList "--engine","--until","23:59" -Wait -PassThru -WindowStyle Hidden
+          Write-Host "engine exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 5) { throw "expected exit code 5 (no login saved), got $($p.ExitCode)" }
+          $b = Start-Process -FilePath dist/NabiadDataBridge/NabiadDataBridge.exe -ArgumentList "--bridge","--help" -Wait -PassThru -WindowStyle Hidden
+          if ($b.ExitCode -ne 0) { throw "bridge mode failed: $($b.ExitCode)" }
+          if (Test-Path dist/NabiadDataBridge/nightly_log.txt) { Get-Content dist/NabiadDataBridge/nightly_log.txt -Tail 5 }
+          Remove-Item dist/NabiadDataBridge/config.json, dist/NabiadDataBridge/nightly_log.txt -ErrorAction SilentlyContinue
+      - name: Installer (Inno Setup)
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=${{ steps.ver.outputs.version }}" packaging\NabiadDataBridge.iss
+      - name: Checksums
+        run: |
+          Compress-Archive -Path dist/NabiadDataBridge/* -DestinationPath "installer-out/NabiadDataBridge-portable-${{ steps.ver.outputs.version }}.zip"
+          Get-ChildItem installer-out | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash)  $($_.Name)" } | Tee-Object installer-out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nabiad-data-bridge-${{ steps.ver.outputs.version }}
+          path: tools/tally-bridge/installer-out/*
+      - name: Attach to the GitHub release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/bridge-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: tools/tally-bridge/installer-out/*

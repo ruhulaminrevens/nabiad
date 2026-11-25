@@ -12,7 +12,7 @@ Credentials come from the environment (TALLY_BRIDGE_EMAIL / TALLY_BRIDGE_PASSWOR
 import argparse, datetime as dt, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 
 class DataMismatch(Exception):
@@ -23,6 +23,9 @@ class TallyDown(Exception):
     """Tally did not answer (closed, crashed or unreachable). The run must stop."""
 
 
+USE_SELECTED_COMPANY = set()  # filled from config "use_selected_company" in main()
+
+
 def esc(s):
     return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;"))
 
@@ -30,6 +33,10 @@ def esc(s):
 def request_xml(report, company, extra=None):
     """Standard export request. `extra` holds static variables such as SVFROMDATE."""
     sv = {"SVEXPORTFORMAT": "$$SysName:XML", "SVCURRENTCOMPANY": company, **(extra or {})}
+    if company in USE_SELECTED_COMPANY:
+        # Tally cannot set a company whose name has " & " via XML ("Could not set SVCurrentCompany": it drops the spaces
+        # around "&"). For those, send no company: Tally answers for the company selected in its Gateway.
+        del sv["SVCURRENTCOMPANY"]
     body = "".join(f"<{k}>{esc(v)}</{k}>" for k, v in sv.items())
     return ("<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE>"
             f"<ID>{esc(report)}</ID></HEADER><BODY><DESC><STATICVARIABLES>{body}</STATICVARIABLES></DESC></BODY></ENVELOPE>")
@@ -220,12 +227,26 @@ def save_state(path, st):
 
 
 # ---------- Supabase (PostgREST) ----------
-def http_json(method, url, headers, payload=None):
+_RELOGIN = {"cfg": None}  # set in main(): lets a Supabase call renew an expired sign-in token (HTTP 401)
+
+
+def http_json(method, url, headers, payload=None, _retry=True):
+    if _RELOGIN.get("auth") and "Authorization" in headers:
+        headers = {**headers, **_RELOGIN["auth"]}  # newest token after a renewal
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, method=method, headers={"Content-Type": "application/json", **headers})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        body = r.read()
-        return json.loads(body) if body else None
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            body = r.read()
+            return json.loads(body) if body else None
+    except urllib.error.HTTPError as e:
+        cfg = _RELOGIN["cfg"]
+        # The sign-in token lasts about an hour; a long backfill outlives it. Sign in again once, update the
+        # shared header dict in place (every later call uses it), and retry this request.
+        if e.code == 401 and _retry and cfg and "Authorization" in headers and url.startswith(cfg["supabase_url"] + "/rest/"):
+            _RELOGIN["auth"] = sb_login(cfg)
+            return http_json(method, url, headers, payload, _retry=False)
+        raise
 
 
 def sb_login(cfg):
@@ -276,6 +297,21 @@ def sb_mark_deleted(cfg, hdr, company, days, fetched_guids):
     return len(gone)
 
 
+def check_company_guard(cfg, hdr, company, rows):
+    """For companies read via Tally's *selected* company: stop if these vouchers already exist under another company
+    (that means Tally had a different company open). Needs rows with at least a few vouchers."""
+    guids = [v["guid"] for v in rows][:200]
+    if len(guids) < 3:
+        return
+    ids = ",".join(guids)
+    qs = urllib.parse.urlencode({"guid": f"in.({ids})", "company": "neq." + company, "select": "company,guid", "limit": 1000})
+    hit = http_json("GET", f"{cfg['supabase_url']}/rest/v1/tally_vouchers?{qs}", hdr) or []
+    if len(hit) > len(guids) * 0.6:  # ChawkBazar-2026 was split from Cash & Bank, so a partial overlap (about 30%) is normal; the wrong-company case is about 100%
+        other = sorted({r["company"] for r in hit})
+        raise DataMismatch(f"{len(hit)} of {len(guids)} vouchers read for {company!r} already exist under {other}. "
+                           f"Tally probably has a different company open. Open {company!r} in Tally and run again. Nothing uploaded.")
+
+
 def sb_log_run(cfg, hdr, row):
     try:
         http_json("POST", cfg["supabase_url"] + "/rest/v1/tally_sync_runs", {**hdr, "Prefer": "return=minimal"}, row)
@@ -294,6 +330,7 @@ def main(argv=None):
     ap.add_argument("--window-days", type=int, help="nightly: re-read this many recent days (default config window_days=60)")
     ap.add_argument("--deep-days", type=int, help="nightly: history days re-read per run (default config deep_days=150); use a large number for the first backfill")
     ap.add_argument("--max-minutes", type=float, help="stop cleanly between batches after this long (progress is saved)")
+    ap.add_argument("--pause", type=float, help="seconds to wait between Tally requests (default config pause_seconds=2; 0.3 is fine for a quiet Tally)")
     ap.add_argument("--state", default="bridge_state.json", help="progress file of the history scan (used with --upload)")
     ap.add_argument("--today", help=argparse.SUPPRESS)
     ap.add_argument("--out", default="bridge_out", help="folder for dry-run JSON and raw XML")
@@ -306,6 +343,8 @@ def main(argv=None):
         cfg["window_days"] = a.window_days
     if a.deep_days is not None:
         cfg["deep_days"] = a.deep_days
+    if a.pause is not None:
+        cfg["pause_seconds"] = max(0.0, a.pause)
     port = urllib.parse.urlparse(cfg["tally_url"]).port
     if port == 9000 and not a.confirm_live:
         sys.exit("This would talk to the real Tally (port 9000). Re-run with --confirm-live after a fresh Tally backup.")
@@ -317,6 +356,8 @@ def main(argv=None):
             sys.exit(f"{a.company!r} is not in the config companies list.")
         names = [a.company]
     log = lambda m: print(time.strftime("%H:%M:%S"), m, flush=True)
+    _RELOGIN["cfg"] = cfg
+    USE_SELECTED_COMPANY.update(cfg.get("use_selected_company", []))
     hdr = sb_login(cfg) if a.upload else None
     today = dt.date.fromisoformat(a.today) if a.today else dt.date.today()
     raw_dir = os.path.join(a.out, "raw") if a.save_raw else None
@@ -336,11 +377,14 @@ def main(argv=None):
         log(f"{company}: {total_days} days to read ({'explicit period' if explicit else 'recent window + history slice'})")
         started = dt.datetime.now(dt.timezone.utc).isoformat()
         ledgers, all_vouchers, n_v, n_del, done_days = [], [], 0, 0, 0
+        guard_done, pending_ledgers = False, None
         try:
             stale = not st.get("ledgers_at") or (today - dt.date.fromisoformat(st["ledgers_at"])).days >= int(cfg.get("ledgers_every_days", 7))
             if not a.skip_ledgers and (explicit or stale):
                 ledgers = fetch_ledgers(cfg, company, log, raw_dir)
-                if a.upload:
+                if a.upload and company in USE_SELECTED_COMPANY:
+                    pending_ledgers = ledgers  # uploaded only after the first vouchers pass the company guard
+                elif a.upload:
                     sb_upsert(cfg, hdr, "tally_ledgers", ledgers, "company,name")
                     st["ledgers_at"] = str(today)
                     save_state(a.state, state)
@@ -355,6 +399,14 @@ def main(argv=None):
                     n_v += len(rows)
                     done_days += len(batch)
                     if a.upload:
+                        if company in USE_SELECTED_COMPANY and not guard_done:
+                            check_company_guard(cfg, hdr, company, rows)
+                            if len(rows) >= 3:
+                                guard_done = True
+                        if pending_ledgers is not None and (guard_done or company not in USE_SELECTED_COMPANY):
+                            sb_upsert(cfg, hdr, "tally_ledgers", pending_ledgers, "company,name")
+                            st["ledgers_at"] = str(today)
+                            pending_ledgers = None
                         now = dt.datetime.now(dt.timezone.utc).isoformat()
                         for v in rows:
                             v["synced_at"] = now
