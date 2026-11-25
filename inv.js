@@ -843,6 +843,9 @@ function ivGuess(name, loc, asm, parties) {
 const ivSure = g => g.length > 0 && (g.length === 1 || g[0].sc - g[1].sc >= 2);
 async function ivMatchModal(done, preferred) {
   let parties = []; try { parties = await dpLoad(); } catch (e) { return toast(ivErr(e), "err"); }
+  // built once per modal (not on every keystroke): full name + ASM on two lines, district as the pill; search stays on name, ASM and district
+  const pitems = parties.map(p => ({ value: p.name, label: p.asm || "", sub: p.district || "", html: `<span class="sgn"><b>${esc(p.name)}</b>${p.asm ? `<em>${esc(p.asm)}</em>` : ""}</span>` }));
+  const nmemo = new Map(), pnorm = v => { let r = nmemo.get(v); if (r === undefined) { r = ivSearch(v); if (nmemo.size > 30000) nmemo.clear(); nmemo.set(v, r); } return r; };
   const groups = () => { const g = Object.create(null); INV.orders.filter(o => o.ch === "dist" && !o.party_id && o.party).forEach(o => { const k = o.party + "|" + (o.location || ""); const x = g[k] ||= { name: o.party, loc: o.location || "", asm: o.asm || "", n: 0, v: 0 }; x.n++; x.v += o.value; }); return Object.values(g).sort((a, b) => b.v - a.v); };
   const draw = (root) => {
     const G = groups(); G.forEach(x => { x.g = ivGuess(x.name, x.loc, x.asm, parties); x.ok = ivSure(x.g); }); G.sort((a, b) => (b.ok - a.ok) || (b.v - a.v)); const nSure = G.filter(x => x.ok).length;
@@ -856,7 +859,9 @@ async function ivMatchModal(done, preferred) {
       const created = preferred?.name === x.name && preferred.loc === x.loc ? preferred.party : null;
       let pid = created?.id || $(".chip.on", r)?.dataset.p || null;
       $$(".chip", r).forEach(c => c.onclick = () => { $$(".chip", r).forEach(z => z.classList.toggle("on", z === c)); pid = c.dataset.p; });
-      const inp = $(".iv-ms input", r); const picker = suggest(inp, () => parties.map(p => ({ value: p.name, label: p.asm || "", sub: p.district || "" })), it => { pid = it ? parties.find(p => p.name === it.value)?.id : null; $$(".chip", r).forEach(z => z.classList.remove("on")); }, { normalize: ivSearch });
+      const inp = $(".iv-ms input", r); const picker = suggest(inp, () => pitems, it => { pid = it ? parties.find(p => p.name === it.value)?.id : null; $$(".chip", r).forEach(z => z.classList.remove("on")); }, { normalize: pnorm });
+      // the list opens below the row: bring the row to the top of the scroll area and keep room under it, so the list is never cut off
+      const ml = r.parentElement; inp.addEventListener("focus", () => { ml.classList.add("pk"); requestAnimationFrame(() => ml.scrollTo({ top: Math.max(0, r.offsetTop - 6), behavior: "smooth" })); }); inp.addEventListener("blur", () => setTimeout(() => ml.classList.remove("pk"), 200));
       if (created) { picker.setSilent({ value: created.name, label: created.asm || "" }); $$(".chip", r).forEach(z => z.classList.remove("on")); }
       const np = $("[data-np]", r); if (np) np.onclick = e => { e.preventDefault(); if (typeof dpartyModal !== "function") return; dpartyModal({ name: [x.name, x.loc].filter(Boolean).join("-") }, saved => { if (!saved) return; toast(bi("✔ পার্টি তৈরি হয়েছে — এখন \"মেলান\" চাপুন", "✔ Party created — now press \"Link\"")); ivMatchModal(done, { name: x.name, loc: x.loc, party: saved }); }); };
       $("[data-go]", r).onclick = async () => { if (!pid) return toast(bi("একটা পার্টি বাছুন", "Pick a party"), "err"); try { const rs = await API.invLinkParty(x.name, x.loc || null, pid); ivPut(rs); toast(bi(`✔ ${rs.length}টি অর্ডার মেলানো হয়েছে`, `✔ ${rs.length} orders linked`)); draw(root); } catch (e) { toast(ivErr(e), "err"); } };
