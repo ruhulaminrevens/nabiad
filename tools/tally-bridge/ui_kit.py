@@ -127,6 +127,13 @@ STR = {
     "b.backup": ("Back up configuration…", "কনফিগারেশন ব্যাকআপ…"), "b.restore": ("Restore configuration…", "কনফিগারেশন রিস্টোর…"),
     "b.next": ("Next", "পরেরটি"), "b.back": ("Back", "আগেরটি"), "b.skip": ("Skip tour", "ট্যুর বাদ দিন"), "b.done": ("Done", "শেষ"),
     "b.dismiss": ("Dismiss", "বন্ধ করুন"),
+    # schedule status and analytics
+    "t.sched_state": ("Schedule is installed. Next run: {0}. Last run: {1}.", "শিডিউল বসানো আছে। পরের run: {0}। শেষ run: {1}।"),
+    "t.sched_none": ("No schedule is installed. Click Install schedule.", "কোনো শিডিউল বসানো নেই। Install schedule চাপুন।"),
+    "sched.ok": ("finished OK", "ঠিকভাবে শেষ"), "sched.never": ("not run yet", "এখনও চলেনি"), "sched.running": ("running now", "এখন চলছে"),
+    "sched.fail": ("ended with code {0}", "কোড {0} নিয়ে শেষ"), "sched.says": ("Task Scheduler says", "Task Scheduler যা জানাচ্ছে"),
+    "sched.last_run": ("Last run summary", "শেষ run-এর সারাংশ"), "sched.none_out": ("No schedule is installed.", "কোনো শিডিউল বসানো নেই।"),
+    "an.fixed": ("FAILED, fixed later", "ব্যর্থ, পরে ঠিক"), "an.fail_note": ("{0} earlier failure(s) fixed by a later run", "{0}টি আগের ব্যর্থতা পরের run-এ ঠিক হয়েছে"),
     # updates
     "up.title": ("Updates", "আপডেট"), "up.installed": ("Installed version", "ইনস্টল করা ভার্সন"), "up.latest": ("Latest version", "সর্বশেষ ভার্সন"),
     "up.check": ("Check for updates", "আপডেট খুঁজুন"), "up.now": ("Update now", "এখনই আপডেট"), "up.rollback": ("Restore previous version", "আগের ভার্সনে ফিরুন"),

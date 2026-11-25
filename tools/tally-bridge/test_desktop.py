@@ -393,6 +393,37 @@ class Ui(unittest.TestCase):
         finally:
             w._really_quit = True; w.timer.stop(); self._settle(w, 0.2); w.close()
 
+    def test_check_status_answers_and_failed_runs_show_when_fixed(self):
+        mod, Window = self._window()
+        w = Window(); w.ui["tour_done"] = True; w.show(); self._settle(w)
+        try:
+            w.go(4)
+            ok = "Next Run Time: 26-11-2026 12:30:00 AM\nLast Run Time: 25-11-2026 12:30:00 AM\nLast Result: 0\nStatus: Ready"
+            with mock.patch.object(mod.ns, "query_schedule", lambda: ok), mock.patch.object(mod.ns, "schedule_needs_refresh", lambda: False):
+                w.sched_status(True); self._settle(w)
+            self.assertIn("12:30:00 AM", w.al_sched.tx.text()); self.assertIn("finished OK", w.al_sched.tx.text()); self.assertEqual(len(w.toasts.items), 1)
+            self.assertTrue(w.sched_out.toPlainText().startswith("Task Scheduler says")); self.assertIn("installed", w.c_sch.value.text().lower())
+            with mock.patch.object(mod.ns, "query_schedule", lambda: None):
+                w.sched_status(True); self._settle(w)
+            self.assertIn("No schedule is installed", w.al_sched.tx.text()); self.assertIn("No schedule is installed", w.sched_out.toPlainText())
+            with mock.patch.object(mod.ns, "query_schedule", lambda: "Last Result: 267011\nNext Run Time: N"), mock.patch.object(mod.ns, "schedule_needs_refresh", lambda: False):
+                w.sched_status(True); self._settle(w)
+            self.assertIn("not run yet", w.al_sched.tx.text())
+            # analytics: a failure followed by a newer success of the same company is shown as fixed, an open one stays red
+            w.add_company_row("Co A"); w.add_company_row("Co B")
+            w.runs = [{"company": "Co A", "ok": True, "started_at": "2026-11-25T10:00:00Z", "finished_at": "2026-11-25T10:05:00Z", "vouchers": 5, "kind": "daybook"},
+                      {"company": "Co A", "ok": False, "started_at": "2026-11-25T05:00:00Z", "error": "Tally did not answer", "kind": "daybook"},
+                      {"company": "Co B", "ok": False, "started_at": "2026-11-25T04:00:00Z", "error": "boom", "kind": "daybook"}]
+            w.render_runs()
+            self.assertEqual(w.a_fail.value.text(), "1"); self.assertIn("1", w.a_fail.note.text())
+            self.assertEqual([w.an_tbl.item(i, 4).text() for i in range(3)], ["OK", "FAILED, fixed later", "FAILED"])
+            row = {w.tbl.item(r, 1).text(): w.tbl.item(r, 4).text() for r in range(w.tbl.rowCount())}
+            self.assertEqual(row["Co A"], "Synced"); self.assertEqual(row["Co B"], "Not verified")
+            w.set_company_status("Co B", "Read OK (3 days)"); w.render_runs()   # a test read in this session is not overwritten
+            self.assertIn("Read OK", {w.tbl.item(r, 1).text(): w.tbl.item(r, 4).text() for r in range(w.tbl.rowCount())}["Co B"])
+        finally:
+            w._really_quit = True; w.timer.stop(); self._settle(w, 0.2); w.close()
+
     def test_accordion_toggle(self):
         a = self.K.Accordion("T", "body " * 40, self.K.DARK); a.resize(600, 100); a.show()
         a.toggle(animate=False); self.assertTrue(a.open); self.assertGreater(a.wrap.maximumHeight(), 0)

@@ -17,7 +17,7 @@ import ui_kit as K  # noqa: E402
 import updater as U  # noqa: E402
 from ui_kit import t  # noqa: E402
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 FROZEN = bool(getattr(sys, "frozen", False))
 UPDATE_EVERY_S = 12 * 3600  # automatic check at most twice a day
 UI_SETTINGS = os.path.join(HERE, "ui_settings.json")
@@ -492,7 +492,7 @@ class Window(QMainWindow):
             self.al_sched = self.alert("info", "", True); v.addWidget(self.al_sched)
             row = QHBoxLayout(); row.setSpacing(K.SP["md"])
             self.b_install = button(t("b.install"), "primary", self.install)
-            row.addWidget(self.b_install); row.addWidget(button(t("b.status"), "", self.sched_status))
+            row.addWidget(self.b_install); row.addWidget(button(t("b.status"), "", lambda: self.sched_status(True)))
             row.addWidget(button(t("b.run_now"), "", self.run_sched_now)); row.addWidget(button(t("b.remove_sched"), "danger", self.remove_sched))
             row.addStretch(); v.addLayout(row)
             self.sched_out = QPlainTextEdit(); self.sched_out.setObjectName("log"); self.sched_out.setReadOnly(True); self.sched_out.setMaximumHeight(220)
@@ -939,20 +939,42 @@ class Window(QMainWindow):
             ok, msg = res if res else (False, err)
             self.sched_out.setPlainText(("INSTALLED: " if ok else "FAILED: ") + msg)
             self.al_sched.set("success" if ok else "error", t("t.sched_ok") if ok else t("t.sched_bad", msg)); self.toast(t("t.sched_ok") if ok else t("t.sched_bad", msg), "success" if ok else "error")
-            self.log("Schedule: " + msg, "SUCCESS" if ok else "ERROR"); self.sched_status()
+            self.log("Schedule: " + msg, "SUCCESS" if ok else "ERROR"); self._sched_prefix = ("INSTALLED: " if ok else "FAILED: ") + msg + "\n\n"; self.sched_status()
         self.run_bg(ns.install_schedule, cb, s, e)
 
-    def sched_status(self):
+    @staticmethod
+    def _sched_result(res):
+        """Plain words for the 'Last Result' line of schtasks (0 = OK, 267011 = never run, 267009 = running)."""
+        code = next((l.split(":", 1)[1].strip() for l in (res or "").splitlines() if l.startswith("Last Result")), "")
+        if code in ("0", ""):
+            return t("sched.ok") if code == "0" else "-"
+        if code == "267011":
+            return t("sched.never")
+        if code == "267009":
+            return t("sched.running")
+        return t("sched.fail", code)
+
+    def sched_status(self, manual=False):
+        """Ask Windows Task Scheduler about the nightly task. A click on 'Check status' answers with a toast and the alert."""
         def cb(res, err):
+            prefix = getattr(self, "_sched_prefix", ""); self._sched_prefix = ""
+            parts = [prefix.rstrip()] if prefix else []
             if res:
-                self.sched_out.appendPlainText("\nTask Scheduler says:\n" + res)
-                nxt = [l.split(":", 1)[1].strip() for l in res.splitlines() if l.startswith("Next Run Time")]
-                self.set_state(self.c_sch, t("s.inst"), "success"); self.c_sch.note.setText(("next: " + nxt[0]) if nxt else "")
+                get = lambda k: next((l.split(":", 1)[1].strip() for l in res.splitlines() if l.startswith(k)), "-")
+                nxt, last = get("Next Run Time"), get("Last Run Time")
+                parts.append(t("sched.says") + ":\n" + res)
+                self.set_state(self.c_sch, t("s.inst"), "success"); self.c_sch.note.setText("next: " + nxt if nxt != "-" else "")
+                msg = t("t.sched_state", nxt, f"{last} ({self._sched_result(res)})")
+                if manual:
+                    self.al_sched.set("success", msg); self.toast(msg, "success")
             else:
-                self.sched_out.appendPlainText("\nNo schedule is installed.")
+                parts.append(t("sched.none_out"))
                 self.set_state(self.c_sch, t("s.notinst"), "warn"); self.c_sch.note.setText("")
+                if manual:
+                    self.al_sched.set("warn", t("t.sched_none")); self.toast(t("t.sched_none"), "warn")
             if os.path.exists(ns.STATUS):
-                self.sched_out.appendPlainText("\nLast run summary:\n" + open(ns.STATUS, encoding="utf-8").read())
+                parts.append(t("sched.last_run") + ":\n" + open(ns.STATUS, encoding="utf-8").read())
+            self.sched_out.setPlainText("\n\n".join(parts)); self.sched_out.verticalScrollBar().setValue(0)
             if res and ns.schedule_needs_refresh():
                 self.al_sched.set("warn", t("al.sched_old"))
         self.run_bg(ns.query_schedule, cb)
@@ -966,7 +988,7 @@ class Window(QMainWindow):
 
     def remove_sched(self):
         def cb(res, err):
-            self.sched_out.setPlainText("Schedule removed." if res else "Nothing to remove."); self.toast(t("t.sched_rm"), "info"); self.sched_status()
+            self._sched_prefix = "Schedule removed." if res else "Nothing to remove."; self.toast(t("t.sched_rm"), "info"); self.sched_status()
         self.run_bg(ns.remove_schedule, cb)
 
     # ---------------------------------------------------------------- updates
@@ -1200,17 +1222,27 @@ class Window(QMainWindow):
             self.ov_tbl.item(i, 3).setForeground(QColor(self.p["green"] if c in last else self.p["amber"]))
         for r in range(self.tbl.rowCount()):
             c = self.tbl.item(r, 1).text(); self.tbl.item(r, 3).setText(fmt(last[c]) if c in last else "-")
+            if c not in self.company_state:  # no test read in this session: show what the database says
+                self.tbl.item(r, 4).setText(t("s.synced") if c in last else t("s.notver"))
+        # runs are newest first: a failure is "fixed later" when a newer run of the same company succeeded
+        fixed, seen_ok = set(), set()
+        for i, r in enumerate(self.runs):
+            if r.get("ok"):
+                seen_ok.add(r["company"])
+            elif r.get("ok") is False and r["company"] in seen_ok:
+                fixed.add(i)
         okn = sum(1 for r in self.runs if r.get("ok")); bad = sum(1 for r in self.runs if r.get("ok") is False)
-        self.a_runs.value.setText(str(len(self.runs))); self.a_ok.value.setText(str(okn)); self.a_fail.value.setText(str(bad))
+        self.a_runs.value.setText(str(len(self.runs))); self.a_ok.value.setText(str(okn)); self.a_fail.value.setText(str(bad - len(fixed)))
+        self.a_fail.note.setText(t("an.fail_note", len(fixed)) if fixed else "")
         self.a_v.value.setText(f"{sum(r.get('vouchers') or 0 for r in self.runs):,}")
         self.an_tbl.setRowCount(len(self.runs))
         for i, r in enumerate(self.runs):
             vals = [r["company"], fmt(r["started_at"]), r.get("kind", ""), str(r.get("vouchers") if r.get("vouchers") is not None else "-"),
-                    "OK" if r.get("ok") else ("FAILED" if r.get("ok") is False else "-"), (r.get("error") or "")[:200]]
+                    "OK" if r.get("ok") else ((t("an.fixed") if i in fixed else "FAILED") if r.get("ok") is False else "-"), (r.get("error") or "")[:200]]
             for j, x in enumerate(vals):
                 self.an_tbl.setItem(i, j, QTableWidgetItem(x))
             if r.get("ok") is False:
-                self.an_tbl.item(i, 4).setForeground(QColor(self.p["red"]))
+                self.an_tbl.item(i, 4).setForeground(QColor(self.p["amber" if i in fixed else "red"]))
 
     # ---------------------------------------------------------------- config backup
     def backup_cfg(self):
