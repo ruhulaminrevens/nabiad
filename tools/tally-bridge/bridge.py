@@ -12,7 +12,7 @@ Credentials come from the environment (TALLY_BRIDGE_EMAIL / TALLY_BRIDGE_PASSWOR
 import argparse, datetime as dt, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 
 
 class DataMismatch(Exception):
@@ -96,10 +96,19 @@ def parse_ledgers(text, company):
 
 
 def num(s):
-    try:
-        return float(s.replace(",", ""))
-    except (ValueError, AttributeError):
+    """Tally amount text -> float. Foreign-currency amounts look like '-$ 12,000.00 @ Rs 110/$ = -Rs 1,320,000.00':
+    the figure after the last '=' is the base-currency (company) amount, which is the one that balances the voucher."""
+    if not s:
         return 0.0
+    t = s.split("=")[-1]
+    m = re.search(r"(-?)\s*[^\d\-.,]*?(-?)\s*(\d[\d,]*(?:\.\d+)?|\.\d+)", t)
+    if not m:
+        return 0.0
+    try:
+        v = float(m.group(3).replace(",", ""))
+    except ValueError:
+        return 0.0
+    return -v if (m.group(1) or m.group(2)) else v
 
 
 def tally_date(s):
