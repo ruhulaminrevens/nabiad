@@ -146,7 +146,7 @@
 .iv-rq2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:4px}
 .iv-rq .bt .btn{height:46px}
 /* party match */
-.iv-ml{max-height:60vh;overflow:auto;margin-top:10px;border:1px solid var(--line);border-radius:12px}
+.iv-ml{position:relative;max-height:60vh;overflow:auto;margin-top:10px;border:1px solid var(--line);border-radius:12px}
 .iv-mr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) auto;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line2)}
 .iv-mn{display:flex;flex-direction:column;min-width:0} .iv-mn small{font-size:11.5px}
 .iv-mc{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
@@ -700,3 +700,11 @@ button.ivd-ins:hover { transform:translateY(-2px); border-color:var(--pri); }
 .pflt.iv-flt.ov-flt{grid-template-columns:minmax(200px,2fr) repeat(2,minmax(0,1fr)) auto;margin-top:12px}
 .ov-flt .ov-z label.f{display:none}.ov-flt .ov-z .iv-chk{height:40px;display:flex;align-items:center;gap:8px;white-space:nowrap}
 @media (max-width:640px){.pflt.iv-flt.ov-flt{grid-template-columns:1fr;gap:8px}.ov-flt .ov-z .iv-chk{height:auto}}
+
+/* ===== v6.171 — Match parties: roomy party search (full name + ASM + district, never cut off) ===== */
+.iv-ms .sg-list{left:auto;right:0;width:max(100%,min(500px,calc(100vw - 56px)));max-height:min(300px,44dvh)}
+.iv-ms .sg-list [data-i]{align-items:flex-start;gap:12px}
+.iv-ms .sg-list .sgn{flex:1 1 auto} .iv-ms .sg-list .sgn b{overflow-wrap:anywhere;font-weight:650} .iv-ms .sg-list .sgn em{white-space:normal;overflow:visible}
+.iv-ms .sg-list [data-i]>small{flex:0 0 auto;max-width:42%;white-space:normal;text-align:right;line-height:1.3}
+.iv-ml.pk::after{content:"";display:block;height:min(340px,38vh)}
+@media (max-width:640px){.iv-ms .sg-list{left:0;right:0;width:auto;max-height:min(250px,36dvh)}.iv-ms .sg-list [data-i]>small{max-width:45%}}
