@@ -43,6 +43,27 @@ async function tdLoad() {
   return { data };
 }
 
+/* v6.180: visual polish only. Adds KPI icons + count-up, and data-labels so wide tables can stack as cards on phones. Never touches data or handlers. */
+const TD_KI = ["chart", "ledger", "clock", "shield", "coins", "pulse", "pie", "trend"];
+function tdFx(root) {
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const run = () => {
+    root.querySelectorAll(".as-kpi:not([data-fx])").forEach((k, n) => {
+      k.dataset.fx = "1"; k.style.setProperty("--i", Math.min(n, 8));
+      const ic = document.createElement("i"); ic.className = "td-ki"; ic.setAttribute("aria-hidden", "true"); ic.innerHTML = ico(TD_KI[n % TD_KI.length]); k.prepend(ic);
+      const st = k.querySelector("strong"), t = st?.textContent.trim() || "";
+      if (!calm && /^\d{1,3}(,\d{3})*$/.test(t)) { const to = +t.replace(/,/g, ""); if (to > 9) { const t0 = performance.now(), f = x => { const p = Math.min(1, (x - t0) / 700); st.textContent = Math.round(to * (1 - Math.pow(1 - p, 3))).toLocaleString("en-US"); if (p < 1 && st.isConnected) requestAnimationFrame(f); else st.textContent = t; }; requestAnimationFrame(f); } }
+    });
+    root.querySelectorAll("table.td-t").forEach(tb => {
+      if (tb.closest(".td-vd")) return;
+      const hs = [...tb.querySelectorAll("thead th")].map(h => h.textContent.trim()); if (hs.length < 3) return;
+      tb.classList.add("td-stack"); tb.querySelectorAll("tbody tr:not([data-lb])").forEach(tr => { tr.dataset.lb = "1"; if (tr.children.length === hs.length) [...tr.children].forEach((c, i) => c.setAttribute("data-label", hs[i])); });
+    });
+  };
+  let raf = 0; const mo = new MutationObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(run); });
+  mo.observe(root, { childList: true, subtree: true }); run();
+  return () => { mo.disconnect(); cancelAnimationFrame(raf); };
+}
 const TD_TABS = () => [["overview", "dash", bi("সারসংক্ষেপ", "Overview"), tdOverview], ["companies", "bank", bi("কোম্পানি", "Companies"), tdCompanies], ["vouchers", "search", bi("ভাউচার খুঁজুন", "Voucher Explorer"), tdVouchers], ["ledgers", "list", bi("লেজার", "Ledger Explorer"), tdLedgers], ["recon", "shield", bi("রিকনসিলিয়েশন", "Reconciliation"), tdRecon], ["sync", "refresh", bi("সিঙ্ক স্বাস্থ্য", "Sync Health"), tdSync]];
 /* v6.178: tab, sub-tab and filters survive page changes (TD lives as long as the app) and a reload (sessionStorage); a link can open a tab: #/tallydash?tab=vouchers */
 const tdSS = { get() { try { return JSON.parse(sessionStorage.getItem("nabiad_td") || "{}"); } catch { return {}; } }, set(o) { try { sessionStorage.setItem("nabiad_td", JSON.stringify(o)); } catch { } } };
@@ -55,6 +76,7 @@ async function vTallyDash(v) {
   v.innerHTML = head(bi("ট্যালি ড্যাশবোর্ড", "Tally Dashboard"), `<button class="btn" type="button" id="td-dense" aria-pressed="${!!tdPrefs.dense}" title="${bi("ঘন / আরামদায়ক সারি", "Compact / comfortable rows")}">${ico("list")} ${bi("ঘনত্ব", "Density")}</button><button class="btn" type="button" id="td-refresh">${ico("refresh")} ${bi("রিফ্রেশ", "Refresh")}</button>`) +
     `<div class="td-navw"><div class="tabs ntabs as-tabs td-nav" role="tablist" aria-label="${bi("ট্যালি ড্যাশবোর্ডের বিভাগ", "Tally Dashboard sections")}">${tabs.map(([k, ic, l], i) => `<button type="button" class="chip" role="tab" data-td-tab="${k}" aria-controls="td-out" aria-selected="false" title="Alt+${i + 1}">${ico(ic)} ${l}</button>`).join("")}</div></div><div id="td-out" class="${tdPrefs.dense ? "td-dense" : ""}" aria-live="polite"></div>`;
   const out = $("#td-out", v), btns = $$("[data-td-tab]", v);
+  v.classList.add("td-root"); const stopFx = tdFx(out);
   const remember = () => tdSS.set({ tab, rt: TD.rt, f: { company: TD.company, vtype: TD.vtype, from: TD.from, to: TD.to } });
   async function open(k) {
     const my = ++epoch; cleanup?.(); cleanup = null; tab = k; tdAbortAll();
@@ -75,7 +97,7 @@ async function vTallyDash(v) {
   document.addEventListener("keydown", onKey);
   TD.go = (k, patch) => { Object.assign(TD, patch || {}); open(k); window.scrollTo(0, 0); };
   await open(tab);
-  return () => { epoch++; cleanup?.(); TD.go = null; tdAbortAll(); document.removeEventListener("keydown", onKey); remember(); };
+  return () => { epoch++; cleanup?.(); stopFx(); v.classList.remove("td-root"); TD.go = null; tdAbortAll(); document.removeEventListener("keydown", onKey); remember(); };
 }
 /* open a Tally tab from anywhere (command palette, other pages) */
 function tdOpenAt(tab, patch) { if (TD.go && CUR === "tallydash") return TD.go(tab, patch); TD.pending = { tab, patch }; location.hash = "#/tallydash"; }
