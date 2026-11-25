@@ -3437,3 +3437,18 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .td-t td:first-child { white-space: normal; min-width: 14ch; }
 .td-t .td-err { white-space: normal; max-width: 36ch; overflow-wrap: anywhere; }
 @media (max-width: 720px) { .td-t .td-err { max-width: 22ch; } }
+
+/* ---------- Tally Dashboard · Voucher Explorer (v6.172) ---------- */
+.td-vf { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; align-items: end; }
+.td-vq { grid-column: 1 / -1; }
+.td-ck { display: flex; align-items: center; gap: 8px; font-size: .9rem; min-height: 44px; }
+.td-vb { display: flex; gap: 8px; justify-content: flex-end; grid-column: 1 / -1; }
+.td-vh { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.td-vr { cursor: pointer; } .td-vr:hover td, .td-vr:focus-visible td { background: var(--surface2); }
+.td-vr:focus-visible { outline: 2px solid var(--pri); outline-offset: -2px; }
+.td-vt .td-pt { white-space: normal; min-width: 18ch; max-width: 38ch; overflow-wrap: anywhere; }
+.td-vt .td-nar { max-width: 38ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.td-vx td { background: var(--surface2); }
+.td-vd { padding: 6px 2px; } .td-vd .td-t { max-width: 560px; }
+.td-pg { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
+@media (max-width: 720px) { .td-vf { grid-template-columns: repeat(2, minmax(0, 1fr)); } .td-vb { grid-column: 1 / -1; } }
