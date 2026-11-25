@@ -19,7 +19,7 @@ import ui_kit as K  # noqa: E402
 import updater as U  # noqa: E402
 from ui_kit import t  # noqa: E402
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 FROZEN = bool(getattr(sys, "frozen", False))
 UPDATE_EVERY_S = 12 * 3600  # automatic check at most twice a day
 UI_SETTINGS = os.path.join(HERE, "ui_settings.json")

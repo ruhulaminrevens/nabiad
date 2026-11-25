@@ -1,5 +1,5 @@
 {
  "released": "2026-11-25",
- "notes_en": "New Overview (control center): one sentence says whether all companies are synced; live pipeline (Tally, engine, database), company status with age, live sync progress with time left (also for the nightly run), data-integrity checks, 7-day trend, recent activity and an Action center. Saved data shows instantly, then refreshes in the background. Settings: number format (1,23,456) and auto-refresh.",
- "notes_bn": "নতুন Overview (কন্ট্রোল সেন্টার): এক বাক্যে বলে সব কোম্পানি সিঙ্ক হয়েছে কি না; live pipeline (Tally, ইঞ্জিন, database), বয়সসহ কোম্পানির অবস্থা, বাকি সময়সহ live সিঙ্ক অগ্রগতি (রাতের run-ও), ডেটা-নির্ভরযোগ্যতা যাচাই, ৭ দিনের ট্রেন্ড, সাম্প্রতিক কার্যকলাপ ও করণীয় কেন্দ্র। সংরক্ষিত তথ্য সঙ্গে সঙ্গে দেখায়, পরে background-এ রিফ্রেশ হয়। Settings-এ সংখ্যার ফরম্যাট (1,23,456) ও স্বয়ংক্রিয় রিফ্রেশ।"
+ "notes_en": "Fix: Sales, Purchase and Credit/Debit Note vouchers now keep their sales/purchase ledger lines (they were missing, so those vouchers looked one-sided). After updating, run \"Run full history load\" once in Sync Center so existing vouchers are refreshed.",
+ "notes_bn": "ফিক্স: Sales, Purchase ও Credit/Debit Note ভাউচারে এখন sales/purchase লেজারের লাইন সংরক্ষিত হয় (আগে বাদ পড়ায় ভাউচার একতরফা দেখাত)। আপডেটের পর Sync Center-এ একবার \"Run full history load\" চালান, যাতে আগের ভাউচারগুলো হালনাগাদ হয়।"
 }
