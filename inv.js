@@ -1276,7 +1276,7 @@ async function vInvDash(v) {
       list.push(act("ivbox", bi("সব চ্যানেল দেখান", "Show all channels"), "", () => { channel = "all"; draw(); }));
       Object.keys(IV_CH).forEach(ch => list.push(act(ch === "nir" ? "ivtruck" : "ivcart", bi(`শুধু ${IV_CH[ch][0]} দেখান`, `Show ${IV_CH[ch][1]} only`), "", () => { channel = ch; draw(); })));
       list.push(act("flag", bi("৭ দিনের বেশি বাকি অর্ডার", "Open orders over 7 days"), bi("তালিকা ফিল্টার করুন", "filter the list"), () => { ageF = ">7"; renderQueue(); $("#ivd-queue", out)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" }); }));
-      list.push(act("refresh", bi("ডেটা রিফ্রেশ করুন", "Refresh data"), "", refresh));
+      list.push(act("refresh", bi("ডাটা রিফ্রেশ করুন", "Refresh data"), "", refresh));
       pages().forEach(([k, ic, t]) => list.push({ g: bi("পাতায় যান", "Go to"), ic, t, s: "", run: () => location.hash = link(k) }));
       return list;
     }

@@ -110,7 +110,7 @@ function statementModal(after) {
     <select class="in" id="stmt-ac"><option value="">${bi("A/C বাছুন", "Select account")}</option>${S.accounts.map(a => `<option value="${esc(a.code)}">${esc([a.code, a.holder, a.bank].filter(Boolean).join(" · "))}</option>`).join("")}</select></div>
     <div><label class="f" for="stmt-file">${bi("স্টেটমেন্ট (Excel বা CSV)", "Statement (Excel or CSV)")}</label><input class="in" type="file" id="stmt-file" accept=".xlsx,.xls,.csv" disabled></div></div>
     <div class="stmt-controls"><button class="btn sm" id="stmt-template" type="button">${ico("dl")} ${bi("টেমপ্লেট", "Template")}</button>
-    <button class="btn sm" id="stmt-page-select" type="button" hidden>${bi("এই পাতার মিল বাছুন", "Select page matches")}</button></div>
+    <button class="btn sm" id="stmt-page-select" type="button" hidden>${bi("পাতা বাছুন", "Select Page")}</button></div>
     <div id="stmt-message" class="hint" role="status"></div>
     <div id="stmt-rows"></div>
     <div id="stmt-pager" class="cq-pager" hidden><button class="btn" id="stmt-prev" type="button">‹</button><span id="stmt-page"></span><button class="btn" id="stmt-next" type="button">›</button></div>

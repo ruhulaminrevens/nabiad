@@ -1,11 +1,11 @@
 /* Cache a complete release before it takes control. Bank data stays in the app's user cache. */
-const VERSION = "6.168-sheetjs-0203";
+const VERSION = "6.170-tally-dashboard";
 const CACHE = "nabiad-v" + VERSION;
 const SCOPE = self.registration.scope;
 const SHELL = new URL("index.html", SCOPE).href;
 const CORE = [
   SHELL,
-  ...["app.js", "config.js", "i18n.js", "inv.js", "cashbook.js", "cheque-verification.js", "style.css", "inv.css", "cashbook.css"]
+  ...["app.js", "config.js", "i18n.js", "inv.js", "tally.js", "cashbook.js", "cheque-verification.js", "style.css", "inv.css", "cashbook.css"]
     .map(path => new URL(path + "?v=" + VERSION, SCOPE).href),
   ...["vendor/supabase.js", "manifest.json", "icon.svg", "icon-192.png", "badge-96.png"].map(path => new URL(path, SCOPE).href)
 ];

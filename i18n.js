@@ -10,7 +10,7 @@ let LANG = savedAppLanguage();
 const I18N = {
   // navigation / shell
   "ড্যাশবোর্ড": "Dashboard", "চেক এন্ট্রি": "Cheque Entry", "স্ট্যাটাস": "Status", "চেক তালিকা": "Cheque List", "দৈনিক ক্লোজিং": "Daily Closing",
-  "ব্যালেন্স রিপোর্ট": "Balance Report", "রিপোর্ট": "Reports", "অ্যাকাউন্ট খুঁজুন": "Account Finder", "চেক বই": "Cheque Books", "অ্যাডমিন": "Admin",
+  "ব্যালেন্স রিপোর্ট": "Balance Report", "রিপোর্ট": "Reports", "অ্যাকাউন্ট খুঁজুন": "Accounts", "চেক বই": "Cheque Books", "অ্যাডমিন": "Admin",
   "ব্যাংক ও রিপোর্ট": "Bank & Reports", "অন্যান্য": "More", "আরও": "More", "লগআউট": "Logout", "লাইট থিম": "Light theme", "ডার্ক থিম": "Dark theme", "থিম": "Theme",
   "চেক / অ্যাকাউন্ট খুঁজুন…": "Search cheque / account…", "চেক নং, A/C কোড, হোল্ডার, পার্টি, টাকা বা পাতার নাম…": "Cheque no, A/C code, holder, party, amount or page…",
   "পাতা": "Pages", "অ্যাকাউন্ট": "Account", "লোড হচ্ছে…": "Loading…", "ডাটা লোড হচ্ছে…": "Loading data…",
@@ -301,11 +301,11 @@ Object.assign(I18N, {
   "মুছে ফেলবেন?": "Delete?", "নতুন": "New", "লিস্ট": "List", "ডাটা নেই": "No data", "এডিট": "Edit", "মুছুন": "Delete", "সেভ": "Save", "বন্ধ": "Close", "বাতিল": "Cancel", "সামারি": "Summary",
   // v6.30 — page names + Old data import
   "নতুন চেক": "New Cheque", "চেক পোস্টিং": "Cheque Posting", "চেক স্ট্যাটাস": "Cheque Status", "চেক রেজিস্টার": "Cheque Register",
-  "ব্যাংক ক্লোজিং": "Bank Closing", "ব্যালেন্স স্ন্যাপশট": "Balance Snapshot", "ব্যাংক রিপোর্ট": "Bank Reports", "ব্যাংক সামারি": "Bank Summary", "ব্যাংক বিস্তারিত রিপোর্ট": "Bank Details Reports",
-  "ক্যাশ এন্ট্রি": "Cash Entry", "ক্যাশ খাতা": "Cash Book", "ক্যাশ চেকার": "Cash Checker", "ক্যাশ লেজার": "Cash Ledger", "ক্যাশ সামারি": "Cash Summary", "ক্যাশ রিপোর্ট": "Cash Reports",
+  "ব্যাংক ক্লোজিং": "Bank Closing", "ব্যালেন্স স্ন্যাপশট": "Balance Snapshot", "ব্যাংক রিপোর্ট": "Bank Reports", "ব্যাংক সামারি": "Bank Summary", "ব্যাংক বিবরণ": "Bank Detail",
+  "ক্যাশ এন্ট্রি": "Cash Entry", "ক্যাশ খাতা": "Cash Book", "ক্যাশ যাচাই": "Cash Review", "ক্যাশ লেজার": "Cash Ledger", "ক্যাশ সামারি": "Cash Summary", "ক্যাশ রিপোর্ট": "Cash Reports",
   "কালেকশন এন্ট্রি": "Collection Entry", "কালেকশন সামারি": "Collection Summary", "কালেকশন রিপোর্ট": "Collection Reports",
-  "অ্যাকাউন্ট ফাইন্ডার": "Account Finder", "পার্টি তালিকা": "Parties",
-  "অডিট ও সিকিউরিটি": "Audit & Security", "অ্যাডমিন প্যানেল": "Admin Panel",
+  "অ্যাকাউন্টস": "Accounts", "পার্টি তালিকা": "Parties",
+  "অডিট ও সিকিউরিটি": "Audit & Security", "অ্যাডমিন": "Admin", "ট্যালি ড্যাশবোর্ড": "Tally Dashboard",
   "সবচেয়ে পুরনো তারিখ": "Oldest date", "সর্বশেষ তারিখ": "Latest date",
   "২০২৬ ডাটা পুনরুদ্ধার": "Restore 2026 data",
   "২০২৬-এর সব রেকর্ড + ২০২৬-এর ঠিক আগের শেষ দিনটি (ওটাই ১ জানুয়ারির Opening)": "All 2026 records + the last day before 2026 (it becomes the 1 January Opening)",

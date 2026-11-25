@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: JavaScript syntax
-        run: for f in app.js inv.js cashbook.js cheque-verification.js i18n.js config.js sw.js; do node --check "$f"; done
+        run: for f in app.js inv.js tally.js cashbook.js cheque-verification.js i18n.js config.js sw.js; do node --check "$f"; done
       - name: Shell syntax
         run: for f in scripts/backup/*.sh; do bash -n "$f"; done
       - name: Version strings agree (index.html vs sw.js)
