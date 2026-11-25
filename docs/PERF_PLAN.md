@@ -227,7 +227,7 @@ Note: the old recon_cash paging was not deterministic when rows tie (same date/t
 
 | Gate | Status |
 |---|---|
-| Both reconciliation timeouts fixed **in production** | **Open.** Fix is validated (rolled-back test, identical output) but `schema_tally_perf_v4.sql` is not applied: it needs the owner's explicit migration "yes" (see checklist below). A direct-database result never closes a UI/RPC problem; it is closed only when the production capture shows `tally_recon_cash` and `tally_balance_check` with no suspected timeouts. |
+| Both reconciliation timeouts fixed **in production** | **v4 APPLIED 2026-11-25 19:08 UTC (owner "Yes", Bridge idle per screenshot, fresh backup 20261125-1905).** Database side verified (below). **Still OPEN until the owner capture shows `tally_recon_cash` and `tally_balance_check` without suspected timeouts in the real UI** (a direct database result does not close a UI/RPC issue). |
 | Corrected authenticated browser capture | **Open.** Capture tool v2 is ready (`tools/perf-capture.js`, `docs/PERF_MEASURE.md`); the owner has not run it on production yet. |
 | Performance targets verified on production | **Open** (depends on the capture). |
 | PWA update consistency | Mechanism verified, one hardening change made (below); consistency on production is confirmed by `NabiadPerf.versions()`, **open until the owner runs it**. |
@@ -285,3 +285,10 @@ Before **any** production migration all must be true and recorded in the handove
 4. Affected function and policy definitions are saved in a backup table (`fn_backup_<date>`, `policy_backup_<date>`: RLS on, no client grants).
 5. Rollback SQL is in the migration header and was executed successfully inside a rolled-back transaction on production data.
 6. Results of the rolled-back test (identical output, role tests for admin/staff/boss/anon) are shown to the owner before the apply.
+
+
+### v4 applied: verification (2026-11-25 19:08-19:10 UTC, admin role, statement_timeout 8 s)
+Pre-checks: owner confirmed Sync Center idle (screenshot, last run finished 18:35 UTC, next 00:30); no new `tally_sync_runs` row and 0 active statements; new DB backup run `20261125-1905` ok (22.5 MB, triggered by me via the workflow); `fn_backup_20261126` holds the 4 replaced bodies; rollback is in the SQL header.
+After apply: cron `tally_recon_refresh` `5,35 * * * *` active; snapshots `balance`, `coverage_7`, `shared` written (4,792 shared pairs = table rows); partial index `tally_vouchers_cancel_del` present; execute granted only to `authenticated` for the 4 public RPCs, none for anon on any function; `tally_shared_pairs`, `tally_snapshot`, `fn_backup_*`, `policy_backup_20261125` have RLS on and no anon/authenticated select.
+Timings as `authenticated` admin (MFA claim aal2) in a rolled-back transaction: `tally_balance_check(all)` 13 ms (was 11.1 s timeout), `tally_recon_coverage(7)` 4 ms (was 8.0 s), `tally_recon_shared` 120 ms first call (was 1.4-3.0 s), `tally_recon_changes` 9 ms (was 3.2 s), `tally_recon_cash` default 288-502 ms (was 12-15.5 s timeout; 155 exception rows), Distribution 51-126 ms, live one-company balance 440-620 ms (Niramoy, Cash & Bank). One reading of 4.7 s for the live Niramoy check coincided with the 19:10 overview-snapshot job (12-20 s every 10 min); repeated steady-state runs gave 0.5-0.6 s. Debit = credit: 0 unbalanced. staff, boss, anon: denied (`admin only` / `permission denied`).
+Watch: `tally_snapshot_refresh` takes 12-20 s per 10-min run (threshold for action: > 20 % of the interval = 120 s); the first `tally_recon_refresh` cron run is at :35 and its duration must be read from `cron.job_run_details`.
