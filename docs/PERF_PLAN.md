@@ -28,3 +28,33 @@
 
 ## Limits
 - No measurement with real production data in a browser (needs a signed-in session). Browser timings above are from demo data; database timings are real.
+
+---
+## Update 2026-11-25 (late): P0 stabilization checkpoint (v6.176)
+
+### Measured before (database, signed-in admin, Bridge idle, 318k vouchers)
+| Call | Before |
+|---|---|
+| tally_overview (all) | 7,210 ms |
+| tally_voucher_filters | 5,876 ms |
+| tally_overview (one company, one month) | 1,990 ms |
+| tally_recon_shared | 1,442 ms |
+| tally_voucher_search (month) / (text, all history) | 431 / 1,506 ms |
+| tally_ledger_list (all companies, one year) | 406 ms |
+| Reading 36 tables as a signed-in user (RLS) | 1,049-1,853 ms |
+Cache hit ratio 99.78 % (shared_buffers 224 MB): the cost is CPU, not disk or memory.
+
+### Done and applied
+- RLS: `my_role()` evaluated once per query (98 policies). Same rows for admin/boss/staff. 36 tables: 1,049 -> 20 ms (admin), 1,853 -> 31 ms (boss), 1,041 -> 22 ms (staff).
+### Done in code (v6.176, no SQL)
+- fetchAll: parallel pages. 30 s refresh: skips while typing, redraws only on change.
+- Offline cache written once 400 ms after the last change (was re-read and re-serialised on every change); flushed on page hide/close; cancelled on logout. Pending offline entries (outbox) untouched.
+- Button-role decorator scans only newly added nodes (was the whole document after every change).
+- Tally: filter lists no longer block the overview; identical reads are single-flight and cached for 10 min (filters) / 30-120 s (summaries), per user, errors never cached; Refresh button clears the cache; shared-GUID card loads separately if the overview does not carry it.
+### Prepared, validated, NOT applied (needs owner "yes"): `schema_tally_perf_v3.sql`
+- Snapshot of the default overview + filters, refreshed every 10 min by pg_cron, used while younger than 20 min; filtered views still live.
+- Verified inside a rolled-back transaction on production data: snapshot result identical to the old function (all fields except timestamps, shared-GUID figures equal), default overview 13 ms (was 7,210), filters 1 ms (was 5,876), company+month overview 48 ms.
+### Tried and rejected
+- Extra indexes on tally_vouchers (company,vtype,vdate incl. guid) and (guid,company), tested on a scratch copy: no consistent gain for filters/overview (count distinct is CPU-bound); (guid,company) cut the shared-GUID count 1.2 s -> 0.25 s but not the content comparison. Not created: they cost disk (34 MB + 29 MB) and write time during sync.
+### Still open
+- Browser timings with a real signed-in session; 1m-10m voucher stress test needs a staging copy; ledger/voucher text search over all history (~1.5 s) and normalized ledger lines; lazy-loading of inv.js/cashbook.js/tally.js; IndexedDB cache; request cancellation on route change.
