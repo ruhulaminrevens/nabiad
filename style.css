@@ -3467,3 +3467,42 @@ button.cq-p:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .td-t th[aria-sort="ascending"] .td-sort::after { content: " ▲"; } .td-t th[aria-sort="descending"] .td-sort::after { content: " ▼"; }
 button.as-kpi[data-go] { text-align: start; }
 @media (max-width: 720px) { .td-grid2 { grid-template-columns: minmax(0, 1fr); } .td-bar { grid-template-columns: minmax(7ch, 14ch) 1fr auto; } .td-bar em { display: none; } }
+
+/* ---------- Tally Dashboard v6.178: sticky section nav, presets, pagers, freshness, density, readiness ---------- */
+.td-navw { position: sticky; top: calc(var(--top) + 4px); z-index: 6; margin-bottom: 12px; pointer-events: none; }
+.td-navw .td-nav { margin-bottom: 0; pointer-events: auto; box-shadow: var(--sh2); }
+.td-sub { margin-bottom: 12px; }
+.td-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.td-row .td-vb { grid-column: auto; margin: 0; }
+.td-pre, .td-recent { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.td-pre .chip, .td-recent .chip { padding: 5px 11px; font-size: .8rem; min-height: 32px; }
+.td-pg { flex-wrap: wrap; margin: 8px 0; }
+.td-ps { display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto; }
+.td-ps select { width: auto; min-height: 34px; padding: 4px 8px; }
+.td-pg [data-nx] { margin-inline-start: 4px; }
+.td-scroll { max-height: min(68vh, 760px); overflow: auto; border: 1px solid var(--line2); border-radius: 10px; }
+.td-scroll .td-t thead th { position: sticky; top: 0; z-index: 2; }
+.td-dense .td-t td { padding: 5px 8px; } .td-dense .td-t th { padding: 6px 8px; } .td-dense .as-kpi { padding: 9px 12px; } .td-dense .as-metrics { gap: 8px; margin-block: 8px; }
+#td-dense[aria-pressed="true"] { border-color: var(--pri); color: var(--pri); }
+.td-strip { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; }
+.td-fresh { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: .78rem; color: var(--txt2); }
+.td-fresh i { width: 7px; height: 7px; border-radius: 50%; background: var(--gr); box-shadow: 0 0 0 3px var(--gr-soft); flex: none; }
+.td-fresh.am i { background: var(--am); box-shadow: 0 0 0 3px var(--am-soft); }
+.td-freshl { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+button.td-bar { width: 100%; background: none; border: 0; font: inherit; color: inherit; cursor: pointer; border-radius: 8px; padding: 4px 6px; text-align: start; transition: background .15s; }
+button.td-bar:hover, button.td-bar:focus-visible { background: var(--pri-soft); outline: none; }
+.td-cols > button { flex: 1 0 14px; min-width: 14px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; }
+.td-cols > button:hover i, .td-cols > button:focus-visible i { background: var(--grad); }
+.td-cols > button:focus-visible { outline: 2px solid var(--pri); outline-offset: 2px; border-radius: 4px; }
+.td-link { background: none; border: 0; padding: 0; font: inherit; color: var(--pri); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.td-vdh { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+.td-vd tfoot td { border-top: 1px solid var(--line); }
+.td-chk { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.td-chk li { padding-inline-start: 24px; position: relative; font-size: .9rem; color: var(--txt2); }
+.td-chk li::before { content: "○"; position: absolute; inset-inline-start: 4px; color: var(--mut); }
+.td-chk li.ok::before { content: "✔"; color: var(--gr); }
+.td-err details summary { cursor: pointer; color: var(--txt2); }
+.td-vf kbd, .td-vq kbd { font-size: .7rem; padding: 0 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--mut); }
+@media (max-width: 720px) { .td-navw { top: calc(var(--top) + 2px); } .td-ps { margin-inline-start: 0; } .td-scroll { max-height: 72vh; } }
+@media print { body.td-print .side, body.td-print .topbar, body.td-print .td-navw, body.td-print .top, body.td-print #tl-list, body.td-print .noprint, body.td-print .mnav { display: none !important; }
+  body.td-print .td-scroll { max-height: none; overflow: visible; border: 0; } }
