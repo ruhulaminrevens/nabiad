@@ -167,3 +167,22 @@ Measure first (`tools/perf-capture.js`, `pg_stat_statements`, `cron.job_run_deta
 - `statement_timeout` for explorer RPCs: not applied; needs its own test so the Bridge's role is unaffected. Trigger in the table above.
 - Real signed-in browser numbers: need the owner's capture (`docs/PERF_MEASURE.md`, `tools/perf-capture.js`). Performance stabilization is **not** declared complete until those exist.
 - 24 h soak with the Bridge running at the same time as real users: not possible in the sandbox.
+
+### Automated browser benchmark (`tools/perf-browser-bench.py`, run before each release; not in CI)
+Headless Chrome, demo data (24 synthetic accounts, 9,600 synthetic balance rows), service worker blocked, 7 repeats per route after a warm-up visit. Thresholds: page switch p95 <= 600 ms at 4x CPU throttle, worst start-up long task <= 400 ms.
+Baseline 2026-11-26 (v6.177, sandbox CPU), page switch hash-change -> content ready, ms p50 / p95:
+
+| Route | 1x CPU | 4x CPU |
+|---|---|---|
+| Dashboard | 20 / 20 | 21 / 37 |
+| Cheque Posting | 24 / 27 | 73 / 111 |
+| Cheque Register | 24 / 28 | 63 / 78 |
+| Bank Closing | 21 / 24 | 71 / 88 |
+| Cash Book | 22 / 38 | 88 / 108 |
+| Cash Register | 21 / 30 | 63 / 74 |
+| Inventory Dashboard | 29 / 30 | 92 / 149 |
+| Collection Entry | 22 / 36 | 86 / 116 |
+| Collection Summary | 21 / 29 | 69 / 96 |
+| Tally Dashboard | 22 / 32 | 76 / 92 |
+
+Start-up long tasks during login: 71 and 56 ms (1x); 229 and 173 ms (4x). This proves rendering and JavaScript are not the bottleneck on a 4x-slower CPU. It says nothing about network or database latency (no network in the test); those come only from the owner's `tools/perf-capture.js` capture on production.
