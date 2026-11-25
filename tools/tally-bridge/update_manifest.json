@@ -1,15 +1,15 @@
 {
  "files": {
-  "bridge.py": "8bcd8bb4dd216c6c8fe6c78d31057ca8e3668db24161c7c2d1942a780a023dae",
-  "nabiad_bridge_app.pyw": "081aedd345c58468912bff1564ee2404662f4ecd814fc85e8ed39372ec968c03",
+  "bridge.py": "0f954fc18bf5f722c79296e0530b3744a1e1f62e80ff9ecf39fa91a8387c766c",
+  "nabiad_bridge_app.pyw": "4c3f9a92e6d714ffa31c36c7a4ebd25b962b7b8570b7f2c7b5d78110e4c1adc3",
   "nightly_sync.py": "d57962bee371192d177a52f9089ba53feb3b107eb490671e1a857082569d43c2",
   "overview_model.py": "83fa2dc9d778c26591f1cb003269f25d225ce998928d36ba903707a146b950a4",
   "overview_ui.py": "b7ecbd545e9b67f1c648d006231b7e56b9b4e16064214b2ef4bd0e9ac037a695",
   "ui_kit.py": "35800fcbb465f4ba420d4df530700f352e433da6f7f1c4aa4df211deb6711585",
   "updater.py": "4cf69984c3084f377c854a9fb45837d29bb600f1ebc7d85dec1920b8f1e21eb6"
  },
- "notes_bn": "ফিক্স: Sales, Purchase ও Credit/Debit Note ভাউচারে এখন sales/purchase লেজারের লাইন সংরক্ষিত হয় (আগে বাদ পড়ায় ভাউচার একতরফা দেখাত)। আপডেটের পর Sync Center-এ একবার \"Run full history load\" চালান, যাতে আগের ভাউচারগুলো হালনাগাদ হয়।",
- "notes_en": "Fix: Sales, Purchase and Credit/Debit Note vouchers now keep their sales/purchase ledger lines (they were missing, so those vouchers looked one-sided). After updating, run \"Run full history load\" once in Sync Center so existing vouchers are refreshed.",
+ "notes_bn": "ফিক্স: বিদেশি মুদ্রার ভাউচারে (যেমন USD-তে রপ্তানি বিক্রি) এখন টাকার অংক সংরক্ষিত হয়; আগে পার্টির লাইন ০ পড়ায় ভাউচার অসমান দেখাত। আপডেটের পর Sync Center-এ একবার \"Run full history load\" চালান।",
+ "notes_en": "Fix: foreign-currency vouchers (for example export sales in USD) now keep their rupee/taka amount; before, the party line was read as 0 so the voucher looked unbalanced. After updating, run \"Run full history load\" once in Sync Center.",
  "released": "2026-11-25",
- "version": "1.2.1"
+ "version": "1.2.2"
 }

@@ -104,6 +104,17 @@ class T(unittest.TestCase):
         bad = inv.replace("600.00", "-600.00").replace("400.00", "-400.00")
         self.assertEqual(len(bridge.parse_vouchers(v(party + bad), "Co")[0]["entries"]), 1)
 
+    def test_foreign_currency_amount_uses_base_currency_figure(self):
+        self.assertEqual(bridge.num("-$ 12,000.00 @ Rs 110/$ = -Rs 1,320,000.00"), -1320000.0)
+        self.assertEqual(bridge.num("$ 5,000.00 @ Rs 110/$ = Rs 550,000.00"), 550000.0)
+        self.assertEqual((bridge.num("-1,234.50"), bridge.num("1234"), bridge.num(""), bridge.num("abc")), (-1234.5, 1234.0, 0.0, 0.0))
+        x = ('<ENVELOPE><TALLYMESSAGE><VOUCHER REMOTEID="f"><DATE>20240130</DATE><GUID>f</GUID><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>634</VOUCHERNUMBER>'
+             '<ALLLEDGERENTRIES.LIST><LEDGERNAME>Foreign Party</LEDGERNAME><AMOUNT>-$ 28,500.00 @ Rs 110/$ = -Rs 3,134,910.00</AMOUNT></ALLLEDGERENTRIES.LIST>'
+             '<ALLLEDGERENTRIES.LIST><LEDGERNAME>Sales Foreign</LEDGERNAME><AMOUNT>$ 28,500.00 @ Rs 110/$ = Rs 3,134,910.00</AMOUNT></ALLLEDGERENTRIES.LIST></VOUCHER></TALLYMESSAGE></ENVELOPE>')
+        got = bridge.parse_vouchers(x, "Co")[0]
+        self.assertEqual(sum(e["amount"] for e in got["entries"]), 0.0)
+        self.assertEqual(got["amount"], 3134910.0)
+
     def test_only_standard_export_requests(self):
         _, _, h = run({}, ["--company", "Co A"])
         self.assertTrue(all("<TALLYREQUEST>Export</TALLYREQUEST>" in b and "<TYPE>Data</TYPE>" in b for b in h.log))
