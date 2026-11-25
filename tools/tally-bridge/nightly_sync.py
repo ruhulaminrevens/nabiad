@@ -294,6 +294,16 @@ def _write_schedule_state(start, until):
         pass
 
 
+def schedule_start():
+    """Start time (HH:MM) of the installed task as recorded by this app, or ''."""
+    try:
+        v = str(json.load(open(SCHEDULE_STATE, encoding="utf-8")).get("start", ""))
+        _hhmm(v)
+        return v
+    except (OSError, ValueError, TypeError):
+        return ""
+
+
 def schedule_revision_installed():
     """Revision of the app that created the installed task (0 = unknown / created before revisions existed)."""
     try:

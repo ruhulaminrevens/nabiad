@@ -332,7 +332,7 @@ class Ui(unittest.TestCase):
             self.assertEqual(self.K.LANG, "en")
             w.set_dirty(True); self.assertTrue(w.al_dirty.isVisible() or True)
         finally:
-            w._really_quit = True; w.timer.stop(); self._settle(w, 0.2); w.close()
+            w._really_quit = True; w.timer.stop(); w.live.stop(); self._settle(w, 0.2); w.close()
 
     def test_updates_card_check_apply_busy_failure_rollback_language(self):
         mod, Window = self._window()
@@ -391,7 +391,7 @@ class Ui(unittest.TestCase):
                 w.check_updates(True); self._settle(w)
             self.assertEqual(w.upd_msg[0], "error"); self.assertIn("No connection", w.up_status.text())
         finally:
-            w._really_quit = True; w.timer.stop(); self._settle(w, 0.2); w.close()
+            w._really_quit = True; w.timer.stop(); w.live.stop(); self._settle(w, 0.2); w.close()
 
     def test_check_status_answers_and_failed_runs_show_when_fixed(self):
         mod, Window = self._window()
@@ -402,7 +402,7 @@ class Ui(unittest.TestCase):
             with mock.patch.object(mod.ns, "query_schedule", lambda: ok), mock.patch.object(mod.ns, "schedule_needs_refresh", lambda: False):
                 w.sched_status(True); self._settle(w)
             self.assertIn("12:30:00 AM", w.al_sched.tx.text()); self.assertIn("finished OK", w.al_sched.tx.text()); self.assertEqual(len(w.toasts.items), 1)
-            self.assertTrue(w.sched_out.toPlainText().startswith("Task Scheduler says")); self.assertIn("installed", w.c_sch.value.text().lower())
+            self.assertTrue(w.sched_out.toPlainText().startswith("Task Scheduler says")); self.assertTrue(w.sched_info["installed"])
             with mock.patch.object(mod.ns, "query_schedule", lambda: None):
                 w.sched_status(True); self._settle(w)
             self.assertIn("No schedule is installed", w.al_sched.tx.text()); self.assertIn("No schedule is installed", w.sched_out.toPlainText())
@@ -422,7 +422,61 @@ class Ui(unittest.TestCase):
             w.set_company_status("Co B", "Read OK (3 days)"); w.render_runs()   # a test read in this session is not overwritten
             self.assertIn("Read OK", {w.tbl.item(r, 1).text(): w.tbl.item(r, 4).text() for r in range(w.tbl.rowCount())}["Co B"])
         finally:
-            w._really_quit = True; w.timer.stop(); self._settle(w, 0.2); w.close()
+            w._really_quit = True; w.timer.stop(); w.live.stop(); self._settle(w, 0.2); w.close()
+
+    def test_overview_control_center(self):
+        from PySide6.QtWidgets import QBoxLayout
+        mod, Window = self._window()
+        tmp = tempfile.mkdtemp()
+        patches = [mock.patch.object(mod.ns, n, os.path.join(tmp, f)) for n, f in (("LOG", "log.txt"), ("LOCK", "n.lock"), ("STOP_FLAG", "stop.flag"), ("CONFIG", "config.json"))]
+        patches += [mock.patch.object(mod, "OV_CACHE", os.path.join(tmp, "cache.json")), mock.patch.object(mod.ns, "have_secret", lambda: True),
+                    mock.patch.object(mod.ns, "fetch_runs", lambda cfg, limit=300: []), mock.patch.object(mod.ns, "port_open", lambda *a, **k: True)]
+        for pt in patches:
+            pt.start()
+        mod.ns.write_config(["Co A", "Co B"], {}, "http://127.0.0.1:1", "http://127.0.0.1:1", "anon-key")
+        w = Window(); w.ui["tour_done"] = True; w.timer.stop(); w.live.stop(); w.resize(1300, 900); w.show(); self._settle(w)
+        try:
+            now = dt.datetime.now().astimezone()
+            iso = lambda d: d.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+            ok = lambda c, mins, v: {"company": c, "ok": True, "kind": "daybook", "started_at": iso(now - dt.timedelta(minutes=mins + 2)), "finished_at": iso(now - dt.timedelta(minutes=mins)), "vouchers": v}
+            w.runs = [ok("Co A", 30, 1234567), ok("Co B", 33, 10)]; w.db_ok = True; w.tally_ok = True; w.login_saved = True
+            w.sched_info = {"installed": True, "start": "00:30", "outdated": False}; w.ov_refreshed = now; w.go(0); self.app.processEvents()
+            self.assertIn("All 2 companies are synced", w.al_head.tx.text()); self.assertEqual(w.c_co.value.text(), "2 / 2"); self.assertEqual(w.c_issues.value.text(), "0")
+            self.assertEqual(w.c_v.value.text(), "12,34,577"); self.assertIn("Healthy", w.pill_op.text())              # South Asian grouping by default
+            w.s_num.setCurrentIndex(1); self.assertEqual(w.c_v.value.text(), "1,234,577")                                 # number format is a setting
+            self.assertEqual(w.ov_tbl.rowCount(), 2); self.assertEqual(w.ov_tbl.item(0, 4).text(), "Synced")
+            self.assertTrue(w.b_sync_ov.isEnabled()); self.assertTrue(w.b_stop_ov.isHidden()); self.assertFalse(w.lv_l1.isHidden())
+            # a failed company shows up first, in the Action center, and the page says so
+            w.runs.insert(0, {"company": "Co B", "ok": False, "kind": "daybook", "started_at": iso(now - dt.timedelta(minutes=5)), "finished_at": iso(now - dt.timedelta(minutes=4)), "error": "Tally did not answer"})
+            w.render_overview(); self.assertEqual(w.ov_tbl.item(0, 0).text(), "Co B"); self.assertEqual(w.ov_tbl.item(0, 4).text(), "Failed")
+            self.assertIn("need your attention", w.al_head.tx.text()); self.assertEqual(w.c_issues.value.text(), "1"); self.assertEqual(w.ac_box.count(), 1)
+            w.runs.pop(0); w.render_overview(); self.assertIn("Nothing needs your attention", w.ac_box.itemAt(0).widget().tx.text())
+            # a run in progress (scheduled or manual) is followed from the log, with a determinate bar; the sync buttons wait
+            open(mod.ns.LOG, "w", encoding="utf-8").write("\n".join([
+                (now - dt.timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S") + " === nightly run start. companies=2 until=22:39 backfill=False dry_run=False",
+                (now - dt.timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S") + " Co A: start",
+                (now - dt.timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S") + "    x Co A: 210 days read, 500 vouchers, 0 ledgers, 0 marked deleted",
+                (now - dt.timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S") + " Co B: start", ""]))
+            with mock.patch.object(mod.ns, "lock_is_free", lambda: False):
+                w.ov_tick()
+            self.assertTrue(w.ov_progress["running"]); self.assertIn("1 of 2", w.al_head.tx.text()); self.assertEqual((w.lv_bar.maximum(), w.lv_bar.value()), (2, 1))
+            self.assertFalse(w.b_sync_ov.isEnabled()); self.assertFalse(w.b_stop_ov.isHidden()); self.assertIn("Co B", w.lv_now.text()); self.assertIn("Syncing 1/2", w.c_eng.value.text())
+            self.assertEqual(w.ov_tbl.item(0, 4).text(), "Syncing")
+            w.stop_any(); self.assertTrue(os.path.exists(mod.ns.STOP_FLAG))                                                # stops the engine after the current batch
+            w.ov_tick(); self.assertFalse(w.ov_progress); self.assertTrue(w.b_sync_ov.isEnabled())                       # lock free again: idle, history is refetched
+            # saved data shows at once on the next start; the auto-refresh choice is stored and applied
+            w._save_ov_cache(); w2 = Window(); w2.timer.stop(); w2.live.stop()
+            self.assertEqual(len(w2.runs), 2); self.assertTrue(w2.ov_cached); w2._really_quit = True; w2.close()
+            w.s_ref.setCurrentIndex(0); self.assertEqual(w.ui["refresh_sec"], 0); self.assertFalse(w.timer.isActive())
+            w.s_ref.setCurrentIndex(2); self.assertEqual(w.ui["refresh_sec"], 60); self.assertTrue(w.timer.isActive()); w.timer.stop()
+            # narrow window stacks the cards, wide window puts them side by side; Bangla and light theme paint without errors
+            w.resize(1000, 700); self.app.processEvents(); self.assertEqual(w.ov_mid.direction(), QBoxLayout.TopToBottom)
+            w.resize(1400, 900); self.app.processEvents(); self.assertEqual(w.ov_mid.direction(), QBoxLayout.LeftToRight)
+            w.s_lang.setCurrentIndex(1); self.app.processEvents(); w.go(0); w.set_theme_choice("Light"); self.app.processEvents(); self.assertTrue(w.grab().width() > 0)
+        finally:
+            w._really_quit = True; w.timer.stop(); w.live.stop(); self._settle(w, 0.2); w.close()
+            for pt in patches:
+                pt.stop()
 
     def test_accordion_toggle(self):
         a = self.K.Accordion("T", "body " * 40, self.K.DARK); a.resize(600, 100); a.show()

@@ -13,14 +13,17 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComb
 HERE = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
 sys.path.insert(0, HERE)
 import nightly_sync as ns  # noqa: E402
+import overview_model as OM  # noqa: E402
+import overview_ui as OV  # noqa: E402
 import ui_kit as K  # noqa: E402
 import updater as U  # noqa: E402
 from ui_kit import t  # noqa: E402
 
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.2.0"
 FROZEN = bool(getattr(sys, "frozen", False))
 UPDATE_EVERY_S = 12 * 3600  # automatic check at most twice a day
 UI_SETTINGS = os.path.join(HERE, "ui_settings.json")
+OV_CACHE = os.path.join(HERE, "overview_cache.json")
 ERR_LOG = os.path.join(HERE, "app_error_log.txt")
 CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 
@@ -156,6 +159,10 @@ class Window(QMainWindow):
         self.p = K.DARK
         self.job = None; self.tasks = set()
         self.runs = []; self.company_state = {}; self.log_rows = []
+        self.app_version = APP_VERSION; self.numfmt = self.ui.get("numfmt", "in"); self.sched_info = None; self.ov_progress = None
+        self.ov_refreshed = None; self.ov_cached = False; self.db_err = ""; self.tally_checking = False; self.db_checking = False
+        self.login_saved = ns.have_secret(); self._ov_min = None; self._lock_probe = 0.0
+        self._load_ov_cache()
         self.tally_ok = None; self.db_ok = None; self.cfg = {}; self.dirty = False; self._really_quit = False
         self.co_rows = {}; self.vouchers_seen = 0; self.failed = 0
         self.toasts = K.ToastHost(self)
@@ -170,7 +177,8 @@ class Window(QMainWindow):
         QTimer.singleShot(300, self.refresh_all)
         QTimer.singleShot(900, self.maybe_tour)
         QTimer.singleShot(6000, self.auto_check_updates)
-        self.timer = QTimer(self); self.timer.timeout.connect(self.refresh_light); self.timer.start(30000)
+        self.timer = QTimer(self); self.timer.timeout.connect(self.refresh_light); self.apply_refresh_interval()
+        self.live = QTimer(self); self.live.timeout.connect(self.ov_tick); self.live.start(3000)
 
     # ---------------------------------------------------------------- settings / config
     def _load_ui(self):
@@ -245,6 +253,8 @@ class Window(QMainWindow):
         self.stack.setCurrentIndex(i)
         for k, b in enumerate(self.navs):
             b.setChecked(k == i)
+        if i == 0:
+            self.render_overview()
         if i in (0, 5):
             self.refresh_runs()
 
@@ -275,61 +285,10 @@ class Window(QMainWindow):
         self.alerts.append(a)
         return a
 
-    # ---- Overview
+    # ---- Overview (control center; see overview_ui.py / overview_model.py)
     def _p_overview(self):
-        self.alerts = getattr(self, "alerts", []) if False else []
-        def body(v):
-            hero = QFrame(); hero.setObjectName("hero")
-            hl = QHBoxLayout(hero); hl.setContentsMargins(22, 18, 22, 18)
-            tb = QVBoxLayout(); tb.setSpacing(4)
-            hk = QLabel("NABIAD DATA BRIDGE"); hk.setObjectName("brandsub")
-            hh = QLabel(t("ov.title")); hh.setObjectName("title")
-            hs = QLabel(t("ov.sub")); hs.setObjectName("sub")
-            tb.addWidget(hk); tb.addWidget(hh); tb.addWidget(hs)
-            self.pill_op = K.Pill(t("s.idle"), "info", self.p)
-            tb.addWidget(self.pill_op, 0, Qt.AlignLeft)
-            hl.addLayout(tb, 1)
-            hl.addWidget(button(t("b.sync_now"), "primary", lambda: self.start_job(["--until", self._until_for_now()], t("b.incr")), "Ctrl+R"), 0, Qt.AlignVCenter)
-            v.addWidget(hero)
-            ur = QHBoxLayout(); ur.setSpacing(K.SP["md"])
-            self.al_update = self.alert("info", "", False); ur.addWidget(self.al_update, 1)
-            self.b_up_ov = button(t("up.now"), "primary", self.update_now); self.b_up_ov.hide(); ur.addWidget(self.b_up_ov, 0, Qt.AlignVCenter)
-            v.addLayout(ur)
-            top = QHBoxLayout(); top.setSpacing(K.SP["md"])
-            self.c_tally = card(t("card.tally"), t("s.nottested"), "")
-            self.c_db = card(t("card.db"), t("s.login"), "")
-            self.c_co = card(t("card.cos"), "0", t("card.cos.note"))
-            self.c_sch = card(t("card.sched"), t("s.notchecked"), "")
-            for c in (self.c_tally, self.c_db, self.c_co, self.c_sch):
-                top.addWidget(c)
-            v.addLayout(top)
-            pipe = QFrame(); pipe.setObjectName("card")
-            pl = QHBoxLayout(pipe); pl.setContentsMargins(20, 14, 20, 14)
-            for k, (a1, a2) in enumerate([("TallyPrime", t("pipe.src")), ("Nabiad Bridge", t("pipe.eng")), ("Supabase", t("pipe.db"))]):
-                bx = QVBoxLayout(); x1 = QLabel(a1); x1.setObjectName("h2"); x2 = QLabel(a2); x2.setObjectName("muted"); bx.addWidget(x1); bx.addWidget(x2)
-                pl.addLayout(bx)
-                if k < 2:
-                    ar = QLabel("⟶"); ar.setStyleSheet("font-size:24px; color:#0EA5E9;"); pl.addWidget(ar, 1, Qt.AlignCenter)
-            v.addWidget(pipe)
-            mid = QHBoxLayout(); mid.setSpacing(K.SP["md"])
-            left = QFrame(); left.setObjectName("card"); ll = QVBoxLayout(left); ll.setContentsMargins(16, 14, 16, 14)
-            hd = QLabel(t("sec.costatus")); hd.setObjectName("h2"); ll.addWidget(hd)
-            self.ov_tbl = QTableWidget(0, 4)
-            self._style_table(self.ov_tbl, [t("col.name"), t("col.last"), t("col.vouchers"), t("col.status")])
-            self.ov_tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents); ll.addWidget(self.ov_tbl)
-            right = QFrame(); right.setObjectName("card"); right.setFixedWidth(310); rl = QVBoxLayout(right); rl.setContentsMargins(16, 14, 16, 14); rl.setSpacing(8)
-            hd2 = QLabel(t("sec.ctrl")); hd2.setObjectName("h2"); rl.addWidget(hd2)
-            l1 = QLabel(t("sec.curop")); l1.setObjectName("muted"); rl.addWidget(l1)
-            self.ov_op = QLabel(t("s.idle")); self.ov_op.setObjectName("cardvalue"); rl.addWidget(self.ov_op)
-            self.ov_bar = QProgressBar(); self.ov_bar.setRange(0, 100); rl.addWidget(self.ov_bar)
-            self.ov_bar_note = QLabel(t("al.demo")); self.ov_bar_note.setObjectName("muted"); self.ov_bar_note.setWordWrap(True); rl.addWidget(self.ov_bar_note)
-            rl.addSpacing(6)
-            self.b_testconn = button(t("b.test_conn"), "primary", self.test_connections); rl.addWidget(self.b_testconn)
-            rl.addWidget(button(t("b.full"), "", lambda: self.go(3)))
-            rl.addWidget(button(t("b.logs"), "", lambda: self.go(6)))
-            rl.addStretch()
-            mid.addWidget(left, 1); mid.addWidget(right); v.addLayout(mid, 1)
-        return self._wrap(page_header(t("ov.title"), t("ov.sub")) if False else QHBoxLayout(), body)
+        self.alerts = []
+        return OV.build(self, card, button)
 
     # ---- Company manager
     def _p_companies(self):
@@ -408,7 +367,7 @@ class Window(QMainWindow):
 
     def update_cards(self):
         if hasattr(self, "tbl") and hasattr(self, "c_co"):
-            self.c_co.value.setText(str(len(self.ticked())))
+            self.render_overview()
 
     def _valid_dates(self):
         for c, d in self.starts().items():
@@ -541,7 +500,14 @@ class Window(QMainWindow):
             self.s_startup = QCheckBox(t("set.startup")); self.s_startup.setChecked(self._startup_enabled())
             g.addWidget(QLabel(t("set.theme")), 0, 0); g.addWidget(self.s_theme, 0, 1)
             g.addWidget(QLabel(t("set.lang")), 1, 0); g.addWidget(self.s_lang, 1, 1)
-            g.addWidget(self.s_tray, 2, 0, 1, 2); g.addWidget(self.s_notif, 3, 0, 1, 2); g.addWidget(self.s_startup, 4, 0, 1, 2); g.setColumnStretch(2, 1)
+            self.s_num = QComboBox(); self.s_num.addItems([t("set.numfmt.in"), t("set.numfmt.intl")])
+            self.s_num.setCurrentIndex(0 if self.numfmt == "in" else 1)
+            self.s_ref = QComboBox(); self._ref_opts = [0, 30, 60, 300]
+            self.s_ref.addItems([t("set.refresh.0"), t("set.refresh.30"), t("set.refresh.60"), t("set.refresh.300")])
+            cur = int(self.ui.get("refresh_sec", 60)); self.s_ref.setCurrentIndex(self._ref_opts.index(cur) if cur in self._ref_opts else 2)
+            g.addWidget(QLabel(t("set.numfmt")), 2, 0); g.addWidget(self.s_num, 2, 1)
+            g.addWidget(QLabel(t("set.refresh")), 3, 0); g.addWidget(self.s_ref, 3, 1)
+            g.addWidget(self.s_tray, 4, 0, 1, 2); g.addWidget(self.s_notif, 5, 0, 1, 2); g.addWidget(self.s_startup, 6, 0, 1, 2); g.setColumnStretch(2, 1)
             v.addWidget(f)
             v.addWidget(self._updates_card())
             row = QHBoxLayout(); row.setSpacing(K.SP["md"])
@@ -554,6 +520,7 @@ class Window(QMainWindow):
             self.s_theme.currentTextChanged.connect(self.set_theme_choice); self.s_lang.currentIndexChanged.connect(self.set_lang_choice)
             self.s_tray.toggled.connect(lambda b: (self.ui.update(tray=b), self._save_ui())); self.s_notif.toggled.connect(lambda b: (self.ui.update(notify=b), self._save_ui()))
             self.s_startup.toggled.connect(self.set_startup)
+            self.s_num.currentIndexChanged.connect(self.set_numfmt); self.s_ref.currentIndexChanged.connect(self.set_refresh_choice)
         return self._wrap(page_header(t("st.title"), t("st.sub")), body)
 
     # ---- Help
@@ -570,6 +537,13 @@ class Window(QMainWindow):
         return self._wrap(page_header(t("hp.title"), t("hp.sub")), body)
 
     # ---------------------------------------------------------------- theme / language / tray / shortcuts
+    def set_numfmt(self, idx):
+        self.numfmt = "in" if idx == 0 else "intl"; self.ui["numfmt"] = self.numfmt; self._save_ui()
+        self.render_overview(); self.render_runs()
+
+    def set_refresh_choice(self, idx):
+        self.ui["refresh_sec"] = self._ref_opts[idx]; self._save_ui(); self.apply_refresh_interval(); self.render_overview()
+
     def set_theme_choice(self, text):
         self.ui["theme"] = text.lower(); self._save_ui(); self.apply_theme(text.lower())
 
@@ -596,7 +570,7 @@ class Window(QMainWindow):
                 pass
         if self.tour:
             self.tour.retheme(self.p)
-        self.update_cards(); self.refresh_light()
+        self.render_overview()
         if hasattr(self, "up_pill"):
             self.render_update()
 
@@ -614,6 +588,7 @@ class Window(QMainWindow):
             QShortcut(QKeySequence(f"Ctrl+{i + 1}"), self, activated=lambda i=i: self.go(i))
         QShortcut(QKeySequence("F1"), self, activated=lambda: self.go(8))
         QShortcut(QKeySequence("Ctrl+S"), self, activated=lambda: self.stack.currentIndex() == 1 and self.save_settings())
+        QShortcut(QKeySequence("F5"), self, activated=lambda: self.stack.currentIndex() == 0 and self.ov_refresh_now())
         QShortcut(QKeySequence("Ctrl+R"), self, activated=lambda: self.start_job(["--until", self._until_for_now()], t("b.incr")))
 
     def show_normal(self):
@@ -625,6 +600,8 @@ class Window(QMainWindow):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self.toasts.layout()
+        if hasattr(self, "ov_mid"):
+            OV.relayout(self, self.width())
         if self.tour and self.tour.isVisible():
             self.tour.setGeometry(self.centralWidget().rect())
 
@@ -756,14 +733,14 @@ class Window(QMainWindow):
     # ---------------------------------------------------------------- connection actions
     def check_tally(self):
         url = self.f_tally.text().strip()
-        self.set_state(self.c_tally, t("s.checking"), "warn")
+        self.tally_checking = True; self.set_state(self.c_tally, t("s.checking"), "warn")
         def cb(ok, err):
+            self.tally_checking = False
             self.tally_ok = bool(ok) and not err
+            self.c_tally.note.setText(url); self.render_overview()
             if self.tally_ok:
-                self.set_state(self.c_tally, t("s.portopen"), "success"); self.c_tally.note.setText(url)
                 self.al_conn.set("success", t("t.tally_ok", url)); self.toast(t("t.tally_ok", url), "success")
             else:
-                self.set_state(self.c_tally, t("s.noanswer"), "error"); self.c_tally.note.setText(url)
                 self.al_conn.set("error", t("t.tally_bad")); self.toast(t("t.tally_bad"), "error")
             self.log(self.al_conn.tx.text(), "SUCCESS" if self.tally_ok else "ERROR")
         self.run_bg(ns.port_open, cb, url)
@@ -776,7 +753,7 @@ class Window(QMainWindow):
         if not pw and not ns.have_secret():
             self.al_conn.set("warn", t("f.pw")); return
         email = self.f_email.text().strip()
-        self.set_state(self.c_db, t("s.checking"), "warn")
+        self.db_checking = True; self.set_state(self.c_db, t("s.checking"), "warn")
         def work():
             use = pw
             if not use:
@@ -786,12 +763,13 @@ class Window(QMainWindow):
                 ns.save_secret(email, pw)
             return ok
         def cb(ok, err):
+            self.db_checking = False; self.login_saved = ns.have_secret()
             if ok:
-                self.db_ok = True; self.set_state(self.c_db, t("s.signedin"), "success"); self.c_db.note.setText(now_s())
+                self.db_ok = True; self.db_err = ""; self.c_db.note.setText(now_s()); self.render_overview()
                 self.f_pw.clear(); self.f_pw.setPlaceholderText(t("f.pw_saved"))
                 self.al_conn.set("success", t("t.login_ok")); self.toast(t("t.login_ok"), "success"); self.log("Database login verified.", "SUCCESS"); self.refresh_runs()
             else:
-                self.db_ok = False; self.set_state(self.c_db, t("s.loginfail"), "error")
+                self.db_ok = False; self.db_err = err or ""; self.c_db.note.setText(""); self.render_overview()
                 self.al_conn.set("error", t("t.login_fail", err or "?")); self.toast(t("t.login_fail", err or "?"), "error"); self.log(f"Login failed: {err}", "ERROR")
         self.run_bg(work, cb)
 
@@ -800,7 +778,7 @@ class Window(QMainWindow):
         if ns.have_secret():
             self.refresh_runs(verify=True)
         else:
-            self.set_state(self.c_db, t("s.login"), "warn"); self.toast(t("al.no_login"), "warn")
+            self.login_saved = False; self.render_overview(); self.toast(t("al.no_login"), "warn")
 
     def detect_companies(self):
         url = self.f_tally.text().strip()
@@ -862,13 +840,12 @@ class Window(QMainWindow):
             self.set_co_row(c, "Queued", "")
         self.job = Job(args)
         self.job.line.connect(self.on_job_line); self.job.finished_rc.connect(self.on_job_end)
-        self.s_state.setText(label); self.ov_op.setText(label); self.s_bar.setRange(0, 0); self.ov_bar.setRange(0, 0)
-        self.pill_op.set(label, "info", self.p); self.ov_bar_note.setText("Working… (total amount unknown)")
+        self.s_state.setText(label); self.s_bar.setRange(0, 0)
         self.b_stop.setEnabled(True)
         for b in (self.b_inc, self.b_full, self.b_test):
             b.setEnabled(False)
         self.log(f"{label} started.", "SYNC"); self.toast(t("t.job_started", label), "info")
-        self.job.start()
+        self.job.start(); QTimer.singleShot(1200, self.ov_tick)
 
     def set_co_row(self, c, stage, detail):
         if c not in self.co_rows:
@@ -889,24 +866,23 @@ class Window(QMainWindow):
         if m and m.group(1) in self.co_rows:
             self.vouchers_seen += int(m.group(3))
             self.set_co_row(m.group(1), "Finished", f"{m.group(2)} days read · {m.group(3)} vouchers · {m.group(4)} ledgers")
-            self.s_counts.setText(f"{self.vouchers_seen:,} vouchers read this session · {self.failed} failed")
+            self.s_counts.setText(f"{self.n(self.vouchers_seen)} vouchers read this session · {self.failed} failed")
         m = re.match(r"(.+?): (NOT LOADED|failed|data check failed)(.*)", body)
         if m and m.group(1) in self.co_rows:
             if m.group(2) != "NOT LOADED":
                 self.failed += 1
             self.set_co_row(m.group(1), "Not loaded in Tally" if m.group(2) == "NOT LOADED" else "Failed", body)
-            self.s_counts.setText(f"{self.vouchers_seen:,} vouchers read this session · {self.failed} failed")
+            self.s_counts.setText(f"{self.n(self.vouchers_seen)} vouchers read this session · {self.failed} failed")
 
     def on_job_end(self, rc):
         for b in (self.b_inc, self.b_full, self.b_test):
             b.setEnabled(True)
         self.b_stop.setEnabled(False)
-        self.s_bar.setRange(0, 100); self.ov_bar.setRange(0, 100)
+        self.s_bar.setRange(0, 100)
         done = rc == 0
-        self.s_bar.setValue(100 if done else 0); self.ov_bar.setValue(100 if done else 0)
+        self.s_bar.setValue(100 if done else 0)
         txt = {0: "Finished", 1: "Finished with problems", 4: "Not started (another sync running)", 5: "Login missing"}.get(rc, f"Ended (code {rc})")
-        self.s_state.setText(txt); self.ov_op.setText(t("s.idle")); self.ov_bar_note.setText(txt)
-        self.pill_op.set(txt if not done else t("s.idle"), "success" if done else "warn", self.p)
+        self.s_state.setText(txt)
         for c, r in self.co_rows.items():
             if self.co_tbl.item(r, 1).text() in ("Queued", "Syncing"):
                 self.co_tbl.item(r, 1).setText("Stopped" if os.path.exists(ns.STOP_FLAG) else "Not reached")
@@ -963,13 +939,14 @@ class Window(QMainWindow):
                 get = lambda k: next((l.split(":", 1)[1].strip() for l in res.splitlines() if l.startswith(k)), "-")
                 nxt, last = get("Next Run Time"), get("Last Run Time")
                 parts.append(t("sched.says") + ":\n" + res)
-                self.set_state(self.c_sch, t("s.inst"), "success"); self.c_sch.note.setText("next: " + nxt if nxt != "-" else "")
+                self.sched_info = dict(installed=True, start=ns.schedule_start() or (self.t_start.text().strip() if hasattr(self, "t_start") else "00:30"),
+                                       outdated=ns.schedule_needs_refresh(), next=nxt, last=last)
                 msg = t("t.sched_state", nxt, f"{last} ({self._sched_result(res)})")
                 if manual:
                     self.al_sched.set("success", msg); self.toast(msg, "success")
             else:
                 parts.append(t("sched.none_out"))
-                self.set_state(self.c_sch, t("s.notinst"), "warn"); self.c_sch.note.setText("")
+                self.sched_info = dict(installed=False)
                 if manual:
                     self.al_sched.set("warn", t("t.sched_none")); self.toast(t("t.sched_none"), "warn")
             if os.path.exists(ns.STATUS):
@@ -977,6 +954,7 @@ class Window(QMainWindow):
             self.sched_out.setPlainText("\n\n".join(parts)); self.sched_out.verticalScrollBar().setValue(0)
             if res and ns.schedule_needs_refresh():
                 self.al_sched.set("warn", t("al.sched_old"))
+            self.render_overview()
         self.run_bg(ns.query_schedule, cb)
 
     def run_sched_now(self):
@@ -1045,6 +1023,7 @@ class Window(QMainWindow):
                 self.b_up_rb.setToolTip(f"v{U.last_backup_version(HERE) or '?'}")
             self.al_update.set("info", t("up.ov", self.upd["version"]) if self.upd else "", self.p)
             self.b_up_ov.setVisible(bool(self.upd)); self.b_up_ov.setEnabled(not busy)
+            self.render_overview()
         except RuntimeError:  # widgets of the previous language were already deleted
             pass
 
@@ -1176,24 +1155,124 @@ class Window(QMainWindow):
         url = self.f_tally.text().strip()
         def cb(ok, err):
             self.tally_ok = bool(ok) and not err
-            self.set_state(self.c_tally, t("s.portopen") if self.tally_ok else t("s.noanswer"), "success" if self.tally_ok else "error")
-            self.c_tally.note.setText(url)
+            self.c_tally.note.setText(url); self.render_overview()
         self.run_bg(ns.port_open, cb, url)
 
     def refresh_light(self):
-        if not (self.job and self.job.isRunning()):
-            self.check_tally_quiet()
+        """Timer (Settings → Overview auto-refresh): Tally port and the sync history, but never while a job is running."""
+        if self.job and self.job.isRunning():
+            return
+        if self.ov_progress:
+            return
+        self.check_tally_quiet()
+        if ns.have_secret():
+            self.refresh_runs()
+
+    def apply_refresh_interval(self):
+        secs = int(self.ui.get("refresh_sec", 60))
+        if secs > 0:
+            self.timer.start(secs * 1000)
+        else:
+            self.timer.stop()
+
+    def ov_refresh_now(self, *_):
+        self.check_tally_quiet(); self.sched_status()
+        self.login_saved = ns.have_secret()
+        if self.login_saved:
+            self.refresh_runs(verify=True)
+        else:
+            self.render_overview()
 
     def refresh_runs(self, verify=False):
-        if not ns.have_secret() or not self.cfg.get("supabase_url"):
-            return
+        self.login_saved = ns.have_secret()
+        if not self.login_saved or not self.cfg.get("supabase_url"):
+            self.render_overview(); return
         def cb(rows, err):
             if err:
-                self.db_ok = False; self.set_state(self.c_db, t("s.unreach"), "error"); self.c_db.note.setText(err[:70]); return
-            self.runs = rows or []; self.db_ok = True
-            self.set_state(self.c_db, t("s.signedin"), "success"); self.c_db.note.setText(now_s())
-            self.render_runs()
+                self.db_ok = False; self.db_err = err; self.render_overview(); return
+            self.runs = rows or []; self.db_ok = True; self.db_err = ""
+            self.ov_refreshed = dt.datetime.now().astimezone(); self.ov_cached = False
+            self._save_ov_cache()
+            self.render_runs(); self.render_overview()
         self.run_bg(ns.fetch_runs, cb, self.cfg)
+
+    # ---- Overview data: cached first, background refresh, local progress from the nightly log
+    def n(self, x):
+        return OM.fmt_num(x, self.numfmt)
+
+    def set_state_label(self, lab, text, kind):
+        lab.setText(text); lab.setStyleSheet(f"color:{self.p[K.KIND_COLOR[kind]]};")
+
+    def _load_ov_cache(self):
+        """Show the last saved history at once; the database answer replaces it a moment later."""
+        try:
+            c = json.load(open(OV_CACHE, encoding="utf-8"))
+            self.runs = list(c.get("runs") or []); self.ov_refreshed = OM.parse_iso(c.get("saved")); self.ov_cached = bool(self.runs)
+        except (OSError, ValueError, TypeError):
+            pass
+
+    def _save_ov_cache(self):
+        try:
+            json.dump({"saved": dt.datetime.now().astimezone().isoformat(timespec="seconds"), "runs": self.runs[:300]}, open(OV_CACHE, "w", encoding="utf-8"))
+        except OSError:
+            pass
+
+    def ov_tail_progress(self):
+        """None when no sync is running; else what the last run in nightly_log.txt has done so far (manual, scheduled or from this window)."""
+        try:   # probing the lock is cheap but not free: only when a run is likely (log touched lately, one was running) or once a minute
+            recent = time.time() - os.path.getmtime(ns.LOG) < 900
+        except OSError:
+            recent = False
+        if not (self.ov_progress or recent or time.time() - self._lock_probe > 60):
+            return None
+        self._lock_probe = time.time()
+        try:
+            busy = not ns.lock_is_free()
+        except Exception:
+            busy = False
+        if not busy:
+            return None
+        prog = None
+        try:
+            with open(ns.LOG, "rb") as f:
+                f.seek(0, 2); size = f.tell(); f.seek(max(0, size - 262144))
+                prog = OM.log_progress(f.read().decode("utf-8", "replace"))
+        except OSError:
+            pass
+        if not prog or not prog["running"]:
+            prog = dict(running=True, total=len(self.ticked()), done=0, problems=0, current="", vouchers=0, started=None, ended=None)
+        return prog
+
+    def ov_tick(self):
+        """Every 3 s (local files only, no network): follow a running sync; repaint the relative times once a minute."""
+        prog = self.ov_tail_progress()
+        was = bool(self.ov_progress)
+        self.ov_progress = prog
+        if was and not prog:                      # a run just ended (also one started by Task Scheduler): fetch the new history
+            self.refresh_runs(); self.sched_status()
+        minute = dt.datetime.now().minute
+        if prog or was or minute != self._ov_min:
+            self._ov_min = minute
+            if self.stack.currentIndex() == 0 or was:
+                self.render_overview()
+
+    def render_overview(self):
+        if not hasattr(self, "ov_tbl"):
+            return
+        now = dt.datetime.now().astimezone()
+        d = OM.summarize(self.runs, self.ticked(), now, progress=self.ov_progress, tally_ok=self.tally_ok, db_ok=self.db_ok, db_error=self.db_err,
+                         login_saved=self.login_saved, cfg_error=getattr(self, "cfg_error", False), sched=self.sched_info)
+        OV.render(self, d, now)
+
+    def stop_any(self):
+        """Stop after the current batch: the app's own job, or a scheduled/manual run (the engine looks for the stop flag)."""
+        if self.job and self.job.isRunning():
+            self.stop_job(); return
+        try:
+            open(ns.STOP_FLAG, "w").close()
+        except OSError as e:
+            self.toast(t("t.err", e), "error"); return
+        self.log("Stop requested for the running job.", "WARNING"); self.toast(t("live.stopreq"), "warn")
 
     def set_company_status(self, c, text):
         self.company_state[c] = text
@@ -1202,8 +1281,6 @@ class Window(QMainWindow):
                 self.tbl.item(r, 4).setText(text)
 
     def render_runs(self):
-        if not hasattr(self, "ov_tbl"):
-            return
         last, lastv = {}, {}
         for r in self.runs:
             if r.get("ok") and r["company"] not in last:
@@ -1213,13 +1290,6 @@ class Window(QMainWindow):
                 return dt.datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone().strftime("%d %b %Y %H:%M")
             except Exception:
                 return "-"
-        cos = self.ticked()
-        self.ov_tbl.setRowCount(len(cos))
-        for i, c in enumerate(cos):
-            vals = [c, fmt(last[c]) if c in last else t("s.nonrec"), str(lastv.get(c) if lastv.get(c) is not None else "-"), t("s.synced") if c in last else t("s.notver")]
-            for j, x in enumerate(vals):
-                self.ov_tbl.setItem(i, j, QTableWidgetItem(x))
-            self.ov_tbl.item(i, 3).setForeground(QColor(self.p["green"] if c in last else self.p["amber"]))
         for r in range(self.tbl.rowCount()):
             c = self.tbl.item(r, 1).text(); self.tbl.item(r, 3).setText(fmt(last[c]) if c in last else "-")
             if c not in self.company_state:  # no test read in this session: show what the database says
@@ -1234,7 +1304,7 @@ class Window(QMainWindow):
         okn = sum(1 for r in self.runs if r.get("ok")); bad = sum(1 for r in self.runs if r.get("ok") is False)
         self.a_runs.value.setText(str(len(self.runs))); self.a_ok.value.setText(str(okn)); self.a_fail.value.setText(str(bad - len(fixed)))
         self.a_fail.note.setText(t("an.fail_note", len(fixed)) if fixed else "")
-        self.a_v.value.setText(f"{sum(r.get('vouchers') or 0 for r in self.runs):,}")
+        self.a_v.value.setText(self.n(sum(r.get('vouchers') or 0 for r in self.runs)))
         self.an_tbl.setRowCount(len(self.runs))
         for i, r in enumerate(self.runs):
             vals = [r["company"], fmt(r["started_at"]), r.get("kind", ""), str(r.get("vouchers") if r.get("vouchers") is not None else "-"),

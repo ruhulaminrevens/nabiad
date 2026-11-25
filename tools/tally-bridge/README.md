@@ -15,7 +15,8 @@ Windows desktop app plus a command-line engine that copy TallyPrime ledgers and 
 | File | Purpose |
 |---|---|
 | `nabiad_bridge_app.pyw` | The desktop app (PySide6): connections, company manager, sync center, scheduler, analytics, logs, settings, help, product tour. English and Bangla. Dark, Light, System theme. System tray and desktop notifications. |
-| `ui_kit.py` | Design tokens, Toast, inline Alert, Accordion, Pill, Tour (coach marks), English/Bangla strings. No sync logic. |
+| `ui_kit.py` | Design tokens, Toast, inline Alert, Accordion, Pill, trend Bars, Tour (coach marks), English/Bangla strings. No sync logic. |
+| `overview_model.py`, `overview_ui.py` | Overview page (control center): the model works out health, issues, progress and trend from the sync history and the nightly log (no Qt, tested); the UI only paints it. |
 | `nightly_sync.py` | Nightly runner and helpers: Tally/Supabase checks, schedule install (Windows Task Scheduler), encrypted login (DPAPI), job lock, stop flag. |
 | `bridge.py` | The sync engine (one company at a time). Dry run by default. |
 | `updater.py`, `update_manifest.json` | In-app update (Settings → Updates): what may be installed, with SHA-256 per file. Standard library only. |
