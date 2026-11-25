@@ -1,4 +1,4 @@
-/* NABIAD — TALLY DASHBOARD (v6.176) — admin only. Tabs: Overview (sync state), Companies, Voucher Explorer, Ledger Explorer, Reconciliation and Sync Health.
+/* NABIAD — TALLY DASHBOARD (v6.177) — admin only. Tabs: Overview (sync state), Companies, Voucher Explorer, Ledger Explorer, Reconciliation and Sync Health.
    Shows the state of the read-only TallyPrime → Supabase mirror (written by the NABIAD DATA BRIDGE desktop app).
    Loaded after app.js and inv.js; uses their helpers (head, bi, esc, ico, money0, dmy, toast, ROUTES, API, DEMO, sb).
    Data comes from admin-only RPCs (schema_tally_dashboard.sql, schema_tally_explorer.sql). Nothing here writes to the database. */
@@ -61,7 +61,7 @@ async function vTallyDash(v) {
   $("#td-refresh", v).onclick = () => { tdBust(); Promise.resolve(reload()).then(() => toast(bi("রিফ্রেশ হয়েছে", "Refreshed"), "info")); };
   TD.go = (k, patch) => { Object.assign(TD, patch || {}); open(k); window.scrollTo(0, 0); };
   await open("overview");
-  return () => { epoch++; cleanup?.(); TD.go = null; };
+  return () => { epoch++; cleanup?.(); TD.go = null; tdAbortAll(); };
 }
 
 function tdError(r) {
@@ -140,9 +140,13 @@ async function tdVSearch(f, offset, limit = TD_PAGE) {
       && (!q || (x.vno + " " + (x.narration || "") + " " + JSON.stringify(x.entries)).toLowerCase().includes(q))).sort((a, b) => b.vdate.localeCompare(a.vdate));
     return { data: { total: all.length, rows: all.slice(offset, offset + limit), limit, offset } };
   }
-  const { data, error } = await sb.rpc("tally_voucher_search", { p_q: f.q || null, p_company: f.company || null, p_vtype: f.vtype || null, p_from: f.from || null, p_to: f.to || null, p_include_cancelled: !!f.cancelled, p_limit: limit, p_offset: offset });
+  const { data, error } = await sb.rpc("tally_voucher_search", { p_q: f.q || null, p_company: f.company || null, p_vtype: f.vtype || null, p_from: f.from || null, p_to: f.to || null, p_include_cancelled: !!f.cancelled, p_limit: limit, p_offset: offset }).abortSignal(limit === TD_PAGE ? tdSignal("vsearch") : new AbortController().signal);
   return { data, error };
 }
+/* v6.177: a newer search/page request cancels the older one of the same kind, and leaving the page cancels all of them (the DB stops working for results nobody will see) */
+const tdAbort = new Map();
+const tdSignal = slot => { try { tdAbort.get(slot)?.abort(); } catch { } const c = new AbortController(); tdAbort.set(slot, c); return c.signal; };
+const tdAbortAll = () => { for (const c of tdAbort.values()) { try { c.abort(); } catch { } } tdAbort.clear(); };
 const tdRpcMissing = e => e && (e.code === "PGRST202" || /could not find the function|does not exist/i.test(e.message || ""));
 /* Tally exports a debit as a negative amount */
 const tdEntryText = e => `${e.ledger} ${e.amount < 0 ? "Dr" : "Cr"} ${money0(Math.abs(e.amount))}`;
@@ -241,7 +245,7 @@ function tdDemoLedgerAgg(f) {
 }
 async function tdLList(f, offset) {
   if (DEMO) { const all = tdDemoLedgerAgg(f); return { data: { total: all.length, rows: all.slice(offset, offset + TD_PAGE) } }; }
-  const { data, error } = await sb.rpc("tally_ledger_list", { p_company: f.company || null, p_q: f.q || null, p_from: f.from || null, p_to: f.to || null, p_limit: TD_PAGE, p_offset: offset });
+  const { data, error } = await sb.rpc("tally_ledger_list", { p_company: f.company || null, p_q: f.q || null, p_from: f.from || null, p_to: f.to || null, p_limit: TD_PAGE, p_offset: offset }).abortSignal(tdSignal("llist"));
   return { data, error };
 }
 async function tdLStatement(company, ledger, f) {
@@ -250,7 +254,7 @@ async function tdLStatement(company, ledger, f) {
       .map(x => ({ vdate: x.vdate, vtype: x.vtype, vno: x.vno, narration: x.narration, amt: x.entries.filter(e => e.ledger === ledger).reduce((s, e) => s + e.amount, 0), other: x.entries.filter(e => e.ledger !== ledger).map(e => e.ledger).join(" · ") }));
     return { data: { parent: null, n: rows.length, dr: rows.reduce((s, r) => s + (r.amt < 0 ? -r.amt : 0), 0), cr: rows.reduce((s, r) => s + (r.amt > 0 ? r.amt : 0), 0), truncated: false, rows } };
   }
-  const { data, error } = await sb.rpc("tally_ledger_statement", { p_company: company, p_ledger: ledger, p_from: f.from || null, p_to: f.to || null });
+  const { data, error } = await sb.rpc("tally_ledger_statement", { p_company: company, p_ledger: ledger, p_from: f.from || null, p_to: f.to || null }).abortSignal(tdSignal("lstmt"));
   return { data, error };
 }
 
@@ -329,15 +333,17 @@ async function tdLedgers(out) {
 /* ======================= Phase 1–3 (v6.174): Overview, Companies, Reconciliation, Sync Health ======================= */
 /* Shared filter state: Overview filters drive drill-downs; a company click opens the explorers already scoped to it. */
 const TD = { company: "", from: "", to: "", vtype: "", go: null };
-/* v6.176: one in-flight request per identical read, short result cache (per signed-in user), errors never cached. Refresh button clears it. */
+/* v6.177: one in-flight request per identical read, short result cache (per signed-in user), errors never cached. Refresh button clears it. */
 const TD_TTL = { tally_voucher_filters: 600000, tally_overview: 30000, tally_sync_health: 30000, tally_recon_shared: 60000, tally_recon_coverage: 120000, tally_recon_changes: 60000 };
 const tdMem = new Map(), tdFly = new Map();
 const tdBust = () => tdMem.clear();
+const TD_MEM_MAX = 60;   // bounded: expired entries go first, then the oldest; logout always reloads the page, which drops everything
+const tdTrim = () => { if (tdMem.size <= TD_MEM_MAX) return; const now = Date.now(); for (const [k, e] of tdMem) { if (tdMem.size <= TD_MEM_MAX) break; if (now - e.t > (TD_TTL[k.split("|")[1]] || 0)) tdMem.delete(k); } while (tdMem.size > TD_MEM_MAX) tdMem.delete(tdMem.keys().next().value); };
 const tdRpc = (name, args) => {
   const ttl = TD_TTL[name] || 0, key = (S.me?.id || "") + "|" + name + "|" + JSON.stringify(args || {}), hit = ttl && tdMem.get(key);
   if (hit && Date.now() - hit.t < ttl) return Promise.resolve(hit.v);
   if (tdFly.has(key)) return tdFly.get(key);
-  const p = (async () => { try { const { data, error } = await sb.rpc(name, args); const v = { data, error, missing: tdRpcMissing(error) }; if (ttl && !error) tdMem.set(key, { t: Date.now(), v }); return v; } finally { tdFly.delete(key); } })();
+  const p = (async () => { try { const { data, error } = await sb.rpc(name, args); const v = { data, error, missing: tdRpcMissing(error) }; if (ttl && !error) { tdMem.set(key, { t: Date.now(), v }); tdTrim(); } return v; } finally { tdFly.delete(key); } })();
   tdFly.set(key, p); return p;
 };
 const tdPct = (a, b) => b ? Math.round(a * 1000 / b) / 10 : 0;
@@ -425,7 +431,7 @@ function tdOverviewView(d, h) {
       <button type="button" class="btn sm" data-go="recon">${bi("Reconciliation খুলুন", "Open Reconciliation")}</button></div>
     <div class="card" style="margin-top:12px"><h3 style="margin:0 0 8px">${bi("কোম্পানি ভিত্তিক সারসংক্ষেপ", "Company overview")}</h3><div class="tw"><table class="td-t"><thead><tr><th>${bi("কোম্পানি", "Company")}</th><th class="r">${bi("ফিল্টারে", "In filter")}</th><th class="r">${bi("মোট", "All time")}</th><th class="r">${bi("লেজার", "Ledgers")}</th><th class="r">${bi("বাতিল", "Cancelled")}</th><th>${bi("ডেটার সীমা", "Data range")}</th><th></th></tr></thead><tbody>${compRows || `<tr><td colspan="7" class="mut">—</td></tr>`}</tbody></table></div></div>
     <div class="card" style="margin-top:12px"><h3 style="margin:0 0 8px">${bi("আর্থিক রিপোর্ট", "Financial reports")}</h3><p class="mut sm" style="margin:0">${bi("Trial Balance, P&L, Balance Sheet, Receivable/Payable ageing", "Trial Balance, P&L, Balance Sheet, Receivable/Payable ageing")}: ${tdNA()} — ${bi("opening balance, লেজার গ্রুপ ও bill-wise তথ্য Tally থেকে আসে না। শূন্য বা আন্দাজ দেখানো হয় না।", "opening balances, ledger groups and bill-wise data are not mirrored from Tally. No zero or estimate is shown.")}</p></div>
-    <p class="mut xs" style="margin-top:10px">${bi("সর্বশেষ হালনাগাদ", "Last refreshed")}: ${tdTime(d.generated_at)} · ${bi("শুধু অ্যাডমিন; Tally-তে কিছু লেখা হয় না।", "Admins only; nothing is written to Tally.")}</p>`;
+    <p class="mut xs" style="margin-top:10px">${d.from_snapshot ? bi("সারাংশ তৈরি (প্রতি ১০ মিনিটে)", "Summary computed (every 10 min)") : bi("সর্বশেষ হালনাগাদ", "Last refreshed")}: ${tdTime(d.generated_at)} · ${bi("শুধু অ্যাডমিন; Tally-তে কিছু লেখা হয় না।", "Admins only; nothing is written to Tally.")}</p>`;
 }
 
 /* ---------- Companies (searchable, sortable) ---------- */
