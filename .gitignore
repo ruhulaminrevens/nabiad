@@ -21,6 +21,7 @@ tools/tally-bridge/update_backup/
 tools/tally-bridge/update_tmp/
 tools/tally-bridge/run_nightly.bat
 tools/tally-bridge/ui_settings.json
+tools/tally-bridge/overview_cache.json
 tools/tally-bridge/app_error_log.txt
 tools/tally-bridge/config.json.bak
 tools/tally-bridge/dist/

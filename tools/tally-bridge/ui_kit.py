@@ -93,7 +93,7 @@ STR = {
     "nav.logs": ("Activity & Logs", "কার্যকলাপ ও লগ"), "nav.settings": ("Settings", "সেটিংস"), "nav.help": ("Help & Guide", "সহায়তা ও গাইড"),
     "side.foot": ("Read-only Tally\nWindows Desktop", "Tally শুধু পড়া হয়\nWindows Desktop"),
     # page titles
-    "ov.title": ("Synchronization Overview", "সিঙ্ক ওভারভিউ"), "ov.sub": ("TallyPrime → Supabase · control center", "TallyPrime → Supabase · কন্ট্রোল সেন্টার"),
+    "ov.title": ("Overview", "ওভারভিউ"),
     "co.title": ("Company Manager", "কোম্পানি ম্যানেজার"), "co.sub": ("Choose which Tally companies are copied, and from which date", "কোন Tally কোম্পানি, কোন তারিখ থেকে কপি হবে তা ঠিক করুন"),
     "cn.title": ("Connections", "সংযোগ"), "cn.sub": ("Tally endpoint and database login (tested separately)", "Tally ঠিকানা ও database login (আলাদাভাবে পরীক্ষা)"),
     "sy.title": ("Sync Center", "সিঙ্ক সেন্টার"), "sy.sub": ("Read-only extraction from Tally, upload to Supabase", "Tally থেকে শুধু পড়া, Supabase-এ আপলোড"),
@@ -217,6 +217,60 @@ STR = {
     "tour.7.t": ("Nightly schedule", "রাতের শিডিউল"), "tour.7.b": ("Install the schedule once. It runs without this window. Keep the PC on or asleep and TallyPrime open with all companies loaded.", "শিডিউল একবার বসান। এটি এই window ছাড়াই চলে। PC চালু বা sleep-এ রাখুন, TallyPrime খোলা ও সব কোম্পানি load করা রাখুন।"),
     "tour.8.t": ("You are ready", "আপনি প্রস্তুত"), "tour.8.b": ("Open Help & Guide any time (F1) for troubleshooting. You can replay this tour from Settings.", "সমস্যা হলে যেকোনো সময় Help & Guide (F1) খুলুন। ট্যুর Settings থেকে আবার দেখা যাবে।"),
     "tour.step": ("Step {0} of {1}", "ধাপ {0} / {1}"),
+    # ---- Overview (control center)
+    "ov.sub": ("Sync health, live status and what needs you", "সিঙ্কের অবস্থা, live চিত্র ও যা করা দরকার"),
+    "ov.h.healthy": ("All {0} companies are synced.", "সব {0}টি কোম্পানি সিঙ্ক হয়েছে।"),
+    "ov.h.issues": ("{0} item(s) need your attention (see Action center).", "{0}টি বিষয়ে মনোযোগ দরকার (করণীয় কেন্দ্র দেখুন)।"),
+    "ov.h.running": ("Sync is running: {0} of {1} companies done.", "সিঙ্ক চলছে: {1}টির মধ্যে {0}টি কোম্পানি শেষ।"),
+    "ov.h.setup": ("Setup needed: save the database login in Connections, then run the first sync.", "সেটআপ দরকার: Connections-এ database login সেভ করে প্রথম সিঙ্ক চালান।"),
+    "kpi.cos.run": ("{0} syncing now", "{0}টি এখন সিঙ্ক হচ্ছে"),
+    "ov.h.nodata": ("Checking the database…", "database দেখা হচ্ছে…"),
+    "ov.h.dbdown": ("The database cannot be reached. Showing the last saved data.", "database পাওয়া যাচ্ছে না। শেষ সংরক্ষিত তথ্য দেখানো হচ্ছে।"),
+    "ov.t.last": (" Last sync {0}.", " শেষ সিঙ্ক {0}।"),
+    "ov.t.next": (" Next sync {0} (in {1}).", " পরের সিঙ্ক {0} ({1} পরে)।"),
+    "ov.t.nonext": (" No nightly schedule is installed.", " রাতের শিডিউল বসানো নেই।"),
+    "kpi.cos": ("Companies synced", "সিঙ্ক হওয়া কোম্পানি"), "kpi.cos.ok": ("all up to date", "সব হালনাগাদ"), "kpi.cos.bad": ("{0} need attention", "{0}টিতে মনোযোগ দরকার"),
+    "kpi.v": ("Vouchers in last run", "শেষ run-এ voucher"), "kpi.v.note": ("{0} · pending companies: {1}", "{0} · বাকি কোম্পানি: {1}"), "kpi.v.none": ("no run recorded yet", "এখনও কোনো run নেই"),
+    "kpi.issues": ("Open issues", "খোলা সমস্যা"), "kpi.issues.none": ("nothing to fix", "কিছু ঠিক করার নেই"), "kpi.issues.some": ("see Action center", "করণীয় কেন্দ্র দেখুন"),
+    "kpi.next": ("Next sync", "পরের সিঙ্ক"), "kpi.next.note": ("in {0} · schedule is on", "{0} পরে · শিডিউল চালু"), "kpi.next.none": ("Not scheduled", "শিডিউল নেই"),
+    "sec.pipe": ("Data pipeline", "ডেটা পাইপলাইন"), "pipe.tally": ("TallyPrime", "TallyPrime"), "pipe.engine": ("Bridge engine", "Bridge ইঞ্জিন"), "pipe.supa": ("Supabase", "Supabase"),
+    "eng.running": ("Syncing {0}/{1}", "সিঙ্ক {0}/{1}"), "eng.idle": ("Idle", "অপেক্ষায়"),
+    "sec.live": ("Live sync", "Live সিঙ্ক"), "sec.integrity": ("Data integrity", "ডেটার নির্ভরযোগ্যতা"), "sec.trend": ("Sync trend · last 7 days", "সিঙ্ক ট্রেন্ড · শেষ ৭ দিন"),
+    "sec.recent": ("Recent activity", "সাম্প্রতিক কার্যকলাপ"), "sec.actions": ("Action center", "করণীয় কেন্দ্র"),
+    "col.age": ("Age", "বয়স"), "col.lastshort": ("Last sync", "শেষ সিঙ্ক"), "col.vshort": ("Vouchers", "Voucher"),
+    "st.syncing": ("Syncing", "সিঙ্ক চলছে"), "st.stale": ("Stale", "পুরোনো"), "st.failed": ("Failed", "ব্যর্থ"), "st.never": ("Not synced yet", "এখনও সিঙ্ক হয়নি"),
+    "ago.now": ("just now", "এইমাত্র"), "ago.m": ("{0} min ago", "{0} মিনিট আগে"), "ago.h": ("{0} h ago", "{0} ঘণ্টা আগে"), "ago.d": ("{0} d ago", "{0} দিন আগে"),
+    "when.today": ("today {0}", "আজ {0}"), "when.yday": ("yesterday {0}", "গতকাল {0}"),
+    "dur.hm": ("{0} h {1} m", "{0} ঘ {1} মি"), "dur.m": ("{0} min", "{0} মিনিট"),
+    "live.syncing": ("Syncing", "সিঙ্ক চলছে"), "live.now": ("Now: {0}", "এখন: {0}"), "live.wait": ("Waiting for Tally or the next company…", "Tally বা পরের কোম্পানির অপেক্ষায়…"),
+    "live.stats": ("{0} vouchers read · {1} min elapsed{2}", "{0} voucher পড়া · {1} মিনিট গেছে{2}"), "live.eta": (" · about {0} min left", " · আর প্রায় {0} মিনিট"),
+    "live.last": ("Last run", "শেষ run"), "live.l1": ("{0} · {1}", "{0} · {1}"), "live.l2": ("{0} of {1} companies OK · {2} vouchers", "{1}টির মধ্যে {0}টি OK · {2} voucher"),
+    "live.none": ("No run recorded yet.", "এখনও কোনো run নেই।"), "live.stopreq": ("Stop requested. The run ends after the current batch.", "থামার অনুরোধ গেছে। বর্তমান batch-এর পর run শেষ হবে।"),
+    "ic.coverage": ("Every selected company has a sync record", "প্রতিটি নির্বাচিত কোম্পানির সিঙ্ক রেকর্ড আছে"), "ic.coverage.bad": ("{0} company(ies) never synced", "{0}টি কোম্পানি কখনো সিঙ্ক হয়নি"),
+    "ic.fresh": ("All companies synced in the last 30 hours", "সব কোম্পানি গত ৩০ ঘণ্টায় সিঙ্ক হয়েছে"), "ic.fresh.bad": ("{0} company(ies) older than 30 hours", "{0}টি কোম্পানি ৩০ ঘণ্টার বেশি পুরোনো"),
+    "ic.nofail": ("No unresolved failed runs", "কোনো অমীমাংসিত ব্যর্থ run নেই"), "ic.nofail.bad": ("{0} company(ies) failed on the latest run", "{0}টি কোম্পানি সর্বশেষ run-এ ব্যর্থ"),
+    "ic.data": ("Company data checks passed", "কোম্পানির ডেটা-যাচাই পাশ"), "ic.data.bad": ("{0} failed the data check (wrong company data)", "{0}টি ডেটা-যাচাইয়ে ব্যর্থ (ভুল কোম্পানির ডেটা)"),
+    "tr.none": ("No history yet.", "এখনও ইতিহাস নেই।"), "tr.legend": ("Company syncs per day: OK / failed. Hover a bar for vouchers.", "প্রতিদিন কোম্পানি-সিঙ্ক: OK / ব্যর্থ। voucher দেখতে bar-এ hover করুন।"),
+    "tr.tip": ("{0}: {1} OK, {2} failed, {3} vouchers", "{0}: {1} OK, {2} ব্যর্থ, {3} voucher"),
+    "ra.ok": ("{0} · {1} vouchers", "{0} · {1} voucher"), "ra.fail": ("{0} failed", "{0} ব্যর্থ"), "ra.none": ("No activity yet.", "এখনও কোনো কার্যকলাপ নেই।"),
+    "ac.none": ("Nothing needs your attention.", "মনোযোগ দেওয়ার মতো কিছু নেই।"),
+    "ac.config": ("The saved configuration could not be read. Restore it in Settings.", "সংরক্ষিত কনফিগারেশন পড়া যায়নি। Settings থেকে রিস্টোর করুন।"),
+    "ac.login": ("No database login is saved. Open Connections and save the login.", "database login সেভ করা নেই। Connections খুলে login সেভ করুন।"), "ac.b.login": ("Open Connections", "Connections খুলুন"),
+    "ac.db": ("The database cannot be reached ({0}). The page shows the last saved data.", "database পাওয়া যাচ্ছে না ({0})। শেষ সংরক্ষিত তথ্য দেখানো হচ্ছে।"), "ac.b.check": ("Check again", "আবার দেখুন"),
+    "ac.tally": ("Tally is not answering. Open TallyPrime and load the companies before the nightly time.", "Tally সাড়া দিচ্ছে না। রাতের সময়ের আগে TallyPrime খুলে কোম্পানিগুলো load করুন।"),
+    "ac.sched_none": ("No nightly schedule is installed.", "রাতের শিডিউল বসানো নেই।"), "ac.b.sched": ("Open Scheduler", "Scheduler খুলুন"),
+    "ac.failed": ("Failed on the latest run: {0}.", "সর্বশেষ run-এ ব্যর্থ: {0}।"), "ac.b.sync": ("Open Sync Center", "Sync Center খুলুন"),
+    "ac.never": ("Not synced yet: {0}.", "এখনও সিঙ্ক হয়নি: {0}।"), "ac.stale": ("Older than 30 hours: {0}.", "৩০ ঘণ্টার বেশি পুরোনো: {0}।"),
+    "ac.nocompany": ("No company is selected. Open Company Manager.", "কোনো কোম্পানি নির্বাচিত নেই। Company Manager খুলুন।"), "ac.b.co": ("Open Company Manager", "Company Manager খুলুন"),
+    "ft.refreshed": ("Last refreshed {0}", "শেষ রিফ্রেশ {0}"), "ft.cached": ("Saved data from {0}, refreshing…", "{0}-এর সংরক্ষিত তথ্য, রিফ্রেশ হচ্ছে…"),
+    "ft.stale": ("Data may be out of date (last refreshed {0})", "তথ্য পুরোনো হতে পারে (শেষ রিফ্রেশ {0})"),
+    "ft.db.ok": ("Database: connected", "Database: সংযুক্ত"), "ft.db.bad": ("Database: not reachable", "Database: পাওয়া যাচ্ছে না"), "ft.db.unk": ("Database: not checked yet", "Database: এখনও দেখা হয়নি"),
+    "ft.ver": ("Installed v{0}", "ইনস্টল করা v{0}"),
+    "pill.healthy": ("Healthy", "সুস্থ"), "pill.attn": ("Needs attention", "মনোযোগ দরকার"), "pill.checking": ("Checking", "দেখা হচ্ছে"),
+    "b.refresh_ov": ("Refresh", "রিফ্রেশ"),
+    "set.numfmt": ("Number format", "সংখ্যার ফরম্যাট"), "set.numfmt.in": ("1,23,456 (lakh / crore)", "1,23,456 (লাখ / কোটি)"), "set.numfmt.intl": ("123,456 (international)", "123,456 (আন্তর্জাতিক)"),
+    "set.refresh": ("Overview auto-refresh", "Overview স্বয়ংক্রিয় রিফ্রেশ"), "set.refresh.0": ("Off", "বন্ধ"), "set.refresh.30": ("Every 30 seconds", "প্রতি ৩০ সেকেন্ডে"),
+    "set.refresh.60": ("Every minute", "প্রতি মিনিটে"), "set.refresh.300": ("Every 5 minutes", "প্রতি ৫ মিনিটে"),
 }
 
 HELP = [  # (title EN, title BN, body EN, body BN)
@@ -293,6 +347,54 @@ class Alert(QFrame):
 
     def retheme(self, p):
         self.set(self._kind, self.tx.text(), p)
+
+
+class Bars(QWidget):
+    """Tiny stacked bar chart: one bar per day (OK on the bottom, failed on top). Hover a bar for its details."""
+    def __init__(self, p=DARK):
+        super().__init__()
+        self.p = p; self.days = []; self._rects = []
+        self.setMinimumHeight(132); self.setMouseTracking(True)
+
+    def set_data(self, days, p=None):
+        """days: list of dict(label, ok, failed, tip)."""
+        self.days = days
+        if p is not None:
+            self.p = p
+        self.update()
+
+    def paintEvent(self, _):
+        qp = QPainter(self); qp.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        lab_h, top = 18, 8
+        base = h - lab_h
+        n = max(1, len(self.days))
+        slot = w / n; bw = min(34.0, slot * 0.56)
+        peak = max([d["ok"] + d["failed"] for d in self.days] + [1])
+        qp.setPen(QPen(QColor(self.p["line"]), 1)); qp.drawLine(0, base, w, base)
+        self._rects = []
+        f = qp.font(); f.setPixelSize(FS["caption"]); qp.setFont(f)
+        for i, d in enumerate(self.days):
+            x = i * slot + (slot - bw) / 2
+            tot = d["ok"] + d["failed"]
+            full = base - top
+            hh_ok = full * d["ok"] / peak; hh_bad = full * d["failed"] / peak
+            if tot == 0:
+                qp.setPen(Qt.NoPen); qp.setBrush(QColor(self.p["line"])); qp.drawRoundedRect(QRectF(x, base - 4, bw, 4), 2, 2)
+            else:
+                qp.setPen(Qt.NoPen)
+                if d["ok"]:
+                    qp.setBrush(QColor(self.p["green"])); qp.drawRoundedRect(QRectF(x, base - hh_ok, bw, hh_ok), 3, 3)
+                if d["failed"]:
+                    qp.setBrush(QColor(self.p["red"])); qp.drawRoundedRect(QRectF(x, base - hh_ok - hh_bad, bw, hh_bad), 3, 3)
+            qp.setPen(QColor(self.p["muted"])); qp.drawText(QRectF(i * slot, base + 2, slot, lab_h), Qt.AlignCenter, d["label"])
+            self._rects.append((QRectF(i * slot, 0, slot, h), d.get("tip", "")))
+        qp.end()
+
+    def mouseMoveEvent(self, e):
+        tip = next((tp for r, tp in self._rects if r.contains(e.position())), "")
+        if tip != self.toolTip():
+            self.setToolTip(tip)
 
 
 class Toast(QFrame):
