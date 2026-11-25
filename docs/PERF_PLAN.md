@@ -219,3 +219,69 @@ Note: the old recon_cash paging was not deterministic when rows tie (same date/t
 - Server-side column sorting for the explorers (needs new RPC parameters; the server order is date desc / amount desc).
 - Saved named filters (recent searches cover the common case); PDF export (Print works, Excel is the full-data export).
 - Opening balances, group hierarchy, bill-wise, stock: not mirrored by the Bridge, so no financial statements are shown (Readiness Center explains each).
+
+---
+## Update 2026-11-26 (after midnight): completion gate, PWA delivery, accounting re-validation
+
+**Performance Stabilization is NOT complete.** PR #162 and #163 are merged (main = v6.178). Gate status:
+
+| Gate | Status |
+|---|---|
+| Both reconciliation timeouts fixed **in production** | **Open.** Fix is validated (rolled-back test, identical output) but `schema_tally_perf_v4.sql` is not applied: it needs the owner's explicit migration "yes" (see checklist below). A direct-database result never closes a UI/RPC problem; it is closed only when the production capture shows `tally_recon_cash` and `tally_balance_check` with no suspected timeouts. |
+| Corrected authenticated browser capture | **Open.** Capture tool v2 is ready (`tools/perf-capture.js`, `docs/PERF_MEASURE.md`); the owner has not run it on production yet. |
+| Performance targets verified on production | **Open** (depends on the capture). |
+| PWA update consistency | Mechanism verified, one hardening change made (below); consistency on production is confirmed by `NabiadPerf.versions()`, **open until the owner runs it**. |
+| Accounting validation | **Done** (below). |
+| Module regression tests | Pass: crawl, all-module UI, ledger, Tally full-path (0 console errors on desktop/phone/dark+Bangla), browser bench, capture self-test, CI. |
+
+### Capture tool v2 (what changed and why)
+The v1 total included its own 700 ms quiet window, so it could not show the 200 ms target. v2: `usable_ms` (skeleton gone + text present + next paint; no quiet wait) is separate from `network_settled_ms`; it checks the intended route/tab really became active (an inaccessible page is *incomplete*, not fast); distinguishes `cold_startup`, `first_visit`, `warm_revisit`, `tab_first`, `tab_cached`; counts in-flight requests with a fetch wrapper (path + status + duration only); keeps its own resource list so the 250-entry Resource Timing buffer cannot lose data (and says when it already overflowed); reports timeouts, never-finished requests and rendered error boxes as incomplete, excluded from p50/p95; 20 samples per cached case (`p95_reliable` flag); redacts query strings, ids and storage paths; reports app version, CDN `index.html`, CDN `sw.js`, the **active service worker's own version** and cache names separately; covers every Tally tab and every Reconciliation sub-tab plus Cash Book, Cash Register, Cheque Posting, Bank Closing, Collection, Inventory. It is read-only: it never saves, types, cancels or deletes. The old advice to create "harmless test entries" in production was removed; save timings are measured on staging or by timing a genuine entry by hand. Self-test: `tools/perf-capture-selftest.py` (demo build, synthetic data; it also exposed a demo-only never-ending skeleton on the Sync tab, fixed).
+
+### PWA stale `sw.js`: investigation (response headers, read from the user's own browser)
+`https://app.nabiad.com/`, `/index.html`, `/sw.js` and the versioned scripts all answered `server: GitHub.com`, `via: 1.1 varnish`, `x-served-by: cache-ccu…` (Fastly), `cache-control: max-age=600`, `expires` = +10 min, `age: 0`, `x-cache: MISS` then `HIT`. There was **no** `cf-ray` / `cf-cache-status` / `server: cloudflare`: **Cloudflare is not in the delivery path** (DNS only). My earlier advice to purge Cloudflare and add a bypass rule was based on an assumption and is withdrawn.
+- Layer that caches: the GitHub Pages CDN (Fastly) and, for 10 minutes, the browser HTTP cache. GitHub Pages does not allow custom headers, so `Cache-Control` cannot be changed there.
+- Bounded worst case: a file can be up to 10 minutes old at the edge after a deploy. Right after the v6.178 merge the edge still served 6.177 (deploy lag plus the 10-minute window).
+- The earlier observation of an hour-old `sw.js` is **not explained** by these headers (max 10 min); the likely cause was the fetch tool's own 15-minute cache. It could not be reproduced, so no claim is made beyond that.
+- Existing protections (verified in code): `register("sw.js", {updateViaCache:"none"})`; the update check fetches `index.html?u=<time>` (a different CDN cache key) every 3 min and on focus; the service-worker install **fails and retries** if the shell it fetches does not name the same release as the worker (so a stale CDN copy can never be installed as the new release); navigations use `no-cache`; a switch to the new version happens only when nothing is typed and the outbox is idle; nothing in this flow touches `localStorage`, IndexedDB or the offline outbox.
+- Hardening added in v6.179: the install-time shell fetch now uses a unique query string (ignored by Pages, different CDN key) so verification always sees the live `index.html` instead of the 10-minute-old copy; previously a install that raced a deploy failed and waited for the next check. No browser storage is cleared.
+- Permanent options: (1) **current**: the above; staleness is bounded to ≤ 10 min and self-heals, with no cost. (2) Optional, owner decision: proxy the domain through Cloudflare (free plan) with a Cache Rule "Bypass cache" for `/`, `/index.html`, `/sw.js` and `Edge TTL: respect origin` for versioned `?v=` files. This gives immediate freshness but changes DNS and adds a component; not done. Verify any time with `NabiadPerf.versions()` (`consistent_release`).
+
+### Accounting validation (read-only, re-run after Detergent Factory and Lalmatia Depo were rewritten)
+Run at 2026-11-26 about 00:55 Dhaka (18:55 UTC). Source: `tally_vouchers` excluding cancelled and deleted; voucher balanced when the sum of its ledger entries (debit negative) has |sum| < 0.01. Source Bridge engine **0.3.2** for all nine companies (latest successful run per company: 2026-11-25 18:18-18:35 UTC; the desktop app shows Data Bridge 1.2.2, idle, 9/9 synced). No source row was modified.
+
+| Company | Vouchers | Balanced | Unbalanced | No entries (stock) | Coverage |
+|---|---:|---:|---:|---:|---|
+| Nabiad-Cash & Bank | 95,313 | 95,079 | 0 | 234 | 2023-01-01 → 2026-11-24 |
+| Nabiad Distribution Ltd. | 28,450 | 28,444 | 0 | 6 | 2023-01-01 → 2026-11-25 |
+| Nabiad-ChawkBazar-2026 | 5,068 | 5,047 | 0 | 21 | 2026-01-01 → 2026-11-25 |
+| Nabiad Savar Coil Factory | 64,936 | 49,518 | 0 | 15,418 | 2023-01-01 → 2026-11-24 |
+| Niramoy Traders- Naogaon | 112,900 | 112,879 | 0 | 21 | 2023-01-01 → 2026-11-24 |
+| N.Zaman Ch. | 418 | 418 | 0 | 0 | 2026-01-01 → 2026-11-22 |
+| N.Zaman Veg. Cr. | 483 | 482 | 0 | 1 | 2026-01-01 → 2026-11-24 |
+| Nabiad Detergent Factory | 680 | 333 | 0 | 347 | 2026-01-01 → 2026-11-24 |
+| Lalmatia Depo | 10,456 | 10,455 | 0 | 1 | 2024-07-01 → 2026-11-24 |
+| **Total** | **318,704** | **302,655** | **0** | **16,049** | |
+
+By voucher type: Payment 89,843, Sales 73,080, Receipt 57,177, Journal 54,823, Purchase 23,727, Credit Note 3,436, Debit Note 338, Sales Order 231: all balanced. Excluded as stock-only (no ledger entries, amount 0): Mixture (BoM) 7,048, Finish Goods 5,141, EX-Mixture 2,791, Stock Journal 818, Finished Good (BoM) 244, Physical Stock 7 (= 16,049). No voucher of an accounting type has empty entries. The earlier 1,233 foreign-currency imbalances (Bridge 0.3.0 rows) are gone, so 0.3.2 rewrote them correctly. Limit of this check: it proves each voucher's lines sum to zero, not that the ledger balances agree with Tally's reports (opening balances and groups are not mirrored).
+
+### Before 1,000,000 voucher rows (now 318,704 non-deleted; ≈ 3x headroom)
+Re-evaluate each item when the first trigger trips (numbers from the staging benchmark, a development guide, not a capacity guarantee):
+
+| Item | Trigger to start work | Direction |
+|---|---|---|
+| Ledger-entry normalization (one row per line) | ≥ 700k vouchers, or live ledger search p95 > 800 ms on production, or entries scans > 3 s | normalized table filled by the Bridge upsert; `entries` stays as source until verified identical |
+| Incremental accounting validation | full `tally_balance_compute` > 3 s, or snapshot refresh > 60 s | validate only vouchers with `synced_at` newer than the last run; keep a monthly full run |
+| Indexed text search | voucher text search p95 > 500 ms, or ≥ 600k rows | trigram index on vno/narration (measure index size and write cost on staging first) |
+| Incremental reconciliation summaries | `tally_recon_refresh` > 30 s | recompute only months touched since the last run |
+| Snapshot refresh performance | any refresh > 20 % of its cron interval (overview 10 min, recon 30 min) | log duration per run (`tally_snapshot.refreshed_at` + cron history), alert on growth |
+| Separate heavy reporting from operations | the 8 s statement timeout is hit by any interactive RPC, or Bridge upserts slow cash/cheque screens | read replica or a reporting schema; **needs owner cost approval** |
+No infrastructure cost is incurred without approval.
+
+### Migration safety checklist (replaces the earlier rule; the "Bridge idle" check was wrong because runs are logged only when a company finishes)
+Before **any** production migration all must be true and recorded in the handover:
+1. The owner explicitly confirms in chat that the Bridge Sync Center is idle (screenshot of Live sync "Idle" acceptable) **and** gives a separate explicit "yes" for the named migration. A quote of my own question is not an approval.
+2. No active sync or conflicting job: no running scheduled run (next-run time shown by the Bridge), and `pg_cron` / `pg_stat_activity` show no long statement on `tally_vouchers`.
+3. A fresh successful database backup exists (latest `offsite_backup_runs` row ok and recent; Supabase backup list).
+4. Affected function and policy definitions are saved in a backup table (`fn_backup_<date>`, `policy_backup_<date>`: RLS on, no client grants).
+5. Rollback SQL is in the migration header and was executed successfully inside a rolled-back transaction on production data.
+6. Results of the rolled-back test (identical output, role tests for admin/staff/boss/anon) are shown to the owner before the apply.
