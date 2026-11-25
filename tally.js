@@ -1,7 +1,7 @@
-/* NABIAD — TALLY DASHBOARD (v6.170) — admin only.
+/* NABIAD — TALLY DASHBOARD (v6.172) — admin only. Tabs: Overview (sync state) and Voucher Explorer (search the mirrored vouchers).
    Shows the state of the read-only TallyPrime → Supabase mirror (written by the NABIAD DATA BRIDGE desktop app).
    Loaded after app.js and inv.js; uses their helpers (head, bi, esc, ico, money0, dmy, toast, ROUTES, API, DEMO, sb).
-   Data comes from one admin-only RPC (schema_tally_dashboard.sql). Nothing here writes to the database. */
+   Data comes from admin-only RPCs (schema_tally_dashboard.sql, schema_tally_explorer.sql). Nothing here writes to the database. */
 "use strict";
 
 Object.assign(ROUTES, {
@@ -44,10 +44,28 @@ async function tdLoad() {
 }
 
 async function vTallyDash(v) {
-  let gone = false;
+  const tabs = [["overview", "dash", bi("সারসংক্ষেপ", "Overview"), tdOverview], ["vouchers", "search", bi("ভাউচার খুঁজুন", "Voucher Explorer"), tdVouchers]];
+  let tab = "overview", cleanup = null, reload = () => {}, epoch = 0;
   v.innerHTML = head(bi("ট্যালি ড্যাশবোর্ড", "Tally Dashboard"), `<button class="btn" type="button" id="td-refresh">${ico("refresh")} ${bi("রিফ্রেশ", "Refresh")}</button>`) +
-    `<div id="td-out" aria-live="polite"></div>`;
-  const out = $("#td-out", v);
+    `<div class="tabs ntabs as-tabs" role="group" aria-label="${bi("ট্যালি ড্যাশবোর্ডের বিভাগ", "Tally Dashboard sections")}">${tabs.map(([k, ic, l]) => `<button type="button" class="chip" data-td-tab="${k}" aria-controls="td-out" aria-pressed="false">${ico(ic)} ${l}</button>`).join("")}</div><div id="td-out" aria-live="polite"></div>`;
+  const out = $("#td-out", v), btns = $$("[data-td-tab]", v);
+  async function open(k) {
+    const my = ++epoch; cleanup?.(); cleanup = null; tab = k;
+    btns.forEach(b => { const on = b.dataset.tdTab === k; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); });
+    out.innerHTML = "";
+    const r = await tabs.find(t => t[0] === k)[3](out);
+    if (my !== epoch) { r?.cleanup?.(); return; }
+    cleanup = r?.cleanup || null; reload = r?.reload || (() => {});
+  }
+  btns.forEach(b => b.onclick = () => { if (b.dataset.tdTab !== tab) open(b.dataset.tdTab); });
+  $("#td-refresh", v).onclick = () => { Promise.resolve(reload()).then(() => toast(bi("রিফ্রেশ হয়েছে", "Refreshed"), "info")); };
+  await open("overview");
+  return () => { epoch++; cleanup?.(); };
+}
+
+/* ---------- Overview tab (the v6.170 page) ---------- */
+async function tdOverview(out) {
+  let gone = false;
   async function load() {
     out.innerHTML = `<div class="card"><div class="skel" style="width:40%"></div><div class="skel" style="margin-top:12px"></div><div class="skel" style="margin-top:12px;width:70%"></div></div>`;
     let r;
@@ -56,12 +74,14 @@ async function vTallyDash(v) {
     if (r.error) { out.innerHTML = tdError(r); return; }
     out.innerHTML = tdView(r.data, r.demo);
   }
-  $("#td-refresh", v).onclick = () => { load().then(() => { if (!gone) toast(bi("রিফ্রেশ হয়েছে", "Refreshed"), "info"); }); };
   await load();
-  return () => { gone = true; };
+  return { reload: load, cleanup: () => { gone = true; } };
 }
 
 function tdError(r) {
+  if (r.missing && r.explorer) return `<div class="alert am" role="alert"><span>⚠ <b>${bi("ভাউচার খোঁজার ফাংশন এখনো বসানো হয়নি", "The voucher search functions are not installed yet")}</b> — ${bi(
+    "অ্যাডমিন যখন চাইবেন, Supabase SQL Editor-এ আগে <code>select make_backup('manual');</code> চালিয়ে ব্যাকআপ নিন, তারপর <code>schema_tally_explorer.sql</code> চালান। এটি কোনো টেবিল বা ডেটা বদলায় না।",
+    "when you are ready, run <code>select make_backup('manual');</code> in the Supabase SQL Editor first, then <code>schema_tally_explorer.sql</code>. It creates no table and changes no data.")}</span></div>`;
   if (r.missing) return `<div class="alert am" role="alert"><span>⚠ <b>${bi("ড্যাশবোর্ডের ফাংশন এখনো বসানো হয়নি", "The dashboard function is not installed yet")}</b> — ${bi(
     "অ্যাডমিন যখন চাইবেন, Supabase SQL Editor-এ আগে <code>select make_backup('manual');</code> চালিয়ে ব্যাকআপ নিন, তারপর <code>schema_tally_dashboard.sql</code> চালান। এটি কোনো টেবিল বা ডেটা বদলায় না।",
     "when you are ready, run <code>select make_backup('manual');</code> in the Supabase SQL Editor first, then <code>schema_tally_dashboard.sql</code>. It creates no table and changes no data.")}</span></div>`;
@@ -100,4 +120,118 @@ function tdView(d, demo) {
     <div class="card" style="margin-top:12px"><h3 style="margin:0 0 8px">${bi("সাম্প্রতিক সিঙ্ক (শেষ ৪০টি)", "Recent sync runs (last 40)")}</h3>
       <div class="tw"><table class="td-t"><thead><tr><th>${bi("শুরু (ঢাকা)", "Started (Dhaka)")}</th><th>${bi("কোম্পানি", "Company")}</th><th>${bi("সময়কাল", "Period")}</th><th class="r">${bi("ভাউচার", "Vouchers")}</th><th>${bi("ফল", "Result")}</th><th>${bi("ত্রুটি", "Error")}</th></tr></thead><tbody>${runRows || `<tr><td colspan="6" class="mut">—</td></tr>`}</tbody></table></div></div>
     <p class="mut xs" style="margin-top:10px">${bi("শুধু অ্যাডমিন দেখতে পারেন। এই ডেটা TallyPrime থেকে শুধু-পড়া কপি; এখান থেকে Tally বা ডেটা বদলানো যায় না।", "Visible to admins only. This is a read-only copy of TallyPrime; nothing here changes Tally or the data.")}</p>`;
+}
+
+
+/* ======================= Voucher Explorer ======================= */
+const TD_PAGE = 50, TD_EXPORT_MAX = 5000;
+const tdDhaka = () => new Date(Date.now() + 6 * 36e5).toISOString().slice(0, 10);
+
+/* demo: fictional vouchers filtered in the browser (demo mode has no Supabase) */
+function tdDemoVouchers() {
+  if (tdDemoVouchers.c) return tdDemoVouchers.c;
+  const cos = ["Alpha Trading Co", "Beta Distribution Ltd.", "Gamma Factory"], types = ["Sales", "Receipt", "Payment", "Journal", "Purchase"],
+    parties = ["Rahim Traders", "Karim Store", "Sunrise Enterprise", "Green Mart", "City Hardware"], rows = [], base = Date.parse(tdDhaka());
+  for (let i = 0; i < 240; i++) {
+    const t = types[i % types.length], p = parties[(i * 3) % parties.length], amt = 1000 + ((i * 7919) % 90000), d = new Date(base - Math.floor(i / 6) * 864e5).toISOString().slice(0, 10);
+    const e = t === "Sales" ? [{ ledger: p, amount: -amt }, { ledger: "Sales Account", amount: amt }] : t === "Purchase" ? [{ ledger: "Purchase Account", amount: -amt }, { ledger: p, amount: amt }]
+      : t === "Receipt" ? [{ ledger: "Cash", amount: -amt }, { ledger: p, amount: amt }] : [{ ledger: p, amount: -amt }, { ledger: "Bank Account", amount: amt }];
+    rows.push({ company: cos[i % 3], guid: "demo-" + i, vdate: d, vtype: t, vno: String(1000 + i), narration: i % 4 === 0 ? "Demo narration " + i : null, amount: amt, entries: e, counter_company: i % 37 === 0 ? cos[(i + 1) % 3] : null, cancelled: i % 53 === 0 });
+  }
+  return (tdDemoVouchers.c = rows);
+}
+async function tdVFilters() {
+  if (DEMO) { const r = tdDemoVouchers(), cnt = k => Object.entries(r.reduce((a, x) => (a[x[k]] = (a[x[k]] || 0) + 1, a), {})).map(([n, c]) => [n, c]).sort((a, b) => b[1] - a[1]);
+    return { data: { companies: cnt("company").map(([company, n]) => ({ company, n })), types: cnt("vtype").map(([vtype, n]) => ({ vtype, n })) } }; }
+  const { data, error } = await sb.rpc("tally_voucher_filters"); return { data, error };
+}
+async function tdVSearch(f, offset, limit = TD_PAGE) {
+  if (DEMO) {
+    const q = (f.q || "").toLowerCase(), all = tdDemoVouchers().filter(x => (!f.company || x.company === f.company) && (!f.vtype || x.vtype === f.vtype) && (!f.from || x.vdate >= f.from) && (!f.to || x.vdate <= f.to) && (f.cancelled || !x.cancelled)
+      && (!q || (x.vno + " " + (x.narration || "") + " " + JSON.stringify(x.entries)).toLowerCase().includes(q))).sort((a, b) => b.vdate.localeCompare(a.vdate));
+    return { data: { total: all.length, rows: all.slice(offset, offset + limit), limit, offset } };
+  }
+  const { data, error } = await sb.rpc("tally_voucher_search", { p_q: f.q || null, p_company: f.company || null, p_vtype: f.vtype || null, p_from: f.from || null, p_to: f.to || null, p_include_cancelled: !!f.cancelled, p_limit: limit, p_offset: offset });
+  return { data, error };
+}
+const tdRpcMissing = e => e && (e.code === "PGRST202" || /could not find the function|does not exist/i.test(e.message || ""));
+/* Tally exports a debit as a negative amount */
+const tdEntryText = e => `${e.ledger} ${e.amount < 0 ? "Dr" : "Cr"} ${money0(Math.abs(e.amount))}`;
+function tdParty(x) {
+  const names = [...new Set((x.entries || []).map(e => e.ledger).filter(Boolean))];
+  if (!names.length) return `<span class="mut">—</span>`;
+  return esc(names.slice(0, 2).join(" · ")) + (names.length > 2 ? ` <span class="mut xs">+${names.length - 2}</span>` : "");
+}
+function tdVDetail(x) {
+  const es = x.entries || [];
+  const rows = es.map(e => `<tr><td>${esc(e.ledger)}</td><td class="r num">${e.amount < 0 ? money0(-e.amount) : ""}</td><td class="r num">${e.amount > 0 ? money0(e.amount) : ""}</td></tr>`).join("");
+  return `<div class="td-vd"><div class="mut sm">${esc(x.company)}${x.counter_company ? " ⇄ " + esc(x.counter_company) : ""} · ${esc(x.vtype || "—")} #${esc(x.vno || "—")} · ${dmy(x.vdate)}</div>
+    ${x.narration ? `<p class="sm" style="margin:6px 0">${esc(x.narration)}</p>` : ""}
+    <table class="td-t"><thead><tr><th>${bi("লেজার", "Ledger")}</th><th class="r">${bi("ডেবিট", "Debit")}</th><th class="r">${bi("ক্রেডিট", "Credit")}</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="mut">${bi("কোনো লাইন কপি হয়নি", "No entry lines were mirrored")}</td></tr>`}</tbody></table></div>`;
+}
+
+async function tdVouchers(out) {
+  let gone = false, epoch = 0, offset = 0, last = null, rows = [];
+  const f = { q: "", company: "", vtype: "", from: tdDhaka().slice(0, 8) + "01", to: tdDhaka(), cancelled: true };
+  out.innerHTML = `<div class="card"><div class="skel" style="width:40%"></div></div>`;
+  const fl = await tdVFilters();
+  if (gone || !out.isConnected) return {};
+  if (fl.error) { out.innerHTML = tdError({ error: fl.error, missing: tdRpcMissing(fl.error), explorer: true }); return { cleanup: () => { gone = true; } }; }
+  const opt = (val, lab, cur) => `<option value="${esc(val)}" ${val === cur ? "selected" : ""}>${esc(lab)}</option>`;
+  out.innerHTML = `${DEMO ? `<div class="alert am" style="margin-bottom:10px"><span>⚠ <b>${bi("DEMO মোড", "DEMO mode")}</b> — ${bi("কাল্পনিক ডেটা।", "fictional data.")}</span></div>` : ""}
+    <form class="card td-vf" id="td-vf" role="search">
+      <div class="td-vq"><label class="f" for="td-q">${bi("খুঁজুন", "Search")}</label><input class="in" id="td-q" type="search" autocomplete="off" maxlength="100" placeholder="${bi("ভাউচার নম্বর, লেজার/পার্টি, narration…", "Voucher no, ledger/party, narration…")}"></div>
+      <div><label class="f" for="td-co">${bi("কোম্পানি", "Company")}</label><select class="in" id="td-co">${opt("", bi("সব কোম্পানি", "All companies"), "")}${(fl.data.companies || []).map(c => opt(c.company, c.company, "")).join("")}</select></div>
+      <div><label class="f" for="td-ty">${bi("ধরন", "Voucher type")}</label><select class="in" id="td-ty">${opt("", bi("সব ধরন", "All types"), "")}${(fl.data.types || []).map(t => opt(t.vtype, t.vtype || bi("(ধরন নেই)", "(no type)"), "")).join("")}</select></div>
+      <div><label class="f" for="td-fr">${bi("থেকে", "From")}</label><input class="in" id="td-fr" type="date" value="${f.from}"></div>
+      <div><label class="f" for="td-to">${bi("পর্যন্ত", "To")}</label><input class="in" id="td-to" type="date" value="${f.to}"></div>
+      <label class="td-ck"><input type="checkbox" id="td-cx" checked> ${bi("বাতিল ভাউচারসহ", "Include cancelled")}</label>
+      <div class="td-vb"><button class="btn pri" type="submit">${ico("search")} ${bi("খুঁজুন", "Search")}</button><button class="btn" type="button" id="td-clr">${bi("মুছুন", "Clear")}</button></div>
+    </form>
+    <div class="card" style="margin-top:12px"><div class="td-vh"><div id="td-cnt" class="mut sm"></div><button class="btn" type="button" id="td-xl">${ico("dl")} ${bi("এক্সেল", "Excel")}</button></div>
+      <div class="tw"><table class="td-t td-vt"><thead><tr><th>${bi("তারিখ", "Date")}</th><th>${bi("ধরন", "Type")}</th><th>${bi("নং", "No.")}</th><th>${bi("লেজার / পার্টি", "Ledger / Party")}</th><th class="r">${bi("পরিমাণ", "Amount")}</th><th>${bi("কোম্পানি", "Company")}</th><th>${bi("অবস্থা", "Status")}</th></tr></thead><tbody id="td-body"></tbody></table></div>
+      <div class="td-pg"><button class="btn" type="button" id="td-pv">‹ ${bi("আগে", "Prev")}</button><span id="td-pi" class="mut sm"></span><button class="btn" type="button" id="td-nx">${bi("পরে", "Next")} ›</button></div>
+      <p class="mut xs" style="margin:10px 0 0">${bi("ChawkBazar-2026 ও Cash & Bank-এ কিছু ভাউচার দুই কোম্পানিতেই থাকায় ‘সব কোম্পানি’ দেখলে একই ভাউচার দুবার আসতে পারে। দ্রুত ফলের জন্য তারিখ বা কোম্পানি দিয়ে সীমিত করুন; পুরো ইতিহাসে লেখা খুঁজতে কয়েক সেকেন্ড লাগতে পারে।", "Some vouchers exist in both ChawkBazar-2026 and Cash & Bank, so ‘All companies’ can list the same voucher twice. Narrow by date or company for fast results; a text search over the whole history can take a few seconds.")}</p></div>`;
+  const $b = $("#td-body", out), cnt = $("#td-cnt", out), pv = $("#td-pv", out), nx = $("#td-nx", out), pi = $("#td-pi", out), xl = $("#td-xl", out);
+  const readForm = () => Object.assign(f, { q: $("#td-q", out).value.trim(), company: $("#td-co", out).value, vtype: $("#td-ty", out).value, from: $("#td-fr", out).value, to: $("#td-to", out).value, cancelled: $("#td-cx", out).checked });
+  function paint() {
+    const total = last?.total || 0, from = total ? offset + 1 : 0, to = Math.min(offset + TD_PAGE, total);
+    cnt.textContent = bi(`মোট ${money0(total)}টি ভাউচার`, `${money0(total)} vouchers`);
+    pi.textContent = total ? `${money0(from)}–${money0(to)} / ${money0(total)}` : "";
+    pv.disabled = offset <= 0; nx.disabled = offset + TD_PAGE >= total; xl.disabled = !total;
+    $b.innerHTML = rows.map((x, i) => `<tr class="td-vr" data-i="${i}" tabindex="0" role="button" aria-expanded="false" aria-label="${bi("বিস্তারিত দেখুন", "Show details")}"><td class="sm">${dmy(x.vdate)}</td><td>${esc(x.vtype || "—")}</td><td>${esc(x.vno || "—")}</td>
+      <td class="td-pt">${tdParty(x)}${x.narration ? `<div class="mut xs td-nar">${esc(x.narration)}</div>` : ""}</td><td class="r num">${money0(x.amount)}</td><td class="sm">${esc(x.company)}</td>
+      <td>${x.cancelled ? `<span class="st rd">${bi("বাতিল", "Cancelled")}</span>` : ""}${x.counter_company ? `<span class="st am" title="${esc(x.counter_company)}">${bi("আন্তঃকোম্পানি", "Inter-company")}</span>` : ""}</td></tr>`).join("") ||
+      `<tr><td colspan="7" class="mut" style="white-space:normal">${bi("কোনো ভাউচার মেলেনি — ফিল্টার বদলে দেখুন।", "No vouchers match — try changing the filters.")}</td></tr>`;
+  }
+  async function run(off = 0) {
+    const my = ++epoch; offset = off; readForm();
+    $b.innerHTML = `<tr><td colspan="7"><div class="skel"></div></td></tr>`; pv.disabled = nx.disabled = xl.disabled = true;
+    let r; try { r = await tdVSearch(f, off); } catch (e) { r = { error: e }; }
+    if (gone || my !== epoch || !out.isConnected) return;
+    if (r.error) { $b.innerHTML = `<tr><td colspan="7"><div class="alert rd" role="alert"><span>${esc(r.error.message || r.error)}</span></div></td></tr>`; cnt.textContent = ""; return; }
+    last = r.data; rows = r.data.rows || []; paint();
+  }
+  const toggle = tr => {
+    const open = tr.getAttribute("aria-expanded") === "true";
+    if (open) { tr.nextElementSibling?.classList.contains("td-vx") && tr.nextElementSibling.remove(); tr.setAttribute("aria-expanded", "false"); return; }
+    tr.insertAdjacentHTML("afterend", `<tr class="td-vx"><td colspan="7" style="white-space:normal">${tdVDetail(rows[+tr.dataset.i])}</td></tr>`); tr.setAttribute("aria-expanded", "true");
+  };
+  $b.onclick = e => { const tr = e.target.closest(".td-vr"); if (tr) toggle(tr); };
+  $b.onkeydown = e => { if ((e.key === "Enter" || e.key === " ") && e.target.matches(".td-vr")) { e.preventDefault(); toggle(e.target); } };
+  $("#td-vf", out).onsubmit = e => { e.preventDefault(); run(0); };
+  $("#td-clr", out).onclick = () => { $("#td-q", out).value = ""; $("#td-co", out).value = ""; $("#td-ty", out).value = ""; $("#td-cx", out).checked = true; $("#td-fr", out).value = f.from; $("#td-to", out).value = f.to; run(0); };
+  pv.onclick = () => run(Math.max(0, offset - TD_PAGE)); nx.onclick = () => run(offset + TD_PAGE);
+  xl.onclick = async () => {
+    xl.disabled = true; const total = last?.total || 0, cap = Math.min(total, TD_EXPORT_MAX), all = [];
+    try {
+      for (let o = 0; o < cap; o += 200) { const r = await tdVSearch(f, o, 200); if (r.error) throw r.error; all.push(...(r.data.rows || [])); if (gone) return; }
+      await exportXlsx({ Vouchers: [["Date", "Company", "Type", "Voucher No", "Entries", "Narration", "Amount", "Cancelled", "Inter-company"],
+        ...all.map(x => [x.vdate, x.company, x.vtype || "", x.vno || "", (x.entries || []).map(tdEntryText).join("; "), x.narration || "", Number(x.amount) || 0, x.cancelled ? "Yes" : "", x.counter_company || ""])] }, `tally_vouchers_${tdDhaka()}.xlsx`);
+      toast(total > cap ? bi(`প্রথম ${money0(cap)}টি এক্সপোর্ট হয়েছে — ফিল্টার ছোট করুন`, `Exported the first ${money0(cap)} — narrow the filters for the rest`) : bi("এক্সপোর্ট হয়েছে", "Exported"), "info");
+    } catch (e) { toast(bi("এক্সপোর্ট করা যায়নি", "Export failed") + ": " + (e.message || e), "err"); }
+    xl.disabled = !last?.total;
+  };
+  await run(0);
+  return { reload: () => run(offset), cleanup: () => { gone = true; } };
 }
