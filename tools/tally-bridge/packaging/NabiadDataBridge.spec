@@ -8,7 +8,7 @@ a = Analysis(
     [os.path.join(here, "nabiad_bridge_app.pyw")],
     pathex=[here],
     datas=[(os.path.join(here, "config.example.json"), ".")],
-    hiddenimports=["bridge", "nightly_sync", "ui_kit", "updater", "overview_model", "overview_ui"],
+    hiddenimports=["bridge", "collection_journal", "nightly_sync", "ui_kit", "updater", "overview_model", "overview_ui"],
     excludes=["tkinter", "unittest", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.Qt3DCore", "PySide6.QtQml",
               "PySide6.QtQuick", "PySide6.QtMultimedia", "PySide6.QtCharts", "PySide6.QtDataVisualization", "PySide6.QtPdf"],
     noarchive=False,

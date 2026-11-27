@@ -281,8 +281,8 @@ def http_json(method, url, headers, payload=None, _retry=True):
         raise
 
 
-def sb_login(cfg):
-    email, pw = os.environ.get("TALLY_BRIDGE_EMAIL"), os.environ.get("TALLY_BRIDGE_PASSWORD")
+def sb_login(cfg, credentials=None):
+    email, pw = credentials or (os.environ.get("TALLY_BRIDGE_EMAIL"), os.environ.get("TALLY_BRIDGE_PASSWORD"))
     if not email or not pw:
         sys.exit("Set TALLY_BRIDGE_EMAIL and TALLY_BRIDGE_PASSWORD in the environment (never in files in the repo).")
     r = http_json("POST", cfg["supabase_url"] + "/auth/v1/token?grant_type=password",
