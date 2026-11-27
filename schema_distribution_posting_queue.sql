@@ -1,5 +1,14 @@
 -- Draft: queue eligible approvals for Distribution posting.
 -- Activation is opt-in. Existing collections are never queued by this migration.
+-- Operational rollback, after coordinating with the Bridge operator.
+-- This stops new queue entries and future send reservations and preserves the audit records.
+-- An already reserved/in-flight Tally write must be reconciled separately.
+-- BEGIN;
+-- UPDATE public.distribution_posting_settings
+-- SET eligible_from = NULL, pilot_collection_id = NULL, pilot_bridge_user_id = NULL
+-- WHERE singleton;
+-- DROP TRIGGER IF EXISTS queue_distribution_collection_approval ON public.dist_collections;
+-- COMMIT;
 begin;
 
 create table if not exists public.distribution_posting_settings (
