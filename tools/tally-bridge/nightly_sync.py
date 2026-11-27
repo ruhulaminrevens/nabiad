@@ -422,6 +422,44 @@ def record_failure(cfg, env, company, message):
         log(f"   could not record the failure online: {e}")
 
 
+def run_posting_after_sync(cfg, status, email, password, *, dry_run, deadline):
+    if (
+        cfg.get("distribution_posting_enabled") is not True or dry_run
+        or status.get("Nabiad Distribution Ltd.") != "ok"
+        or stop_requested() or dt.datetime.now() >= deadline
+    ):
+        return 0
+
+    from uuid import UUID
+    from bridge import sb_login
+    from collection_journal import DISTRIBUTION_COMPANY, run_distribution_worker
+
+    target = urllib.parse.urlsplit(cfg["tally_url"])
+    if (
+        target.scheme != "http" or target.hostname not in {"localhost", "127.0.0.1", "::1"}
+        or target.username is not None or target.path not in {"", "/"}
+        or target.query or target.fragment
+        or DISTRIBUTION_COMPANY in cfg.get("use_selected_company", [])
+        or urllib.parse.urlsplit(cfg["supabase_url"]).scheme != "https"
+    ):
+        log("Distribution posting skipped: expected a local Tally endpoint and explicit company.")
+        return 1
+    mappings = cfg.get("distribution_party_ledgers")
+    if not isinstance(mappings, dict) or not mappings:
+        log("Distribution posting skipped: no approved party ledger mappings are configured.")
+        return 1
+    try:
+        if any(not isinstance(name, str) or not name.strip() for name in mappings.values()):
+            raise ValueError("Invalid party mapping")
+        headers = sb_login(cfg, (email, password))
+        return run_distribution_worker(
+            cfg, headers, {UUID(party_id): name for party_id, name in mappings.items()},
+            can_continue=lambda: not stop_requested() and dt.datetime.now() < deadline,
+        )
+    except Exception as exc:
+        log(f"Distribution posting stopped ({type(exc).__name__}). Review before retrying.")
+        return 1
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--until", default="06:00", help="stop starting new work at this time (HH:MM)")
@@ -513,7 +551,8 @@ def main(argv=None):
         json.dump(summary, f, indent=1)
     bad = [c for c, s in status.items() if s != "ok"]
     log(f"=== nightly run end. ok={len(status) - len(bad)} problems={len(bad)} " + (", ".join(f"{c}: {status[c]}" for c in bad)))
-    return 0 if not bad else 1
+    posting_status = run_posting_after_sync(cfg, status, email, password, dry_run=a.dry_run, deadline=deadline)
+    return 1 if bad or posting_status else 0
 
 
 if __name__ == "__main__":

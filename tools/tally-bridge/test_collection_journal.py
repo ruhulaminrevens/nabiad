@@ -17,6 +17,7 @@ from collection_journal import (
     require_approved_correction,
     process_queued_collection,
     run_distribution_pilot,
+    run_distribution_worker,
     run_distribution_correction,
     send_collection_journal,
     send_approved_correction,
@@ -296,3 +297,24 @@ class CollectionJournalTests(unittest.TestCase):
             self.assertEqual(result, verified)
             self.assertEqual(rpc.call_args.args[3]["p_alter_id"], "rev2")
             send.assert_not_called()
+
+
+    def test_ledger_mapping_uses_unique_tally_spelling(self):
+        inputs = self.input | {"available_ledgers": {"NABIAD-CASH & BANK", "EXAMPLE PARTY"}}
+        journal = prepare_collection_journal(**inputs)
+        self.assertEqual(journal.debit_ledger, "NABIAD-CASH & BANK")
+        self.assertEqual(journal.credit_ledger, "EXAMPLE PARTY")
+        inputs["available_ledgers"].add("Example party")
+        with self.assertRaisesRegex(ValueError, "exist uniquely"):
+            prepare_collection_journal(**inputs)
+
+
+    def test_worker_continues_after_one_collection_requires_review(self):
+        jobs = [{"collection_id": str(UUID(int=number))} for number in (1, 2)]
+        with (
+            patch("bridge.http_json", return_value=jobs),
+            patch("collection_journal.run_distribution_pilot", side_effect=[ValueError("Unmapped party"), None]) as run,
+            patch("builtins.print"),
+        ):
+            self.assertEqual(run_distribution_worker({"supabase_url": "https://example.invalid"}, {}, {}), 1)
+            self.assertEqual([call.kwargs["collection_id"] for call in run.call_args_list], [UUID(int=1), UUID(int=2)])

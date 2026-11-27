@@ -30,6 +30,15 @@ class VerifiedJournal:
     master_id: str | None = None
 
 
+def resolve_distribution_ledgers(credit_name: str | None, available: set[str]) -> tuple[str, str]:
+    if not credit_name or credit_name.casefold() == DEBIT_LEDGER.casefold():
+        raise ValueError("A distinct Distribution party ledger mapping is required")
+    debit = [name for name in available if name.casefold() == DEBIT_LEDGER.casefold()]
+    credit = [name for name in available if name.casefold() == credit_name.casefold()]
+    if len(debit) != 1 or len(credit) != 1:
+        raise ValueError("Both mapped ledgers must exist uniquely in the target company")
+    return debit[0], credit[0]
+
 def prepare_collection_journal(
     *,
     collection_id: UUID,
@@ -53,11 +62,7 @@ def prepare_collection_journal(
         raise ValueError("The collection was created before the pilot or has an invalid approval time")
     if company_name != DISTRIBUTION_COMPANY:
         raise ValueError("Company is outside the Distribution posting scope")
-    credit_ledger = party_ledgers.get(party_id)
-    if not credit_ledger or credit_ledger.casefold() == DEBIT_LEDGER.casefold():
-        raise ValueError("A distinct Distribution party ledger mapping is required")
-    if not {DEBIT_LEDGER, credit_ledger} <= available_ledgers:
-        raise ValueError("Both mapped ledgers must exist in the target company")
+    debit_ledger, credit_ledger = resolve_distribution_ledgers(party_ledgers.get(party_id), available_ledgers)
     if (
         not amount.is_finite()
         or not Decimal("0") < amount <= Decimal("999999999999.99")
@@ -68,7 +73,7 @@ def prepare_collection_journal(
         reference=f"nabiad-distribution-collection:{collection_id}",
         company_name=company_name,
         voucher_date=voucher_date,
-        debit_ledger=DEBIT_LEDGER,
+        debit_ledger=debit_ledger,
         credit_ledger=credit_ledger,
         amount=amount,
     )
@@ -390,15 +395,13 @@ def run_distribution_correction(
     available = {ledger["name"] for ledger in ledgers}
 
     def journal(snapshot):
-        credit = party_ledgers.get(UUID(snapshot["party_id"]))
-        if not credit or credit.casefold() == DEBIT_LEDGER.casefold() or not {credit, DEBIT_LEDGER} <= available:
-            raise ValueError("Both correction ledgers must be mapped in Tally")
+        debit, credit = resolve_distribution_ledgers(party_ledgers.get(UUID(snapshot["party_id"])), available)
         amount = Decimal(str(snapshot["amount"]))
         if not amount.is_finite() or not Decimal("0") < amount <= Decimal("999999999999.99") or amount != amount.quantize(Decimal("0.01")):
             raise ValueError("Invalid approved correction amount")
         return CollectionJournal(
             f"nabiad-distribution-collection:{collection_id}", DISTRIBUTION_COMPANY,
-            date.fromisoformat(snapshot["date"]), DEBIT_LEDGER, credit, amount,
+            date.fromisoformat(snapshot["date"]), debit, credit, amount,
         )
 
     before, after = journal(row["before"]), journal(row["after"])
@@ -427,6 +430,32 @@ def run_distribution_correction(
         raise RuntimeError("The correction exists in Tally but its verified revision could not be saved")
     return verified
 
+def run_distribution_worker(
+    cfg: dict, auth_headers: dict, party_ledgers: dict[UUID, str],
+    *, can_continue: Callable[[], bool] = lambda: True,
+) -> int:
+    """Process one bounded batch of new, approved collections."""
+    from bridge import http_json
+
+    url = cfg["supabase_url"].rstrip("/") + "/rest/v1/rpc/list_distribution_posting_work"
+    rows = http_json("POST", url, auth_headers, {}) or []
+    failures = 0
+    for row in rows:
+        if not can_continue():
+            break
+        collection_id = UUID(row["collection_id"])
+        try:
+            verified = run_distribution_pilot(
+                collection_id=collection_id, cfg=cfg,
+                auth_headers=auth_headers, party_ledgers=party_ledgers,
+            )
+            if verified is not None:
+                print(f"Verified Distribution Journal {verified.voucher_number}")
+        except (ValueError, RuntimeError) as exc:
+            failures += 1
+            print(f"Collection {collection_id} requires review: {exc}")
+    return 1 if failures else 0
+
 def main(argv: list[str] | None = None) -> int:
     """Run the separately enabled, single-collection posting pilot."""
     import argparse
@@ -438,9 +467,10 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description=main.__doc__)
     parser.add_argument("--config", required=True, type=Path)
-    parser.add_argument("--collection-id", required=True, type=UUID)
-    parser.add_argument("--party-id", required=True, type=UUID)
-    parser.add_argument("--party-ledger", required=True)
+    parser.add_argument("--collection-id", type=UUID)
+    parser.add_argument("--automatic", action="store_true", help="process one scheduled batch")
+    parser.add_argument("--party-id", type=UUID)
+    parser.add_argument("--party-ledger")
     parser.add_argument("--approval-id", type=UUID, help="execute the specified correction approval")
     parser.add_argument("--previous-party-id", type=UUID)
     parser.add_argument("--previous-party-ledger")
@@ -465,6 +495,19 @@ def main(argv: list[str] | None = None) -> int:
     if DISTRIBUTION_COMPANY not in cfg.get("companies", []) or DISTRIBUTION_COMPANY in cfg.get("use_selected_company", []):
         parser.error("The Bridge config must specify the Distribution company explicitly")
 
+    if args.automatic:
+        if any((args.collection_id, args.party_id, args.party_ledger, args.approval_id,
+                args.previous_party_id, args.previous_party_ledger)):
+            parser.error("Automatic mode cannot be combined with a single collection or correction")
+        mappings = cfg.get("distribution_party_ledgers")
+        if not isinstance(mappings, dict) or not mappings:
+            parser.error("Configure distribution_party_ledgers before enabling the worker")
+        if any(not isinstance(name, str) or not name.strip() for name in mappings.values()):
+            parser.error("Every Distribution party mapping must have a ledger name")
+        return run_distribution_worker(cfg, sb_login(cfg), {UUID(key): name for key, name in mappings.items()})
+
+    if not args.collection_id or not args.party_id or not args.party_ledger:
+        parser.error("Single-collection mode requires collection ID, party ID and party ledger")
     if bool(args.previous_party_id) != bool(args.previous_party_ledger):
         parser.error("Provide both previous party mapping arguments together")
     party_ledgers = {args.party_id: args.party_ledger}

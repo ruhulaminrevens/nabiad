@@ -1,5 +1,1 @@
-{
- "released": "2026-11-25",
- "notes_en": "Fix: foreign-currency vouchers (for example export sales in USD) now keep their rupee/taka amount; before, the party line was read as 0 so the voucher looked unbalanced. After updating, run \"Run full history load\" once in Sync Center.",
- "notes_bn": "ফিক্স: বিদেশি মুদ্রার ভাউচারে (যেমন USD-তে রপ্তানি বিক্রি) এখন টাকার অংক সংরক্ষিত হয়; আগে পার্টির লাইন ০ পড়ায় ভাউচার অসমান দেখাত। আপডেটের পর Sync Center-এ একবার \"Run full history load\" চালান।"
-}
+{"released":"2026-11-27","notes_en":"Adds opt-in Distribution Tally posting after a successful scheduled sync.","notes_bn":"সফল scheduled sync-এর পর অনুমোদিত Distribution collection Tally-তে পাঠানোর ব্যবস্থা।"}
