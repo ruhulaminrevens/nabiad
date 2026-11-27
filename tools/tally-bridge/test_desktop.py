@@ -142,7 +142,6 @@ class NightlyRunner(unittest.TestCase):
     def test_nightly_end_to_end_and_skips_unloaded(self):
         e = Env(("Co A", "Co B"), loaded=("Co A",))
         try:
-            ns.save_secret = lambda *a: None
             with mock.patch.object(ns, "load_secret", return_value=("a@b.c", "pw")), mock.patch.object(ns, "nap", lambda s: open(ns.STOP_FLAG, "w").close()):
                 # Co B is not loaded: it is skipped and reported, never replaced by another company (the first wait ends the run)
                 rc = ns.main(["--until", (dt.datetime.now() + dt.timedelta(minutes=4)).strftime("%H:%M"), "--pause", "0", "--retry-wait", "1"])
