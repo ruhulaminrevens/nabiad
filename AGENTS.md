@@ -1,0 +1,4 @@
+# Repository AI entry point
+Read `.rar-ai/PROTOCOL.md` and `.rar-ai/PROJECT_BRIEF.md`, `.rar-ai/PROJECT_STATE.md`, `.rar-ai/DECISIONS.md`, and relevant `.rar-ai/tasks/` records before work. Verify repository, branch and current source. Use `.rar-ai/ROLE_PLAYBOOK.md` and relevant `.agents/skills/` roles; QA for code, Security for sensitive scope. Existing project-specific instructions remain authoritative where compatible; stop on conflict. Never treat this file as permission for write, push, merge, deploy, or destructive actions. On Checkpoint & Handover, persist verified task/branch state when authorized. On Continue, verify the current task and head first. If access is missing, do not guess.
+
+For UI/UX or design engineering tasks, read `.rar-ai/DESIGN_GUIDE.md` and any existing project-specific design system; use external references selectively and never install or execute them without review and authorization.
