@@ -56,7 +56,7 @@ def make_remote(root, version="1.1.0", extra=None, tamper=None, syntax_error=Fal
 def make_local(here, version="1.0.0"):
     open(os.path.join(here, "nabiad_bridge_app.pyw"), "w").write(APP_TMPL.format(v=version))
     open(os.path.join(here, "ui_kit.py"), "w").write("X = 0\n")
-    open(os.path.join(here, "bridge.py"), "w").write("B = 'same'\n")  # identical to the remote one: must not be downloaded
+    open(os.path.join(here, "bridge.py"), "wb").write(b"B = 'same'\n")  # identical to the remote one: must not be downloaded
     open(os.path.join(here, "config.json"), "w").write('{"keep": true}')
 
 
