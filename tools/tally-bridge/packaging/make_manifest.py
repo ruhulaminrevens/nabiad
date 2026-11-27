@@ -7,7 +7,7 @@ import hashlib, json, os, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-FILES = ["nabiad_bridge_app.pyw", "ui_kit.py", "overview_model.py", "overview_ui.py", "nightly_sync.py", "bridge.py", "updater.py"]
+FILES = ["nabiad_bridge_app.pyw", "ui_kit.py", "overview_model.py", "overview_ui.py", "nightly_sync.py", "collection_journal.py", "bridge.py", "updater.py"]
 
 
 def build():

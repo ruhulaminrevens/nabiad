@@ -1,15 +1,16 @@
 {
  "files": {
-  "bridge.py": "0f954fc18bf5f722c79296e0530b3744a1e1f62e80ff9ecf39fa91a8387c766c",
-  "nabiad_bridge_app.pyw": "4c3f9a92e6d714ffa31c36c7a4ebd25b962b7b8570b7f2c7b5d78110e4c1adc3",
-  "nightly_sync.py": "d57962bee371192d177a52f9089ba53feb3b107eb490671e1a857082569d43c2",
+  "bridge.py": "8fdd6399a1015e410a1973216dea7531b2a0718e7c7d1027db0c020ec896049f",
+  "collection_journal.py": "1e5f7f937ff6b1a3c507f190e9f4e7b51c7e4140cebaaea54db14f900bc10bd1",
+  "nabiad_bridge_app.pyw": "ec62bebe2882e70a4288415a28f2f36758f48e582ebec07a8882b922fe96703d",
+  "nightly_sync.py": "df6405ec4a78c1a0f3cf7150635e2518baa0580470f527ad8d08ddfa30427c8b",
   "overview_model.py": "83fa2dc9d778c26591f1cb003269f25d225ce998928d36ba903707a146b950a4",
   "overview_ui.py": "b7ecbd545e9b67f1c648d006231b7e56b9b4e16064214b2ef4bd0e9ac037a695",
   "ui_kit.py": "35800fcbb465f4ba420d4df530700f352e433da6f7f1c4aa4df211deb6711585",
   "updater.py": "4cf69984c3084f377c854a9fb45837d29bb600f1ebc7d85dec1920b8f1e21eb6"
  },
- "notes_bn": "ফিক্স: বিদেশি মুদ্রার ভাউচারে (যেমন USD-তে রপ্তানি বিক্রি) এখন টাকার অংক সংরক্ষিত হয়; আগে পার্টির লাইন ০ পড়ায় ভাউচার অসমান দেখাত। আপডেটের পর Sync Center-এ একবার \"Run full history load\" চালান।",
- "notes_en": "Fix: foreign-currency vouchers (for example export sales in USD) now keep their rupee/taka amount; before, the party line was read as 0 so the voucher looked unbalanced. After updating, run \"Run full history load\" once in Sync Center.",
- "released": "2026-11-25",
- "version": "1.2.2"
+ "notes_bn": "সফল scheduled sync-এর পর অনুমোদিত Distribution collection Tally-তে পাঠানোর ব্যবস্থা।",
+ "notes_en": "Adds opt-in Distribution Tally posting after a successful scheduled sync.",
+ "released": "2026-11-27",
+ "version": "1.3.0"
 }
