@@ -6216,9 +6216,32 @@ Object.assign(SbAPI, {
   },
   async dcolUpdate(id, p) {
     const row = {}; for (const k of ["date", "party_id", "party", "asm", "account", "amount", "remarks"]) if (k in p) row[k] = p[k] === "" ? null : p[k];
-    const { error } = await sb.from("dist_collections").update(row).eq("id", id); if (error) throw error;
+    const { error } = await sb.from("dist_collections").update(row).eq("id", id).select("id").single(); if (error) throw error;
   },
   async dcolDelete(id) { const { error } = await sb.from("dist_collections").delete().eq("id", id); if (error) throw error; },
+  async dcolCompleteTallyCancel(id) {
+    const { data, error } = await sb.rpc("complete_distribution_manual_cancel", { p_collection_id: id });
+    if (error) throw error;
+    if (data !== true) throw new Error(bi("সম্পন্ন হিসেবে রাখা যায়নি", "Could not mark the Tally action complete"));
+  },
+  async dcolCorrectionPreview(id) {
+    const { data, error } = await sb.rpc("preview_distribution_posting_correction", { p_collection_id: id });
+    if (error) throw error;
+    return data;
+  },
+  async dcolApproveCorrection(id, preview) {
+    const { data, error } = await sb.rpc("approve_distribution_posting_correction", {
+      p_collection_id: id, p_expected_snapshot: preview.after, p_expected_alter_id: preview.alter_id,
+    });
+    if (error) throw error;
+    if (!data) throw new Error(bi("তথ্য বদলেছে। আবার যাচাই করুন।", "The values changed. Review the correction again."));
+  },
+  async dcolPostingStatus(ids) {
+    const { data, error } = await sb.rpc("distribution_collection_posting_status", { p_collection_ids: ids });
+    if (error?.code === "PGRST202") return [];
+    if (error) throw error;
+    return data || [];
+  },
   async dcolStatus(ids, st, note) { const { data, error } = await sb.rpc("dist_set_status", { ids, st, note: note || null }); if (error) throw error; return data; }
 });
 Object.assign(DemoAPI, {
@@ -6437,6 +6460,18 @@ async function vDcol(v) {
     try { rows = await API.dcolRange(date, date); } catch (e) { rows = []; list.innerHTML = `<div class="alert rd" style="margin:12px">${esc(dcErr(e))}</div>`; if (!isNetErr(e)) return; }
     const ids = new Set(rows.map(r => r.id)); dcPending().filter(r => r.date === date && !ids.has(r.id)).forEach(r => rows.push(r));
     draw();
+    if (S.me.role === "admin" && API.dcolPostingStatus && ids.size) {
+      const loadedRows = rows;
+      try {
+        const status = await API.dcolPostingStatus([...ids]);
+        if (rows !== loadedRows) return;
+        const byId = new Map(status.map(item => [item.collection_id, item]));
+        rows.forEach(row => { row.tallyPosting = byId.get(row.id); });
+        if (status.length) draw();
+      } catch (e) {
+        console.warn("Collection Tally status unavailable", e.code);
+      }
+    }
   }
   let wkKey = "", wkRows = [];
   async function week() {
@@ -6445,6 +6480,26 @@ async function vDcol(v) {
     const ds = Array.from({ length: 7 }, (_, i) => addDays(f, i)), live = r => r.status !== "cancelled";
     const byDay = ds.map(d => { const rs = (d === date ? rows : wkRows.filter(r => r.date === d)).filter(live); return { d, amt: dcSum(rs), n: rs.length }; }), mx = Math.max(1, ...byDay.map(x => x.amt)), wt = byDay.reduce((s2, x) => s2 + x.amt, 0);
     box.innerHTML = `<div class="dcx-wkh" title="${bi("Cancelled বাদে, সব Status", "All statuses except Cancelled")}"><span>${bi("শেষ ৭ দিন", "Last 7 days")} · ${bi("বারে চাপলে সেই দিন", "tap a bar to open")}</span><b class="num">৳ ${money0(wt)}</b></div><div class="dcx-wkb">${byDay.map(x => `<button type="button" data-wd="${x.d}" class="${x.d === date ? "on" : ""}${x.amt ? "" : " z"}" title="${dmy(x.d)} · ${x.n} · ৳ ${money0(x.amt)}"><i style="--h:${Math.max(4, x.amt / mx * 100).toFixed(1)}%"></i><small>${new Date(x.d + "T00:00:00").toLocaleDateString(LANG === "en" ? "en-GB" : "bn-BD", { weekday: "short" })}</small></button>`).join("")}</div>`;
+  }
+  function tallyStatus(r) {
+    const status = r.tallyPosting;
+    if (!status) return "";
+    const text = {
+      queued: bi("Tally-তে পাঠানো বাকি", "Tally posting queued"),
+      verification_pending: bi("Tally যাচাই বাকি", "Tally verification pending"),
+      posted: bi("Tally-তে পোস্ট হয়েছে", "Posted to Tally"),
+      manual_pending: bi("Tally-তে হাতে ব্যবস্থা বাকি", "Manual Tally action pending"),
+      manual_complete: bi("Tally-তে হাতে ব্যবস্থা সম্পন্ন", "Manual Tally action complete"),
+    }[status.posting_status];
+    if (!text) return "";
+    const number = status.tally_voucher_number;
+    let action = status.posting_status === "manual_pending"
+      ? `<button type="button" class="btn sm" data-tally-complete="${esc(r.id)}">${bi("Tally-তে সম্পন্ন", "Mark Tally action complete")}</button>`
+      : "";
+    if (status.posting_status === "posted" && r.status === "approved") {
+      action = `<button type="button" class="btn sm" data-tally-correction="${esc(r.id)}">${bi("Tally সংশোধন দেখুন", "Review Tally correction")}</button>`;
+    }
+    return `<div class="mut xs">${esc(text)}${number ? " · " + esc(number) : ""}</div>${action}`;
   }
   function visible() { const q = norm(F.q); return rows.filter(r => (!F.st || r.status === F.st) && (!F.ac || r.account === F.ac) && (!q || norm([r.party, r.asm, r.account, r.remarks, r.amount].join(" ")).includes(q))); }
   function selbar() {
@@ -6465,12 +6520,69 @@ async function vDcol(v) {
     const actionable = vis.filter(r => ["approved", "cancelled"].some(s => dcCan(r, s))), gm = dpGeoMap();
     list.innerHTML = vis.length ? `<div class="tw cards"><table><thead><tr><th style="width:34px">${actionable.length ? `<input type="checkbox" id="dc-all" title="সব বাছুন">` : ""}</th><th class="r">#</th><th>পার্টি</th><th>Account</th><th class="r">টাকা</th><th>অবস্থা</th><th>মন্তব্য</th><th class="r noprint">কাজ</th></tr></thead><tbody>${vis.map((r, i) => {
       const acts = [["approved", "check", "gr", "Approve (ঠিক আছে)"], ["cancelled", "xmark", "rd", "Cancel"]].filter(([s]) => dcCan(r, s)).map(([s, ic, c, t]) => `<button class="iconbtn sm cpi ${c}" data-st="${s}" data-id="${r.id}" title="${t}">${ico(ic)}</button>`).join("") + (r.status !== "pending" && dcCan(r, "pending") ? `<button class="iconbtn sm cpi vi" data-st="pending" data-id="${r.id}" title="Pending-এ ফেরত" aria-label="Pending-এ ফেরত">${ico("refresh")}</button>` : "");
-      return `<tr class="dcr ${r.status}"><td>${dcCan(r, "approved") || dcCan(r, "cancelled") ? `<input type="checkbox" data-sel="${r.id}" ${sel.has(r.id) ? "checked" : ""}>` : ""}</td><td class="r mut">${i + 1}</td><td><b>${esc(r.party)}</b><div class="mut xs">${esc([r.asm || "—", dpGeoOf(gm, r).district].filter(Boolean).join(" · "))}</div></td><td class="b"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account || "—")}</td><td class="r num b">${money0(r.amount)}</td><td>${dcStTag(r)}${r.decided_by ? `<div class="mut xs">${esc(r.decided_by)}${r.decision_note ? " · " + esc(r.decision_note) : ""}</div>` : ""}</td><td class="sm">${esc(r.remarks)}</td><td class="r noprint"><div class="dcacts">${acts}${dcCanEdit(r) ? `<button class="iconbtn sm cpi am" data-ed="${r.id}" title="এডিট" aria-label="এডিট">${ico("edit")}</button>` : ""}${S.me.role === "admin" && !r.pending_sync ? `<button class="iconbtn sm cpi rd" data-dl="${r.id}" title="মুছুন" aria-label="মুছুন">${ico("trash")}</button>` : ""}</div></td></tr>`;
+      return `<tr class="dcr ${r.status}"><td>${dcCan(r, "approved") || dcCan(r, "cancelled") ? `<input type="checkbox" data-sel="${r.id}" ${sel.has(r.id) ? "checked" : ""}>` : ""}</td><td class="r mut">${i + 1}</td><td><b>${esc(r.party)}</b><div class="mut xs">${esc([r.asm || "—", dpGeoOf(gm, r).district].filter(Boolean).join(" · "))}</div></td><td class="b"><i class="bdot" style="background:${dcBrand(r.account)}"></i>${esc(r.account || "—")}</td><td class="r num b">${money0(r.amount)}</td><td>${dcStTag(r)}${tallyStatus(r)}${r.decided_by ? `<div class="mut xs">${esc(r.decided_by)}${r.decision_note ? " · " + esc(r.decision_note) : ""}</div>` : ""}</td><td class="sm">${esc(r.remarks)}</td><td class="r noprint"><div class="dcacts">${acts}${dcCanEdit(r) ? `<button class="iconbtn sm cpi am" data-ed="${r.id}" title="এডিট" aria-label="এডিট">${ico("edit")}</button>` : ""}${S.me.role === "admin" && !r.pending_sync ? `<button class="iconbtn sm cpi rd" data-dl="${r.id}" title="মুছুন" aria-label="মুছুন">${ico("trash")}</button>` : ""}</div></td></tr>`;
     }).join("")}<tr class="tot"><td></td><td></td><td colspan="2">${bi("মোট (" + vis.filter(r => r.status !== "cancelled").length + "টি, Cancelled বাদে)", "Total (" + vis.filter(r => r.status !== "cancelled").length + " entries, excl. Cancelled)")}</td><td class="r num">${money0(dcSum(vis.filter(r => r.status !== "cancelled")))}</td><td colspan="3"></td></tr></tbody></table></div>` : `<div class="dcx-empty"><span class="ei">${ico("wallet")}</span><b>${rows.length ? "খোঁজার সাথে কিছু মেলেনি" : "এই তারিখে এখনো কোনো এন্ট্রি নেই"}</b><span class="mut">${rows.length ? "ফিল্টার বা সার্চ বদলে দেখুন" : "উপরের ফর্ম থেকে প্রথম কালেকশনটি যোগ করুন"}</span>${rows.length ? `<button class="btn sm" id="dc-clr">ফিল্টার মুছুন</button>` : ""}</div>`;
     labelTables(list); const cl = $("#dc-clr", list); if (cl) cl.onclick = () => { F.st = ""; F.ac = ""; F.q = ""; $("#dc-q", v).value = ""; draw(); };
     $$("[data-sel]", list).forEach(x => x.onchange = () => { x.checked ? sel.add(x.dataset.sel) : sel.delete(x.dataset.sel); selbar(); });
     const all = $("#dc-all", list); if (all) all.onchange = () => { actionable.forEach(r => all.checked ? sel.add(r.id) : sel.delete(r.id)); $$("[data-sel]", list).forEach(x => x.checked = all.checked); selbar(); };
     $$("[data-st]", list).forEach(b => b.onclick = () => dcDecide([b.dataset.id], b.dataset.st, load));
+    $$("[data-tally-correction]", list).forEach(button => {
+      button.onclick = async () => {
+        button.disabled = true;
+        try {
+          const id = button.dataset.tallyCorrection;
+          const preview = await API.dcolCorrectionPreview(id);
+          if (!preview) {
+            toast(bi("অনুমোদনের জন্য কোনো যাচাইযোগ্য সংশোধন নেই।", "No verifiable correction is available for approval."));
+            return;
+          }
+          const fields = [
+            [bi("তারিখ", "Date"), preview.before.date, preview.after.date],
+            [bi("পার্টি", "Party"), preview.before_party || preview.before.party_id, preview.after_party || preview.after.party_id],
+            [bi("অ্যাকাউন্ট", "Account"), preview.before.account, preview.after.account],
+            [bi("টাকা", "Amount"), preview.before.amount, preview.after.amount],
+          ];
+          modal(`<h2>${bi("Tally সংশোধন যাচাই", "Review Tally correction")} · ${esc(preview.voucher_number)}</h2>
+            <table><thead><tr><th></th><th>${bi("আগে", "Before")}</th><th>${bi("পরে", "After")}</th></tr></thead>
+            <tbody>${fields.map(([label, before, after]) => `<tr><th>${esc(label)}</th><td>${esc(before ?? "—")}</td><td>${esc(after ?? "—")}</td></tr>`).join("")}</tbody></table>
+            <div class="hint rd" data-approval-error></div>
+            <button type="button" class="btn pri" data-approve-correction>${bi("সংশোধন পাঠানোর অনুমতি দিন", "Authorize sending correction")}</button>`,
+          (root, close) => {
+            const approve = $("[data-approve-correction]", root);
+            approve.onclick = async () => {
+              approve.disabled = true;
+              try {
+                await API.dcolApproveCorrection(id, preview);
+                close();
+                toast(bi("সংশোধনের অনুমতি সংরক্ষিত হয়েছে।", "Correction approval saved."));
+              } catch (e) {
+                $("[data-approval-error]", root).textContent = dcErr(e);
+              } finally {
+                approve.disabled = false;
+              }
+            };
+          });
+        } catch (e) {
+          toast(dcErr(e));
+        } finally {
+          button.disabled = false;
+        }
+      };
+    });
+    $$("[data-tally-complete]", list).forEach(button => {
+      button.onclick = async () => {
+        if (!ask(bi("আপনি কি Tally-তে এই voucher-এর ব্যবস্থা সম্পন্ন করেছেন?", "Have you completed the manual action for this voucher in Tally?"))) return;
+        button.disabled = true;
+        try {
+          await API.dcolCompleteTallyCancel(button.dataset.tallyComplete);
+          await load();
+        } catch (e) {
+          toast(dcErr(e));
+        } finally {
+          button.disabled = false;
+        }
+      };
+    });
     $$("[data-ed]", list).forEach(b => b.onclick = () => dcEditModal(rows.find(r => r.id === b.dataset.ed), load));
     $$("[data-dl]", list).forEach(b => b.onclick = async () => { const r = rows.find(x => x.id === b.dataset.dl); if (!ask(bi(`"${r.party}" — ৳ ${money0(r.amount)} মুছে ফেলবেন?`, `Delete "${r.party}" — ৳ ${money0(r.amount)}?`))) return; try { await API.dcolDelete(r.id); DCACHE.dcol = null; toast("✔ মুছে ফেলা হয়েছে"); load(); } catch (e) { toast(dcErr(e), "err"); } });
     selbar(); qa(); week();
@@ -6528,6 +6640,30 @@ async function dcRegisterVisual(el, format) {
     return cbRegisterPdf(pages);
   } finally { stage.remove(); }
 }
+function dcEditModal(r, after) {
+  modal(`<h2>কালেকশন এডিট</h2><div class="fgrid">
+   <div class="s2"><label class="f">তারিখ</label><input class="in" type="date" id="de-d" value="${r.date}"></div>
+   <div class="s2"><label class="f">টাকা</label><input class="in num" id="de-m" inputmode="decimal" value="${r.amount}"></div>
+   <div class="s4"><label class="f">পার্টি</label><input class="in" id="de-p" list="de-dl-p" autocomplete="off" value="${esc(r.party)}"></div>
+   <div class="s2"><label class="f">ASM</label><input class="in" id="de-a" list="de-dl-a" autocomplete="off" value="${esc(r.asm)}"></div>
+   <div class="s2"><label class="f">Account</label><input class="in" id="de-c" list="de-dl-c" autocomplete="off" value="${esc(r.account)}"></div>
+   <div class="s4"><label class="f">মন্তব্য</label><input class="in" id="de-r" autocomplete="off" value="${esc(r.remarks)}"></div>
+  </div>${datalist("de-dl-p", (DPARTY || []).map(p => p.name))}${datalist("de-dl-a", dcAsms())}${datalist("de-dl-c", dcAccounts())}<div class="hint rd" id="de-err"></div>
+  <div class="row" style="margin-top:14px"><button class="btn pri" id="de-ok">${ico("save")} সেভ</button><button class="btn" id="de-x">বন্ধ</button></div>`, (root, close) => {
+    const err = m => $("#de-err", root).textContent = m || "";
+    $("#de-x", root).onclick = close;
+    $("#de-ok", root).onclick = async () => {
+      const amount = evalAmt($("#de-m", root).value), party = $("#de-p", root).value.trim(), date = $("#de-d", root).value;
+      const account = $("#de-c", root).value.trim(); if (!account) return err(bi("অ্যাকাউন্ট দিন", "Enter an account")); if (!date) return err(bi("তারিখ দিন", "Enter a date")); if (!party) return err("পার্টির নাম দিন"); if (!Number.isFinite(amount) || amount <= 0) return err("টাকার অংক ঠিক নেই");
+      const m = (DPARTY || []).find(p => norm(p.name) === norm(party));
+      const patch = { date, party: m ? m.name : party, party_id: m ? m.id : (party === r.party ? r.party_id : null), asm: $("#de-a", root).value.trim(), account, amount, remarks: $("#de-r", root).value.trim() };
+      const save = $("#de-ok", root); if (save.disabled) return; save.disabled = true;
+      err("");
+      try { await API.dcolUpdate(r.id, patch); DCACHE.dcol = null; close(); toast("✔ সেভ হয়েছে"); after && after({ ...r, ...patch }); } catch (e) { err(dcErr(e)); } finally { save.disabled = false; }
+    };
+  });
+}
+
 function dcRegisterModal(rows, date) {
   const name = dcRegName(date), closeLabel = bi("বন্ধ", "Close"), title = bi("কালেকশন রেজিস্টার", "Collection Register");
   const formats = [["xlsx", "table", "Excel"], ["pdf", "list", "PDF"], ["png", "img", bi("ছবি", "Image")]];
