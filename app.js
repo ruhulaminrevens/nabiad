@@ -6216,7 +6216,7 @@ Object.assign(SbAPI, {
   },
   async dcolUpdate(id, p) {
     const row = {}; for (const k of ["date", "party_id", "party", "asm", "account", "amount", "remarks"]) if (k in p) row[k] = p[k] === "" ? null : p[k];
-    const { error } = await sb.from("dist_collections").update(row).eq("id", id); if (error) throw error;
+    const { error } = await sb.from("dist_collections").update(row).eq("id", id).select("id").single(); if (error) throw error;
   },
   async dcolDelete(id) { const { error } = await sb.from("dist_collections").delete().eq("id", id); if (error) throw error; },
   async dcolStatus(ids, st, note) { const { data, error } = await sb.rpc("dist_set_status", { ids, st, note: note || null }); if (error) throw error; return data; }
@@ -6528,6 +6528,30 @@ async function dcRegisterVisual(el, format) {
     return cbRegisterPdf(pages);
   } finally { stage.remove(); }
 }
+function dcEditModal(r, after) {
+  modal(`<h2>কালেকশন এডিট</h2><div class="fgrid">
+   <div class="s2"><label class="f">তারিখ</label><input class="in" type="date" id="de-d" value="${r.date}"></div>
+   <div class="s2"><label class="f">টাকা</label><input class="in num" id="de-m" inputmode="decimal" value="${r.amount}"></div>
+   <div class="s4"><label class="f">পার্টি</label><input class="in" id="de-p" list="de-dl-p" autocomplete="off" value="${esc(r.party)}"></div>
+   <div class="s2"><label class="f">ASM</label><input class="in" id="de-a" list="de-dl-a" autocomplete="off" value="${esc(r.asm)}"></div>
+   <div class="s2"><label class="f">Account</label><input class="in" id="de-c" list="de-dl-c" autocomplete="off" value="${esc(r.account)}"></div>
+   <div class="s4"><label class="f">মন্তব্য</label><input class="in" id="de-r" autocomplete="off" value="${esc(r.remarks)}"></div>
+  </div>${datalist("de-dl-p", (DPARTY || []).map(p => p.name))}${datalist("de-dl-a", dcAsms())}${datalist("de-dl-c", dcAccounts())}<div class="hint rd" id="de-err"></div>
+  <div class="row" style="margin-top:14px"><button class="btn pri" id="de-ok">${ico("save")} সেভ</button><button class="btn" id="de-x">বন্ধ</button></div>`, (root, close) => {
+    const err = m => $("#de-err", root).textContent = m || "";
+    $("#de-x", root).onclick = close;
+    $("#de-ok", root).onclick = async () => {
+      const amount = evalAmt($("#de-m", root).value), party = $("#de-p", root).value.trim(), date = $("#de-d", root).value;
+      const account = $("#de-c", root).value.trim(); if (!account) return err(bi("অ্যাকাউন্ট দিন", "Enter an account")); if (!date) return err(bi("তারিখ দিন", "Enter a date")); if (!party) return err("পার্টির নাম দিন"); if (!Number.isFinite(amount) || amount <= 0) return err("টাকার অংক ঠিক নেই");
+      const m = (DPARTY || []).find(p => norm(p.name) === norm(party));
+      const patch = { date, party: m ? m.name : party, party_id: m ? m.id : (party === r.party ? r.party_id : null), asm: $("#de-a", root).value.trim(), account, amount, remarks: $("#de-r", root).value.trim() };
+      const save = $("#de-ok", root); if (save.disabled) return; save.disabled = true;
+      err("");
+      try { await API.dcolUpdate(r.id, patch); DCACHE.dcol = null; close(); toast("✔ সেভ হয়েছে"); after && after({ ...r, ...patch }); } catch (e) { err(dcErr(e)); } finally { save.disabled = false; }
+    };
+  });
+}
+
 function dcRegisterModal(rows, date) {
   const name = dcRegName(date), closeLabel = bi("বন্ধ", "Close"), title = bi("কালেকশন রেজিস্টার", "Collection Register");
   const formats = [["xlsx", "table", "Excel"], ["pdf", "list", "PDF"], ["png", "img", bi("ছবি", "Image")]];
